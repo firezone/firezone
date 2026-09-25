@@ -1,7 +1,12 @@
 defmodule PortalAPI.OpenAPISpecTest do
   use ExUnit.Case, async: true
 
+  alias OpenApiSpex.Example
+  alias OpenApiSpex.MediaType
+  alias OpenApiSpex.Operation
   alias OpenApiSpex.Reference
+  alias OpenApiSpex.RequestBody
+  alias OpenApiSpex.Response
 
   setup_all do
     %{spec: PortalAPI.OpenAPIAssertions.strict_spec()}
@@ -34,11 +39,51 @@ defmodule PortalAPI.OpenAPISpecTest do
     assert failures == [], Enum.join(failures, "\n\n")
   end
 
+  test "every request and response example conforms to its schema", %{spec: spec} do
+    failures =
+      for {path, path_item} <- spec.paths,
+          {method, %Operation{} = operation} <- Map.from_struct(path_item),
+          {where, content} <- operation_content(operation),
+          {media_type, %MediaType{schema: schema} = media} <- content,
+          {name, value} <- media_examples(media),
+          message = media_example_error(value, schema, spec),
+          do: "#{method} #{path} #{where} #{media_type} #{name}: #{message}"
+
+    assert failures == [], Enum.join(failures, "\n\n")
+  end
+
   defp example_error(example, title, spec) do
     ref = %Reference{"$ref": "#/components/schemas/#{title}"}
-    OpenApiSpex.TestAssertions.assert_raw_schema(example, ref, spec)
+    media_example_error(example, ref, spec)
+  end
+
+  defp media_example_error(example, schema, spec) do
+    OpenApiSpex.TestAssertions.assert_raw_schema(example, schema, spec)
     nil
   rescue
     error in ExUnit.AssertionError -> error.message
+  end
+
+  defp operation_content(%Operation{requestBody: request_body, responses: responses}) do
+    request =
+      case request_body do
+        %RequestBody{content: %{} = content} -> [{"request", content}]
+        _ -> []
+      end
+
+    response =
+      for {status, %Response{content: %{} = content}} <- responses || %{},
+          do: {"response #{status}", content}
+
+    request ++ response
+  end
+
+  defp media_examples(%MediaType{example: nil, examples: examples}), do: named_examples(examples)
+
+  defp media_examples(%MediaType{example: example, examples: examples}),
+    do: [{"example", example} | named_examples(examples)]
+
+  defp named_examples(examples) do
+    for {name, %Example{value: value}} <- examples || %{}, do: {name, value}
   end
 end

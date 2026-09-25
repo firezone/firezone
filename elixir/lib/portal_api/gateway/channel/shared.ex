@@ -717,8 +717,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
   end
 
-  def handle_in("no_relays", _payload, socket) do
-    {:ok, relays} = select_relays(socket)
+  def handle_in("no_relays", payload, socket) do
+    {:ok, relays} = select_relays(socket, excluded_relay_ids(payload))
     socket = cache_relays(socket, relays)
 
     push(socket, "relays_presence", %{
@@ -801,6 +801,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
+
+  defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do
+    Enum.flat_map(ids, fn id ->
+      case Ecto.UUID.cast(id) do
+        {:ok, id} -> [id]
+        :error -> []
+      end
+    end)
+  end
+
+  defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, account, relays) do
     push(socket, "init", %{

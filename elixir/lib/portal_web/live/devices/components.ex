@@ -51,7 +51,7 @@ defmodule PortalWeb.Devices.Components do
 
     ~H"""
     <div class="flex items-center text-xs text-body">
-      <span class="mr-1 mb-1"><.device_os_icon device={@device} /></span>
+      <span class="flex mr-1"><.device_os_icon device={@device} /></span>
       {os_name_and_version(@user_agent)}
     </div>
     """
@@ -528,10 +528,10 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
       <div class="flex items-center gap-4">
-        <%!-- Left: name + status + ID --%>
+        <%!-- Left: slug + status + ID --%>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">{@device.name}</h2>
+            <h2 class="text-sm font-semibold text-heading truncate">{@device.slug}</h2>
             <.device_status_badge device={@device} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
@@ -583,7 +583,7 @@ defmodule PortalWeb.Devices.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Device Pools" />
       <p class="mb-2 text-xs text-subtle">
-        Anyone granted access to these pools can reach this device directly on its tunnel address.
+        Anyone granted access to these pools can reach this device directly on its tunnel address or DNS name.
       </p>
       <ul class="space-y-1">
         <li :for={pool <- @device_pools}>
@@ -610,7 +610,7 @@ defmodule PortalWeb.Devices.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Reported by Client">
         <:info>
-          <.popover placement="right">
+          <.popover class="flex" placement="right">
             <:target>
               <.icon name="ri-information-line" class="w-3 h-3" />
             </:target>
@@ -675,14 +675,13 @@ defmodule PortalWeb.Devices.Components do
           </span>
         </.device_detail_row>
         <.device_detail_row label="Tunnel IPv4">
-          <span class="font-mono text-xs text-body">
-            {@device.ipv4}
-          </span>
+          <.copyable_value id={"device-ipv4-#{@device.id}"} value={to_string(@device.ipv4)} />
         </.device_detail_row>
         <.device_detail_row label="Tunnel IPv6">
-          <span class="font-mono text-xs text-body break-all">
-            {@device.ipv6}
-          </span>
+          <.copyable_value id={"device-ipv6-#{@device.id}"} value={to_string(@device.ipv6)} />
+        </.device_detail_row>
+        <.device_detail_row :if={@device.slug} label="Tunnel DNS Name">
+          <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
         </.device_detail_row>
       </dl>
     </div>
@@ -1015,8 +1014,8 @@ defmodule PortalWeb.Devices.Components do
         <.device_detail_row label="Device ID">
           <.copyable_value id={"device-id-#{@device.id}"} value={@device.id} />
         </.device_detail_row>
-        <.device_detail_row :if={@device.slug} label="Slug">
-          <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
+        <.device_detail_row label="Name">
+          <span class="text-xs text-body break-all">{@device.name}</span>
         </.device_detail_row>
         <.device_detail_row :if={@device.firezone_id} label="Firezone ID">
           <span class="font-mono text-[11px] text-body break-all">
@@ -1046,7 +1045,7 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
         <.device_detail_row label="Trust level">
           <:info>
-            <.popover placement="left">
+            <.popover class="flex" placement="left">
               <:target>
                 <.icon name="ri-information-line" class="w-3 h-3" />
               </:target>
@@ -1256,11 +1255,11 @@ defmodule PortalWeb.Devices.Components do
   # for `<id>-success-message` for two seconds.
   defp copyable_value(assigns) do
     ~H"""
-    <div id={@id} phx-hook="CopyClipboard" class="flex items-start gap-1.5 min-w-0">
+    <div id={@id} phx-hook="CopyClipboard" class="flex items-center gap-1.5 min-w-0">
       <span id={"#{@id}-code"} class="font-mono text-[11px] text-body break-all">{@value}</span>
       <button
         type="button"
-        class="shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
+        class="flex shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >

@@ -260,10 +260,11 @@ actor Adapter {
 
     let tlsIdentity = try resolveTlsIdentity()
 
-    // Create the session
-    let session: Session
+    // Create the session, held only by the handoff so that the command task can own it.
+    let handoff: SessionHandoff
+    let events: EventStream
     do {
-      session = try Session.newApple(
+      let connection = try connectApple(
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
@@ -272,6 +273,8 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
+      events = connection.events
+      handoff = SessionHandoff(connection.session)
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
@@ -290,7 +293,8 @@ actor Adapter {
       }
 
       await runSessionEventLoop(
-        session: session,
+        handoff: handoff,
+        events: events,
         commandReceiver: commandReceiver,
         eventSender: eventSender
       )
@@ -357,9 +361,6 @@ actor Adapter {
 
     sendCommand(.disconnect)
 
-    // Close command channel immediately - ensures event loop sees channel close
-    commandSender = nil
-
     // Cancel path monitoring - triggers CancellableTask.deinit -> Task cancellation
     // -> onTermination -> monitor.cancel()
     pathMonitorTask = nil
@@ -373,6 +374,9 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
+
+    // Closing the command channel drops the session, so only do it once connlib has shut down.
+    commandSender = nil
 
     pendingUnreachableResources.removeAll()
   }
