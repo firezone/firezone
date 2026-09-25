@@ -227,16 +227,9 @@ where
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        let unblock = self
-            .blocked
-            .values()
-            .min()
-            .map(|until| (*until, "unblock relay"));
-
-        self.inner
-            .values_mut()
-            .filter_map(|a| a.poll_timeout())
-            .chain(unblock)
+        std::iter::empty()
+            .chain(self.inner.values_mut().filter_map(|a| a.poll_timeout()))
+            .chain(self.blocked.values().map(|until| (*until, "unblock relay")))
             .min_by_key(|(t, _)| *t)
     }
 
