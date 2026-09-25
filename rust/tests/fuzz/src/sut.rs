@@ -335,8 +335,8 @@ impl TunnelTest {
                     client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
                     if let Some(gateway) = portal
-                        .gateway_for_resource(rid)
-                        .and_then(|gid| self.gateways.get_mut(gid))
+                        .authorized_gateway(*client_id, rid)
+                        .and_then(|gid| self.gateways.get_mut(&gid))
                     {
                         gateway.exec_mut(|g| g.remove_access(client_id, &rid, now));
                     }
@@ -694,14 +694,15 @@ impl TunnelTest {
 
                         (*client_id, resources)
                     })
-                    .collect();
+                    .collect::<BTreeMap<_, _>>();
 
-                if let Some(gid) = portal.gateway_for_resource(rid)
-                    && let Some(gateway) = self.gateways.get_mut(gid)
-                {
-                    gateway.exec_mut(|gateway| gateway.retain_authorizations(authorizations));
-                } else {
-                    tracing::error!(%rid, "No gateway for resource");
+                for gid in portal.gateways_authorized_for(rid) {
+                    let authorizations = authorizations.clone();
+
+                    self.gateways
+                        .get_mut(&gid)
+                        .unwrap()
+                        .exec_mut(|gateway| gateway.retain_authorizations(authorizations));
                 }
             }
             Transition::ExpirePeerAuthorizations {
@@ -728,18 +729,15 @@ impl TunnelTest {
                 });
             }
             Transition::RevokeGatewayAuthorization(rid) => {
-                if let Some(gid) = portal.gateway_for_resource(rid)
-                    && let Some(gateway) = self.gateways.get_mut(gid)
-                {
-                    let client_ids = self.clients.keys().copied().collect::<Vec<_>>();
+                for client_id in self.clients.keys() {
+                    let Some(gid) = portal.authorized_gateway(*client_id, rid) else {
+                        continue;
+                    };
 
-                    gateway.exec_mut(|g| {
-                        for client_id in client_ids {
-                            g.sut.remove_access(&client_id, &rid, now);
-                        }
-                    });
-                } else {
-                    tracing::error!(%rid, "No gateway for resource");
+                    self.gateways
+                        .get_mut(&gid)
+                        .unwrap()
+                        .exec_mut(|g| g.sut.remove_access(client_id, &rid, now));
                 }
             }
             Transition::RestartClient { client_id, key } => {

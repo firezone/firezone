@@ -2207,6 +2207,11 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
+
+                    // Stop preferring it, otherwise the portal hands us the same Gateway again.
+                    for gateways in self.gateways_by_site.values_mut() {
+                        gateways.remove(&id);
+                    }
                 }
                 snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
