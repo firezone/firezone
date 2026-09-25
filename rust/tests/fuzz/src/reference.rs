@@ -25,6 +25,10 @@ use crate::resource as client;
 
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
+/// How long after a relay frees up its ports until every node that ignores it asks for it again:
+/// how long a node ignores a relay that failed its allocation, plus a margin.
+const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
+
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
@@ -33,6 +37,10 @@ pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+    /// Relays that answer new allocations with `508 Insufficient Capacity`.
+    pub(crate) exhausted_relays: BTreeSet<RelayId>,
+    /// Relays that accept allocations again, and since when, for up to [`RELAY_RECOVERY`].
+    pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -75,6 +83,8 @@ impl ReferenceState {
             clients,
             gateways,
             relays,
+            exhausted_relays: Default::default(),
+            recovering_relays: Default::default(),
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -108,6 +118,11 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
+        for _ in self
+            .recovering_relays
+            .extract_if(.., |_, freed_at| now >= *freed_at + RELAY_RECOVERY)
+        {}
+
         match transition {
             Transition::AddResource(resource) => {
                 for client in self.clients.values_mut() {
@@ -402,6 +417,14 @@ impl ReferenceState {
             Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 self.reboot_relays_while_partitioned(new_relays)
+            }
+            Transition::ExhaustRelayPorts(relay) => {
+                self.exhausted_relays.insert(*relay);
+                self.recovering_relays.remove(relay);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.exhausted_relays.remove(relay);
+                self.recovering_relays.insert(*relay, now);
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
@@ -1439,6 +1462,14 @@ impl ReferenceState {
         {
             self.network.remove_host(&relay);
         }
+        for _ in self
+            .exhausted_relays
+            .extract_if(.., |relay| !new_relays.contains_key(relay))
+        {}
+        for _ in self
+            .recovering_relays
+            .extract_if(.., |relay, _| !new_relays.contains_key(relay))
+        {}
 
         for (rid, new_relay) in new_relays {
             if self.relays.contains_key(rid) {
@@ -1456,6 +1487,8 @@ impl ReferenceState {
             self.network.remove_host(relay);
         }
         self.relays.clear();
+        self.exhausted_relays.clear();
+        self.recovering_relays.clear();
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
