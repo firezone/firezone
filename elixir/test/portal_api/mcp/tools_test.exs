@@ -101,6 +101,12 @@ defmodule PortalAPI.MCP.ToolsTest do
     end
   end
 
+  test "marks every tool as closed-world", %{tools: tools} do
+    for tool <- tools do
+      refute tool.annotations.openWorldHint
+    end
+  end
+
   test "classifies destructive and idempotent writes by their actual behavior", %{tools: tools} do
     assert_annotations(tools, "create_resource", false, false)
     assert_annotations(tools, "verify_client", false, true)
