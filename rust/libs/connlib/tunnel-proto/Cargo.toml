@@ -48,6 +48,7 @@ snownet = { workspace = true }
 telemetry = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
+url = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 ip-packet = { workspace = true, features = ["proptest"] }

@@ -240,6 +240,13 @@ if config_env() == :prod do
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
 
+  config :portal,
+    metrics_api_url: env_var_to_config!(:metrics_api_url),
+    metrics_report_interval_secs: env_var_to_config!(:metrics_report_interval_secs),
+    metrics_token_private_key: env_var_to_config!(:metrics_token_private_key),
+    metrics_token_key_id: env_var_to_config!(:metrics_token_key_id),
+    metrics_dce_endpoint: env_var_to_config!(:metrics_dce_endpoint)
+
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),
     secret_access_key: env_var_to_config!(:log_sinks_aws_secret_access_key),

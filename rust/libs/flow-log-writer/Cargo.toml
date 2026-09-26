@@ -10,6 +10,9 @@ atomicfs = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 flow-log-spool = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
+otel-instruments = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }

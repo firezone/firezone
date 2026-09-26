@@ -2539,6 +2539,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "phoenix-channel",
+ "portal-metrics",
  "resolv-conf",
  "rpassword",
  "rustls",
@@ -2808,6 +2809,9 @@ dependencies = [
  "chrono",
  "flow-log-spool",
  "nix 0.31.3",
+ "opentelemetry",
+ "otel-attributes",
+ "otel-instruments",
  "serde",
  "serde_json",
  "tempfile",
@@ -5925,6 +5929,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "portal-metrics"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otel-instruments",
+ "parking_lot",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8863,6 +8890,7 @@ dependencies = [
  "test-strategy",
  "thiserror 2.0.20",
  "tracing",
+ "url",
 ]
 
 [[package]]

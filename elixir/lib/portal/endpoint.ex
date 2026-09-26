@@ -111,7 +111,7 @@ defmodule Portal.Endpoint do
   end
 
   defp api_hosts do
-    [:api_external_url, :rest_api_url, :flow_logs_api_url]
+    [:api_external_url, :rest_api_url, :flow_logs_api_url, :metrics_api_url]
     |> Enum.map(&configured_host/1)
     |> Enum.reject(&is_nil/1)
   end

@@ -61,7 +61,11 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    flow_log_config_errors: opentelemetry::metrics::Counter<u64>,
+    flow_log_token_errors: opentelemetry::metrics::Counter<u64>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+
+    portal_metrics: portal_metrics::Reporter,
 }
 
 enum PortalCommand {
@@ -88,6 +92,7 @@ impl Eventloop {
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
+        portal_metrics: portal_metrics::Reporter,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -114,7 +119,10 @@ impl Eventloop {
             ),
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
+            flow_log_config_errors: otel_instruments::flow_log_config_errors(),
+            flow_log_token_errors: otel_instruments::flow_log_token_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
+            portal_metrics,
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -370,15 +378,13 @@ impl Eventloop {
                         .context("Failed to persist flow-log ingest token")
                     {
                         Ok(()) => {}
-                        Err(e)
-                            if e.any_downcast_ref::<std::io::Error>()
-                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                        {
+                        Err(ref e) if let Some(io) = e.any_downcast_ref::<io::Error>() => {
+                            self.flow_log_token_errors
+                                .add(1, &[otel_attributes::io_error_type(io)]);
+
                             tracing::debug!("{e:#}");
                         }
-                        Err(e) => {
-                            tracing::warn!("{e:#}");
-                        }
+                        Err(e) => tracing::debug!("{e:#}"),
                     }
                 }
 
@@ -475,15 +481,13 @@ impl Eventloop {
                 .context("Failed to persist flow-log upload config")
                 {
                     Ok(()) => {}
-                    Err(e)
-                        if e.any_downcast_ref::<std::io::Error>()
-                            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                    {
+                    Err(ref e) if let Some(io) = e.any_downcast_ref::<io::Error>() => {
+                        self.flow_log_config_errors
+                            .add(1, &[otel_attributes::io_error_type(io)]);
+
                         tracing::debug!("{e:#}");
                     }
-                    Err(e) => {
-                        tracing::warn!("{e:#}");
-                    }
+                    Err(e) => tracing::debug!("{e:#}"),
                 }
 
                 tunnel
@@ -558,6 +562,9 @@ impl Eventloop {
 
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
+            }
+            IngressMessages::ConfigureMetrics(config) => {
+                configure_portal_metrics(&self.portal_metrics, config);
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
@@ -694,6 +701,24 @@ async fn phoenix_channel_event_loop(
                 break;
             }
         }
+    }
+}
+
+/// Seeds the reporter with the portal's metrics config.
+fn configure_portal_metrics(reporter: &portal_metrics::Reporter, metrics: messages::MetricsConfig) {
+    if !metrics.reporting_enabled() {
+        reporter.disable();
+
+        return;
+    }
+
+    if let Err(e) = reporter.configure(&portal_metrics::Config {
+        api_url: metrics.api_url,
+        token: metrics.token,
+        interval: Duration::from_secs(metrics.report_interval_secs),
+        meters: BTreeSet::from_iter(metrics.meters),
+    }) {
+        tracing::warn!("Failed to configure metrics reporting: {e:#}");
     }
 }
 

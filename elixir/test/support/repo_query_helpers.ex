@@ -38,6 +38,38 @@ defmodule Portal.RepoQueryHelpers do
   end
 
   @doc """
+  The SQL any of the portal's repos ran from the test process while `fun` ran.
+  """
+  def capture_queries_on_all_repos(fun) do
+    test_pid = self()
+    handler_id = "all-repo-queries-#{System.unique_integer([:positive])}"
+
+    events =
+      for repo <- [nil, :web, :api, :job, :poller] do
+        Enum.reject([:portal, :repo, repo, :query], &is_nil/1)
+      end
+
+    :telemetry.attach_many(
+      handler_id,
+      events,
+      fn _event, _measurements, %{query: query, params: params}, _config ->
+        if self() == test_pid do
+          send(test_pid, {:query, query, params})
+        end
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler_id)
+    end
+
+    collect_queries([]) |> Enum.map(&elem(&1, 0))
+  end
+
+  @doc """
   The plan Postgres picks for a captured statement once sequential scans are
   ruled out, so a test can pin the index a predicate is meant to use.
   """
