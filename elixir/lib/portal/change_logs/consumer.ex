@@ -273,6 +273,10 @@ defmodule Portal.ChangeLogs.Consumer do
     silently skips rows that already committed. Returns the inserted count.
     """
     def bulk_insert(entries) do
+      # Phase one still writes the legacy table. Its AFTER trigger atomically
+      # mirrors accepted rows using (timestamp, lsn), where timestamp is the
+      # original WAL commit timestamp. Keep the legacy LSN conflict target until
+      # read/write cutover: this also works before the manual activation migration.
       entries = drop_missing_accounts(entries)
 
       entries
