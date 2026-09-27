@@ -121,6 +121,62 @@ defmodule Portal.LogTableMigrationTest do
              ).rows
   end
 
+  test "retention migration repairs a pending detach in the expanded window", ctx do
+    name =
+      "session_logs_partitioned_" <> Calendar.strftime(Date.add(Date.utc_today(), -100), "%Y%m%d")
+
+    opts =
+      Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+
+    {:ok, reader} = Postgrex.start_link(opts)
+
+    try do
+      Postgrex.query!(reader, "BEGIN", [])
+      Postgrex.query!(reader, "SELECT * FROM #{ctx.schema}.session_logs_partitioned LIMIT 1", [])
+
+      Repo.checkout(fn ->
+        Repo.query!("SET statement_timeout = '200ms'")
+
+        try do
+          assert_raise Postgrex.Error, fn ->
+            Repo.query!(
+              "ALTER TABLE session_logs_partitioned DETACH PARTITION #{name} CONCURRENTLY"
+            )
+          end
+        after
+          Repo.query!("SET statement_timeout = 0")
+        end
+      end)
+
+      assert Repo.query!(
+               "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass",
+               [name]
+             ).rows == [[true]]
+
+      Postgrex.query!(reader, "ROLLBACK", [])
+      Repo.query!("DELETE FROM schema_migrations WHERE version = 20260927010000")
+
+      assert :ok =
+               Ecto.Migrator.up(Repo, 20_260_927_010_000, AlignLogPartitionRetention,
+                 prefix: ctx.schema,
+                 log: false
+               )
+
+      assert Repo.query!(
+               "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass",
+               [name]
+             ).rows == [[false]]
+
+      insert("session_logs", ctx.account_id, nil, %{
+        timestamp: DateTime.add(DateTime.utc_now(), -100, :day)
+      })
+
+      assert [_] = rows("session_logs_partitioned")
+    after
+      GenServer.stop(reader)
+    end
+  end
+
   test "backfill and cutover reject the old 90-day trigger even with ready checkpoints" do
     ready("session_logs")
 
@@ -190,6 +246,37 @@ defmodule Portal.LogTableMigrationTest do
       assert [[old.seq]] == Repo.query!("EXECUTE read_requests").rows
       assert :cleaned_up = LogTableMigration.cleanup("api_request_logs")
     end)
+  end
+
+  test "mixed-account session batches retain valid logs before and after cutover", ctx do
+    for phase <- [:legacy, :partitioned] do
+      if phase == :partitioned do
+        ready("session_logs")
+        assert :cutover = LogTableMigration.cutover("session_logs")
+      end
+
+      valid = %{
+        account_id: ctx.account_id,
+        log_id: LogId.build_session_log(),
+        timestamp: DateTime.utc_now(),
+        context: :client,
+        subject: %{}
+      }
+
+      invalid = %{valid | account_id: Ecto.UUID.generate(), log_id: LogId.build_session_log()}
+      entries = [{invalid, :invalid}, {valid, :valid}]
+
+      assert {1, [{^invalid, :invalid}]} =
+               Portal.Repo.Batch.insert_all(SessionLog, entries,
+                 fk_partitions: %{
+                   "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account},
+                   "session_logs_partitioned_account_id_fkey" =>
+                     {:simple, :account_id, Portal.Account}
+                 }
+               )
+
+      assert Repo.get_by!(SessionLog, account_id: ctx.account_id, log_id: valid.log_id)
+    end
   end
 
   test "API account constraint errors retain their Ecto changeset mapping after cutover" do

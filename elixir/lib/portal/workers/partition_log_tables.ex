@@ -121,7 +121,19 @@ defmodule Portal.Workers.PartitionLogTables do
     defp maintain_partitions(config, today) do
       parent = config.parent
       cutoff = Date.add(today, -config.retention_days)
-      existing = partitions(parent, config.prefix)
+      existing =
+        partitions(parent, config.prefix)
+        |> Enum.map(fn partition ->
+          if partition.pending and Date.compare(partition.date, cutoff) != :lt do
+            # Retention may have increased since a concurrent detach began.
+            # Preserve the child and make it routable again before expiring others.
+            query!("ALTER TABLE #{parent} DETACH PARTITION #{partition.name} FINALIZE")
+            create_partition(parent, config.prefix, config.timestamp, partition.date)
+            %{partition | pending: false, attached: true}
+          else
+            partition
+          end
+        end)
 
       # A failed DETACH CONCURRENTLY can leave inhdetachpending set. Finish it
       # before attempting another detach on the same parent. A failed DROP is

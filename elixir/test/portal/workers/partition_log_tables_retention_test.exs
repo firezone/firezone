@@ -22,7 +22,10 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
       name = "flow_logs_" <> Calendar.strftime(date, "%Y%m%d")
       lower = Date.to_iso8601(date) <> " 00:00:00+00"
       upper = Date.to_iso8601(Date.add(date, 1)) <> " 00:00:00+00"
-      Repo.query!("CREATE TABLE #{name} PARTITION OF flow_logs FOR VALUES FROM ('#{lower}') TO ('#{upper}')")
+
+      Repo.query!(
+        "CREATE TABLE #{name} PARTITION OF flow_logs FOR VALUES FROM ('#{lower}') TO ('#{upper}')"
+      )
 
       assert Database.maintain("flow_logs") == %{created: 0, dropped: 1}
       assert Repo.query!("SELECT to_regclass($1)", [name]).rows == [[nil]]
@@ -80,7 +83,11 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
 
         Repo.query!("SET statement_timeout = 0")
 
-        assert Repo.query!("SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass", [name]).rows == [[true]]
+        assert Repo.query!(
+                 "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass",
+                 [name]
+               ).rows == [[true]]
+
         Postgrex.query!(reader, "ROLLBACK", [])
 
         assert Database.maintain("session_logs") == %{created: 0, dropped: 2}
@@ -94,12 +101,54 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
     end)
   end
 
+  test "reattaches a pending detach inside the extended retention window" do
+    with_mirror_schema("session_logs", fn schema ->
+      date = Date.add(Date.utc_today(), -100)
+      name = @parent <> "_" <> Calendar.strftime(date, "%Y%m%d")
+      reader = connection(schema)
+
+      try do
+        Postgrex.query!(reader, "BEGIN", [])
+        Postgrex.query!(reader, "SELECT * FROM #{@parent} LIMIT 1", [])
+        Repo.query!("SET statement_timeout = '200ms'")
+
+        assert_raise Postgrex.Error, fn ->
+          Repo.query!("ALTER TABLE #{@parent} DETACH PARTITION #{name} CONCURRENTLY")
+        end
+
+        Repo.query!("SET statement_timeout = 0")
+
+        assert Repo.query!(
+                 "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass",
+                 [name]
+               ).rows == [[true]]
+
+        Postgrex.query!(reader, "ROLLBACK", [])
+
+        assert Database.maintain("session_logs") == %{created: 0, dropped: 0}
+
+        assert Repo.query!(
+                 "SELECT inhdetachpending FROM pg_inherits WHERE inhrelid = $1::text::regclass",
+                 [name]
+               ).rows == [[false]]
+      after
+        GenServer.stop(reader)
+        Repo.query!("SET statement_timeout = 0")
+      end
+    end)
+  end
+
   test "another maintainer holds the advisory lock" do
     with_mirror_schema("session_logs", fn schema ->
       connection = connection(schema)
 
       try do
-        Postgrex.query!(connection, "SELECT pg_advisory_lock(hashtextextended(current_schema() || '.' || $1, 0))", [@parent])
+        Postgrex.query!(
+          connection,
+          "SELECT pg_advisory_lock(hashtextextended(current_schema() || '.' || $1, 0))",
+          [@parent]
+        )
+
         assert Database.maintain("session_logs") == :busy
       after
         GenServer.stop(connection)
@@ -113,13 +162,18 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
     lower = Date.to_iso8601(date) <> " 00:00:00+00"
     upper = Date.to_iso8601(Date.add(date, 1)) <> " 00:00:00+00"
 
-    Repo.query!("CREATE TABLE #{name} PARTITION OF #{@parent} FOR VALUES FROM ('#{lower}') TO ('#{upper}')")
+    Repo.query!(
+      "CREATE TABLE #{name} PARTITION OF #{@parent} FOR VALUES FROM ('#{lower}') TO ('#{upper}')"
+    )
+
     Repo.query!("COMMENT ON TABLE #{name} IS '#{@owner}'")
     name
   end
 
   defp connection(schema) do
-    opts = Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+    opts =
+      Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+
     {:ok, connection} = Postgrex.start_link(opts)
     Postgrex.query!(connection, "SELECT set_config('search_path', $1, false)", [schema])
     connection

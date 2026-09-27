@@ -28,6 +28,11 @@ defmodule Portal.Repo.Migrations.AlignLogPartitionRetention do
 
         ddl(source, """
         DO $$ BEGIN
+          IF EXISTS (SELECT 1 FROM pg_inherits
+                     WHERE inhrelid = '#{name}'::regclass AND inhparent = '#{parent}'::regclass
+                       AND inhdetachpending) THEN
+            ALTER TABLE #{parent} DETACH PARTITION #{name} FINALIZE;
+          END IF;
           IF NOT EXISTS (SELECT 1 FROM pg_inherits
                          WHERE inhrelid = '#{name}'::regclass AND inhparent = '#{parent}'::regclass) THEN
             ALTER TABLE #{parent} ATTACH PARTITION #{name}
