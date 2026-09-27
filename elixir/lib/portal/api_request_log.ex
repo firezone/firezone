@@ -46,7 +46,9 @@ defmodule Portal.APIRequestLog do
     field :ip_lat, :float
     field :ip_lon, :float
 
-    field :inserted_at, :utc_datetime_usec, read_after_writes: true
+    # Include the immutable partition key in UPDATE/DELETE predicates. This
+    # works on the legacy table too, before the partitioned mirror is cut over.
+    field :inserted_at, :utc_datetime_usec, primary_key: true, read_after_writes: true
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
