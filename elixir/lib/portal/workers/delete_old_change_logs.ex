@@ -27,6 +27,19 @@ defmodule Portal.Workers.DeleteOldChangeLogs do
     alias Portal.Safe
 
     def delete_old_change_logs do
+      # Queued and scheduled legacy jobs become no-ops after cutover. Retention
+      # is then handled by dropping whole daily partitions.
+      {:ok, %{rows: [[partitioned]]}} =
+        Safe.unscoped()
+        |> Safe.query(
+          "SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('change_logs'))",
+          []
+        )
+
+      if partitioned, do: {0, nil}, else: delete_legacy_rows()
+    end
+
+    defp delete_legacy_rows do
       from(cl in ChangeLog, as: :change_logs)
       |> where([change_logs: cl], cl.timestamp < ago(90, "day"))
       |> Safe.unscoped()

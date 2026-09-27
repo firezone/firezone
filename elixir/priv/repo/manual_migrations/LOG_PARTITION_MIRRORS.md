@@ -1,5 +1,9 @@
 # Log partition mirrors: first rollout
 
+For backfill, verification, cutover and cleanup, use the
+[final rollout runbook](LOG_TABLE_CUTOVER.md). The instructions below describe
+the first release, before any table has been cut over.
+
 This phase creates `session_logs_partitioned`, `api_request_logs_partitioned`,
 and `change_logs_partitioned`. All application reads still use the original
 tables. There is no backfill, table rename, automatic read cutover, or removal

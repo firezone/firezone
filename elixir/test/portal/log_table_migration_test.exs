@@ -1,0 +1,369 @@
+defmodule Portal.LogTableMigrationTest do
+  use ExUnit.Case, async: true
+
+  alias Portal.{APIRequestLog, ChangeLog, LogTableMigration, Repo, SessionLog}
+  alias Portal.Repo.Migrations.{CreateLogPartitionMirrors, PrepareLogTableCutover}
+  alias Portal.Types.LogId
+
+  for {module, file} <- [
+        {CreateLogPartitionMirrors, "20260927000000_create_log_partition_mirrors.exs"},
+        {PrepareLogTableCutover, "20260928000000_prepare_log_table_cutover.exs"}
+      ] do
+    unless Code.ensure_loaded?(module),
+      do: Code.require_file("priv/repo/manual_migrations/" <> file)
+  end
+
+  @sources ~w[session_logs api_request_logs change_logs]
+
+  setup do
+    schema = "log_cutover_#{System.unique_integer([:positive])}"
+
+    {:ok, repo} =
+      Repo.start_link(
+        name: nil,
+        pool: DBConnection.ConnectionPool,
+        pool_size: 3,
+        parameters: [search_path: schema]
+      )
+
+    previous = Repo.put_dynamic_repo(repo)
+    Repo.query!("CREATE SCHEMA #{schema}")
+    Repo.query!("CREATE TABLE accounts (id uuid PRIMARY KEY)")
+
+    for source <- @sources do
+      Repo.query!("CREATE TABLE #{source} (LIKE public.#{source} INCLUDING ALL)")
+
+      Repo.query!(
+        "ALTER TABLE #{source} ADD CONSTRAINT #{source}_account_id_fkey FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE"
+      )
+
+      Repo.query!("CREATE SEQUENCE #{source}_seq_seq OWNED BY #{source}.seq")
+      Repo.query!("ALTER TABLE #{source} ALTER seq SET DEFAULT nextval('#{source}_seq_seq')")
+    end
+
+    account_id = Ecto.UUID.generate()
+    Repo.query!("INSERT INTO accounts VALUES ($1::text::uuid)", [account_id])
+    # Historical rows exist before the mirror trigger is installed.
+    historical = for source <- @sources, into: %{}, do: {source, insert(source, account_id)}
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_927_000_000, CreateLogPartitionMirrors,
+               prefix: schema,
+               log: false
+             )
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_928_000_000, PrepareLogTableCutover,
+               prefix: schema,
+               log: false
+             )
+
+    on_exit(fn ->
+      Repo.put_dynamic_repo(repo)
+      Repo.query!("DROP SCHEMA #{schema} CASCADE")
+      Repo.put_dynamic_repo(previous)
+      if Process.alive?(repo), do: GenServer.stop(repo)
+    end)
+
+    # Keep the pool alive until on_exit (start_link's owner otherwise exits).
+    Process.unlink(repo)
+    {:ok, account_id: account_id, historical: historical, schema: schema}
+  end
+
+  test "bounded backfill, both verification passes, cutover and cleanup preserve all streams",
+       ctx do
+    for source <- @sources do
+      live = insert(source, ctx.account_id)
+      assert :progress = LogTableMigration.step(source, 1)
+      assert status(source)["scanned_rows"] == 1
+      ready(source)
+      assert status(source)["verified_rows"] == 4
+      assert :cutover = LogTableMigration.cutover(source)
+      assert :already_cut_over = LogTableMigration.cutover(source)
+      assert :cutover = LogTableMigration.step(source)
+      assert rows(source) == rows(source <> "_legacy")
+      assert Enum.map(rows(source), & &1["seq"]) == [ctx.historical[source].seq, live.seq]
+
+      # A statement still targeting the original relation reaches the new one.
+      bridged = insert(source, ctx.account_id, source <> "_legacy")
+      assert length(rows(source)) == 3
+      assert :cleaned_up = LogTableMigration.cleanup(source)
+      assert :cleaned_up = LogTableMigration.cleanup(source)
+      latest = insert(source, ctx.account_id)
+      assert latest.seq > bridged.seq
+      assert length(rows(source)) == 4
+
+      assert [[true]] =
+               Repo.query!("SELECT pg_get_serial_sequence($1, 'seq') IS NOT NULL", [source]).rows
+
+      assert %{created: 0, dropped: 0} = Portal.Workers.PartitionLogTables.Database.maintain(source)
+    end
+  end
+
+  test "API updates and prepared statements continue across rename", ctx do
+    Repo.checkout(fn ->
+      old = ctx.historical["api_request_logs"]
+      assert :progress = LogTableMigration.step("api_request_logs", 1)
+
+      {:ok, updated} =
+        PortalAPI.Plugs.RequestLog.Database.update_mcp(old, %{"outcome" => "dispatched"})
+
+      # Prepare against the old relation, then execute again after its replacement.
+      Repo.query!("PREPARE read_requests AS SELECT seq FROM api_request_logs ORDER BY seq")
+      ready("api_request_logs")
+      assert :cutover = LogTableMigration.cutover("api_request_logs")
+
+      {:ok, final} =
+        PortalAPI.Plugs.RequestLog.Database.update_mcp(updated, %{"outcome" => "succeeded"})
+
+      assert final.seq == old.seq
+      assert final.inserted_at == old.inserted_at
+      assert hd(rows("api_request_logs"))["mcp"] == %{"outcome" => "succeeded"}
+      assert [[old.seq]] == Repo.query!("EXECUTE read_requests").rows
+      assert :cleaned_up = LogTableMigration.cleanup("api_request_logs")
+    end)
+  end
+
+  test "API account constraint errors retain their Ecto changeset mapping after cutover" do
+    ready("api_request_logs")
+    assert :cutover = LogTableMigration.cutover("api_request_logs")
+
+    attrs =
+      Portal.APIRequestLogFixtures.valid_api_request_log_attrs()
+      |> Map.put(:account_id, Ecto.UUID.generate())
+
+    changeset = %APIRequestLog{} |> Ecto.Changeset.change(attrs) |> APIRequestLog.changeset()
+    assert {:error, changeset} = Repo.insert(changeset)
+    assert {"does not exist", _} = changeset.errors[:account]
+  end
+
+  test "expired rows advance the cursor without creating expired partitions", ctx do
+    expired = DateTime.add(DateTime.utc_now(), -100, :day)
+    insert("session_logs", ctx.account_id, "session_logs", %{timestamp: expired})
+    ready("session_logs")
+    assert status("session_logs")["scanned_rows"] == 2
+    assert length(rows("session_logs_partitioned")) == 1
+    assert :cutover = LogTableMigration.cutover("session_logs")
+    assert {0, nil} = Portal.Workers.DeleteOldSessionLogs.Database.delete_old_session_logs()
+  end
+
+  test "partitioned consumer deduplicates WAL replay and discards expired WAL", ctx do
+    ready("change_logs")
+    assert :cutover = LogTableMigration.cutover("change_logs")
+    original = ctx.historical["change_logs"]
+
+    entry =
+      original |> Map.from_struct() |> Map.take(ChangeLog.__schema__(:fields)) |> Map.drop([:seq])
+
+    replay = %{
+      entry
+      | log_id: LogId.build_change_log(System.os_time(:microsecond), original.lsn + 1)
+    }
+
+    assert 0 = Portal.ChangeLogs.Consumer.Database.bulk_insert([replay])
+
+    expired = %{
+      replay
+      | timestamp: DateTime.add(DateTime.utc_now(), -100, :day),
+        lsn: original.lsn + 2
+    }
+
+    fresh = %{replay | lsn: original.lsn + 3}
+    assert 1 = Portal.ChangeLogs.Consumer.Database.bulk_insert([expired, fresh])
+    assert length(rows("change_logs")) == 2
+    assert {0, nil} = Portal.Workers.DeleteOldChangeLogs.Database.delete_old_change_logs()
+  end
+
+  test "verification rejects missing and extra retained mirror rows" do
+    source = "session_logs"
+    assert :progress = LogTableMigration.step(source, 10)
+    assert :progress = LogTableMigration.step(source, 10)
+    assert status(source)["phase"] == "verify_source"
+    Repo.query!("DELETE FROM session_logs_partitioned")
+    assert_raise RuntimeError, ~r/verification failed/, fn -> LogTableMigration.step(source) end
+    # Repair and resume the same verification checkpoint.
+    Repo.query!("INSERT INTO session_logs_partitioned SELECT * FROM session_logs")
+    assert :progress = LogTableMigration.step(source)
+    assert :progress = LogTableMigration.step(source)
+    assert status(source)["phase"] == "verify_mirror"
+    # An extra timestamp with the same account/log ID must also be checked.
+    Repo.query!(
+      "INSERT INTO session_logs_partitioned (account_id, timestamp, context, subject, log_id, seq) SELECT account_id, timestamp - interval '1 day', context, subject, log_id, seq FROM session_logs"
+    )
+
+    assert_raise RuntimeError, ~r/verification failed/, fn -> LogTableMigration.step(source, 1) end
+    assert_raise RuntimeError, ~r/not verified/, fn -> LogTableMigration.cutover(source) end
+  end
+
+  test "changed activation invalidates readiness and disabled mirroring blocks progress" do
+    ready("session_logs")
+
+    Repo.query!(
+      "UPDATE log_partition_mirrors SET started_at = clock_timestamp() WHERE source_table = 'session_logs'"
+    )
+
+    assert_raise RuntimeError, ~r/not verified/, fn -> LogTableMigration.cutover("session_logs") end
+    assert :progress = LogTableMigration.step("session_logs", 1)
+    assert status("session_logs")["phase"] == "copy"
+    Repo.query!("ALTER TABLE session_logs DISABLE TRIGGER mirror_partitioned_logs")
+
+    assert_raise RuntimeError, ~r/not actively mirrored/, fn ->
+      LogTableMigration.step("session_logs")
+    end
+  end
+
+  test "view dependencies prevent swapping an apparently ready table" do
+    ready("session_logs")
+    Repo.query!("CREATE VIEW saved_sessions AS SELECT * FROM session_logs")
+    assert_raise RuntimeError, ~r/dependencies/, fn -> LogTableMigration.cutover("session_logs") end
+    assert status("session_logs")["phase"] == "ready"
+    Repo.query!("DROP VIEW saved_sessions")
+    assert :cutover = LogTableMigration.cutover("session_logs")
+  end
+
+  test "a concurrent update cannot be skipped or overwritten by backfill" do
+    with_locked_transaction("UPDATE session_logs SET subject = '{\"stage\":\"updated\"}'", fn ->
+      assert_raise Postgrex.Error, ~r/lock timeout/, fn ->
+        LogTableMigration.step("session_logs", 1)
+      end
+
+      refute status("session_logs")
+    end)
+
+    ready("session_logs")
+    assert rows("session_logs") == rows("session_logs_partitioned")
+    assert hd(rows("session_logs_partitioned"))["subject"] == %{"stage" => "updated"}
+  end
+
+  test "cutover fails quickly behind a reader and leaves both original names intact" do
+    ready("session_logs")
+
+    with_locked_transaction("LOCK TABLE session_logs IN ACCESS SHARE MODE", fn ->
+      assert_raise Postgrex.Error, ~r/lock timeout/, fn ->
+        LogTableMigration.cutover("session_logs")
+      end
+
+      assert status("session_logs")["phase"] == "ready"
+      assert [[nil]] = Repo.query!("SELECT to_regclass('session_logs_legacy')").rows
+      assert rows("session_logs") == rows("session_logs_partitioned")
+    end)
+
+    assert :cutover = LogTableMigration.cutover("session_logs")
+  end
+
+  test "backfill, cutover and maintenance share their advisory lock after rename" do
+    ready("session_logs")
+    assert :cutover = LogTableMigration.cutover("session_logs")
+
+    with_locked_transaction(
+      "SELECT pg_advisory_xact_lock(hashtextextended(current_schema() || '.session_logs_partitioned', 0))",
+      fn ->
+        assert :busy = LogTableMigration.step("session_logs")
+        assert :busy = LogTableMigration.cutover("session_logs")
+        assert :busy = Portal.Workers.PartitionLogTables.Database.maintain("session_logs")
+      end
+    )
+
+    tomorrow = Date.add(Date.utc_today(), 1)
+
+    assert %{created: 1, dropped: 1} =
+             Portal.Workers.PartitionLogTables.Database.maintain("session_logs", tomorrow)
+  end
+
+  test "live inserts and deletes after the copy pass remain visible at cutover", ctx do
+    assert :progress = LogTableMigration.step("session_logs", 1)
+    later = insert("session_logs", ctx.account_id)
+    Repo.delete!(ctx.historical["session_logs"])
+    ready("session_logs")
+    assert :cutover = LogTableMigration.cutover("session_logs")
+    assert [row] = rows("session_logs")
+    assert row["seq"] == later.seq
+  end
+
+  test "worker resumes persisted batches and completes without cutting over" do
+    job = %Oban.Job{args: %{"batch_size" => 1}}
+    assert {:snooze, 1} = Portal.Workers.BackfillLogTables.perform(job)
+    assert Enum.all?(LogTableMigration.status(), &(&1["scanned_rows"] == 1))
+    for _ <- 1..8, do: Portal.Workers.BackfillLogTables.perform(job)
+    assert :ok = Portal.Workers.BackfillLogTables.perform(job)
+    assert Enum.all?(LogTableMigration.status(), &(&1["phase"] == "ready"))
+
+    assert [["r"]] =
+             Repo.query!("SELECT relkind::text FROM pg_class WHERE oid = 'session_logs'::regclass").rows
+  end
+
+  defp with_locked_transaction(sql, fun) do
+    parent = self()
+
+    task =
+      Task.async(fn ->
+        Repo.transaction(fn ->
+          Repo.query!(sql)
+          send(parent, {:locked, self()})
+
+          receive do
+            :release -> :ok
+          after
+            10_000 -> raise "Lock test did not release transaction"
+          end
+        end)
+      end)
+
+    assert_receive {:locked, pid}, 5_000
+
+    try do
+      fun.()
+    after
+      send(pid, :release)
+      Task.await(task, 5_000)
+    end
+  end
+
+  defp ready(source, remaining \\ 30)
+  defp ready(_source, 0), do: flunk("Backfill did not reach ready")
+
+  defp ready(source, remaining) do
+    case LogTableMigration.step(source, 1) do
+      :ready -> :ok
+      :progress -> ready(source, remaining - 1)
+    end
+  end
+
+  defp status(source), do: Enum.find(LogTableMigration.status(), &(&1["source_table"] == source))
+
+  defp rows(source),
+    do: Repo.query!("SELECT to_jsonb(s) FROM #{source} s ORDER BY seq").rows |> List.flatten()
+
+  defp insert(source, account_id, table \\ nil, attrs \\ %{}) do
+    now = DateTime.utc_now()
+
+    {schema, row} =
+      case source do
+        "session_logs" ->
+          {SessionLog,
+           %{log_id: LogId.build_session_log(), timestamp: now, context: :client, subject: %{}}}
+
+        "api_request_logs" ->
+          {APIRequestLog,
+           Portal.APIRequestLogFixtures.valid_api_request_log_attrs() |> Map.put(:inserted_at, now)}
+
+        "change_logs" ->
+          lsn = System.unique_integer([:positive, :monotonic])
+
+          {ChangeLog,
+           %{
+             log_id: LogId.build_change_log(System.os_time(:microsecond), lsn),
+             timestamp: now,
+             lsn: lsn,
+             object: "accounts",
+             operation: :insert,
+             after: %{},
+             vsn: 0
+           }}
+      end
+
+    row = row |> Map.put(:account_id, account_id) |> Map.merge(attrs)
+    {1, [log]} = Repo.insert_all({table || source, schema}, [row], returning: true)
+    log
+  end
+end
