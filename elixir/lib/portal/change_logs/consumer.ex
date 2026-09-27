@@ -281,39 +281,19 @@ defmodule Portal.ChangeLogs.Consumer do
     end
 
     defp insert_chunk(chunk) do
-      {:ok, count} =
-        Safe.transact(fn ->
-          # Serialize the relation-kind check with the operator's rename. This
-          # release works before manual setup and after any per-stream cutover.
-          {:ok, _} =
-            Safe.unscoped() |> Safe.query("LOCK TABLE ONLY change_logs IN ROW EXCLUSIVE MODE", [])
+      {:ok, %{rows: [[cutoff]]}} =
+        Safe.unscoped()
+        |> Safe.query("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date - 121", [])
 
-          {:ok, %{rows: [[partitioned, cutoff]]}} =
-            Safe.unscoped()
-            |> Safe.query(
-              """
-              SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('change_logs')),
-                     (clock_timestamp() AT TIME ZONE 'UTC')::date - 121
-              """,
-              []
-            )
+      # Replayed WAL must not stall ingestion after its partition has expired.
+      chunk = Enum.reject(chunk, &(Date.compare(DateTime.to_date(&1.timestamp), cutoff) == :lt))
 
-          # Old WAL must not stall the consumer forever once its daily partition
-          # has expired. Before cutover, retain the existing insertion behavior.
-          chunk =
-            if partitioned,
-              do:
-                Enum.reject(chunk, &(Date.compare(DateTime.to_date(&1.timestamp), cutoff) == :lt)),
-              else: chunk
-
-          target = if partitioned, do: [:timestamp, :lsn], else: [:lsn]
-
-          {count, _} =
-            Safe.unscoped()
-            |> Safe.insert_all(ChangeLog, chunk, on_conflict: :nothing, conflict_target: target)
-
-          {:ok, count}
-        end)
+      {count, _} =
+        Safe.unscoped()
+        |> Safe.insert_all(ChangeLog, chunk,
+          on_conflict: :nothing,
+          conflict_target: [:timestamp, :lsn]
+        )
 
       count
     end

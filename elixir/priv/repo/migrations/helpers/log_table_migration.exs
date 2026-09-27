@@ -1,8 +1,5 @@
-defmodule Portal.LogTableMigration do
-  @moduledoc """
-  Operator entry points for the final log-table migration. Backfill is bounded
-  and resumable; cutover and legacy cleanup must be explicitly requested.
-  """
+defmodule Portal.Repo.Migrations.LogTableMigration do
+  @moduledoc false
   alias __MODULE__.Database
 
   def status, do: Database.status()
@@ -11,7 +8,7 @@ defmodule Portal.LogTableMigration do
   def cleanup(source), do: Database.cleanup(source)
 
   defmodule Database do
-    alias Portal.Safe
+    alias Portal.Repo
 
     @sources ~w[session_logs api_request_logs change_logs]
     @cutoff "((clock_timestamp() AT TIME ZONE 'UTC')::date - 121)::timestamp AT TIME ZONE 'UTC'"
@@ -76,7 +73,7 @@ defmodule Portal.LogTableMigration do
 
     defp transaction(source, fun) do
       {:ok, result} =
-        Safe.transact(
+        Repo.transact(
           fn ->
             query!("SET LOCAL lock_timeout = '1s'")
             query!("SET LOCAL statement_timeout = '10s'")
@@ -394,7 +391,7 @@ defmodule Portal.LogTableMigration do
     defp quote_identifier(name), do: ~s("#{String.replace(name, "\"", "\"\"")}")
 
     defp query!(sql, params \\ [], opts \\ []) do
-      case Safe.unscoped() |> Safe.query(sql, params, opts) do
+      case Repo.query(sql, params, opts) do
         {:ok, result} -> result
         {:error, error} -> raise error
       end

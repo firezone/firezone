@@ -1,13 +1,17 @@
 defmodule Portal.LogTableMigrationTest do
   use ExUnit.Case, async: true
 
-  alias Portal.{APIRequestLog, ChangeLog, LogTableMigration, Repo, SessionLog}
+  alias Portal.{APIRequestLog, ChangeLog, Repo, SessionLog}
 
   alias Portal.Repo.Migrations.{
     CreateLogPartitionMirrors,
     AlignLogPartitionRetention,
     PrepareLogTableCutover,
-    BackfillLogTables
+    BackfillLogTables,
+    LogTableMigration,
+    CutOverLogTables,
+    RemoveLogPartitionRolloutState,
+    RequirePartitionedLogTables
   }
 
   alias Portal.Types.LogId
@@ -16,11 +20,16 @@ defmodule Portal.LogTableMigrationTest do
         {CreateLogPartitionMirrors, "20260927000000_create_log_partition_mirrors.exs"},
         {AlignLogPartitionRetention, "20260927010000_align_log_partition_retention.exs"},
         {PrepareLogTableCutover, "20260928000000_prepare_log_table_cutover.exs"},
-        {BackfillLogTables, "20260928010000_backfill_log_tables.exs"}
+        {BackfillLogTables, "20260928010000_backfill_log_tables.exs"},
+        {CutOverLogTables, "20260928020000_cut_over_log_tables.exs"},
+        {RemoveLogPartitionRolloutState, "20260929010000_remove_log_partition_rollout_state.exs"}
       ] do
     unless Code.ensure_loaded?(module),
       do: Code.require_file("priv/repo/manual_migrations/" <> file)
   end
+
+  unless Code.ensure_loaded?(RequirePartitionedLogTables),
+    do: Code.require_file("priv/repo/migrations/20260929000000_require_partitioned_log_tables.exs")
 
   @sources ~w[session_logs api_request_logs change_logs]
 
@@ -47,9 +56,14 @@ defmodule Portal.LogTableMigrationTest do
     previous = Repo.put_dynamic_repo(repo)
     Repo.query!("CREATE SCHEMA #{schema}")
     Repo.query!("CREATE TABLE accounts (id uuid PRIMARY KEY)")
+    Repo.query!("CREATE TABLE oban_jobs (id bigserial PRIMARY KEY, worker text, state text)")
 
     for source <- @sources do
-      Repo.query!("CREATE TABLE #{source} (LIKE public.#{source} INCLUDING ALL)")
+      Repo.query!(
+        "CREATE TABLE #{source} (LIKE public.#{source} INCLUDING DEFAULTS INCLUDING CONSTRAINTS, PRIMARY KEY (account_id, log_id))"
+      )
+
+      if source == "change_logs", do: Repo.query!("CREATE UNIQUE INDEX ON change_logs (lsn)")
 
       Repo.query!(
         "ALTER TABLE #{source} ADD CONSTRAINT #{source}_account_id_fkey FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE"
@@ -329,7 +343,6 @@ defmodule Portal.LogTableMigrationTest do
     assert status("session_logs")["scanned_rows"] == 2
     assert length(rows("session_logs_partitioned")) == 1
     assert :cutover = LogTableMigration.cutover("session_logs")
-    assert {0, nil} = Portal.Workers.DeleteOldSessionLogs.Database.delete_old_session_logs()
   end
 
   test "partitioned consumer deduplicates WAL replay and discards expired WAL", ctx do
@@ -356,7 +369,6 @@ defmodule Portal.LogTableMigrationTest do
     fresh = %{replay | lsn: original.lsn + 3}
     assert 1 = Portal.ChangeLogs.Consumer.Database.bulk_insert([expired, fresh])
     assert length(rows("change_logs")) == 2
-    assert {0, nil} = Portal.Workers.DeleteOldChangeLogs.Database.delete_old_change_logs()
   end
 
   test "verification rejects missing and extra retained mirror rows" do
@@ -511,6 +523,112 @@ defmodule Portal.LogTableMigrationTest do
     assert Enum.all?(LogTableMigration.status(), &(&1["phase"] == "ready"))
     assert Enum.all?(LogTableMigration.status(), &(&1["scanned_rows"] == 1))
   end
+
+  test "cleanup requires cutover and removes all rollout objects while preserving data and sequences",
+       ctx do
+    assert_raise Postgrex.Error, ~r/Complete log-table cutover/, fn ->
+      Ecto.Migrator.up(Repo, 20_260_929_000_000, RequirePartitionedLogTables,
+        prefix: ctx.schema,
+        log: false
+      )
+    end
+
+    assert_raise Postgrex.Error, ~r/has not been cut over/, fn -> cleanup(ctx.schema) end
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_928_010_000, BackfillLogTables,
+               prefix: ctx.schema,
+               log: false
+             )
+
+    assert_raise RuntimeError, ~r/preceding release/, fn ->
+      Ecto.Migrator.up(Repo, 20_260_928_020_000, CutOverLogTables, prefix: ctx.schema, log: false)
+    end
+
+    for source <- @sources, do: assert(:cutover = LogTableMigration.cutover(source))
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_928_020_000, CutOverLogTables,
+               prefix: ctx.schema,
+               log: false
+             )
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_929_000_000, RequirePartitionedLogTables,
+               prefix: ctx.schema,
+               log: false
+             )
+
+    Repo.query!(
+      "INSERT INTO oban_jobs (worker, state) VALUES ('Portal.Workers.DeleteOldSessionLogs', 'executing')"
+    )
+
+    assert_raise Postgrex.Error, ~r/still executing/, fn -> cleanup(ctx.schema) end
+    Repo.query!("UPDATE oban_jobs SET state = 'completed'")
+
+    Repo.query!(
+      "INSERT INTO oban_jobs (worker, state) VALUES ('Portal.Workers.PartitionLogTables', 'available')"
+    )
+
+    assert :ok = cleanup(ctx.schema)
+
+    assert [[nil, nil]] =
+             Repo.query!(
+               "SELECT to_regclass('log_table_backfills'), to_regclass('log_partition_mirrors')"
+             ).rows
+
+    assert [["Portal.Workers.PartitionLogTables"]] =
+             Repo.query!("SELECT worker FROM oban_jobs").rows
+
+    assert [[0]] =
+             Repo.query!(
+               "SELECT count(*) FROM pg_trigger WHERE tgname = 'mirror_partitioned_logs' AND tgrelid IN (SELECT oid FROM pg_class WHERE relnamespace = current_schema()::regnamespace)"
+             ).rows
+
+    for source <- @sources do
+      assert [[nil, nil]] =
+               Repo.query!("SELECT to_regclass($1), to_regprocedure($2)", [
+                 source <> "_legacy",
+                 "mirror_" <> source <> "()"
+               ]).rows
+
+      assert [row] = rows(source)
+      assert row["seq"] == ctx.historical[source].seq
+      assert insert(source, ctx.account_id).seq > row["seq"]
+      assert %{created: 0, dropped: 0} = Portal.Workers.PartitionLogTables.Database.maintain(source)
+    end
+
+    # The DDL committed before a hypothetical migration-version write failure.
+    Repo.query!("DELETE FROM schema_migrations WHERE version = 20260929010000")
+    assert :ok = cleanup(ctx.schema)
+    Repo.query!("DELETE FROM accounts WHERE id = $1::text::uuid", [ctx.account_id])
+    for source <- @sources, do: assert(rows(source) == [])
+  end
+
+  test "cleanup rolls back all drops if a legacy table identity is wrong", ctx do
+    for source <- @sources do
+      ready(source)
+      assert :cutover = LogTableMigration.cutover(source)
+    end
+
+    Repo.query!(
+      "UPDATE log_table_backfills SET context = jsonb_set(context, '{source_oid}', '0') WHERE source_table = 'api_request_logs'"
+    )
+
+    assert_raise Postgrex.Error, ~r/Unexpected cutover state/, fn -> cleanup(ctx.schema) end
+
+    for source <- @sources do
+      assert [[oid]] = Repo.query!("SELECT to_regclass($1)", [source <> "_legacy"]).rows
+      assert is_integer(oid)
+    end
+  end
+
+  defp cleanup(schema),
+    do:
+      Ecto.Migrator.up(Repo, 20_260_929_010_000, RemoveLogPartitionRolloutState,
+        prefix: schema,
+        log: false
+      )
 
   defp with_locked_transaction(sql, fun) do
     parent = self()
