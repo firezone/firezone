@@ -4,13 +4,49 @@ defmodule Portal.Authentication.Subject do
 
   @type actor :: %Portal.Actor{}
 
+  @typedoc """
+  Present fields from the device's last attestation. The issuer is base64-encoded
+  DER and the timestamp is ISO 8601; absent values are omitted rather than nil.
+  """
+  @type attestation :: %{
+          optional(:attested_device_serial) => String.t(),
+          optional(:attested_device_uuid) => String.t(),
+          optional(:attested_mdm_device_id) => String.t(),
+          optional(:attested_cert_serial) => String.t(),
+          optional(:attested_cert_fingerprint) => String.t(),
+          optional(:attested_cert_issuer) => String.t(),
+          optional(:attested_at) => String.t()
+        }
+
+  @typedoc "The JSON-safe subject snapshot written to logs."
+  @type snapshot :: %{
+          :actor_id => Ecto.UUID.t(),
+          :actor_name => String.t(),
+          :actor_email => String.t() | nil,
+          :actor_type => String.t(),
+          :auth_provider_id => Ecto.UUID.t() | nil,
+          :ip => String.t() | nil,
+          :ip_region => String.t() | nil,
+          :ip_city => String.t() | nil,
+          :ip_lat => float() | nil,
+          :ip_lon => float() | nil,
+          :user_agent => String.t() | nil,
+          optional(:attested_device_serial) => String.t(),
+          optional(:attested_device_uuid) => String.t(),
+          optional(:attested_mdm_device_id) => String.t(),
+          optional(:attested_cert_serial) => String.t(),
+          optional(:attested_cert_fingerprint) => String.t(),
+          optional(:attested_cert_issuer) => String.t(),
+          optional(:attested_at) => String.t()
+        }
+
   @type t :: %__MODULE__{
           actor: actor(),
           account: %Portal.Account{},
           credential: Credential.t(),
           expires_at: DateTime.t(),
           context: Context.t(),
-          attestation: map()
+          attestation: attestation()
         }
 
   @enforce_keys [:actor, :account, :credential, :expires_at, :context]
@@ -50,7 +86,7 @@ defmodule Portal.Authentication.Subject do
   defp encode_attestation(:attested_at, value), do: DateTime.to_iso8601(value)
   defp encode_attestation(_key, value), do: value
 
-  @spec to_map(t()) :: map()
+  @spec to_map(t()) :: snapshot()
   def to_map(%__MODULE__{} = subject) do
     %{
       actor_id: subject.actor.id,
