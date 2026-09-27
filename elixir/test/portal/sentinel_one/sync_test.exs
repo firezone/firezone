@@ -2,7 +2,6 @@ defmodule Portal.SentinelOne.SyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
-  import Portal.DevicePostureFixtures
   import Portal.SentinelOneFixtures
   import ExUnit.CaptureLog
 
@@ -29,7 +28,6 @@ defmodule Portal.SentinelOne.SyncTest do
   ]
 
   setup do
-    enable_device_posture()
     Req.Test.stub(APIClient, fn conn -> Req.Test.json(conn, %{"errors" => ["not mocked"]}) end)
     :ok
   end

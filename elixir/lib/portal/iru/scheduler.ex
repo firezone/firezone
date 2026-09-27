@@ -3,11 +3,7 @@ defmodule Portal.Iru.Scheduler do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    if Portal.Features.enabled?(:device_posture) do
-      __MODULE__.Database.queue_sync_jobs()
-    else
-      {:ok, :skipped}
-    end
+    __MODULE__.Database.queue_sync_jobs()
   end
 
   defmodule Database do

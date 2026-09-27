@@ -37,7 +37,7 @@ defmodule PortalWeb.Devices do
       |> assign_live_table("devices",
         query_module: Database,
         sortable_fields: [
-          {:devices, :name},
+          {:devices, :slug},
           {:devices, :last_seen_version},
           {:devices, :last_seen_at},
           {:devices, :inserted_at},
@@ -166,14 +166,14 @@ defmodule PortalWeb.Devices do
           metadata={@devices_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={device} field={{:devices, :name}} label="Device" class="w-80">
+          <:col :let={device} field={{:devices, :slug}} label="Device" class="w-80">
             <div class="flex items-center gap-2">
               <span class="mr-2">
                 <.device_os_icon device={device} />
               </span>
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {device.name}
+                  {device.slug}
                 </div>
                 <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {device.id}
@@ -802,6 +802,7 @@ defmodule PortalWeb.Devices do
          [devices: devices, actors: actors],
          fulltext_search(actors.name, ^search_term) or
            fulltext_search(devices.name, ^search_term) or
+           fulltext_search(devices.slug, ^search_term) or
            fulltext_search(actors.email, ^search_term)
        )}
     end

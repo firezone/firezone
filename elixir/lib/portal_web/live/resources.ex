@@ -532,13 +532,7 @@ defmodule PortalWeb.Resources do
               0.0.0.0/0, ::/0
             </span>
             <span
-              :if={resource.type == :device_pool and not lists_devices?(resource)}
-              class="font-mono text-xs text-heading"
-            >
-              &lt;slug&gt;.{Portal.Device.domain()}
-            </span>
-            <span
-              :if={lists_devices?(resource)}
+              :if={resource.type == :device_pool}
               class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses

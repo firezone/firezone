@@ -389,8 +389,8 @@ if config_env() == :prod do
     # Delete old change_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
 
-    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
-    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
+    # Maintain flow logs and activated mirrors (pre-create upcoming, drop expired)
+    {"30 3 * * *", Portal.Workers.PartitionLogTables},
 
     # Delete old session_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
@@ -739,6 +739,12 @@ if config_env() == :prod do
     pixel_id: env_var_to_config(:openai_conversions_pixel_id),
     endpoint: "https://bzr.openai.com/v1/events",
     req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Mailer.PostureProviderInterestEmail,
+    recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
+
+  config :portal, Portal.Mailer.FeedbackEmail,
+    recipient: env_var_to_config!(:feedback_email_recipient)
 
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),

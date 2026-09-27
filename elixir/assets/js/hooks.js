@@ -39,7 +39,9 @@ Hooks.Modal = {
     this.el.addEventListener("close", () => {
       const onClose = this.el.getAttribute("phx-on-close");
       if (onClose) {
-        this.pushEvent(onClose, {});
+        const target = this.el.getAttribute("phx-target");
+        if (target) this.pushEventTo(target, onClose, {});
+        else this.pushEvent(onClose, {});
       }
     });
   },

@@ -52,8 +52,7 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        x509_auth_enabled?: Portal.Features.enabled?(:x509_auth),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        x509_auth_enabled?: Portal.Features.enabled?(:x509_auth)
       )
 
     if connected?(socket) do
@@ -627,7 +626,6 @@ defmodule PortalWeb.Settings.Authentication do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

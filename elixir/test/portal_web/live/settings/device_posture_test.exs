@@ -11,7 +11,10 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.SentinelOneFixtures
 
   setup do
-    enable_device_posture()
+    Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+      recipient: "feedback@example.com"
+    )
+
     account = device_posture_account_fixture()
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
@@ -56,20 +59,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "device_posture feature gate" do
-    test "hides the settings tab when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      {:ok, _lv, html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
-
-      refute html =~ "settings/device_posture"
-    end
-
-    test "shows the settings tab when the global flag is on even without the account feature", %{
+    test "shows the settings tab without the account feature", %{
       conn: conn
     } do
       account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
@@ -82,19 +72,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ "Device Posture"
     end
 
-    test "redirects away from the page when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      assert {:error, {:live_redirect, %{to: to}}} =
-               conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
-
-      assert to =~ "/settings/account"
-    end
-
     test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
       account = Portal.AccountFixtures.account_fixture()
       actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
@@ -103,9 +80,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert html =~ "Upgrade to Unlock"
-      assert html =~ "Inventory Your Managed Devices"
+      assert html =~ "Device Posture"
       assert html =~
-               "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
+               "Restrict access to resources based on device telemetry provided by MDM and EDR solutions"
 
       assert html =~ "settings/device_posture"
       refute html =~ "Add posture provider"
@@ -126,7 +103,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "toggle", %{"id" => provider.id})
 
@@ -176,6 +153,28 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert has_element?(lv, "#register-interest-other .ri-apps-2-add-line")
   end
 
+  for address <- [nil, "", "   "] do
+    @feedback_address address
+    test "disables interest and feedback when the address is #{inspect(address)}", context do
+      Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+        recipient: @feedback_address
+      )
+
+      {:ok, lv, _html} =
+        context.conn
+        |> authorize_conn(context.actor)
+        |> live(~p"/#{context.account}/settings/device_posture/new")
+
+      assert has_element?(lv, "#register-interest-crowdstrike[disabled]")
+      render_hook(lv, "register_interest", %{"provider" => "crowdstrike"})
+      render_hook(lv, "submit_interest_feedback", %{"feedback" => %{"message" => "Test"}})
+
+      refute has_element?(lv, "#posture-provider-interest")
+      refute has_element?(lv, "#posture-provider-feedback-form")
+      refute_email_sent()
+    end
+  end
+
   test "registers interest and sends follow-up feedback", context do
     {:ok, lv, _html} =
       context.conn
@@ -193,7 +192,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              "We&#39;ve registered your interest in CrowdStrike Falcon support in Firezone."
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "engineering@firezone.dev"}]
+      assert email.to == [{"", "feedback@example.com"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -213,7 +212,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Send feedback"
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "engineering@firezone.dev"}]
+      assert email.to == [{"", "feedback@example.com"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -370,7 +369,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      enable_device_posture()
       other_account = device_posture_account_fixture()
       other_provider = intune_posture_provider_fixture(account: other_account)
 
@@ -400,7 +398,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "sync", %{"id" => provider.id})
 
@@ -1158,8 +1156,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     lv
     |> form("#device-posture-form", provider: %{name: "Renamed Iru", api_token: ""})
     |> render_submit()
-
-
 
     assert_patch(lv, ~p"/#{account}/settings/device_posture")
 

@@ -81,7 +81,6 @@ defmodule PortalWeb.Policies.PosturesTest do
     attrs = %{"postures" => "{}", "description" => "x"}
     assert Postures.maybe_drop_unsupported(attrs, %{availability: :enabled}) == attrs
     assert Postures.maybe_drop_unsupported(attrs, %{availability: :locked}) == %{"description" => "x"}
-    assert Postures.maybe_drop_unsupported(attrs, %{availability: :hidden}) == %{"description" => "x"}
   end
 
   describe "JSON tab" do
