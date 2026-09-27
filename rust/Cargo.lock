@@ -932,7 +932,7 @@ dependencies = [
  "hmac 0.13.0",
  "parking_lot",
  "portable-atomic",
- "rand 0.10.2",
+ "rand 0.10.3",
  "ring",
  "tracing",
  "typenum",
@@ -2137,7 +2137,7 @@ dependencies = [
  "ip_network",
  "l3-tcp",
  "logging",
- "rand 0.10.2",
+ "rand 0.10.3",
  "tokio",
  "tracing",
  "tun",
@@ -2185,7 +2185,7 @@ dependencies = [
  "hashbrown 0.17.0",
  "jiff",
  "octseq",
- "rand 0.10.2",
+ "rand 0.10.3",
  "serde",
 ]
 
@@ -2600,7 +2600,7 @@ dependencies = [
  "parking_lot",
  "phoenix-channel",
  "png 0.18.1",
- "rand 0.10.2",
+ "rand 0.10.3",
  "reqwest",
  "rustls",
  "sadness-generator",
@@ -2697,7 +2697,7 @@ dependencies = [
  "known-dirs",
  "logging",
  "phoenix-channel",
- "rand 0.10.2",
+ "rand 0.10.3",
  "reqwest",
  "rustls",
  "secrecy",
@@ -2736,7 +2736,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "phoenix-channel",
- "rand 0.10.2",
+ "rand 0.10.3",
  "relay-proto",
  "rustls",
  "secrecy",
@@ -3063,7 +3063,7 @@ dependencies = [
  "itertools 0.15.0",
  "l3-tcp",
  "libc",
- "rand 0.10.2",
+ "rand 0.10.3",
  "relay-proto",
  "secrecy",
  "serde_json",
@@ -3563,7 +3563,7 @@ dependencies = [
  "idna",
  "ipnet",
  "jni 0.22.4",
- "rand 0.10.2",
+ "rand 0.10.3",
  "thiserror 2.0.20",
  "tinyvec",
  "tokio",
@@ -3583,7 +3583,7 @@ dependencies = [
  "jni 0.22.4",
  "once_cell",
  "prefix-trie",
- "rand 0.10.2",
+ "rand 0.10.3",
  "ring",
  "thiserror 2.0.20",
  "tinyvec",
@@ -3608,7 +3608,7 @@ dependencies = [
  "ndk-context",
  "once_cell",
  "parking_lot",
- "rand 0.10.2",
+ "rand 0.10.3",
  "resolv-conf",
  "smallvec",
  "system-configuration",
@@ -4535,7 +4535,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "ip-packet",
- "rand 0.10.2",
+ "rand 0.10.3",
  "tracing",
 ]
 
@@ -5776,7 +5776,7 @@ dependencies = [
  "libc",
  "logging",
  "os_info",
- "rand 0.10.2",
+ "rand 0.10.3",
  "rustls",
  "rustls-native-certs",
  "secrecy",
@@ -6168,9 +6168,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "chacha20 0.10.2",
  "getrandom 0.4.2",
@@ -6351,7 +6351,7 @@ dependencies = [
  "once_cell",
  "opentelemetry",
  "proptest",
- "rand 0.10.2",
+ "rand 0.10.3",
  "secrecy",
  "serde",
  "sha2 0.11.0",
@@ -7288,7 +7288,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "path-agent",
- "rand 0.10.2",
+ "rand 0.10.3",
  "ringbuffer",
  "smallvec",
  "str0m-proto",
@@ -8073,7 +8073,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.2",
+ "rand 0.10.3",
  "sentry",
  "serde",
  "serde_json",
@@ -8095,7 +8095,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -8799,7 +8799,7 @@ dependencies = [
  "logging",
  "opentelemetry",
  "otel-instruments",
- "rand 0.10.2",
+ "rand 0.10.3",
  "rustls",
  "snownet",
  "socket-factory",
@@ -8849,7 +8849,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "proptest",
- "rand 0.10.2",
+ "rand 0.10.3",
  "rangemap",
  "ringbuffer",
  "secrecy",
