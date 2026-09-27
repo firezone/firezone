@@ -24,16 +24,25 @@ defmodule Portal.LogTableMigrationTest do
 
   @sources ~w[session_logs api_request_logs change_logs]
 
-  setup do
+  setup ctx do
     schema = "log_cutover_#{System.unique_integer([:positive])}"
 
-    {:ok, repo} =
-      Repo.start_link(
-        name: nil,
-        pool: DBConnection.ConnectionPool,
-        pool_size: 3,
-        parameters: [search_path: schema]
-      )
+    repo =
+      if ctx[:isolated_database] do
+        Portal.IsolatedLogDatabaseFixtures.start_isolated_repo(@sources,
+          parameters: [search_path: schema]
+        )
+      else
+        {:ok, repo} =
+          Repo.start_link(
+            name: nil,
+            pool: DBConnection.ConnectionPool,
+            pool_size: 3,
+            parameters: [search_path: schema]
+          )
+
+        repo
+      end
 
     previous = Repo.put_dynamic_repo(repo)
     Repo.query!("CREATE SCHEMA #{schema}")
@@ -121,14 +130,34 @@ defmodule Portal.LogTableMigrationTest do
              ).rows
   end
 
+  @tag :isolated_database
   test "retention migration repairs a pending detach in the expanded window", ctx do
     name =
       "session_logs_partitioned_" <> Calendar.strftime(Date.add(Date.utc_today(), -100), "%Y%m%d")
 
     opts =
-      Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+      Keyword.take(
+        Repo.config()
+        |> Keyword.put(:database, Repo.query!("SELECT current_database()").rows |> hd() |> hd()),
+        [
+          :hostname,
+          :port,
+          :username,
+          :password,
+          :database,
+          :socket_dir
+        ]
+      )
 
     {:ok, reader} = Postgrex.start_link(opts)
+    # Keep a snapshot open in the shared test database throughout FINALIZE.
+    # A private schema alone cannot isolate this database-wide wait.
+    shared_opts =
+      Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+
+    {:ok, unrelated} = Postgrex.start_link(shared_opts)
+    Postgrex.query!(unrelated, "BEGIN ISOLATION LEVEL REPEATABLE READ", [])
+    Postgrex.query!(unrelated, "SELECT pg_current_snapshot()::text", [])
 
     try do
       Postgrex.query!(reader, "BEGIN", [])
@@ -174,6 +203,7 @@ defmodule Portal.LogTableMigrationTest do
       assert [_] = rows("session_logs_partitioned")
     after
       GenServer.stop(reader)
+      GenServer.stop(unrelated)
     end
   end
 
