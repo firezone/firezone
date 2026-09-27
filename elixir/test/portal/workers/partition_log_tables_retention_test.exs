@@ -12,7 +12,19 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   @owner "Portal.Workers.PartitionLogTables"
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+    repo =
+      Portal.IsolatedLogDatabaseFixtures.start_isolated_repo(~w[flow_logs session_logs],
+        pool_size: 1
+      )
+
+    previous = Repo.put_dynamic_repo(repo)
+    Process.unlink(repo)
+
+    on_exit(fn ->
+      Repo.put_dynamic_repo(previous)
+      if Process.alive?(repo), do: GenServer.stop(repo)
+    end)
+
     :ok
   end
 
@@ -172,7 +184,18 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
 
   defp connection(schema) do
     opts =
-      Keyword.take(Repo.config(), [:hostname, :port, :username, :password, :database, :socket_dir])
+      Keyword.take(
+        Repo.config()
+        |> Keyword.put(:database, Repo.query!("SELECT current_database()").rows |> hd() |> hd()),
+        [
+          :hostname,
+          :port,
+          :username,
+          :password,
+          :database,
+          :socket_dir
+        ]
+      )
 
     {:ok, connection} = Postgrex.start_link(opts)
     Postgrex.query!(connection, "SELECT set_config('search_path', $1, false)", [schema])
