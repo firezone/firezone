@@ -121,14 +121,14 @@ defmodule Portal.LogPartitionMirrorsTest do
   end
 
   test "expired writes remain supported on the legacy table without recreating old partitions" do
-    log = session_log_fixture(timestamp: DateTime.add(DateTime.utc_now(), -100, :day))
+    log = session_log_fixture(timestamp: DateTime.add(DateTime.utc_now(), -130, :day))
     assert Repo.get_by!(SessionLog, log_id: log.log_id)
     refute mirror(SessionLog, log)
   end
 
   test "the retained boundary day is UTC regardless of the connection timezone" do
     Repo.query!("SET LOCAL timezone = 'Pacific/Honolulu'")
-    boundary = DateTime.new!(Date.add(Date.utc_today(), -90), ~T[00:00:00.000000], "Etc/UTC")
+    boundary = DateTime.new!(Date.add(Date.utc_today(), -121), ~T[00:00:00.000000], "Etc/UTC")
     retained = session_log_fixture(timestamp: boundary)
     expired = session_log_fixture(timestamp: DateTime.add(boundary, -1, :second))
 

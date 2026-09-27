@@ -341,6 +341,14 @@ defmodule Portal.Safe do
     Repo.query(sql, params)
   end
 
+  @doc "Executes SQL with explicit query options, such as a maintenance timeout."
+  @spec query(Unscoped.t(), String.t(), list(), keyword()) ::
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
+  # sobelow_skip ["SQL.Query"]
+  def query(%Unscoped{repo: repo}, sql, params, opts) when is_binary(sql) and is_list(params) do
+    repo.query(sql, params, opts)
+  end
+
   @doc """
   Runs a function inside a database transaction without subject scoping.
 

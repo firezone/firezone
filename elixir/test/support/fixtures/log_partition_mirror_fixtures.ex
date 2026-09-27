@@ -13,7 +13,7 @@ defmodule Portal.LogPartitionMirrorFixtures do
       "api_request_logs" -> "inserted_at"
       _ -> "timestamp"
     end
-    retention_days = if flow?, do: 121, else: 90
+    retention_days = 121
     [[old_path]] = Repo.query!("SHOW search_path").rows
     Repo.query!("CREATE SCHEMA #{schema}")
 

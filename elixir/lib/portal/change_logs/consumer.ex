@@ -273,24 +273,49 @@ defmodule Portal.ChangeLogs.Consumer do
     silently skips rows that already committed. Returns the inserted count.
     """
     def bulk_insert(entries) do
-      # Phase one still writes the legacy table. Its AFTER trigger atomically
-      # mirrors accepted rows using (timestamp, lsn), where timestamp is the
-      # original WAL commit timestamp. Keep the legacy LSN conflict target until
-      # read/write cutover: this also works before the manual activation migration.
       entries = drop_missing_accounts(entries)
 
       entries
       |> Enum.chunk_every(@insert_chunk_size)
-      |> Enum.reduce(0, fn chunk, inserted ->
-        {count, _} =
-          Safe.unscoped()
-          |> Safe.insert_all(ChangeLog, chunk,
-            on_conflict: :nothing,
-            conflict_target: [:lsn]
-          )
+      |> Enum.reduce(0, fn chunk, inserted -> inserted + insert_chunk(chunk) end)
+    end
 
-        inserted + count
-      end)
+    defp insert_chunk(chunk) do
+      {:ok, count} =
+        Safe.transact(fn ->
+          # Serialize the relation-kind check with the operator's rename. This
+          # release works before manual setup and after any per-stream cutover.
+          {:ok, _} =
+            Safe.unscoped() |> Safe.query("LOCK TABLE ONLY change_logs IN ROW EXCLUSIVE MODE", [])
+
+          {:ok, %{rows: [[partitioned, cutoff]]}} =
+            Safe.unscoped()
+            |> Safe.query(
+              """
+              SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('change_logs')),
+                     (clock_timestamp() AT TIME ZONE 'UTC')::date - 121
+              """,
+              []
+            )
+
+          # Old WAL must not stall the consumer forever once its daily partition
+          # has expired. Before cutover, retain the existing insertion behavior.
+          chunk =
+            if partitioned,
+              do:
+                Enum.reject(chunk, &(Date.compare(DateTime.to_date(&1.timestamp), cutoff) == :lt)),
+              else: chunk
+
+          target = if partitioned, do: [:timestamp, :lsn], else: [:lsn]
+
+          {count, _} =
+            Safe.unscoped()
+            |> Safe.insert_all(ChangeLog, chunk, on_conflict: :nothing, conflict_target: target)
+
+          {:ok, count}
+        end)
+
+      count
     end
 
     # Entries for accounts that were hard-deleted since the WAL record was
