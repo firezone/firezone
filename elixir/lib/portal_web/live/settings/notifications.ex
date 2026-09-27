@@ -15,7 +15,7 @@ defmodule PortalWeb.Settings.Notifications do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
       />
@@ -60,7 +60,7 @@ defmodule PortalWeb.Settings.Notifications do
         <p :if={@description} class="text-xs text-subtle mt-0.5">{@description}</p>
       </div>
       <input type="hidden" name={@field.name} value="false" />
-      <.toggle id={@field.id} name={@field.name} value="true" checked={@checked} />
+      <Core.toggle id={@field.id} name={@field.name} value="true" checked={@checked} />
     </div>
     """
   end

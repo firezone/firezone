@@ -1,7 +1,9 @@
-defmodule PortalWeb.AuthorizationComponents do
+defmodule PortalWeb.Components.Authorization do
   @moduledoc "Shared UI for policy authorization views."
 
   use Phoenix.Component
+
+  alias PortalWeb.Components.Navigation
   use PortalWeb, :verified_routes
 
   attr :account, :any, required: true
@@ -13,9 +15,9 @@ defmodule PortalWeb.AuthorizationComponents do
       class="shrink-0 border-b border-border bg-raised/40 px-4 py-2 text-xs text-subtle"
     >
       See
-      <.link navigate={~p"/#{@account}/logs/flow_logs"} class="text-brand">
+      <Navigation.link navigate={~p"/#{@account}/logs/flow_logs"} class="text-brand">
         <span class="hover:underline">flow logs</span>
-      </.link>
+      </Navigation.link>
       for detailed access logs.
     </div>
     """

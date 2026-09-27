@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias PortalWeb.Policies.{Database, Postures}
-  import PortalWeb.Policies.PostureComponents
+  alias PortalWeb.Policies.PostureComponents
 
   @days_of_week [
     {"M", "Monday"},
@@ -169,7 +169,7 @@ defmodule PortalWeb.Policies.Components do
         mode={:edit}
       />
 
-      <.modal
+      <Form.modal
         :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
         id="policy-breaking-change-modal"
         on_close="cancel_policy_breaking_change"
@@ -184,7 +184,7 @@ defmodule PortalWeb.Policies.Components do
         </:body>
         <:cancel_button>Cancel</:cancel_button>
         <:confirm_button>Save Changes</:confirm_button>
-      </.modal>
+      </Form.modal>
 
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
@@ -259,7 +259,7 @@ defmodule PortalWeb.Policies.Components do
         <h2 class="text-sm font-semibold text-heading">
           {if @mode == :new, do: "Add Policy", else: "Edit Policy"}
         </h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
+        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
       </div>
     </div>
     """
@@ -289,7 +289,7 @@ defmodule PortalWeb.Policies.Components do
         panel_selected_resource={@panel_selected_resource}
         subject={@subject}
       />
-      <.policy_restrictions id="policy-postures" account={@account} state={@postures}>
+      <PostureComponents.policy_restrictions id="policy-postures" account={@account} state={@postures}>
         <.policy_conditions_section
           account={@account}
           mode={@mode}
@@ -301,7 +301,7 @@ defmodule PortalWeb.Policies.Components do
           has_trust_anchors?={@has_trust_anchors?}
           conditions_state={@conditions_state}
         />
-      </.policy_restrictions>
+      </PostureComponents.policy_restrictions>
     </div>
     """
   end
@@ -314,9 +314,9 @@ defmodule PortalWeb.Policies.Components do
       :if={@panel_form.errors[:base]}
       class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-error/20 bg-error-light"
     >
-      <.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-error" />
+      <Core.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-error" />
       <p class="text-xs text-error">
-        {translate_error(@panel_form.errors[:base])}
+        {Core.translate_error(@panel_form.errors[:base])}
       </p>
     </div>
     """
@@ -348,7 +348,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_group_field(assigns) do
     ~H"""
     <.live_component
-      module={PortalWeb.Components.FormComponents.SelectWithGroups}
+      module={PortalWeb.Components.Form.SelectWithGroups}
       id={if @mode == :new, do: "panel_new_policy_group_id", else: "panel_policy_group_id"}
       label="Group"
       placeholder="Select Group"
@@ -361,12 +361,12 @@ defmodule PortalWeb.Policies.Components do
       <:options_group :let={options_group}>{options_group}</:options_group>
       <:option :let={row}>
         <div class="flex items-center gap-2">
-          <.provider_icon provider={provider_type_from_group(row)} size="sm" />
+          <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" />
           <span>{row.group.name}</span>
         </div>
       </:option>
       <:no_options :let={name}>
-        <.error data-validation-error-for={name}>No groups available.</.error>
+        <Core.error data-validation-error-for={name}>No groups available.</Core.error>
       </:no_options>
       <:no_search_results>No groups found.</:no_search_results>
     </.live_component>
@@ -380,7 +380,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_resource_field(assigns) do
     ~H"""
     <.live_component
-      module={PortalWeb.Components.FormComponents.SelectWithGroups}
+      module={PortalWeb.Components.Form.SelectWithGroups}
       id={if @mode == :new, do: "panel_new_policy_resource_id", else: "panel_policy_resource_id"}
       label="Resource"
       placeholder="Select Resource"
@@ -403,7 +403,7 @@ defmodule PortalWeb.Policies.Components do
         <% end %>
       </:option>
       <:no_options :let={name}>
-        <.error data-validation-error-for={name}>No resources available.</.error>
+        <Core.error data-validation-error-for={name}>No resources available.</Core.error>
       </:no_options>
       <:no_search_results>No resources found.</:no_search_results>
     </.live_component>
@@ -448,7 +448,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_description_field(assigns) do
     ~H"""
-    <.input
+    <Form.input
       field={@panel_form[:description]}
       label="Description"
       type="textarea"
@@ -493,14 +493,14 @@ defmodule PortalWeb.Policies.Components do
         <div>
           <div class="flex items-center gap-2">
             <p class="text-xs font-semibold text-body">Flow log reporting</p>
-            <.new_badge data-flow-logs-new-badge="true" />
+            <Core.new_badge data-flow-logs-new-badge="true" />
           </div>
           <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
           </p>
         </div>
         <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
-        <.toggle
+        <Core.toggle
           id={@form[:flow_log_uploads_enabled].id}
           name={@form[:flow_log_uploads_enabled].name}
           value="true"
@@ -519,7 +519,7 @@ defmodule PortalWeb.Policies.Components do
           if(@checked?, do: "flex", else: "hidden")
         ]}
       >
-        <.icon name="ri-error-warning-line" class="mt-px h-3.5 w-3.5 shrink-0" />
+        <Core.icon name="ri-error-warning-line" class="mt-px h-3.5 w-3.5 shrink-0" />
         <span>
           Enabling flow log collection for the internet resource can result in substantial log volume.
         </span>
@@ -566,14 +566,14 @@ defmodule PortalWeb.Policies.Components do
       />
       <%= cond do %>
         <% @policy_conditions_enabled? == false -> %>
-          <.upgrade_locked_section
+          <Form.upgrade_locked_section
             account={@account}
             message="Upgrade your plan to unlock policy conditions."
             description="Add policy restrictions like IP ranges, identity providers, and time windows."
             data-locked-section="policy-conditions"
           >
-            <.conditions_preview />
-          </.upgrade_locked_section>
+            <PostureComponents.conditions_preview />
+          </Form.upgrade_locked_section>
         <% is_nil(@panel_selected_resource) -> %>
           <.policy_conditions_placeholder />
         <% true -> %>
@@ -667,7 +667,7 @@ defmodule PortalWeb.Policies.Components do
         phx-click="toggle_conditions_dropdown"
         class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
       >
-        <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+        <Core.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
       </button>
       <div :if={@panel_conditions_dropdown_open}>
         <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
@@ -693,14 +693,14 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_form_actions(assigns) do
     ~H"""
-    <.panel_footer>
-      <.panel_footer_button type="button" phx-click="cancel_policy_form">
+    <Form.panel_footer>
+      <Form.panel_footer_button type="button" phx-click="cancel_policy_form">
         Cancel
-      </.panel_footer_button>
-      <.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
+      </Form.panel_footer_button>
+      <Form.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
-      </.panel_footer_button>
-    </.panel_footer>
+      </Form.panel_footer_button>
+    </Form.panel_footer>
     """
   end
 
@@ -842,10 +842,10 @@ defmodule PortalWeb.Policies.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
+          <Form.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
             Edit
-          </.button>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </Form.button>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -878,11 +878,11 @@ defmodule PortalWeb.Policies.Components do
   def policy_group_mapping_card(assigns) do
     ~H"""
     <%= if @policy.group do %>
-      <.link
+      <Navigation.link
         navigate={~p"/#{@account}/groups/#{@policy.group}"}
         class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
       >
-        <.provider_icon provider={provider_type_from_group(@policy.group)} size="sm" variant="circle" />
+        <Core.provider_icon provider={Core.provider_type_from_group(@policy.group)} size="sm" variant="circle" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
@@ -891,10 +891,10 @@ defmodule PortalWeb.Policies.Components do
             {@policy.group.name}
           </p>
         </div>
-      </.link>
+      </Navigation.link>
     <% else %>
       <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-warning/30 bg-warning-light">
-        <.icon name="ri-error-warning-line" class="w-5 h-5 text-warning shrink-0" />
+        <Core.icon name="ri-error-warning-line" class="w-5 h-5 text-warning shrink-0" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
@@ -909,7 +909,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_mapping_arrow(assigns) do
     ~H"""
     <div class="flex items-center shrink-0 text-subtle">
-      <.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
+      <Core.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
     </div>
     """
   end
@@ -919,11 +919,11 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_resource_mapping_card(assigns) do
     ~H"""
-    <.link
+    <Navigation.link
       navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
       class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
     >
-      <span class={type_badge_class(@policy.resource.type)}>
+      <span class={ResourceType.type_badge_class(@policy.resource.type)}>
         {@policy.resource.type}
       </span>
       <div class="min-w-0">
@@ -937,7 +937,7 @@ defmodule PortalWeb.Policies.Components do
           {@policy.resource.address}
         </p>
       </div>
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -977,7 +977,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
-      <.postures_summary postures={@policy.postures} />
+      <PostureComponents.postures_summary postures={@policy.postures} />
     </div>
     """
   end
@@ -1045,12 +1045,12 @@ defmodule PortalWeb.Policies.Components do
   def policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <.authorization_flow_logs_notice account={@account} />
+      <Authorization.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
-        <.icon name="ri-shield-check-line" class="w-8 h-8" />
+        <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
       </div>
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
@@ -1078,13 +1078,13 @@ defmodule PortalWeb.Policies.Components do
                     {if row.actor, do: row.actor.name, else: "—"}
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.inserted_at} />
+                    <Core.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.expires_at} />
+                    <Core.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.icon
+                    <Core.icon
                       name={
                         if @expanded_id == row.authorization.id,
                           do: "ri-arrow-up-s-line",
@@ -1142,12 +1142,12 @@ defmodule PortalWeb.Policies.Components do
                       </div>
                       <div>
                         <p class="text-subtle font-medium mb-1">Resource</p>
-                        <.link
+                        <Navigation.link
                           navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
                           class="text-brand hover:underline"
                         >
                           {@policy.resource.name}
-                        </.link>
+                        </Navigation.link>
                       </div>
                     </div>
                   </td>
@@ -1163,7 +1163,7 @@ defmodule PortalWeb.Policies.Components do
             disabled={@page == 1}
             class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
+            <Core.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
           <span class="text-xs text-subtle">Page {@page}</span>
           <button
@@ -1172,7 +1172,7 @@ defmodule PortalWeb.Policies.Components do
             disabled={not @has_next}
             class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
+            Next <Core.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1219,7 +1219,7 @@ defmodule PortalWeb.Policies.Components do
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
           <dd class="text-xs text-body font-medium">
-            <.relative_datetime datetime={@policy.inserted_at} />
+            <Core.relative_datetime datetime={@policy.inserted_at} />
           </dd>
         </div>
         <div>
@@ -1247,14 +1247,14 @@ defmodule PortalWeb.Policies.Components do
         Actions
       </h3>
       <div class="space-y-2">
-        <.action_button
+        <Form.action_button
           :if={!@policy.is_disabled and not @confirm_disable_policy}
           phx-click="confirm_disable_policy"
           style="warning"
           icon="ri-pause-line"
         >
           Disable policy
-        </.action_button>
+        </Form.action_button>
         <div
           :if={!@policy.is_disabled and @confirm_disable_policy}
           class="px-3 py-2.5 rounded border border-border bg-raised"
@@ -1266,22 +1266,22 @@ defmodule PortalWeb.Policies.Components do
             This will immediately revoke all access granted by it.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_disable_policy" size="xs">
+            <Form.button type="button" phx-click="cancel_disable_policy" size="xs">
               Cancel
-            </.button>
-            <.button type="button" style="primary" phx-click="disable_policy" size="xs">
+            </Form.button>
+            <Form.button type="button" style="primary" phx-click="disable_policy" size="xs">
               Disable
-            </.button>
+            </Form.button>
           </div>
         </div>
-        <.action_button
+        <Form.action_button
           :if={@policy.is_disabled}
           phx-click="enable_policy"
           style="success"
           icon="ri-play-line"
         >
           Enable policy
-        </.action_button>
+        </Form.action_button>
       </div>
     </section>
     """
@@ -1301,7 +1301,7 @@ defmodule PortalWeb.Policies.Components do
         phx-click="confirm_delete_policy"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
+        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
       </button>
       <div
         :if={@confirm_delete_policy}
@@ -1314,12 +1314,12 @@ defmodule PortalWeb.Policies.Components do
           All sessions authorized by it will be expired.
         </p>
         <div class="flex items-center gap-1.5">
-          <.button type="button" phx-click="cancel_delete_policy" size="xs">
+          <Form.button type="button" phx-click="cancel_delete_policy" size="xs">
             Cancel
-          </.button>
-          <.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
+          </Form.button>
+          <Form.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
             Delete
-          </.button>
+          </Form.button>
         </div>
       </div>
     </section>
@@ -1521,18 +1521,18 @@ defmodule PortalWeb.Policies.Components do
       <span>when signed in</span>
       <span :if={@operator == :is_in}>with</span>
       <span :if={@operator == :is_not_in}>not with</span>
-      <.intersperse_blocks>
+      <Core.intersperse_blocks>
         <:separator>,</:separator>
 
         <:item :for={provider <- @providers}>
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/settings/authentication"}
-            class={[link_style(), "font-medium"]}
+            class={[Core.link_style(), "font-medium"]}
           >
             {provider.name}
-          </.link>
+          </Navigation.link>
         </:item>
-      </.intersperse_blocks>
+      </Core.intersperse_blocks>
       <span>provider(s)</span>
     </span>
     """
@@ -1572,7 +1572,7 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <span class="flex flex-wrap space-x-1 mr-1">
       on
-      <.intersperse_blocks>
+      <Core.intersperse_blocks>
         <:separator>,</:separator>
 
         <:item :for={{day_of_week, tz_time_ranges} <- @tz_time_ranges_by_dow}>
@@ -1586,7 +1586,7 @@ defmodule PortalWeb.Policies.Components do
             </span>
           </span>
         </:item>
-      </.intersperse_blocks>
+      </Core.intersperse_blocks>
     </span>
     """
   end
@@ -1693,7 +1693,7 @@ defmodule PortalWeb.Policies.Components do
 
   defp condition_new_badge(%{type: :device_attested} = assigns) do
     ~H"""
-    <.new_badge class="ml-1.5" data-condition-new-badge />
+    <Core.new_badge class="ml-1.5" data-condition-new-badge />
     """
   end
 
@@ -1715,7 +1715,7 @@ defmodule PortalWeb.Policies.Components do
         class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
         title="Remove condition"
       >
-        <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+        <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
       </button>
     </div>
     """
@@ -1841,7 +1841,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-range={v}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -1856,9 +1856,9 @@ defmodule PortalWeb.Policies.Components do
             phx-keyup="add_ip_range_value"
             class={[@input_class, "flex-1 font-mono placeholder:text-subtle"]}
           />
-          <.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
+          <Form.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
             Add
-          </.button>
+          </Form.button>
         </div>
       </div>
     </div>
@@ -1933,7 +1933,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-code={code}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -2061,7 +2061,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-id={p.id}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -2095,13 +2095,13 @@ defmodule PortalWeb.Policies.Components do
       :if={@show?}
       class="flex items-start gap-1.5 rounded border border-warning/30 bg-warning-light px-2.5 py-2 text-xs text-warning"
     >
-      <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
       <span>
         No devices will be able to use this authentication provider until you add one or more
-        <.link
+        <Navigation.link
           navigate={~p"/#{@account}/settings/trust_anchors"}
           class="font-medium underline hover:no-underline"
-        >Trust Anchors</.link>.
+        >Trust Anchors</Navigation.link>.
       </span>
     </p>
     """
@@ -2177,7 +2177,7 @@ defmodule PortalWeb.Policies.Components do
               class="shrink-0 p-0.5 rounded text-subtle hover:text-red-500 transition-colors"
               title="Remove"
             >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+              <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -2253,16 +2253,16 @@ defmodule PortalWeb.Policies.Components do
             :if={@tod_pending_error}
             class="flex items-center gap-1 text-[10px] text-error"
           >
-            <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
+            <Core.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
             {@tod_pending_error}
           </p>
           <div class="flex justify-end gap-1.5">
-            <.button type="button" phx-click="cancel_tod_range" size="xs">
+            <Form.button type="button" phx-click="cancel_tod_range" size="xs">
               Cancel
-            </.button>
-            <.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
+            </Form.button>
+            <Form.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
               Add
-            </.button>
+            </Form.button>
           </div>
         </div>
         <button
@@ -2276,7 +2276,7 @@ defmodule PortalWeb.Policies.Components do
             "transition-colors"
           ]}
         >
-          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
         </button>
       </div>
     </div>
@@ -2438,9 +2438,9 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_status_badge(assigns) do
     ~H"""
-    <.status_badge style={if @is_disabled, do: :danger, else: :success}>
+    <Core.status_badge style={if @is_disabled, do: :danger, else: :success}>
       {if @is_disabled, do: "Disabled", else: "Active"}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 end

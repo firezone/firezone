@@ -1,15 +1,27 @@
 <div class="flex h-screen overflow-hidden bg-page">
-  <.sidebar account={@account} current_path={@current_path} subject={@subject} />
+  <Navigation.sidebar account={@account} current_path={@current_path} subject={@subject} />
 
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-    <.topbar subject={@subject} />
+    <Navigation.topbar subject={@subject} />
 
     <main class="flex-1 flex flex-col overflow-hidden bg-surface">
-      <.flash id="success-toast" kind={:success} title="Success!" style="toast" flash={@flash} />
-      <.flash id="info-toast" kind={:info} title="Information!" style="toast" flash={@flash} />
-      <.flash id="warning-toast" kind={:warning} title="Warning!" style="toast" flash={@flash} />
-      <.flash id="error-toast" kind={:error} title="Error!" style="toast" flash={@flash} />
-      <.flash
+      <Core.flash
+        id="success-toast"
+        kind={:success}
+        title="Success!"
+        style="toast"
+        flash={@flash}
+      />
+      <Core.flash id="info-toast" kind={:info} title="Information!" style="toast" flash={@flash} />
+      <Core.flash
+        id="warning-toast"
+        kind={:warning}
+        title="Warning!"
+        style="toast"
+        flash={@flash}
+      />
+      <Core.flash id="error-toast" kind={:error} title="Error!" style="toast" flash={@flash} />
+      <Core.flash
         id="disconnected-toast"
         kind={:error}
         title="Connection lost"
@@ -20,8 +32,8 @@
         autoshow={false}
       >
         Attempting to reconnect
-        <.icon name="ri-loop-left-line" class="ml-1 h-3 w-3 animate-spin" />
-      </.flash>
+        <Core.icon name="ri-loop-left-line" class="ml-1 h-3 w-3 animate-spin" />
+      </Core.flash>
 
       <% banner = Database.fetch_banner() %>
       <%= if banner do %>
@@ -34,7 +46,7 @@
           class={["border-b px-4 py-2.5", wrapper_classes]}
         >
           <div class="relative flex items-center justify-center gap-2.5 px-6">
-            <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
+            <Core.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
             <p class={["text-sm font-medium", text_class]}>
               <%!-- credo:disable-for-next-line Credo.Check.Warning.UnsafeTemplateHTML --%>
               {Phoenix.HTML.raw(banner.message)}
@@ -48,54 +60,57 @@
                 text_class
               ]}
             >
-              <.icon name="ri-close-line" class="h-4 w-4" />
+              <Core.icon name="ri-close-line" class="h-4 w-4" />
             </button>
           </div>
         </div>
       <% end %>
-      <.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
+      <Core.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
         Your account has exceeded the following limits: {Portal.Billing.build_limits_exceeded_message(
           @account
         )
         |> String.replace("\n", ", ")}.
         <span :if={Portal.Billing.account_provisioned?(@account)}>
           Please
-          <.link navigate={~p"/#{@account}/settings/account"} class={link_style()}>
+          <Navigation.link navigate={~p"/#{@account}/settings/account"}>
             check your billing information
-          </.link>
+          </Navigation.link>
           to continue using Firezone.
         </span>
-      </.flash>
+      </Core.flash>
 
-      <.flash :if={not Portal.Account.active?(@account)} kind={:error} class="m-1">
+      <Core.flash :if={not Portal.Account.active?(@account)} kind={:error} class="m-1">
         This account has been disabled and clients will not be able to connect.
         <span>
           Please
-          <.link
-            class={link_style()}
+          <Navigation.link
             target="_blank"
             rel="noopener noreferrer"
-            href={mailto_support(@account, @subject, "Enable account: #{@account.name}")}
+            href={Core.mailto_support(@account, @subject, "Enable account: #{@account.name}")}
           >
             contact support
-          </.link>
+          </Navigation.link>
           to re-activate it.
         </span>
-      </.flash>
+      </Core.flash>
 
       <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
         <% trial_ends_in_days = DateTime.diff(trial_ends_at, DateTime.utc_now(), :day) %>
 
-        <.flash :if={5 > trial_ends_in_days and trial_ends_in_days > 0} kind={:info} class="m-1">
+        <Core.flash
+          :if={5 > trial_ends_in_days and trial_ends_in_days > 0}
+          kind={:info}
+          class="m-1"
+        >
           Your Enterprise pilot period will expire in {trial_ends_in_days}
           {if trial_ends_in_days == 1, do: "day", else: "days"}.
           Please contact your sales representative to extend it.
-        </.flash>
+        </Core.flash>
 
-        <.flash :if={trial_ends_in_days <= 0} kind={:error} class="m-1">
+        <Core.flash :if={trial_ends_in_days <= 0} kind={:error} class="m-1">
           Your Enterprise pilot period needs to be renewed,
           please contact your sales representative.
-        </.flash>
+        </Core.flash>
       <% end %>
 
       <div class="flex-1 min-h-0 overflow-y-auto">

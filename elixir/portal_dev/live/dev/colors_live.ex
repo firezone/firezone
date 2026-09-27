@@ -174,7 +174,7 @@ defmodule PortalWeb.Dev.ColorsLive do
             phx-click={JS.toggle_class("dark", to: "html") |> JS.push("toggle_dark")}
             class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-sm text-body hover:bg-raised transition-colors"
           >
-            <.icon name={if @dark, do: "ri-sun-line", else: "ri-moon-line"} class="w-4 h-4" />
+            <Core.icon name={if @dark, do: "ri-sun-line", else: "ri-moon-line"} class="w-4 h-4" />
             {if @dark, do: "Light mode", else: "Dark mode"}
           </button>
         </div>
@@ -233,7 +233,7 @@ defmodule PortalWeb.Dev.ColorsLive do
                 phx-value-class={@selected.class}
                 class="text-subtle hover:text-body transition-colors"
               >
-                <.icon name="ri-close-line" class="w-4 h-4" />
+                <Core.icon name="ri-close-line" class="w-4 h-4" />
               </button>
             </div>
 

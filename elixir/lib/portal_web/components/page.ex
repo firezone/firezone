@@ -1,7 +1,7 @@
-defmodule PortalWeb.PageComponents do
+defmodule PortalWeb.Components.Page do
   use Phoenix.Component
   use PortalWeb, :verified_routes
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
 
   @doc """
   The read/write permission picker.
@@ -70,7 +70,7 @@ defmodule PortalWeb.PageComponents do
       </div>
 
       <p :if={@error} class="mt-2 flex items-center gap-2 text-sm text-error">
-        <.icon name="ri-alert-line" class="h-4 w-4 flex-none" />{@error}
+        <Core.icon name="ri-alert-line" class="h-4 w-4 flex-none" />{@error}
       </p>
     </fieldset>
     """
@@ -157,7 +157,7 @@ defmodule PortalWeb.PageComponents do
         </p>
 
         <p class="flex items-center gap-2">
-          <.icon name="ri-lock-line" class="w-4 h-4 text-brand shrink-0" />
+          <Core.icon name="ri-lock-line" class="w-4 h-4 text-brand shrink-0" />
           <span class="text-base font-semibold font-mono text-heading break-all">
             {client_host(@client.client_id)}
           </span>
@@ -305,7 +305,7 @@ defmodule PortalWeb.PageComponents do
         </p>
         <p class="text-xs text-subtle truncate">{@account.slug}</p>
       </div>
-      <.icon
+      <Core.icon
         name="ri-arrow-right-s-line"
         class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
@@ -332,7 +332,7 @@ defmodule PortalWeb.PageComponents do
         @content != [] && "pb-6"
       ]}
     >
-      <.header>
+      <Core.header>
         <:title>
           {render_slot(@title)}
         </:title>
@@ -344,12 +344,12 @@ defmodule PortalWeb.PageComponents do
         <:help :for={help <- @help} :if={not Enum.empty?(@help)}>
           {render_slot(help)}
         </:help>
-      </.header>
+      </Core.header>
 
       <section :for={content <- @content} class="section-body">
         <div :if={Map.get(content, :flash)} class="mb-4">
-          <.flash kind={:info} flash={Map.get(content, :flash)} style="wide" />
-          <.flash kind={:error} flash={Map.get(content, :flash)} style="wide" />
+          <Core.flash kind={:info} flash={Map.get(content, :flash)} style="wide" />
+          <Core.flash kind={:error} flash={Map.get(content, :flash)} style="wide" />
         </div>
         {render_slot(content)}
       </section>
@@ -362,20 +362,20 @@ defmodule PortalWeb.PageComponents do
 
   ## Examples
 
-      <.page_header>
-        <:icon><.icon name="ri-server-line" class="w-8 h-8 text-brand" /></:icon>
+      <Page.page_header>
+        <:icon><Core.icon name="ri-server-line" class="w-8 h-8 text-brand" /></:icon>
         <:title>Resources</:title>
         <:description>Network endpoints accessible through Firezone.</:description>
         <:action>
-          <.add_button navigate={~p"/resources/new"}>Add Resource</.add_button>
+          <Form.add_button navigate={~p"/resources/new"}>Add Resource</Form.add_button>
         </:action>
         <:stats>
-          <.dual_badge type="primary">
+          <Core.dual_badge type="primary">
             <:left>{@resources_count}</:left>
             <:right>Total</:right>
-          </.dual_badge>
+          </Core.dual_badge>
         </:stats>
-      </.page_header>
+      </Page.page_header>
   """
   slot :icon, required: false, doc: "Large icon displayed beside the title"
   slot :title, required: true, doc: "The page title"

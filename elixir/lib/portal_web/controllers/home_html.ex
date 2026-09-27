@@ -3,7 +3,7 @@ defmodule PortalWeb.HomeHTML do
 
   def home(assigns) do
     ~H"""
-    <.flash kind={:error} flash={@flash} />
+    <Core.flash kind={:error} flash={@flash} />
 
     <div :if={!@show_account_chooser}>
       <.get_started params={@params} />
@@ -32,7 +32,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-border bg-surface hover:border-brand transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-brand/10">
-          <.icon name="ri-building-line" class="w-6 h-6 text-brand" />
+          <Core.icon name="ri-building-line" class="w-6 h-6 text-brand" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
@@ -42,7 +42,7 @@ defmodule PortalWeb.HomeHTML do
             Create an admin account for your team.
           </p>
         </div>
-        <.icon
+        <Core.icon
           name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
@@ -53,7 +53,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-border bg-surface hover:border-brand transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-violet-500/10 dark:bg-violet-400/10">
-          <.icon name="ri-team-line" class="w-5 h-5 text-link" />
+          <Core.icon name="ri-team-line" class="w-5 h-5 text-link" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
@@ -63,7 +63,7 @@ defmodule PortalWeb.HomeHTML do
             Find your organization's sign-in page.
           </p>
         </div>
-        <.icon
+        <Core.icon
           name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
@@ -74,7 +74,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-border bg-surface hover:border-brand transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-raised">
-          <.icon name="ri-terminal-line" class="w-5 h-5 text-subtle" />
+          <Core.icon name="ri-terminal-line" class="w-5 h-5 text-subtle" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
@@ -84,7 +84,7 @@ defmodule PortalWeb.HomeHTML do
             Go straight to account sign-in.
           </p>
         </div>
-        <.icon
+        <Core.icon
           name="ri-arrow-right-s-line"
           class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
@@ -117,7 +117,7 @@ defmodule PortalWeb.HomeHTML do
         <div class="flex-1 h-px bg-border"></div>
       </div>
       <div class="flex flex-col gap-2 mb-6">
-        <.account_button
+        <Page.account_button
           :for={account <- @accounts}
           account={account}
           href={~p"/#{account}/sign_in?#{@params}"}
@@ -126,16 +126,16 @@ defmodule PortalWeb.HomeHTML do
     </div>
 
     <%!-- Slug entry card --%>
-    <.account_slug_form action={~p"/sign_in?#{@params}"} autofocus={@accounts == []} />
+    <Page.account_slug_form action={~p"/sign_in?#{@params}"} autofocus={@accounts == []} />
 
     <div class="mt-6 text-xs text-subtle space-y-1.5 text-center">
       <p :if={!PortalWeb.Authentication.client_sign_in?(@params)}>
         Want to set up a new Organization?
-        <a href={~p"/sign_up"} class={[link_style()]}>Sign up here.</a>
+        <a href={~p"/sign_up"} class={[Core.link_style()]}>Sign up here.</a>
       </p>
       <p :if={!PortalWeb.Authentication.client_sign_in?(@params)}>
         Not sure where to start?
-        <a href={~p"/getting_started?#{@params}"} class={[link_style()]}>Let's get started.</a>
+        <a href={~p"/getting_started?#{@params}"} class={[Core.link_style()]}>Let's get started.</a>
       </p>
     </div>
     """
