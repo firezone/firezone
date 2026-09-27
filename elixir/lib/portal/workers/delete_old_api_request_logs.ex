@@ -1,6 +1,6 @@
 defmodule Portal.Workers.DeleteOldAPIRequestLogs do
   @moduledoc """
-  Oban worker that deletes api_request_logs older than 90 days.
+  Oban worker that deletes api_request_logs older than 121 days.
   """
 
   use Oban.Worker,
@@ -41,7 +41,13 @@ defmodule Portal.Workers.DeleteOldAPIRequestLogs do
 
     defp delete_legacy_rows do
       from(arl in APIRequestLog, as: :api_request_logs)
-      |> where([api_request_logs: arl], arl.inserted_at < ago(90, "day"))
+      |> where(
+        [api_request_logs: arl],
+        arl.inserted_at <
+          fragment(
+            "((CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date - 121)::timestamp AT TIME ZONE 'UTC'"
+          )
+      )
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

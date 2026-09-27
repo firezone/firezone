@@ -40,7 +40,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
         assert Database.maintain("session_logs") == %{created: 0, dropped: 1}
         assert Repo.query!("SELECT to_regclass($1)", [name]).rows == [[nil]]
 
-        boundary = @parent <> "_" <> Calendar.strftime(Date.add(Date.utc_today(), -90), "%Y%m%d")
+        boundary = @parent <> "_" <> Calendar.strftime(Date.add(Date.utc_today(), -121), "%Y%m%d")
         assert [[oid]] = Repo.query!("SELECT to_regclass($1)", [boundary]).rows
         assert is_integer(oid)
       after
@@ -66,7 +66,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   test "finalizes an interrupted concurrent detach before detaching another partition" do
     with_mirror_schema("session_logs", fn schema ->
       name = expired_partition()
-      other = expired_partition(-92)
+      other = expired_partition(-123)
       reader = connection(schema)
 
       try do
@@ -107,7 +107,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
     end)
   end
 
-  defp expired_partition(offset \\ -91) do
+  defp expired_partition(offset \\ -122) do
     date = Date.add(Date.utc_today(), offset)
     name = @parent <> "_" <> Calendar.strftime(date, "%Y%m%d")
     lower = Date.to_iso8601(date) <> " 00:00:00+00"

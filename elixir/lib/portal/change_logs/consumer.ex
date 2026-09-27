@@ -293,7 +293,7 @@ defmodule Portal.ChangeLogs.Consumer do
             |> Safe.query(
               """
               SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('change_logs')),
-                     (clock_timestamp() AT TIME ZONE 'UTC')::date - 90
+                     (clock_timestamp() AT TIME ZONE 'UTC')::date - 121
               """,
               []
             )

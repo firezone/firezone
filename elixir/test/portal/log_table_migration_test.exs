@@ -2,11 +2,18 @@ defmodule Portal.LogTableMigrationTest do
   use ExUnit.Case, async: true
 
   alias Portal.{APIRequestLog, ChangeLog, LogTableMigration, Repo, SessionLog}
-  alias Portal.Repo.Migrations.{CreateLogPartitionMirrors, PrepareLogTableCutover}
+
+  alias Portal.Repo.Migrations.{
+    CreateLogPartitionMirrors,
+    AlignLogPartitionRetention,
+    PrepareLogTableCutover
+  }
+
   alias Portal.Types.LogId
 
   for {module, file} <- [
         {CreateLogPartitionMirrors, "20260927000000_create_log_partition_mirrors.exs"},
+        {AlignLogPartitionRetention, "20260927010000_align_log_partition_retention.exs"},
         {PrepareLogTableCutover, "20260928000000_prepare_log_table_cutover.exs"}
       ] do
     unless Code.ensure_loaded?(module),
@@ -44,10 +51,22 @@ defmodule Portal.LogTableMigrationTest do
     account_id = Ecto.UUID.generate()
     Repo.query!("INSERT INTO accounts VALUES ($1::text::uuid)", [account_id])
     # Historical rows exist before the mirror trigger is installed.
-    historical = for source <- @sources, into: %{}, do: {source, insert(source, account_id)}
+    historical =
+      for source <- @sources, into: %{} do
+        field = if source == "api_request_logs", do: :inserted_at, else: :timestamp
+
+        {source,
+         insert(source, account_id, nil, %{field => DateTime.add(DateTime.utc_now(), -100, :day)})}
+      end
 
     assert :ok =
              Ecto.Migrator.up(Repo, 20_260_927_000_000, CreateLogPartitionMirrors,
+               prefix: schema,
+               log: false
+             )
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_927_010_000, AlignLogPartitionRetention,
                prefix: schema,
                log: false
              )
@@ -68,6 +87,53 @@ defmodule Portal.LogTableMigrationTest do
     # Keep the pool alive until on_exit (start_link's owner otherwise exits).
     Process.unlink(repo)
     {:ok, account_id: account_id, historical: historical, schema: schema}
+  end
+
+  test "retention upgrade admits the full 121-day boundary and reruns preserve activation", ctx do
+    boundary = DateTime.new!(Date.add(Date.utc_today(), -121), ~T[00:00:00.000000], "Etc/UTC")
+
+    for source <- @sources do
+      field = if source == "api_request_logs", do: :inserted_at, else: :timestamp
+      retained = insert(source, ctx.account_id, nil, %{field => boundary})
+      insert(source, ctx.account_id, nil, %{field => DateTime.add(boundary, -1, :second)})
+      assert [row] = rows(source <> "_partitioned")
+      assert row["seq"] == retained.seq
+    end
+
+    markers =
+      Repo.query!(
+        "SELECT source_table, started_at FROM log_partition_mirrors ORDER BY source_table"
+      ).rows
+
+    Repo.query!("DELETE FROM schema_migrations WHERE version = 20260927010000")
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_927_010_000, AlignLogPartitionRetention,
+               prefix: ctx.schema,
+               log: false
+             )
+
+    assert markers ==
+             Repo.query!(
+               "SELECT source_table, started_at FROM log_partition_mirrors ORDER BY source_table"
+             ).rows
+  end
+
+  test "backfill and cutover reject the old 90-day trigger even with ready checkpoints" do
+    ready("session_logs")
+
+    [[definition]] =
+      Repo.query!("SELECT pg_get_functiondef('mirror_session_logs()'::regprocedure)").rows
+
+    Repo.query!(String.replace(definition, "::date - 121", "::date - 90"))
+
+    assert_raise RuntimeError, ~r/121-day retention manual migration/, fn ->
+      LogTableMigration.step("session_logs")
+    end
+
+    assert_raise RuntimeError, ~r/121-day retention manual migration/, fn ->
+      LogTableMigration.cutover("session_logs")
+    end
   end
 
   test "bounded backfill, both verification passes, cutover and cleanup preserve all streams",
@@ -138,7 +204,7 @@ defmodule Portal.LogTableMigrationTest do
   end
 
   test "expired rows advance the cursor without creating expired partitions", ctx do
-    expired = DateTime.add(DateTime.utc_now(), -100, :day)
+    expired = DateTime.add(DateTime.utc_now(), -130, :day)
     insert("session_logs", ctx.account_id, "session_logs", %{timestamp: expired})
     ready("session_logs")
     assert status("session_logs")["scanned_rows"] == 2
@@ -164,7 +230,7 @@ defmodule Portal.LogTableMigrationTest do
 
     expired = %{
       replay
-      | timestamp: DateTime.add(DateTime.utc_now(), -100, :day),
+      | timestamp: DateTime.add(DateTime.utc_now(), -130, :day),
         lsn: original.lsn + 2
     }
 

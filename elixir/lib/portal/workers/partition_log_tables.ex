@@ -1,9 +1,9 @@
 defmodule Portal.Workers.PartitionLogTables do
   @moduledoc """
   Maintains daily UTC partitions for all four log streams, following each
-  mirror through its rename to the canonical table. Flow logs retain their
-  existing 121-day window; the other streams retain 90 days and are skipped
-  until manually activated. All streams get 14 days of lookahead.
+  mirror through its rename to the canonical table. All streams retain the
+  same 121-day UTC window and get 14 days of lookahead. Mirrors are skipped
+  until manually activated.
 
   ATTACH and DETACH CONCURRENTLY allow ingestion to continue. Session advisory
   locks serialize maintenance; interrupted detach/drop operations are resumed
@@ -33,6 +33,7 @@ defmodule Portal.Workers.PartitionLogTables do
     alias Portal.Safe
 
     @sources ~w[flow_logs session_logs api_request_logs change_logs]
+    @retention_days 121
     @owner "Portal.Workers.PartitionLogTables"
     @legacy_owner "Portal.Workers.PartitionLogMirrors"
 
@@ -104,7 +105,7 @@ defmodule Portal.Workers.PartitionLogTables do
         parent: "flow_logs",
         prefix: "flow_logs",
         timestamp: "flow_start",
-        retention_days: 121,
+        retention_days: @retention_days,
         history_days: 1
       }
 
@@ -113,8 +114,8 @@ defmodule Portal.Workers.PartitionLogTables do
         parent: if(partitioned?(source), do: source, else: source <> "_partitioned"),
         prefix: source <> "_partitioned",
         timestamp: if(source == "api_request_logs", do: "inserted_at", else: "timestamp"),
-        retention_days: 90,
-        history_days: 90
+        retention_days: @retention_days,
+        history_days: @retention_days
       }
 
     defp maintain_partitions(config, today) do

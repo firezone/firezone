@@ -14,7 +14,7 @@ defmodule Portal.LogTableMigration do
     alias Portal.Safe
 
     @sources ~w[session_logs api_request_logs change_logs]
-    @cutoff "((clock_timestamp() AT TIME ZONE 'UTC')::date - 90)::timestamp AT TIME ZONE 'UTC'"
+    @cutoff "((clock_timestamp() AT TIME ZONE 'UTC')::date - 121)::timestamp AT TIME ZONE 'UTC'"
 
     def status do
       query!("SELECT to_jsonb(b) - 'context' FROM log_table_backfills b ORDER BY source_table").rows
@@ -114,6 +114,12 @@ defmodule Portal.LogTableMigration do
              [source]
            ).rows do
         [[context]] ->
+          unless String.contains?(context["function"], "::date - 121"),
+            do:
+              raise(
+                "#{source} needs the 121-day retention manual migration before backfill or cutover"
+              )
+
           shape = shape(source)
 
           unless shape == shape(mirror),
