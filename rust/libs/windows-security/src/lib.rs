@@ -13,26 +13,21 @@
 
 pub mod pipe_dacl;
 
-use anyhow::{Context as _, Result, bail, ensure};
-use std::{
-    ffi::{OsStr, c_void},
-    os::windows::ffi::OsStrExt,
-    path::Path,
-    ptr,
-};
+use anyhow::{Context as _, Result, ensure};
+use std::{ffi::OsStr, os::windows::ffi::OsStrExt, path::Path, ptr};
 use windows::{
     Win32::{
         Foundation::{ERROR_SUCCESS, HLOCAL, LocalFree},
         Security::{
-            ACCESS_ALLOWED_ACE, ACE_HEADER, ACL,
+            ACL,
             Authorization::{
-                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
-                GetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
+                ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
+                SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
-            DACL_SECURITY_INFORMATION, GetAce, GetSecurityDescriptorDacl, INHERIT_ONLY_ACE,
+            DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
             PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
         },
-        System::SystemServices::{ACCESS_ALLOWED_ACE_TYPE, ACCESS_DENIED_ACE_TYPE},
     },
     core::{BOOL, PCWSTR, PWSTR},
 };
@@ -150,19 +145,15 @@ impl Drop for SecurityDescriptor {
     }
 }
 
-/// Returns the SIDs (`S-1-…`) that the DACL of the named file or directory
-/// grants access to.
-///
-/// Fails if the DACL is NULL, which grants unrestricted access, or contains an
-/// ACE type other than plain allow or deny.
-pub fn allowed_sids_for_path(path: &Path) -> Result<Vec<String>> {
+/// Returns the DACL of the named file or directory in SDDL form, e.g.
+/// `D:PAI(A;;FA;;;SY)`.
+pub fn dacl_sddl_for_path(path: &Path) -> Result<String> {
     let path_wide = wide(path.as_os_str());
-    let mut dacl: *mut ACL = ptr::null_mut();
     let mut descriptor = PSECURITY_DESCRIPTOR::default();
 
-    // SAFETY: `path_wide` is null-terminated and the other arguments are valid
-    // out-pointers to local variables. On success, `descriptor` is set to a
-    // buffer that we release with `LocalFree` below and `dacl` points into it.
+    // SAFETY: `path_wide` is null-terminated and `&mut descriptor` is a valid
+    // out-pointer. On success, `descriptor` is set to a buffer that we release
+    // with `LocalFree` below.
     let err = unsafe {
         GetNamedSecurityInfoW(
             PCWSTR(path_wide.as_ptr()),
@@ -170,7 +161,7 @@ pub fn allowed_sids_for_path(path: &Path) -> Result<Vec<String>> {
             DACL_SECURITY_INFORMATION,
             None,
             None,
-            Some(&mut dacl),
+            None,
             None,
             &mut descriptor,
         )
@@ -181,58 +172,35 @@ pub fn allowed_sids_for_path(path: &Path) -> Result<Vec<String>> {
             .with_context(|| format!("Failed to get Windows DACL of `{}`", path.display()));
     }
 
-    // SAFETY: `dacl` is NULL or points into `descriptor`, which is still alive.
-    let sids = unsafe { allowed_sids(dacl) }
-        .with_context(|| format!("Failed to read Windows DACL of `{}`", path.display()));
+    let mut out = PWSTR(ptr::null_mut());
 
-    // SAFETY: `descriptor` was allocated by `GetNamedSecurityInfoW` and must be
-    // released with `LocalFree`. After this call no pointer derived from it is
-    // used.
+    // SAFETY: `descriptor` is a valid security descriptor and `&mut out` is a
+    // valid out-pointer. On success, Windows allocates `out` with `LocalAlloc`.
+    let converted = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            &mut out,
+            None,
+        )
+    };
+
+    let sddl = converted
+        .context("Failed to convert Windows security descriptor to SDDL")
+        .and_then(|()| {
+            // SAFETY: On success, `out` points to a null-terminated wide string.
+            unsafe { out.to_string() }.context("SDDL is not valid UTF-16")
+        });
+
+    // SAFETY: Both buffers were allocated by Windows with `LocalAlloc` (or are
+    // NULL) and no pointer derived from them is used after this.
     unsafe {
+        LocalFree(Some(HLOCAL(out.0.cast())));
         LocalFree(Some(HLOCAL(descriptor.0)));
     }
 
-    sids
-}
-
-/// # Safety
-///
-/// `dacl` must be NULL or point to a valid ACL.
-unsafe fn allowed_sids(dacl: *const ACL) -> Result<Vec<String>> {
-    ensure!(!dacl.is_null(), "DACL is NULL");
-
-    // SAFETY: `dacl` is non-NULL and points to a valid ACL.
-    let ace_count = unsafe { (*dacl).AceCount };
-    let mut sids = Vec::new();
-
-    for index in 0..u32::from(ace_count) {
-        let mut ace: *mut c_void = ptr::null_mut();
-
-        // SAFETY: `dacl` is a valid ACL and `index` is below its ACE count.
-        unsafe { GetAce(dacl, index, &mut ace) }.context("Failed to get ACE")?;
-
-        // SAFETY: Every ACE starts with an `ACE_HEADER`.
-        let header = unsafe { *ace.cast::<ACE_HEADER>() };
-
-        if u32::from(header.AceFlags) & INHERIT_ONLY_ACE.0 != 0 {
-            continue;
-        }
-
-        match u32::from(header.AceType) {
-            ACCESS_ALLOWED_ACE_TYPE => {
-                // SAFETY: The header marks this as an `ACCESS_ALLOWED_ACE`, whose
-                // SID starts at `SidStart`.
-                let sid =
-                    unsafe { ptr::addr_of_mut!((*ace.cast::<ACCESS_ALLOWED_ACE>()).SidStart) };
-
-                sids.push(sid_to_string(PSID(sid.cast()))?);
-            }
-            ACCESS_DENIED_ACE_TYPE => {}
-            other => bail!("Unsupported ACE type {other}"),
-        }
-    }
-
-    Ok(sids)
+    sddl
 }
 
 fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
@@ -325,17 +293,17 @@ mod tests {
     }
 
     #[test]
-    fn allowed_sids_for_path_skips_deny_aces() {
+    fn dacl_sddl_for_path_returns_applied_aces() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("token.txt");
         std::fs::write(&path, "").unwrap();
 
-        SecurityDescriptor::from_sddl("D:(D;;FA;;;AN)(A;;FA;;;WD)")
+        SecurityDescriptor::from_sddl(PERMISSIVE_SDDL)
             .unwrap()
             .apply_to_path(&path)
             .unwrap();
 
-        assert_eq!(allowed_sids_for_path(&path).unwrap(), ["S-1-1-0"]);
+        assert!(dacl_sddl_for_path(&path).unwrap().ends_with("(A;;FA;;;WD)"));
     }
 
     #[test]
