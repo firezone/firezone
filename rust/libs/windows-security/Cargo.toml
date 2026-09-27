@@ -17,6 +17,8 @@ features = [
     # `DeriveAppContainerSidFromAppContainerName` for the MSIX
     # package SID factory on `Trustee`.
     "Win32_Security_Isolation",
+    # `ACCESS_ALLOWED_ACE_TYPE` and `ACCESS_DENIED_ACE_TYPE`.
+    "Win32_System_SystemServices",
 ]
 
 [target.'cfg(windows)'.dev-dependencies]
