@@ -106,13 +106,6 @@ ignore = [
 
     "RUSTSEC-2024-0436", # paste, See #8387
 
-    # `rust-unic` crates are unmaintained but still pulled in via tauri.
-    "RUSTSEC-2025-0075",
-    "RUSTSEC-2025-0080",
-    "RUSTSEC-2025-0081",
-    "RUSTSEC-2025-0098",
-    "RUSTSEC-2025-0100",
-
     # `quick_xml` is coming in via `tauri-winrt-notification` and `tauri-utils` -> `plist`.
     # `tauri-winrt-notification` only uses the `escape` module and `plist` is apparently also not affected (https://github.com/ebarnard/rust-plist/issues/190)
     "RUSTSEC-2026-0194",
@@ -267,6 +260,7 @@ skip = [
     "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
     "crypto-common", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.2 vs 0.1 elsewhere).
     "digest", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.11 vs 0.10 elsewhere).
+    "dirs", # tauri 2.12 is on dirs 7; native-dialog 0.9 and the workspace are still on 6.
     "getrandom",
     "hashbrown",
     "heck",
@@ -295,11 +289,17 @@ skip = [
     "toml_edit",
     "webpki-roots",
     "which", # native-dialog 0.9 is still on which 7; aya-build and the workspace are on 8.
+    "windows", # tauri-plugin-opener 2.6 is still on windows 0.61; the rest of the tree is on 0.62.
+    "windows-collections", # See `windows`.
+    "windows-core", # See `windows`.
+    "windows-future", # See `windows`.
     "windows-link",
+    "windows-numerics", # See `windows`.
     "windows-result",
     "windows-strings",
     "windows-sys",
     "windows-targets",
+    "windows-threading", # See `windows`.
     "windows_x86_64_msvc",
     "winnow",
     "winreg",
