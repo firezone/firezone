@@ -21,7 +21,7 @@ defmodule Portal.LogTableMigration do
       |> Enum.map(fn [state] -> state end)
     end
 
-    def step(source, batch_size) when source in @sources and batch_size in 1..2000 do
+    def step(source, batch_size) when source in @sources and batch_size in 1..10_000 do
       transaction(source, fn ->
         if partitioned?(source) do
           :cutover

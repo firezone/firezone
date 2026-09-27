@@ -6,7 +6,8 @@ defmodule Portal.LogTableMigrationTest do
   alias Portal.Repo.Migrations.{
     CreateLogPartitionMirrors,
     AlignLogPartitionRetention,
-    PrepareLogTableCutover
+    PrepareLogTableCutover,
+    BackfillLogTables
   }
 
   alias Portal.Types.LogId
@@ -14,7 +15,8 @@ defmodule Portal.LogTableMigrationTest do
   for {module, file} <- [
         {CreateLogPartitionMirrors, "20260927000000_create_log_partition_mirrors.exs"},
         {AlignLogPartitionRetention, "20260927010000_align_log_partition_retention.exs"},
-        {PrepareLogTableCutover, "20260928000000_prepare_log_table_cutover.exs"}
+        {PrepareLogTableCutover, "20260928000000_prepare_log_table_cutover.exs"},
+        {BackfillLogTables, "20260928010000_backfill_log_tables.exs"}
       ] do
     unless Code.ensure_loaded?(module),
       do: Code.require_file("priv/repo/manual_migrations/" <> file)
@@ -346,16 +348,51 @@ defmodule Portal.LogTableMigrationTest do
     assert row["seq"] == later.seq
   end
 
-  test "worker resumes persisted batches and completes without cutting over" do
-    job = %Oban.Job{args: %{"batch_size" => 1}}
-    assert {:snooze, 1} = Portal.Workers.BackfillLogTables.perform(job)
+  test "manual migration resumes persisted batches and completes without cutting over", ctx do
+    for source <- @sources, do: assert(:progress = LogTableMigration.step(source, 1))
     assert Enum.all?(LogTableMigration.status(), &(&1["scanned_rows"] == 1))
-    for _ <- 1..8, do: Portal.Workers.BackfillLogTables.perform(job)
-    assert :ok = Portal.Workers.BackfillLogTables.perform(job)
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_928_010_000, BackfillLogTables,
+               prefix: ctx.schema,
+               log: false
+             )
+
     assert Enum.all?(LogTableMigration.status(), &(&1["phase"] == "ready"))
+    assert Enum.all?(LogTableMigration.status(), &(&1["scanned_rows"] == 1))
 
     assert [["r"]] =
              Repo.query!("SELECT relkind::text FROM pg_class WHERE oid = 'session_logs'::regclass").rows
+  end
+
+  test "failed manual backfill keeps committed progress and can be rerun", ctx do
+    [[definition]] =
+      Repo.query!("SELECT pg_get_functiondef('mirror_api_request_logs()'::regprocedure)").rows
+
+    Repo.query!(String.replace(definition, "::date - 121", "::date - 90"))
+
+    assert_raise RuntimeError, ~r/121-day retention manual migration/, fn ->
+      Ecto.Migrator.up(Repo, 20_260_928_010_000, BackfillLogTables, prefix: ctx.schema, log: false)
+    end
+
+    assert status("session_logs")["phase"] == "ready"
+    assert status("session_logs")["scanned_rows"] == 1
+
+    assert [[false]] =
+             Repo.query!(
+               "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = 20260928010000)"
+             ).rows
+
+    Repo.query!(definition)
+
+    assert :ok =
+             Ecto.Migrator.up(Repo, 20_260_928_010_000, BackfillLogTables,
+               prefix: ctx.schema,
+               log: false
+             )
+
+    assert Enum.all?(LogTableMigration.status(), &(&1["phase"] == "ready"))
+    assert Enum.all?(LogTableMigration.status(), &(&1["scanned_rows"] == 1))
   end
 
   defp with_locked_transaction(sql, fun) do

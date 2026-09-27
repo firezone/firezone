@@ -2,9 +2,8 @@ defmodule Portal.Repo.Migrations.PrepareLogTableCutover do
   use Ecto.Migration
 
   @moduledoc """
-  Prepares checkpoints only. Backfill and cutover are explicitly started after
-  deploying the compatible application and draining the previous release.
-  This does not copy data or rename a live table during release migration.
+  Prepares checkpoints for the following batched backfill migration.
+  This migration does not copy data or rename a live table.
   """
 
   def up do
