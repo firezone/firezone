@@ -10,7 +10,8 @@ defmodule Portal.Repo.Migrations.CreateLogPartitionMirrors do
   Run with Portal.Release.migrate(manual: true). Each DDL operation has a short
   lock timeout and commits separately; rerun after a lock timeout. Activation
   and its coverage timestamp commit together, only after every partition and
-  constraint is ready. Existing activation timestamps are never reset.
+  constraint is ready. Coverage timestamps survive ordinary reruns, but reset
+  when a missing trigger is recreated because its coverage was interrupted.
   """
 
   @disable_ddl_transaction true
@@ -112,7 +113,15 @@ defmodule Portal.Repo.Migrations.CreateLogPartitionMirrors do
                        WHERE tgrelid = '#{source}'::regclass AND tgname = 'mirror_partitioned_logs') THEN
           CREATE TRIGGER mirror_partitioned_logs AFTER INSERT OR UPDATE OR DELETE ON #{source}
             FOR EACH ROW EXECUTE FUNCTION mirror_#{source}();
-          INSERT INTO log_partition_mirrors (source_table) VALUES ('#{source}');
+          -- A surviving marker cannot prove coverage while the trigger was
+          -- missing. Start a new window when recreating the trigger.
+          INSERT INTO log_partition_mirrors (source_table) VALUES ('#{source}')
+            ON CONFLICT (source_table) DO UPDATE SET started_at = EXCLUDED.started_at;
+        ELSE
+          -- Repair a missing marker conservatively, without moving the start
+          -- of an intact stream's coverage window on an ordinary rerun.
+          INSERT INTO log_partition_mirrors (source_table) VALUES ('#{source}')
+            ON CONFLICT (source_table) DO NOTHING;
         END IF;
       END $$
       """)

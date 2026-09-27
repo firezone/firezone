@@ -30,8 +30,10 @@ together. MCP updates and account-deletion cascades are mirrored too.
 
 Each DDL operation commits separately and uses a one-second `lock_timeout`.
 If it cannot acquire a lock, rerun the migration after investigating the
-blocker. Completed setup is reused; already-activated streams continue
-mirroring and their coverage timestamps are preserved. There is no historical
+blocker. Completed setup is reused; intact streams continue mirroring and their
+coverage timestamps are preserved. If a trigger is missing, recreating it resets
+the coverage timestamp. If only the marker is missing, it is inserted with the
+current time to start a conservative coverage window. There is no historical
 scan, index build on an existing log table, or data copy during activation.
 
 Check activation in PostgreSQL:
