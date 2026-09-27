@@ -5290,16 +5290,19 @@
         "properties": {
           "actor_email": {
             "description": "Email address of the actor, if any.",
+            "example": "admin@example.com",
             "nullable": true,
             "type": "string"
           },
           "actor_id": {
-            "description": "Identifier of the actor that signed in.",
+            "description": "Identifier of the actor that initiated the action.",
+            "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "actor_name": {
             "description": "Display name of the actor.",
+            "example": "Admin User",
             "type": "string"
           },
           "actor_type": {
@@ -5310,10 +5313,42 @@
               "service_account",
               "api_client"
             ],
+            "example": "account_admin_user",
+            "type": "string"
+          },
+          "attested_at": {
+            "description": "When the device last attested, snapshotted for this subject. Does not imply the current connection attested. Omitted when absent.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "attested_cert_fingerprint": {
+            "description": "Certificate fingerprint from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_cert_issuer": {
+            "description": "Base64-encoded DER X.509 issuer Name from the device's last attestation. Omitted when absent.",
+            "format": "byte",
+            "type": "string"
+          },
+          "attested_cert_serial": {
+            "description": "Certificate serial from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_device_serial": {
+            "description": "Device serial from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_device_uuid": {
+            "description": "Device UUID from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_mdm_device_id": {
+            "description": "MDM device ID from the device's last attestation. Omitted when absent.",
             "type": "string"
           },
           "auth_provider_id": {
             "description": "Identifier of the authentication provider that authenticated the actor.",
+            "example": "98776234-1234-5678-9012-345678901234",
             "format": "uuid",
             "nullable": true,
             "type": "string"
@@ -5325,27 +5360,32 @@
             "type": "string"
           },
           "ip": {
-            "description": "IP address the session came from.",
+            "description": "IP address the action originated from.",
+            "example": "1.2.3.4",
             "nullable": true,
             "type": "string"
           },
           "ip_city": {
             "description": "Geo-located city for `ip`, if known.",
+            "example": "San Francisco",
             "nullable": true,
             "type": "string"
           },
           "ip_lat": {
             "description": "Geo-located latitude for `ip`, if known.",
+            "example": 37.7749,
             "nullable": true,
             "type": "number"
           },
           "ip_lon": {
             "description": "Geo-located longitude for `ip`, if known.",
+            "example": -122.4194,
             "nullable": true,
             "type": "number"
           },
           "ip_region": {
             "description": "Geo-located region for `ip`, if known.",
+            "example": "California",
             "nullable": true,
             "type": "string"
           },
@@ -5356,7 +5396,8 @@
             "type": "string"
           },
           "user_agent": {
-            "description": "User agent reported by the Client.",
+            "description": "User agent of the client that initiated the action.",
+            "example": "Mozilla/5.0",
             "nullable": true,
             "type": "string"
           }
@@ -6919,6 +6960,36 @@
               "api_client"
             ],
             "example": "account_admin_user",
+            "type": "string"
+          },
+          "attested_at": {
+            "description": "When the device last attested, snapshotted for this subject. Does not imply the current connection attested. Omitted when absent.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "attested_cert_fingerprint": {
+            "description": "Certificate fingerprint from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_cert_issuer": {
+            "description": "Base64-encoded DER X.509 issuer Name from the device's last attestation. Omitted when absent.",
+            "format": "byte",
+            "type": "string"
+          },
+          "attested_cert_serial": {
+            "description": "Certificate serial from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_device_serial": {
+            "description": "Device serial from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_device_uuid": {
+            "description": "Device UUID from the device's last attestation. Omitted when absent.",
+            "type": "string"
+          },
+          "attested_mdm_device_id": {
+            "description": "MDM device ID from the device's last attestation. Omitted when absent.",
             "type": "string"
           },
           "auth_provider_id": {

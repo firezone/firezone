@@ -345,7 +345,7 @@ defmodule PortalAPI.Client.Socket do
 
   defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
-    |> assign(:subject, subject)
+    |> assign(:subject, Authentication.Subject.with_device(subject, client))
     |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
     |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
@@ -594,6 +594,8 @@ defmodule PortalAPI.Client.Socket do
     # A concurrent first connect of two same-named devices can race for a slug, so a
     # unique violation on it is retried with a fresh probe.
     defp insert_with_slug(changeset, subject, attempt \\ 1) do
+      subject = Authentication.Subject.with_device(subject, Ecto.Changeset.apply_changes(changeset))
+
       changeset
       |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Safe.scoped(subject)
