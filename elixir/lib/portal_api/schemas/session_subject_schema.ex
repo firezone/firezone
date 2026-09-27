@@ -19,68 +19,21 @@ defmodule PortalAPI.Schemas.SessionSubject do
       A `Subject` plus the Client and token the session was established with.
       """,
       type: :object,
-      properties: %{
-        actor_id: %Schema{
-          type: :string,
-          format: :uuid,
-          description: "Identifier of the actor that signed in."
-        },
-        actor_name: %Schema{type: :string, description: "Display name of the actor."},
-        actor_email: %Schema{
-          type: :string,
-          nullable: true,
-          description: "Email address of the actor, if any."
-        },
-        actor_type: %Schema{
-          type: :string,
-          enum: ["account_user", "account_admin_user", "service_account", "api_client"],
-          description: "Type of the actor."
-        },
-        auth_provider_id: %Schema{
-          type: :string,
-          format: :uuid,
-          nullable: true,
-          description: "Identifier of the authentication provider that authenticated the actor."
-        },
-        device_id: %Schema{
-          type: :string,
-          format: :uuid,
-          nullable: true,
-          description: "Identifier of the Client the session was established from."
-        },
-        token_id: %Schema{
-          type: :string,
-          format: :uuid,
-          nullable: true,
-          description: "Identifier of the Client token the session was established with."
-        },
-        ip: %Schema{type: :string, nullable: true, description: "IP address the session came from."},
-        ip_region: %Schema{
-          type: :string,
-          nullable: true,
-          description: "Geo-located region for `ip`, if known."
-        },
-        ip_city: %Schema{
-          type: :string,
-          nullable: true,
-          description: "Geo-located city for `ip`, if known."
-        },
-        ip_lat: %Schema{
-          type: :number,
-          nullable: true,
-          description: "Geo-located latitude for `ip`, if known."
-        },
-        ip_lon: %Schema{
-          type: :number,
-          nullable: true,
-          description: "Geo-located longitude for `ip`, if known."
-        },
-        user_agent: %Schema{
-          type: :string,
-          nullable: true,
-          description: "User agent reported by the Client."
-        }
-      },
+      properties:
+        Map.merge(PortalAPI.Schemas.Subject.schema().properties, %{
+          device_id: %Schema{
+            type: :string,
+            format: :uuid,
+            nullable: true,
+            description: "Identifier of the Client the session was established from."
+          },
+          token_id: %Schema{
+            type: :string,
+            format: :uuid,
+            nullable: true,
+            description: "Identifier of the Client token the session was established with."
+          }
+        }),
       required: [
         :actor_id,
         :actor_name,

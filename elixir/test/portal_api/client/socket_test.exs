@@ -522,6 +522,12 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.client.attested?
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
+
+      subject = Portal.Authentication.Subject.to_map(socket.assigns.subject)
+      assert subject.attested_device_serial == "C02XK1ZGJGH5"
+      assert subject.attested_cert_fingerprint == socket.assigns.client.last_attested_cert_fingerprint
+      assert subject.attested_cert_issuer == Base.encode64(socket.assigns.client.last_attested_cert_issuer)
+      assert subject.attested_at == DateTime.to_iso8601(socket.assigns.client.last_attested_at)
     end
   end
 

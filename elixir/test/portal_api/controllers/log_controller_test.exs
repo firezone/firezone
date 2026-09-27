@@ -72,7 +72,7 @@ defmodule PortalAPI.LogControllerTest do
           operation: :update,
           before: %{"name" => "Jane Doe"},
           after: %{"name" => "Jane Smith"},
-          subject: %{"actor_id" => Ecto.UUID.generate()}
+          subject: %{"actor_id" => Ecto.UUID.generate(), "attested_device_serial" => "SERIAL"}
         )
 
       conn =

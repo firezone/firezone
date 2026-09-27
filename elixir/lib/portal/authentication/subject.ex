@@ -9,7 +9,8 @@ defmodule Portal.Authentication.Subject do
           account: %Portal.Account{},
           credential: Credential.t(),
           expires_at: DateTime.t(),
-          context: Context.t()
+          context: Context.t(),
+          attestation: map()
         }
 
   @enforce_keys [:actor, :account, :credential, :expires_at, :context]
@@ -17,7 +18,37 @@ defmodule Portal.Authentication.Subject do
             account: nil,
             credential: nil,
             expires_at: nil,
-            context: nil
+            context: nil,
+            attestation: %{}
+
+  @attestation_fields [
+    last_attested_device_serial: :attested_device_serial,
+    last_attested_device_uuid: :attested_device_uuid,
+    last_attested_mdm_device_id: :attested_mdm_device_id,
+    last_attested_cert_serial: :attested_cert_serial,
+    last_attested_cert_fingerprint: :attested_cert_fingerprint,
+    last_attested_cert_issuer: :attested_cert_issuer,
+    last_attested_at: :attested_at
+  ]
+
+  @doc "Snapshots the device's last attestation, omitting absent fields."
+  @spec with_device(t(), Portal.Device.t()) :: t()
+  def with_device(%__MODULE__{} = subject, %Portal.Device{} = device) do
+    attestation =
+      for {field, key} <- @attestation_fields,
+          value = Map.fetch!(device, field),
+          not is_nil(value),
+          into: %{} do
+        {key, encode_attestation(key, value)}
+      end
+
+    %{subject | attestation: attestation}
+  end
+
+  # The issuer is a DER-encoded X.509 Name and must be safe for JSON logs.
+  defp encode_attestation(:attested_cert_issuer, value), do: Base.encode64(value)
+  defp encode_attestation(:attested_at, value), do: DateTime.to_iso8601(value)
+  defp encode_attestation(_key, value), do: value
 
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{} = subject) do
@@ -34,6 +65,7 @@ defmodule Portal.Authentication.Subject do
       ip_lon: subject.context.remote_ip_location_lon,
       user_agent: subject.context.user_agent
     }
+    |> Map.merge(subject.attestation)
   end
 
   defp format_ip(nil), do: nil

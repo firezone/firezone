@@ -396,6 +396,23 @@ defmodule PortalAPI.Client.ChannelTest do
       assert persisted.last_seen_at
     end
 
+    test "session logs preserve the subject's attestation snapshot", %{client: client, subject: subject} do
+      subject = Portal.Authentication.Subject.with_device(subject, %{
+        client | last_attested_device_serial: "SERIAL", last_attested_cert_issuer: <<0, 255>>,
+          last_attested_at: ~U[2026-09-01 00:00:00Z]
+      })
+
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+      Portal.Queue.flush(:client_session_queue)
+
+      log = Portal.Repo.get_by!(Portal.SessionLog, account_id: client.account_id)
+      assert log.subject["attested_device_serial"] == "SERIAL"
+      assert log.subject["attested_cert_issuer"] == "AP8="
+      assert log.subject["attested_at"] == "2026-09-01T00:00:00Z"
+      refute Map.has_key?(log.subject, "attested_mdm_device_id")
+    end
+
     test "session_durability timer is cancelled by the queue's confirm message", %{
       client: client,
       subject: subject
