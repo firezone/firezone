@@ -1,13 +1,12 @@
-defmodule Portal.Workers.PartitionLogMirrors do
+defmodule Portal.Workers.PartitionLogTables do
   @moduledoc """
-  Maintains daily UTC partitions for the session, API request and change-log
-  mirrors. This worker does not switch reads or rename tables. Activation is a
-  manual migration; before activation it is a no-op, including during rollout.
+  Maintains daily UTC partitions for flow logs and the three log mirrors.
+  Flow logs retain their existing 121-day window; mirrors retain 90 days and
+  are skipped until manually activated. All streams get 14 days of lookahead.
 
-  Retains the full boundary day at 90 days and creates 14 days ahead. As with
-  flow logs, ATTACH and DETACH CONCURRENTLY allow ingestion to continue. A
-  session advisory lock serializes maintenance, and interrupted detach/drop
-  operations are resumed on the next run.
+  ATTACH and DETACH CONCURRENTLY allow ingestion to continue. Session advisory
+  locks serialize maintenance; interrupted detach/drop operations are resumed
+  on the next run. This worker does not backfill, switch reads, or rename tables.
   """
 
   use Oban.Worker,
@@ -21,9 +20,9 @@ defmodule Portal.Workers.PartitionLogMirrors do
 
   @impl Oban.Worker
   def perform(_job) do
-    for source <- ~w[session_logs api_request_logs change_logs] do
+    for source <- ~w[flow_logs session_logs api_request_logs change_logs] do
       result = Database.maintain(source)
-      Logger.info("Maintained log mirror partitions", source: source, result: inspect(result))
+      Logger.info("Maintained log table partitions", source: source, result: inspect(result))
     end
 
     :ok
@@ -32,8 +31,9 @@ defmodule Portal.Workers.PartitionLogMirrors do
   defmodule Database do
     alias Portal.Safe
 
-    @sources ~w[session_logs api_request_logs change_logs]
-    @owner "Portal.Workers.PartitionLogMirrors"
+    @sources ~w[flow_logs session_logs api_request_logs change_logs]
+    @owner "Portal.Workers.PartitionLogTables"
+    @legacy_owner "Portal.Workers.PartitionLogMirrors"
 
     def maintain(source, today \\ Date.utc_today()) when source in @sources do
       Safe.unscoped()
@@ -46,6 +46,10 @@ defmodule Portal.Workers.PartitionLogMirrors do
       end)
     end
 
+    defp activated?("flow_logs") do
+      query!("SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('flow_logs'))").rows == [[true]]
+    end
+
     defp activated?(source) do
       case query!("SELECT to_regclass('log_partition_mirrors')").rows do
         [[nil]] -> false
@@ -54,7 +58,8 @@ defmodule Portal.Workers.PartitionLogMirrors do
     end
 
     defp maintain_locked(source, today) do
-      parent = source <> "_partitioned"
+      config = table_config(source)
+      parent = config.parent
 
       case query!("SELECT pg_try_advisory_lock(hashtextextended(current_schema() || '.' || $1, 0))", [parent]).rows do
         [[false]] ->
@@ -65,7 +70,7 @@ defmodule Portal.Workers.PartitionLogMirrors do
 
           try do
             query!("SELECT set_config('lock_timeout', '1s', false)")
-            maintain_partitions(parent, source, today)
+            maintain_partitions(config, today)
           after
             query!("SELECT set_config('lock_timeout', $1, false)", [old_timeout])
             query!("SELECT pg_advisory_unlock(hashtextextended(current_schema() || '.' || $1, 0))", [parent])
@@ -73,8 +78,22 @@ defmodule Portal.Workers.PartitionLogMirrors do
       end
     end
 
-    defp maintain_partitions(parent, source, today) do
-      cutoff = Date.add(today, -90)
+    # Preserve the established flow retention and creation window. Mirrors
+    # also need historical partitions for delayed WAL and the future backfill.
+    defp table_config("flow_logs"),
+      do: %{parent: "flow_logs", timestamp: "flow_start", retention_days: 121, history_days: 1}
+
+    defp table_config(source),
+      do: %{
+        parent: source <> "_partitioned",
+        timestamp: if(source == "api_request_logs", do: "inserted_at", else: "timestamp"),
+        retention_days: 90,
+        history_days: 90
+      }
+
+    defp maintain_partitions(config, today) do
+      parent = config.parent
+      cutoff = Date.add(today, -config.retention_days)
       existing = partitions(parent)
 
       # A failed DETACH CONCURRENTLY can leave inhdetachpending set. Finish it
@@ -84,17 +103,19 @@ defmodule Portal.Workers.PartitionLogMirrors do
         existing
         |> Enum.filter(&(Date.compare(&1.date, cutoff) == :lt))
         |> Enum.sort_by(& &1.pending, :desc)
-      Enum.each(expired, &drop_partition(parent, &1))
 
       attached =
         existing
         |> Enum.filter(& &1.attached)
         |> MapSet.new(& &1.date)
 
-      wanted = Date.range(cutoff, Date.add(today, 14))
+      wanted = Date.range(Date.add(today, -config.history_days), Date.add(today, 14))
       missing = Enum.reject(wanted, &MapSet.member?(attached, &1))
-      timestamp = if source == "api_request_logs", do: "inserted_at", else: "timestamp"
-      Enum.each(missing, &create_partition(parent, timestamp, &1))
+      Enum.each(missing, &create_partition(parent, config.timestamp, &1))
+
+      # Keep extending the ingestion window even when a long-running reader
+      # prevents an expired partition from detaching on this run.
+      Enum.each(expired, &drop_partition(parent, &1))
 
       %{created: length(missing), dropped: length(expired)}
     end
@@ -123,6 +144,10 @@ defmodule Portal.Workers.PartitionLogMirrors do
     end
 
     defp drop_partition(parent, partition) do
+      # Existing flow partitions predate ownership comments. Mark them before
+      # detaching so an interrupted DROP is recoverable too.
+      query!("COMMENT ON TABLE #{partition.name} IS '#{@owner}'")
+
       cond do
         partition.pending ->
           query!("ALTER TABLE #{parent} DETACH PARTITION #{partition.name} FINALIZE")
@@ -144,9 +169,9 @@ defmodule Portal.Workers.PartitionLogMirrors do
       JOIN pg_namespace n ON n.oid = c.relnamespace
       LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
       WHERE n.nspname = current_schema() AND c.relkind = 'r'
-        AND obj_description(c.oid, 'pg_class') = $2
-        AND (i.inhparent = $1::text::regclass OR i.inhparent IS NULL)
-      """, [parent, @owner]).rows
+        AND (i.inhparent = $1::text::regclass
+             OR (i.inhparent IS NULL AND obj_description(c.oid, 'pg_class') = ANY($2::text[])))
+      """, [parent, [@owner, @legacy_owner]]).rows
       |> Enum.flat_map(fn [name, attached, pending] ->
         case partition_date(name, parent) do
           {:ok, date} -> [%{name: name, date: date, attached: attached, pending: pending}]

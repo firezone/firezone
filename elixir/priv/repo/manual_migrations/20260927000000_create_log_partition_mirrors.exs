@@ -70,7 +70,7 @@ defmodule Portal.Repo.Migrations.CreateLogPartitionMirrors do
           FOR VALUES FROM ('#{lower}') TO ('#{upper}')
         """)
 
-        ddl("COMMENT ON TABLE #{name} IS 'Portal.Workers.PartitionLogMirrors'")
+        ddl("COMMENT ON TABLE #{name} IS 'Portal.Workers.PartitionLogTables'")
       end
 
       ddl("""

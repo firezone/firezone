@@ -389,11 +389,8 @@ if config_env() == :prod do
     # Delete old change_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
 
-    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
-    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
-
-    # Maintain activated log mirrors; reads remain on the legacy tables
-    {"45 3 * * *", Portal.Workers.PartitionLogMirrors},
+    # Maintain flow logs and activated mirrors (pre-create upcoming, drop expired)
+    {"30 3 * * *", Portal.Workers.PartitionLogTables},
 
     # Delete old session_logs every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},

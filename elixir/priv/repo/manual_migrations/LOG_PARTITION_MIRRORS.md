@@ -55,7 +55,8 @@ write rather than silently creating a coverage gap.
 
 ## Retention and coverage
 
-`Portal.Workers.PartitionLogMirrors` runs daily at 03:45 UTC. It maintains the
+`Portal.Workers.PartitionLogTables` runs daily at 03:30 UTC. It also maintains
+flow logs with their existing 121-day retention window. For mirrors, it maintains the
 90-day boundary through 14 days ahead using ATTACH and DETACH CONCURRENTLY,
 recovers interrupted detach/drop operations, and serializes runs with an
 advisory lock. It does not run cutover. The full UTC boundary day is retained;

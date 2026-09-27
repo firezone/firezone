@@ -1,4 +1,4 @@
-defmodule Portal.Workers.PartitionLogMirrorsRetentionTest do
+defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   # DETACH CONCURRENTLY cannot run in the SQL sandbox transaction. These tests
   # use committed DDL on empty, expired partitions and clean up explicitly.
   use ExUnit.Case, async: true
@@ -6,14 +6,30 @@ defmodule Portal.Workers.PartitionLogMirrorsRetentionTest do
   import Portal.LogPartitionMirrorFixtures
 
   alias Portal.Repo
-  alias Portal.Workers.PartitionLogMirrors.Database
+  alias Portal.Workers.PartitionLogTables.Database
 
   @parent "session_logs_partitioned"
-  @owner "Portal.Workers.PartitionLogMirrors"
+  @owner "Portal.Workers.PartitionLogTables"
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
     :ok
+  end
+
+  test "flow logs retain 121 days and expired legacy partitions need no ownership marker" do
+    with_mirror_schema("flow_logs", fn _schema ->
+      date = Date.add(Date.utc_today(), -122)
+      name = "flow_logs_" <> Calendar.strftime(date, "%Y%m%d")
+      lower = Date.to_iso8601(date) <> " 00:00:00+00"
+      upper = Date.to_iso8601(Date.add(date, 1)) <> " 00:00:00+00"
+      Repo.query!("CREATE TABLE #{name} PARTITION OF flow_logs FOR VALUES FROM ('#{lower}') TO ('#{upper}')")
+
+      assert Database.maintain("flow_logs") == %{created: 0, dropped: 1}
+      assert Repo.query!("SELECT to_regclass($1)", [name]).rows == [[nil]]
+      boundary = "flow_logs_" <> Calendar.strftime(Date.add(Date.utc_today(), -121), "%Y%m%d")
+      assert [[oid]] = Repo.query!("SELECT to_regclass($1)", [boundary]).rows
+      assert is_integer(oid)
+    end)
   end
 
   test "drops expired partitions concurrently and retains the boundary day" do
