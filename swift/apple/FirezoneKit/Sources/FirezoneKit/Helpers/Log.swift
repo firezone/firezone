@@ -197,7 +197,11 @@ public final class Log {
     guard let directory = directory
     else { return }
 
-    try FileManager.default.removeItem(at: directory)
+    let fileManager = FileManager.default
+    let items = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    for item in items {
+      try fileManager.removeItem(at: item)
+    }
   }
 
   private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
