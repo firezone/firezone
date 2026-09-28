@@ -775,7 +775,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-attributes",
  "otel-instruments",
  "packet-coalescer",
@@ -979,7 +979,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "crossbeam-queue",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry_sdk",
  "otel-instruments",
  "tokio",
@@ -1338,7 +1338,7 @@ dependencies = [
  "libc",
  "logging",
  "mimalloc",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "oslog",
  "otel-attributes",
  "otel-instruments",
@@ -1395,7 +1395,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "logging",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-attributes",
  "otel-instruments",
  "parking_lot",
@@ -2405,7 +2405,7 @@ dependencies = [
 name = "eventloop-budget"
 version = "0.1.0"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-instruments",
 ]
 
@@ -2530,7 +2530,7 @@ dependencies = [
  "logging",
  "mimalloc",
  "nix 0.31.3",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
@@ -2593,7 +2593,7 @@ dependencies = [
  "mimalloc",
  "native-dialog",
  "nix 0.31.3",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -2661,7 +2661,7 @@ dependencies = [
  "logging",
  "mimalloc",
  "nix 0.31.3",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
@@ -2731,7 +2731,7 @@ dependencies = [
  "logging",
  "mimalloc",
  "mio",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "phoenix-channel",
@@ -5452,30 +5452,44 @@ dependencies = [
  "js-sys",
  "pin-project-lite",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "opentelemetry"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cdb0b1b267eb9db3331b434ed9ddab10d50e280a9adf9d13e5233e2002b61b5"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "js-sys",
+ "pin-project-lite",
+ "thiserror 2.0.21",
  "tracing",
 ]
 
 [[package]]
 name = "opentelemetry-http"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5683015d09e2df236ef005b17f6f196f0d5f6313c4fa43a7b6a53b52776e4331"
+checksum = "ee2c3625b8aa04209f7e01e513bc8044da9687fa38a9eacf59628ca5f3b87300"
 dependencies = [
  "async-trait",
  "bytes",
  "http",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "reqwest",
 ]
 
 [[package]]
 name = "opentelemetry-otlp"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9966929966d17620d7c316c643ba62631826e10021409357772d5eea84f62c35"
+checksum = "699a67345e21962a231955b9059a157e428b219fa5df8efe11f08346fb23a344"
 dependencies = [
  "http",
- "opentelemetry",
+ "httpdate",
+ "opentelemetry 0.33.0",
  "opentelemetry-http",
  "opentelemetry-proto",
  "opentelemetry_sdk",
@@ -5489,11 +5503,11 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-proto"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
+checksum = "25da1ac11a0aeccf38d7f77ee0348715adaf8340f65ad46c94a02c6b20e2f65d"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry_sdk",
  "prost",
  "tonic",
@@ -5502,25 +5516,25 @@ dependencies = [
 
 [[package]]
 name = "opentelemetry-stdout"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1b1c6a247d79091f0062a5f4bd058589525cf987a8d4c169440d9c1be72f0ad"
+checksum = "9f71803f481d3f5ccbe477edb42a78f473613712b2327835911a9ea0ab069824"
 dependencies = [
  "chrono",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry_sdk",
 ]
 
 [[package]]
 name = "opentelemetry_sdk"
-version = "0.32.1"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b59f80e1ac4d5ff7a2db8fb6c80badb7f0f3f858211fba08dd9aaec750894f9"
+checksum = "cb39533d9d1c912123efd7d41d7e0c29d16917b60ce15b4c8d87cb1af7f67520"
 dependencies = [
  "futures-channel",
  "futures-executor",
  "futures-util",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "percent-encoding",
  "portable-atomic",
  "rand 0.9.4",
@@ -5576,7 +5590,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "ip-packet",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "thiserror 2.0.21",
  "tokio-tungstenite",
  "uuid",
@@ -5586,7 +5600,7 @@ dependencies = [
 name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "tokio",
 ]
 
@@ -6341,7 +6355,7 @@ dependencies = [
  "hex",
  "logging",
  "once_cell",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "proptest",
  "rand 0.10.3",
  "secrecy",
@@ -7264,7 +7278,7 @@ dependencies = [
  "is",
  "itertools 0.15.0",
  "logging",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-attributes",
  "otel-instruments",
  "path-agent",
@@ -7287,7 +7301,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "memchr",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-instruments",
  "parking_lot",
  "quinn-udp",
@@ -8050,7 +8064,7 @@ dependencies = [
  "http",
  "http-client",
  "moka",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "opentelemetry_sdk",
  "parking_lot",
  "rand 0.10.3",
@@ -8075,7 +8089,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
  "windows-sys 0.52.0",
@@ -8635,7 +8649,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adbc64cba7137545b8044cb1fe9814f7aacf3c6b5f9b45be8bb5db538befdb26"
 dependencies = [
  "js-sys",
- "opentelemetry",
+ "opentelemetry 0.32.0",
  "smallvec",
  "tracing",
  "tracing-core",
@@ -8733,7 +8747,7 @@ dependencies = [
  "ingot",
  "ip-packet",
  "libc",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-instruments",
  "packet-coalescer",
  "smallvec",
@@ -8777,7 +8791,7 @@ dependencies = [
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "logging",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-instruments",
  "rand 0.10.3",
  "rustls",
@@ -8825,7 +8839,7 @@ dependencies = [
  "l3-udp-dns-client",
  "logging",
  "lru",
- "opentelemetry",
+ "opentelemetry 0.33.0",
  "otel-attributes",
  "otel-instruments",
  "proptest",
