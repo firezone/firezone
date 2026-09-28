@@ -276,7 +276,6 @@ skip = [
     "toml_edit",
     "webpki-roots",
     "which", # native-dialog 0.9 is still on which 7; aya-build and the workspace are on 8.
-    "windows-link",
     "windows-sys",
     "windows-targets",
     "windows_x86_64_msvc",
