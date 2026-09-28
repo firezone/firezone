@@ -1169,6 +1169,8 @@ impl ClientState {
 
         // A peer that reset, e.g. after roaming, comes back with a new key and without its
         // inbound authorizations for us.
+        // TODO: Remove once all connections are ICE-less. Those keep their key across roams,
+        // and a restart is unlikely to happen within the peer's disconnect timeout.
         if self
             .node
             .remote_public_key(&ClientOrGatewayId::Client(cid))
