@@ -46,7 +46,9 @@ defmodule Portal.APIRequestLog do
     field :ip_lat, :float
     field :ip_lon, :float
 
-    field :inserted_at, :utc_datetime_usec, read_after_writes: true
+    # Include the immutable partition key in UPDATE/DELETE predicates. This
+    # works on the legacy table too, before the partitioned mirror is cut over.
+    field :inserted_at, :utc_datetime_usec, primary_key: true, read_after_writes: true
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
@@ -65,6 +67,7 @@ defmodule Portal.APIRequestLog do
     |> validate_length(:request_id, max: 255)
     |> validate_length(:ip_region, max: 255)
     |> validate_length(:ip_city, max: 255)
-    |> assoc_constraint(:account)
+    # Partition children retain their mirror-era FK names after parent cutover.
+    |> assoc_constraint(:account, name: :account_id_fkey, match: :suffix)
   end
 end

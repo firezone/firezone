@@ -7,7 +7,7 @@ defmodule PortalAPI.Plugs.MCPRateLimitTest do
     unique = System.unique_integer([:positive])
     first_ip = {198, 51, rem(unique, 250), 1}
     second_ip = {198, 51, rem(unique, 250), 2}
-    opts = MCPRateLimit.init(refill_rate: 0, capacity: 1)
+    opts = MCPRateLimit.init(refill_rate: 1, capacity: 1)
 
     first = Plug.Test.conn(:post, "/mcp") |> Map.put(:remote_ip, first_ip)
     second = Plug.Test.conn(:post, "/mcp") |> Map.put(:remote_ip, second_ip)

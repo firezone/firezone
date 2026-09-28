@@ -4,6 +4,15 @@ $BINARY_NAME = "$PACKAGE_NAME.exe"
 $TOKEN = "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 $TOKEN_PATH = "token"
 
+# Restrict the file to SYSTEM and BUILTIN\Administrators.
+function Set-TokenAcl($Path) {
+    icacls $Path /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to restrict ACL of $Path."
+        exit 1
+    }
+}
+
 # Build the binary using cargo.
 cargo build --manifest-path rust/Cargo.toml -p $PACKAGE_NAME
 if ($LASTEXITCODE -ne 0) {
@@ -52,6 +61,7 @@ if ($LASTEXITCODE -eq 0) {
 # -------------------------------------------------------------------
 # Create the token file (similar to 'touch').
 New-Item -Path $TOKEN_PATH -ItemType File -Force | Out-Null
+Set-TokenAcl $TOKEN_PATH
 
 # Write the token to the file without adding a newline.
 [System.IO.File]::WriteAllText($TOKEN_PATH, $TOKEN)
@@ -75,8 +85,12 @@ if ($LASTEXITCODE -ne 0) {
 # -------------------------------------------------------------------
 # Move the token file to the default path.
 $defaultTokenDir = "$env:PROGRAMDATA\dev.firezone.client"
+$defaultTokenPath = "$defaultTokenDir\token.txt"
 New-Item -ItemType Directory -Path $defaultTokenDir -Force | Out-Null
-Move-Item -Path $TOKEN_PATH -Destination "$defaultTokenDir\token.txt" -Force
+Move-Item -Path $TOKEN_PATH -Destination $defaultTokenPath -Force
+
+# A move across volumes may not preserve the ACL.
+Set-TokenAcl $defaultTokenPath
 
 # Show the contents of the default token directory.
 Get-ChildItem -Path $defaultTokenDir
@@ -90,9 +104,18 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # -------------------------------------------------------------------
-# Test 7: Fails because the user is not allowed to read the token
-# TODO: Implement this test. Requires implementing the check_token_permissions
-# function in rust/headless-client/src/windows.rs
+# Test 7: Fails because BUILTIN\Users are allowed to read the token.
+icacls $defaultTokenPath /grant "*S-1-5-32-545:R" | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to grant BUILTIN\Users read access to $defaultTokenPath."
+    exit 1
+}
+
+& ".\$BINARY_NAME" --check standalone
+if ($LASTEXITCODE -eq 0) {
+    Write-Error "Test 7: Expected failure when the token file is readable by users."
+    exit 1
+}
 
 # Redundant exit with success.
 exit 0

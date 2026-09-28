@@ -80,17 +80,6 @@ defmodule PortalWeb.Settings.DevicePosture do
   @sentinelone_verification_fields ~w[management_url api_token]a
 
   def mount(_params, _session, socket) do
-    if PortalWeb.NavigationComponents.device_posture_enabled?() do
-      mount_enabled(socket)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, @feature_disabled)
-       |> push_navigate(to: ~p"/#{socket.assigns.account}/settings/account")}
-    end
-  end
-
-  defp mount_enabled(socket) do
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :posture_providers)
     end
@@ -99,7 +88,6 @@ defmodule PortalWeb.Settings.DevicePosture do
      socket
      |> assign(
        page_title: "Device Posture",
-       device_posture_enabled?: true,
        type: nil,
        provider: nil,
        form: nil,
@@ -109,6 +97,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        verifying: false,
        open_provider_actions_id: nil,
        coming_soon_providers: @coming_soon_providers,
+       feedback_enabled?: PostureProviderInterestEmail.enabled?(),
        feedback_max_length: @feedback_max_length,
        interest_provider: nil,
        feedback_sent?: false,
@@ -186,6 +175,12 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
 
+  def handle_event(event, _params, socket)
+      when event in ["register_interest", "submit_interest_feedback"] and
+             not socket.assigns.feedback_enabled? do
+    {:noreply, socket}
+  end
+
   def handle_event("register_interest", %{"provider" => type}, socket)
       when type in @coming_soon_types do
     if account_feature_enabled?(socket) do
@@ -233,7 +228,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     feedback = String.trim(feedback)
 
     cond do
-      not account_feature_enabled?(socket) ->
+      Database.ensure_enabled(socket.assigns.subject) != :ok ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
 
       feedback == "" ->
@@ -444,7 +439,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     provider = Enum.find(socket.assigns.providers, &(&1.id == id))
 
     cond do
-      not account_feature_enabled?(socket) ->
+      Database.ensure_enabled(socket.assigns.subject) != :ok ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
 
       is_nil(provider) ->
@@ -646,7 +641,6 @@ defmodule PortalWeb.Settings.DevicePosture do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.device_posture_enabled?(@account) do %>
@@ -820,6 +814,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                 <button
                   id={"register-interest-#{provider.type}"}
                   type="button"
+                  disabled={not @feedback_enabled?}
                   phx-click="register_interest"
                   phx-value-provider={provider.type}
                   class={select_type_classes()}
@@ -878,7 +873,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               </div>
 
               <form
-                :if={not @feedback_sent?}
+                :if={@feedback_enabled? and not @feedback_sent?}
                 id="posture-provider-feedback-form"
                 phx-submit="submit_interest_feedback"
                 class="mt-6 space-y-3"
@@ -963,7 +958,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   attr :account, :any, required: true
 
-  # Shown when the feature is on globally but not for this account, matching the
+  # Shown when the account lacks the feature, matching the
   # log sinks upgrade page: a blurred sample of the real table under a card.
   defp upgrade_splash(assigns) do
     ~H"""
@@ -1050,13 +1045,13 @@ defmodule PortalWeb.Settings.DevicePosture do
 
         <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
           <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-            <.icon name="ri-device-line" class="w-8 h-8" />
+            <.icon name="ri-shield-star-fill" class="w-8 h-8" />
             <div class="flex flex-col items-center gap-1 text-center">
               <p class="text-sm font-medium text-heading">
-                Inventory Your Managed Devices
+                Device Posture
               </p>
               <p class="text-xs">
-                Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions
+                Restrict access to resources based on device telemetry provided by MDM and EDR solutions
               </p>
             </div>
             <.button
@@ -2122,12 +2117,12 @@ defmodule PortalWeb.Settings.DevicePosture do
       }
     end
 
-    # The last line of defence: the page is unreachable and its buttons are gone
+    # The last line of defence: the page shows an upgrade teaser
     # when the feature is off, but an already-open socket must not be able to
     # write either. The account is re-read rather than taken from the subject,
     # which holds whatever the features were when the socket mounted and would
     # keep answering yes for the life of a session opened before a downgrade.
-    defp ensure_enabled(subject) do
+    def ensure_enabled(subject) do
       account =
         from(a in Portal.Account, where: a.id == ^subject.account.id)
         |> Safe.unscoped()

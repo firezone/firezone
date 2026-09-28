@@ -46,8 +46,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
-        page_title: "Directory Sync",
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        page_title: "Directory Sync"
       )
 
     if connected?(socket) do
@@ -610,7 +609,6 @@ defmodule PortalWeb.Settings.DirectorySync do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>

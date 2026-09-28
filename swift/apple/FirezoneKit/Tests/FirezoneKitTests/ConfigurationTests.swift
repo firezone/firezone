@@ -687,4 +687,13 @@ struct ProviderMessageCodableTests {
       Issue.record("Expected .setInternetResourceEnabled, got \(decoded)")
     }
   }
+
+  @Test("Unknown message type fails to decode")
+  func unknownTypeFailsToDecode() throws {
+    let data = try encoder.encode(["type": "getResourceList"])
+
+    #expect(throws: DecodingError.self) {
+      try decoder.decode(ProviderMessage.self, from: data)
+    }
+  }
 }

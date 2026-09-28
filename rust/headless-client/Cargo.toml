@@ -46,5 +46,8 @@ mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynam
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-security = { workspace = true }
+
 [lints]
 workspace = true

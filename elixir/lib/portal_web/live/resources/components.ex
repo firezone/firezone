@@ -844,6 +844,7 @@ defmodule PortalWeb.Resources.Components do
     [
       Portal.Types.INET.to_string(device.ipv4),
       Portal.Types.INET.to_string(device.ipv6),
+      Portal.Device.fqdn(device),
       device.device_serial,
       device.device_uuid,
       device.id
@@ -999,10 +1000,10 @@ defmodule PortalWeb.Resources.Components do
               {@resource.address}
             </p>
             <p
-              :if={@resource.type == :device_pool and not lists_devices?(@resource)}
-              class="font-mono text-xs text-subtle mt-0.5 truncate"
+              :if={@resource.type == :device_pool}
+              class="text-xs italic text-subtle mt-0.5 truncate"
             >
-              &lt;slug&gt;.{Portal.Device.domain()}
+              Multiple Addresses
             </p>
           </div>
           <%!-- Right: actions --%>
@@ -1264,6 +1265,15 @@ defmodule PortalWeb.Resources.Components do
                         class="flex items-start gap-1.5 text-heading font-mono break-all"
                       >
                         {device.ipv6}
+                      </.copy>
+                    </div>
+                    <div :if={device.slug}>
+                      <p class="text-subtle font-medium mb-1">Tunnel DNS Name</p>
+                      <.copy
+                        id={"pool-member-#{device.id}-detail-dns-name"}
+                        class="flex items-start gap-1.5 text-heading font-mono break-all"
+                      >
+                        {Portal.Device.fqdn(device)}
                       </.copy>
                     </div>
                     <div :if={device.last_seen_at}>
@@ -1585,78 +1595,77 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </div>
           <div class="border-t border-border pt-4">
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                Conditions
-                <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
-                  (optional)
-                </span>
-              </h4>
-              <div
-                :if={
-                  @policy_conditions_enabled? and
-                    available_conditions(@resource) -- @active_conditions != []
-                }
-                class="relative"
-              >
-                <button
-                  type="button"
-                  phx-click="toggle_conditions_dropdown"
-                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
-                </button>
-                <div :if={@conditions_dropdown_open}>
-                  <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
-                    <button
-                      :for={type <- available_conditions(@resource) -- @active_conditions}
-                      type="button"
-                      phx-click="add_condition"
-                      phx-value-type={type}
-                      class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                    >
-                      {condition_type_label(type)}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <%= if @policy_conditions_enabled? == false do %>
-              <.upgrade_locked_section
-                id="resource-grant-conditions-locked-container"
-                account={@account}
-                message="Upgrade your plan to unlock policy conditions."
-                description="Add policy restrictions like IP ranges, identity providers, and time windows."
-              >
-                <p class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border">
-                  No conditions — access is unrestricted
-                </p>
-              </.upgrade_locked_section>
-            <% else %>
-              <p
-                :if={@active_conditions == []}
-                class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
-              >
-                No conditions — access is unrestricted
-              </p>
-              <div :if={@active_conditions != []} class="space-y-2">
-                <.grant_condition_card
-                  :for={type <- @active_conditions}
-                  type={type}
-                  providers={@providers}
-                  conditions_state={@conditions_state}
-                />
-              </div>
-            <% end %>
-          </div>
-          <.postures_section id="resource-grant-postures" account={@account} state={@postures} />
-          <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_form}
               internet_resource?={@resource.type == :internet}
             />
           </div>
+          <.policy_restrictions id="resource-grant-postures" account={@account} state={@postures}>
+            <div class="border-t border-border pt-4">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                  Conditions
+                  <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
+                    (optional)
+                  </span>
+                </h4>
+                <div
+                  :if={
+                    @policy_conditions_enabled? and
+                      available_conditions(@resource) -- @active_conditions != []
+                  }
+                  class="relative"
+                >
+                  <button
+                    type="button"
+                    phx-click="toggle_conditions_dropdown"
+                    class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+                  </button>
+                  <div :if={@conditions_dropdown_open}>
+                    <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
+                    <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
+                      <button
+                        :for={type <- available_conditions(@resource) -- @active_conditions}
+                        type="button"
+                        phx-click="add_condition"
+                        phx-value-type={type}
+                        class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                      >
+                        {condition_type_label(type)}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <%= if @policy_conditions_enabled? == false do %>
+                <.upgrade_locked_section
+                  id="resource-grant-conditions-locked-container"
+                  account={@account}
+                  message="Upgrade your plan to unlock policy conditions."
+                  description="Add policy restrictions like IP ranges, identity providers, and time windows."
+                >
+                  <.conditions_preview />
+                </.upgrade_locked_section>
+              <% else %>
+                <p
+                  :if={@active_conditions == []}
+                  class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
+                >
+                  No conditions — access is unrestricted
+                </p>
+                <div :if={@active_conditions != []} class="space-y-2">
+                  <.grant_condition_card
+                    :for={type <- @active_conditions}
+                    type={type}
+                    providers={@providers}
+                    conditions_state={@conditions_state}
+                  />
+                </div>
+              <% end %>
+            </div>
+          </.policy_restrictions>
         </div>
       </div>
       <div
@@ -1876,13 +1885,7 @@ defmodule PortalWeb.Resources.Components do
               {@resource.address}
             </dd>
           </div>
-          <div :if={@resource.type == :device_pool and not lists_devices?(@resource)}>
-            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="font-mono text-xs text-body font-medium break-all">
-              &lt;slug&gt;.{Portal.Device.domain()}
-            </dd>
-          </div>
-          <div :if={lists_devices?(@resource)}>
+          <div :if={@resource.type == :device_pool}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="text-xs italic text-subtle">Multiple Addresses</dd>
           </div>
@@ -2163,6 +2166,7 @@ defmodule PortalWeb.Resources.Components do
           ilike(type(d.id, :string), ^pattern) or
           ilike(type(d.ipv4, :string), ^pattern) or
           ilike(type(d.ipv6, :string), ^pattern) or
+          ilike(coalesce(d.slug, ""), ^pattern) or
           ^device_identifier_filter(pattern)
       )
     end

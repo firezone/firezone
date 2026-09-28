@@ -74,11 +74,22 @@ defmodule PortalAPI.Schemas.Policy do
 
   defmodule PostureNode do
     require OpenApiSpex
-    alias OpenApiSpex.{Reference, Schema}
+    alias PortalAPI.Schemas.Policy
     alias Portal.Policies.Postures.Fields
 
-    @node %Reference{"$ref": "#/components/schemas/PolicyPostureNode"}
-    @operators Enum.map(Fields.operators(), &Atom.to_string/1)
+    @field_catalog Fields.registry()
+                   |> Enum.sort()
+                   |> Enum.map_join("\n\n", fn {provider, fields} ->
+                     rows =
+                       fields
+                       |> Enum.sort()
+                       |> Enum.map_join("\n", fn {field, type} ->
+                         platforms = Enum.join(Fields.platforms(provider, field), ", ")
+                         "| `#{provider}.#{field}` | #{type} | #{platforms} |"
+                       end)
+
+                     "### #{provider} fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n" <> rows
+                   end)
 
     OpenApiSpex.schema(%{
       title: "PolicyPostureNode",
@@ -123,61 +134,55 @@ defmodule PortalAPI.Schemas.Policy do
       The value `@latest` on `firezone.last_seen_version` stands for the newest
       Client release for the device's platform.
 
-      Every attribute also accepts `exists` and `does_not_exist`, which take
-      no value. An attribute the provider did not report fails every other
-      operator, so a device the provider does not know never passes.
+      `enum_string` uses the string operators; `integer` and `float` use the
+      numeric operators. `string_array` values use a single string for `contains`
+      and `does_not_contain`, or a non-empty string list for `contains_any_of`
+      and `contains_all_of`.
+
+      Every attribute also accepts `exists` and `does_not_exist`. These and
+      `is_empty` / `is_not_empty` take no value: omit `value` or set it to null.
+      Missing attributes fail every operator except `does_not_exist`, including
+      negative operators such as `is_not`. A missing provider is evaluated as
+      one empty row. Its synthetic `enrolled` field is false, so `enrolled is
+      false` can explicitly match an unenrolled device. `not` negates the
+      result and can also match missing data; use a positive `enrolled is true`
+      check when enrollment is required.
+
+      Leaves that do not apply to the device's platform are removed before
+      evaluation, including inside `or` and `not`. An expression with no
+      applicable leaves passes. If the platform is unknown, no leaves are
+      removed. Supported platforms for each field are listed below.
+      Provider `os_up_to_date` fields are computed from known OS releases;
+      they are not raw provider attributes.
 
       When a device matches more than one record of a provider, a leaf holds
       when any record satisfies it. Set `rows` to `all` to require every
-      record. An expression may nest 10 levels deep and hold 100 leaves.
-      """,
+      record. Different leaves may match different provider rows; `and` does
+      not require one row to satisfy all leaves. `rows` is not allowed for
+      `firezone`, which always describes exactly one connecting device.
+
+      Expressions allow at most 10 nested boolean levels and 100 leaves.
+      List values contain 1–100 items; strings are at most 1024 bytes and
+      regular expressions at most 256 bytes. Unknown fields, incompatible
+      operators, invalid values, and exceeded limits return HTTP 422 with
+      a path in `validation_errors.postures`.
+
+      Supported fields (generated from the same registry used for validation):
+
+      """ <> @field_catalog,
       type: :object,
       example: %{
         "and" => [
-          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
-          %{"field" => "intune.last_sync_date_time", "op" => "within_last", "value" => "PT24H"},
-          %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+          %{"field" => "intune.enrolled", "op" => "is", "value" => true},
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant", "rows" => "all"},
+          %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT24H"},
+          %{"or" => [
+            %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"},
+            %{"not" => %{"field" => "firezone.hostname", "op" => "starts_with", "value" => "test-"}}
+          ]}
         ]
       },
-      properties: %{
-        and: %Schema{
-          type: :array,
-          items: @node,
-          minItems: 1,
-          description: "Nodes that must all hold"
-        },
-        or: %Schema{
-          type: :array,
-          items: @node,
-          minItems: 1,
-          description: "Nodes of which at least one must hold"
-        },
-        not: @node,
-        field: %Schema{
-          type: :string,
-          example: "intune.compliance_state",
-          description: "The provider attribute a leaf tests, as `<provider>.<attribute>`"
-        },
-        op: %Schema{
-          type: :string,
-          example: "is",
-          enum: @operators,
-          description: "How the attribute is compared to the value"
-        },
-        value: %Schema{
-          example: "compliant",
-          description:
-            "What the attribute is compared to: a string, number, boolean or list, as the operator requires"
-        },
-        rows: %Schema{
-          type: :string,
-          enum: ["any", "all"],
-          default: "any",
-          description:
-            "Whether any or every record of the provider must satisfy the leaf when several match the device"
-        }
-      },
-      additionalProperties: false
+      oneOf: [Policy.PostureAnd, Policy.PostureOr, Policy.PostureNot, Policy.PostureLeaf]
     })
   end
 
@@ -226,12 +231,14 @@ defmodule PortalAPI.Schemas.Policy do
           default: false
         },
         postures: %Schema{
-          allOf: [Policy.PostureNode],
+          example: Policy.PostureNode.schema().example,
           nullable: true,
+          anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
-            "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature. Changing it revokes this policy's active " <>
-              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
+            "Device posture expression required in addition to every entry in conditions. " <>
+              "Omit or set to null for no posture requirement. A non-null expression requires " <>
+              "the account's device_posture entitlement (Enterprise); otherwise returns HTTP 403. " <>
+              "See PolicyPostureNode for fields, operators, platform behavior, and limits."
         },
         conditions: %Schema{
           example: [
@@ -285,12 +292,17 @@ defmodule PortalAPI.Schemas.Policy do
           default: false
         },
         postures: %Schema{
-          allOf: [Policy.PostureNode],
+          example: Policy.PostureNode.schema().example,
           nullable: true,
+          anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
-            "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature. Changing it revokes this policy's active " <>
-              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
+            "Replaces the entire device posture expression; it is not merged. Omit to preserve " <>
+              "existing postures, or set to null to remove them. A non-null expression requires " <>
+              "the account's device_posture entitlement (Enterprise); otherwise returns HTTP 403. " <>
+              "Clearing postures remains allowed after downgrade. Conditions and postures must " <>
+              "both hold. Changing postures revokes this policy's active authorizations and " <>
+              "interrupts affected connections until they are reauthorized. See PolicyPostureNode " <>
+              "for fields, operators, platform behavior, and limits."
         },
         conditions: %Schema{
           example: [
@@ -360,12 +372,13 @@ defmodule PortalAPI.Schemas.Policy do
               "otherwise retained."
         },
         postures: %Schema{
-          allOf: [Policy.PostureNode],
+          example: Policy.PostureNode.schema().example,
           nullable: true,
+          anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
-            "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature. Changing it revokes this policy's active " <>
-              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
+            "The stored device posture expression, or null when none is required. " <>
+              "The connecting device must satisfy this expression and every entry in conditions. " <>
+              "Returned on create, update, show, and list, including after an account downgrade."
         },
         conditions: %Schema{
           example: [

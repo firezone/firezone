@@ -3,13 +3,11 @@ defmodule Portal.Iru.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
-  import Portal.DevicePostureFixtures
   import Portal.IruFixtures
 
   alias Portal.Iru.{APIClient, Device, PostureProvider, Sync}
 
   setup do
-    enable_device_posture()
     stub_api([])
     :ok
   end
@@ -408,16 +406,6 @@ defmodule Portal.Iru.SyncTest do
 
   test "skips a disabled provider" do
     provider = iru_posture_provider_fixture(is_disabled: true)
-
-    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
-
-    assert :ok = perform_job(Sync, sync_args(provider))
-    assert Repo.aggregate(Device, :count) == 0
-  end
-
-  test "skips every provider when the global flag is off" do
-    provider = iru_posture_provider_fixture()
-    enable_device_posture(false)
 
     stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 

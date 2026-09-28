@@ -267,7 +267,7 @@ defmodule PortalAPI.MCP.Tools do
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: true
+      openWorldHint: false
     }
   end
 
@@ -281,7 +281,7 @@ defmodule PortalAPI.MCP.Tools do
       readOnlyHint: false,
       destructiveHint: destructive?,
       idempotentHint: idempotent?,
-      openWorldHint: true
+      openWorldHint: false
     }
   end
 

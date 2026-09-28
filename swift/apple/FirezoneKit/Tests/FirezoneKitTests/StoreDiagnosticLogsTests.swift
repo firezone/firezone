@@ -83,6 +83,21 @@
       #expect(archive.firstRange(of: Data("app.zip".utf8)) != nil)
     }
 
+    @Test("exports after clearing")
+    func exportsAfterClearing() async throws {
+      let store = Store.mock()
+      try await store.installVPNConfiguration()
+      let destination = FileManager.default.temporaryDirectory
+        .appendingPathComponent("firezone-export-\(UUID().uuidString).zip")
+      defer { try? FileManager.default.removeItem(at: destination) }
+
+      try await store.clearLogs()
+      try await store.exportLogs(to: destination)
+
+      let archive = try Data(contentsOf: destination)
+      #expect(archive.prefix(4) == Data([0x50, 0x4B, 0x03, 0x04]))
+    }
+
     @Test("the view model publishes the size and the clearing state")
     func viewModelDrivesTheLogsState() async throws {
       let store = Store.mock()

@@ -283,7 +283,7 @@ defmodule PortalAPI.Gateway.Socket do
       Batch.insert_all(SessionLog, log_entries,
         label: "gateway session log",
         fk_partitions: %{
-          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+          "session_logs_partitioned_account_id_fkey" => {:simple, :account_id, Portal.Account}
         }
       )
 

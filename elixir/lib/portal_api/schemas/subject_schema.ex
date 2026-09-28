@@ -14,6 +14,36 @@ defmodule PortalAPI.Schemas.Subject do
     type: :object,
     nullable: true,
     properties: %{
+      attested_device_serial: %Schema{
+        type: :string,
+        description: "Device serial from the device's last attestation. Omitted when absent."
+      },
+      attested_device_uuid: %Schema{
+        type: :string,
+        description: "Device UUID from the device's last attestation. Omitted when absent."
+      },
+      attested_mdm_device_id: %Schema{
+        type: :string,
+        description: "MDM device ID from the device's last attestation. Omitted when absent."
+      },
+      attested_cert_serial: %Schema{
+        type: :string,
+        description: "Certificate serial from the device's last attestation. Omitted when absent."
+      },
+      attested_cert_fingerprint: %Schema{
+        type: :string,
+        description: "Certificate fingerprint from the device's last attestation. Omitted when absent."
+      },
+      attested_cert_issuer: %Schema{
+        type: :string,
+        format: :byte,
+        description: "Base64-encoded DER X.509 issuer Name from the device's last attestation. Omitted when absent."
+      },
+      attested_at: %Schema{
+        type: :string,
+        format: :"date-time",
+        description: "When the device last attested, snapshotted for this subject. Does not imply the current connection attested. Omitted when absent."
+      },
       actor_id: %Schema{
         example: "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         type: :string,

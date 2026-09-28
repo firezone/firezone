@@ -101,6 +101,12 @@ defmodule PortalAPI.MCP.ToolsTest do
     end
   end
 
+  test "marks every tool as closed-world", %{tools: tools} do
+    for tool <- tools do
+      refute tool.annotations.openWorldHint
+    end
+  end
+
   test "classifies destructive and idempotent writes by their actual behavior", %{tools: tools} do
     assert_annotations(tools, "create_resource", false, false)
     assert_annotations(tools, "verify_client", false, true)
@@ -156,6 +162,29 @@ defmodule PortalAPI.MCP.ToolsTest do
       ])
 
     assert address == ["string", "null"]
+  end
+
+  test "policy tools advertise nullable recursive postures without truncating the grammar", %{tools: tools} do
+    for name <- ~w[create_policy update_policy] do
+      tool = fetch(tools, name)
+      schema = tool.input_schema
+      postures = get_in(schema, ["properties", "policy", "properties", "postures"])
+      assert [expression, %{"type" => "null"}] = postures["anyOf"]
+      [node, nullable] = expression["anyOf"]
+      assert %{"anyOf" => [_, %{"type" => "null"}]} = nullable
+      [conjunction, disjunction, negation, leaf] = node["oneOf"]
+      assert conjunction["additionalProperties"] == false
+      assert conjunction["required"] == ["and"]
+      assert disjunction["required"] == ["or"]
+      assert get_in(conjunction, ["properties", "and", "items", "$ref"]) == "#/$defs/PolicyPostureNode"
+      assert get_in(negation, ["properties", "not", "$ref"]) == "#/$defs/PolicyPostureNode"
+      assert Enum.all?(leaf["oneOf"], &(&1["additionalProperties"] == false))
+      assert Enum.any?(leaf["oneOf"], &(get_in(&1, ["properties", "rows", "default"]) == "any"))
+      assert schema["$defs"]["PolicyPostureNode"] == node
+      assert node["description"] =~ "firezone.last_seen_version"
+      assert node["description"] =~ "sentinelone.enrolled"
+      assert tool.description =~ "device_posture"
+    end
   end
 
   test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do

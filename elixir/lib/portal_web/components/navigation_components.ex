@@ -4,11 +4,6 @@ defmodule PortalWeb.NavigationComponents do
   import PortalWeb.CoreComponents
 
   @doc """
-  Returns whether the global `device_posture` rollout flag is enabled.
-  """
-  def device_posture_enabled?, do: Portal.Features.enabled?(:device_posture)
-
-  @doc """
   Renders the top navigation bar.
   """
   attr :subject, :any, required: true
@@ -18,6 +13,8 @@ defmodule PortalWeb.NavigationComponents do
     <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
       <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
+        <.live_component module={PortalWeb.SupportForm} id="support" subject={@subject} />
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
         <a
           target="_blank"
           href="https://www.firezone.dev/kb?utm_source=product"
@@ -26,6 +23,7 @@ defmodule PortalWeb.NavigationComponents do
         >
           Docs
         </a>
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
         <a
           target="_blank"
           href="https://firezone.statuspage.io"
@@ -42,7 +40,7 @@ defmodule PortalWeb.NavigationComponents do
             data-popover-target-id="theme-dropdown"
             data-popover-trigger="click"
             data-popover-placement="bottom"
-            class="p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
+            class="flex items-center justify-center p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
             aria-label="Change theme"
           >
             <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
@@ -404,7 +402,6 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
-  attr :device_posture_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -491,7 +488,6 @@ defmodule PortalWeb.NavigationComponents do
           Directory Sync
         </.settings_tab>
         <.settings_tab
-          :if={@device_posture_enabled?}
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"

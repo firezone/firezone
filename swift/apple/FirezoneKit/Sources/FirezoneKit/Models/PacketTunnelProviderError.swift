@@ -25,6 +25,12 @@ public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
 
   public var errorDescription: String? { message }
 
+  public static func isCredentialNotConfigured(_ error: any Error) -> Bool {
+    let expected = credentialNotConfigured as NSError
+    let actual = error as NSError
+    return actual.domain == expected.domain && actual.code == expected.code
+  }
+
   /// `LocalizedError` is a Swift witness, so it is lost when the error crosses to
   /// another process: the network extension hands one to its completion handler and
   /// the app receives an `NSError` carrying only the domain and code, which Foundation

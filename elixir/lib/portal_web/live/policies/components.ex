@@ -179,8 +179,7 @@ defmodule PortalWeb.Policies.Components do
         <:title>Save these changes?</:title>
         <:body>
           <p>
-            This change resets all access previously granted by this policy. Sessions using it will
-            be briefly interrupted while the client reconnects.
+            Existing connections using this policy will be reset.
           </p>
         </:body>
         <:cancel_button>Cancel</:cancel_button>
@@ -290,18 +289,19 @@ defmodule PortalWeb.Policies.Components do
         panel_selected_resource={@panel_selected_resource}
         subject={@subject}
       />
-      <.policy_conditions_section
-        account={@account}
-        mode={@mode}
-        panel_selected_resource={@panel_selected_resource}
-        panel_active_conditions={@panel_active_conditions}
-        panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
-        providers={@providers}
-        x509_auth_provider_id={@x509_auth_provider_id}
-        has_trust_anchors?={@has_trust_anchors?}
-        conditions_state={@conditions_state}
-      />
-      <.postures_section id="policy-postures" account={@account} state={@postures} />
+      <.policy_restrictions id="policy-postures" account={@account} state={@postures}>
+        <.policy_conditions_section
+          account={@account}
+          mode={@mode}
+          panel_selected_resource={@panel_selected_resource}
+          panel_active_conditions={@panel_active_conditions}
+          panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
+          providers={@providers}
+          x509_auth_provider_id={@x509_auth_provider_id}
+          has_trust_anchors?={@has_trust_anchors?}
+          conditions_state={@conditions_state}
+        />
+      </.policy_restrictions>
     </div>
     """
   end
@@ -572,7 +572,7 @@ defmodule PortalWeb.Policies.Components do
             description="Add policy restrictions like IP ranges, identity providers, and time windows."
             data-locked-section="policy-conditions"
           >
-            <.policy_conditions_placeholder />
+            <.conditions_preview />
           </.upgrade_locked_section>
         <% is_nil(@panel_selected_resource) -> %>
           <.policy_conditions_placeholder />
