@@ -334,7 +334,7 @@ mod imp {
                 );
                 Ok(pm
                     .RemovePackageWithOptionsAsync(&full_name, RemovalOptions::RemoveForAllUsers)?
-                    .get()?)
+                    .join()?)
             })?;
         }
 
