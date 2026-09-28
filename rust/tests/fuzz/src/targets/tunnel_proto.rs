@@ -30,7 +30,7 @@ pub fn test(data: &[u8]) {
         let transition = generator.transition(&reference, &portal);
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
-        feedback_recorder.observe(&transition);
+        feedback_recorder.observe(&transition, &reference);
 
         reference.invalidate(&transition, &portal);
         tunnel.invalidate(&transition, &reference);
@@ -39,6 +39,6 @@ pub fn test(data: &[u8]) {
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
-        feedback_recorder.record(&reference, &tunnel);
+        feedback_recorder.record(&reference, &tunnel, &portal);
     }
 }
