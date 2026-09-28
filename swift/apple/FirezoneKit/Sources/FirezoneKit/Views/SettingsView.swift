@@ -10,26 +10,6 @@ import Combine
 import OSLog
 import SwiftUI
 
-enum SettingsViewError: Error {
-  case logFolderIsUnavailable
-  case configurationNotInitialized
-
-  var localizedDescription: String {
-    switch self {
-    case .logFolderIsUnavailable:
-      return """
-          Log folder is unavailable.
-          Try restarting your device or reinstalling Firezone if this issue persists.
-        """
-    case .configurationNotInitialized:
-      return """
-          Configuration is not initialized.
-          Try restarting your device or reinstalling Firezone if this issue persists.
-        """
-    }
-  }
-}
-
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel

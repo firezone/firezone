@@ -23,10 +23,10 @@
 
   @MainActor
   class UpdateChecker: UpdateCheckerProtocol {
-    enum UpdateError: Error {
+    enum UpdateError: LocalizedError {
       case invalidVersion(String)
 
-      var localizedDescription: String {
+      var errorDescription: String? {
         switch self {
         case .invalidVersion(let version):
           return "Invalid version: \(version)"
