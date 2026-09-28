@@ -18,7 +18,7 @@ use super::{dns_queries, packets};
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
-use crate::sim_net::{EdgeConfig, Host, direct_path_possible};
+use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
 use crate::transition::{IDLE_DURATIONS, Seq, Transition};
 
@@ -194,9 +194,8 @@ pub(super) fn generate(
             };
 
             let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
-            if portal.iceless()
-                && let Some(flow) = choose_relayed_flow(g, &existing_flows, state)
-            {
+            if portal.iceless() && !existing_flows.is_empty() {
+                let flow = existing_flows[g.choose_index(existing_flows.len())];
                 g.guide_flow(FlowGuidance::Reuse(flow.id()));
             }
 
@@ -220,7 +219,8 @@ pub(super) fn generate(
             Transition::RebootRelaysWhilePartitioned(relays)
         }
         K::Idle => {
-            if let Some(flow) = choose_flow_for_idle(g, &existing_flows, state) {
+            if !existing_flows.is_empty() {
+                let flow = existing_flows[g.choose_index(existing_flows.len())];
                 g.guide_flow(FlowGuidance::Reuse(flow.id()));
             }
             let duration = IDLE_DURATIONS[g.choose_index(IDLE_DURATIONS.len())];
@@ -403,79 +403,6 @@ impl ExistingFlow {
                 .map(|flow| (flow.client_id, flow.src, &flow.dst)),
         }
     }
-
-    fn requires_relay(self, state: &ReferenceState) -> Option<bool> {
-        let (client, route) = match self {
-            ExistingFlow::Udp(flow) => state
-                .udp_flows
-                .get(&flow)
-                .map(|flow| (flow.client_id, flow.route))?,
-            ExistingFlow::Icmp(flow, _) => state
-                .icmp_flows
-                .get(&flow)
-                .map(|flow| (flow.client_id, flow.route))?,
-        };
-        let origin = state.clients.get(&client)?;
-        let remote = match route {
-            crate::probe::Route::Resource { gateway, .. }
-            | crate::probe::Route::Gateway(gateway) => state.gateways.get(&gateway)?,
-            crate::probe::Route::Peer(peer) => {
-                let peer = state.clients.get(&peer)?;
-                let direct = direct_path_possible(
-                    origin.edge_config(),
-                    peer.edge_config(),
-                    origin.ip4.is_some() && peer.ip4.is_some(),
-                    origin.ip6.is_some() && peer.ip6.is_some(),
-                );
-
-                return Some(!direct);
-            }
-        };
-        let direct = direct_path_possible(
-            origin.edge_config(),
-            remote.edge_config(),
-            origin.ip4.is_some() && remote.ip4.is_some(),
-            origin.ip6.is_some() && remote.ip6.is_some(),
-        );
-
-        Some(!direct)
-    }
-}
-
-fn choose_flow_for_idle(
-    g: &mut Generator<'_>,
-    flows: &[ExistingFlow],
-    state: &ReferenceState,
-) -> Option<ExistingFlow> {
-    let max_score = flows.iter().map(|flow| flow_score(*flow, state)).max()?;
-    let candidates = flows
-        .iter()
-        .copied()
-        .filter(|flow| flow_score(*flow, state) == max_score)
-        .collect::<Vec<_>>();
-
-    Some(candidates[g.choose_index(candidates.len())])
-}
-
-fn choose_relayed_flow(
-    g: &mut Generator<'_>,
-    flows: &[ExistingFlow],
-    state: &ReferenceState,
-) -> Option<ExistingFlow> {
-    let candidates = flows
-        .iter()
-        .copied()
-        .filter(|flow| flow.requires_relay(state) == Some(true))
-        .collect::<Vec<_>>();
-    if candidates.is_empty() {
-        return None;
-    }
-
-    Some(candidates[g.choose_index(candidates.len())])
-}
-
-fn flow_score(flow: ExistingFlow, state: &ReferenceState) -> u8 {
-    u8::from(flow.domain(state).is_some()) + u8::from(flow.requires_relay(state) == Some(true)) * 2
 }
 
 fn send_on_existing_flow(g: &mut Generator<'_>, flow: ExistingFlow) -> Transition {

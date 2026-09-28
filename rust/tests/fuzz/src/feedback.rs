@@ -115,6 +115,29 @@ macro_rules! record {
     }};
 }
 
+/// Records a logical outcome together with the network topology that carried it.
+///
+/// A path uses seven bits: three for each endpoint's NAT behaviour and one for
+/// whether direct connectivity is possible. That leaves nine boolean predicates
+/// for the logical outcome.
+macro_rules! record_with_path {
+    ($path:expr; $($flag:expr),+ $(,)?) => {{
+        const {
+            assert!(
+                [$(stringify!($flag)),+].len() <= 9,
+                "path feedback supports at most 9 boolean predicates",
+            );
+        }
+        let path: PathFeedback = $path;
+        let flags: &[bool] = &[$($flag),+];
+        let value = flags.iter().enumerate().fold(0, |value, (bit, flag)| {
+            value | (u16::from(*flag) << bit)
+        });
+        let value = value | (path.code() << flags.len());
+        record_value!(value);
+    }};
+}
+
 /// Records meaningful connectivity observed after earlier disruptions.
 #[derive(Default)]
 pub struct Recorder {
@@ -274,21 +297,28 @@ impl Recorder {
             let Some(completed) = completed_round_trip(expected, state) else {
                 continue;
             };
+            let Some(path) = route_path_feedback(reference, &completed) else {
+                continue;
+            };
 
-            self.record_connectivity_after_roam(&completed);
-            self.record_connectivity_after_restart(&completed);
-            self.record_connectivity_after_relay_change(reference, &completed);
-            self.record_connectivity_after_gateway_authorization_change(&completed);
-            self.record_connectivity_after_peer_authorization_change(&completed);
-            self.record_existing_flow_after_idle(reference, &completed);
-            self.record_connectivity_after_resource_edit(reference, &completed);
-            self.record_gateway_failover(reference, &completed);
+            self.record_connectivity_after_roam(&completed, path);
+            self.record_connectivity_after_restart(&completed, path);
+            self.record_connectivity_after_relay_change(&completed, path);
+            self.record_connectivity_after_gateway_authorization_change(&completed, path);
+            self.record_connectivity_after_peer_authorization_change(&completed, path);
+            self.record_existing_flow_after_idle(&completed, path);
+            self.record_connectivity_after_resource_edit(reference, &completed, path);
+            self.record_gateway_failover(&completed, path);
         }
 
         self.record_tcp_connectivity(reference, state);
     }
 
-    fn record_connectivity_after_roam(&self, completed: &CompletedRoundTrip<'_>) {
+    fn record_connectivity_after_roam(
+        &self,
+        completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
+    ) {
         let origin_roamed = self.roamed_clients.contains(&completed.expected.origin);
         let remote_roamed = completed
             .remote_client()
@@ -297,7 +327,7 @@ impl Recorder {
             return;
         }
 
-        record!(
+        record_with_path!(path;
             origin_roamed,
             remote_roamed,
             completed.is_udp(),
@@ -307,7 +337,11 @@ impl Recorder {
         );
     }
 
-    fn record_connectivity_after_restart(&self, completed: &CompletedRoundTrip<'_>) {
+    fn record_connectivity_after_restart(
+        &self,
+        completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
+    ) {
         let origin_restarted = self.restarted_clients.contains(&completed.expected.origin);
         let remote_restarted = completed
             .remote_client()
@@ -316,7 +350,7 @@ impl Recorder {
             return;
         }
 
-        record!(
+        record_with_path!(path;
             origin_restarted,
             remote_restarted,
             completed.is_udp(),
@@ -328,21 +362,16 @@ impl Recorder {
 
     fn record_connectivity_after_relay_change(
         &self,
-        reference: &ReferenceState,
         completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
     ) {
         if self.relay_changes == 0 {
             return;
         }
-        let Some(requires_relay) = route_requires_relay(reference, completed) else {
-            return;
-        };
-
-        record!(
+        record_with_path!(path;
             self.relay_changes & RELAYS_DEPLOYED != 0,
             self.relay_changes & RELAYS_PARTITIONED != 0,
             self.relay_changes & RELAYS_REBOOTED != 0,
-            requires_relay,
             completed.is_udp(),
             completed.submitted.packet.destination().is_ipv6(),
             completed.is_peer(),
@@ -352,6 +381,7 @@ impl Recorder {
     fn record_connectivity_after_gateway_authorization_change(
         &self,
         completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
     ) {
         let Route::Resource { resource, .. } = completed.route else {
             return;
@@ -360,7 +390,7 @@ impl Recorder {
             return;
         };
 
-        record!(
+        record_with_path!(path;
             change & GATEWAY_AUTHORIZATION_REVOKED != 0,
             change & GATEWAY_DEAUTHORIZED_WHILE_PARTITIONED != 0,
             completed.is_udp(),
@@ -372,6 +402,7 @@ impl Recorder {
     fn record_connectivity_after_peer_authorization_change(
         &self,
         completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
     ) {
         let Some(peer) = completed.remote_client() else {
             return;
@@ -383,7 +414,7 @@ impl Recorder {
             return;
         };
 
-        record!(
+        record_with_path!(path;
             change & PEER_REMOVED_FROM_POOL != 0,
             change & PEER_AUTHORIZATION_EXPIRED != 0,
             change & PEER_AUTHORIZATION_REVOKED != 0,
@@ -395,8 +426,8 @@ impl Recorder {
 
     fn record_existing_flow_after_idle(
         &self,
-        reference: &ReferenceState,
         completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
     ) {
         let Some(attempt) = self.current_probe_on_idled_flow else {
             return;
@@ -404,47 +435,32 @@ impl Recorder {
         if attempt.probe != completed.expected.id {
             return;
         }
-        let Some(requires_relay) = route_requires_relay(reference, completed) else {
-            return;
-        };
-
-        record!(
+        record_with_path!(path;
             completed.is_udp(),
             completed.submitted.packet.destination().is_ipv6(),
             completed.received.packet.destination().is_ipv6(),
             completed.is_peer(),
-            requires_relay,
             matches!(
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
             ),
         );
-        record!(
+        record_with_path!(path;
             attempt.duration >= DNS_NAT_SESSION_TTL,
-            requires_relay,
             matches!(
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
             ),
         );
 
-        let Some((origin_edge, remote_edge)) = route_edge_configs(reference, completed) else {
-            return;
-        };
-        let origin = nat_feedback(origin_edge, attempt.duration);
-        let remote = nat_feedback(remote_edge, attempt.duration);
+        let origin = nat_feedback(path.origin, attempt.duration);
+        let remote = nat_feedback(path.remote, attempt.duration);
         if !origin.behind_nat && !remote.behind_nat {
             return;
         }
 
-        record!(origin.expiry_elapsed, remote.expiry_elapsed, requires_relay,);
-        record!(
-            origin.endpoint_dependent,
-            remote.endpoint_dependent,
-            origin.port_restricted,
-            remote.port_restricted,
-        );
-        record!(
+        record_with_path!(path; origin.expiry_elapsed, remote.expiry_elapsed);
+        record_with_path!(path;
             origin.expiry_elapsed,
             remote.expiry_elapsed,
             origin.inbound_refreshes,
@@ -456,6 +472,7 @@ impl Recorder {
         &self,
         reference: &ReferenceState,
         completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
     ) {
         let change = match completed.route {
             Route::Resource { resource, .. } => self
@@ -480,7 +497,7 @@ impl Recorder {
             return;
         }
 
-        record!(
+        record_with_path!(path;
             change & RESOURCE_METADATA_EDITED != 0,
             change & RESOURCE_FILTERS_EDITED != 0,
             change & RESOURCE_ACCESS_EDITED != 0,
@@ -493,11 +510,7 @@ impl Recorder {
         );
     }
 
-    fn record_gateway_failover(
-        &mut self,
-        reference: &ReferenceState,
-        completed: &CompletedRoundTrip<'_>,
-    ) {
+    fn record_gateway_failover(&mut self, completed: &CompletedRoundTrip<'_>, path: PathFeedback) {
         let Route::Resource { resource, gateway } = completed.route else {
             return;
         };
@@ -511,15 +524,10 @@ impl Recorder {
         if previous.is_none_or(|previous| previous == gateway) {
             return;
         }
-        let Some(requires_relay) = route_requires_relay(reference, completed) else {
-            return;
-        };
-
-        record!(
+        record_with_path!(path;
             completed.is_udp(),
             completed.submitted.packet.destination().is_ipv6(),
             completed.received.packet.destination().is_ipv6(),
-            requires_relay,
             matches!(
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
@@ -639,12 +647,11 @@ impl Recorder {
         let Some(gateway) = reference_client.gateway_for_resource(resource) else {
             return;
         };
-        let Some(requires_relay) = gateway_route_requires_relay(reference, attempt.client, gateway)
-        else {
+        let Some(path) = gateway_path_feedback(reference, attempt.client, gateway) else {
             return;
         };
 
-        record!(
+        record_with_path!(path;
             roamed,
             restarted,
             relays_changed,
@@ -653,7 +660,6 @@ impl Recorder {
             reference_client.internet_resource() == Some(resource),
             attempt.src.is_ipv6(),
             matches!(attempt.dst, Destination::DomainName { .. }),
-            requires_relay,
         );
     }
 }
@@ -733,58 +739,88 @@ fn completed_round_trip<'a>(
     })
 }
 
-fn route_requires_relay(
-    reference: &ReferenceState,
-    completed: &CompletedRoundTrip<'_>,
-) -> Option<bool> {
-    match completed.route {
-        Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
-            gateway_route_requires_relay(reference, completed.expected.origin, gateway)
-        }
-        Route::Peer(peer) => {
-            let origin = reference.clients.get(&completed.expected.origin)?;
-            let peer = reference.clients.get(&peer)?;
-            let direct = direct_path_possible(
-                origin.edge_config(),
-                peer.edge_config(),
-                origin.ip4.is_some() && peer.ip4.is_some(),
-                origin.ip6.is_some() && peer.ip6.is_some(),
-            );
+#[derive(Clone, Copy)]
+struct PathFeedback {
+    origin: EdgeConfig,
+    remote: EdgeConfig,
+    requires_relay: bool,
+}
 
-            Some(!direct)
+impl PathFeedback {
+    fn new(origin: EdgeConfig, remote: EdgeConfig, shared_ip4: bool, shared_ip6: bool) -> Self {
+        Self {
+            origin,
+            remote,
+            requires_relay: !direct_path_possible(origin, remote, shared_ip4, shared_ip6),
         }
+    }
+
+    fn code(self) -> u16 {
+        edge_code(self.origin)
+            | (edge_code(self.remote) << 3)
+            | (u16::from(self.requires_relay) << 6)
     }
 }
 
-fn route_edge_configs(
-    reference: &ReferenceState,
-    completed: &CompletedRoundTrip<'_>,
-) -> Option<(EdgeConfig, EdgeConfig)> {
-    let origin = reference.clients.get(&completed.expected.origin)?;
-    let remote = match completed.route {
-        Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
-            reference.gateways.get(&gateway)?.edge_config()
-        }
-        Route::Peer(peer) => reference.clients.get(&peer)?.edge_config(),
+fn edge_code(edge: EdgeConfig) -> u16 {
+    let EdgeConfig::Nat(mapping, filter, _) = edge else {
+        return 0;
+    };
+    let mapping = match mapping {
+        Mapping::EndpointIndependent => 0,
+        Mapping::EndpointDependent => 3,
+    };
+    let filter = match filter {
+        FilterMode::Open => 1,
+        FilterMode::AddressRestricted => 2,
+        FilterMode::PortRestricted => 3,
     };
 
-    Some((origin.edge_config(), remote))
+    mapping + filter
+}
+
+fn route_path_feedback(
+    reference: &ReferenceState,
+    completed: &CompletedRoundTrip<'_>,
+) -> Option<PathFeedback> {
+    let origin = reference.clients.get(&completed.expected.origin)?;
+    let (remote, shared_ip4, shared_ip6) = match completed.route {
+        Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
+            let remote = reference.gateways.get(&gateway)?;
+            (
+                remote.edge_config(),
+                origin.ip4.is_some() && remote.ip4.is_some(),
+                origin.ip6.is_some() && remote.ip6.is_some(),
+            )
+        }
+        Route::Peer(peer) => {
+            let remote = reference.clients.get(&peer)?;
+            (
+                remote.edge_config(),
+                origin.ip4.is_some() && remote.ip4.is_some(),
+                origin.ip6.is_some() && remote.ip6.is_some(),
+            )
+        }
+    };
+
+    Some(PathFeedback::new(
+        origin.edge_config(),
+        remote,
+        shared_ip4,
+        shared_ip6,
+    ))
 }
 
 struct NatFeedback {
     behind_nat: bool,
-    endpoint_dependent: bool,
-    port_restricted: bool,
     inbound_refreshes: bool,
     expiry_elapsed: bool,
 }
 
 fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
-    let EdgeConfig::Nat(mapping, filter, expiry) = edge else {
+    let EdgeConfig::Nat(_, _, expiry) = edge else {
         return NatFeedback {
             behind_nat: false,
-            endpoint_dependent: false,
-            port_restricted: false,
             inbound_refreshes: false,
             expiry_elapsed: false,
         };
@@ -792,63 +828,53 @@ fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
 
     NatFeedback {
         behind_nat: true,
-        endpoint_dependent: mapping == Mapping::EndpointDependent,
-        port_restricted: filter == FilterMode::PortRestricted,
         inbound_refreshes: expiry.inbound_refreshes,
         expiry_elapsed: idle >= expiry.timeout,
     }
 }
 
-fn gateway_route_requires_relay(
+fn gateway_path_feedback(
     reference: &ReferenceState,
     origin: ClientId,
     gateway: GatewayId,
-) -> Option<bool> {
+) -> Option<PathFeedback> {
     let origin = reference.clients.get(&origin)?;
     let gateway = reference.gateways.get(&gateway)?;
-    let direct = direct_path_possible(
+    Some(PathFeedback::new(
         origin.edge_config(),
         gateway.edge_config(),
         origin.ip4.is_some() && gateway.ip4.is_some(),
         origin.ip6.is_some() && gateway.ip6.is_some(),
-    );
-
-    Some(!direct)
+    ))
 }
 
 fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &TunnelTest) {
     for expected in reference.expected_probes.values() {
-        let ExpectedOutcome::RoundTripCompleted(route) = expected.outcome else {
+        let Some(completed) = completed_round_trip(expected, state) else {
             continue;
         };
-        let remote = route.remote();
+        let remote = completed.route.remote();
         if !matches!(remote, Remote::Gateway(_)) {
             continue;
         }
-
-        let trace = state.probe_trace(expected.id);
-        let ([submitted_request], [received_request], [_received_response]) = (
-            trace.submitted_requests.as_slice(),
-            trace.received_requests.as_slice(),
-            trace.received_responses.as_slice(),
-        ) else {
+        let Some(path) = route_path_feedback(reference, &completed) else {
             continue;
         };
         let destination_was_translated =
-            submitted_request.packet.destination() != received_request.packet.destination();
+            completed.submitted.packet.destination() != completed.received.packet.destination();
         if !destination_was_translated {
             continue;
         }
 
         let responds_with_icmp_error = remote_responds_with_icmp_error(
             expected,
-            received_request,
+            completed.received,
             remote,
             &reference.icmp_error_hosts,
         );
-        record!(
-            submitted_request.packet.destination().is_ipv6(),
-            received_request.packet.destination().is_ipv6(),
+        record_with_path!(path;
+            completed.submitted.packet.destination().is_ipv6(),
+            completed.received.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
             responds_with_icmp_error,
         );
@@ -867,8 +893,7 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let Remote::Gateway(gateway) = observation.received.remote else {
             continue;
         };
-        let Some(requires_relay) =
-            gateway_route_requires_relay(reference, observation.submitted.client, gateway)
+        let Some(path) = gateway_path_feedback(reference, observation.submitted.client, gateway)
         else {
             continue;
         };
@@ -891,12 +916,11 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let old_destination_absent =
             !addresses.contains(&observation.received.packet.destination());
         let udp = observation.submitted.packet.as_udp().is_some();
-        record!(
+        record_with_path!(path;
             ipv6,
             udp,
             answers_changed,
             old_destination_absent,
-            requires_relay,
         );
     }
 }
@@ -914,8 +938,7 @@ fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
         let Some(gateway) = state.gateway(session.key.gateway) else {
             continue;
         };
-        let Some(requires_relay) =
-            gateway_route_requires_relay(reference, session.key.client, session.key.gateway)
+        let Some(path) = gateway_path_feedback(reference, session.key.client, session.key.gateway)
         else {
             continue;
         };
@@ -932,7 +955,7 @@ fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
 
         record_dns_refresh_session_feedback(
             &session.observations,
-            requires_relay,
+            path,
             gateway
                 .dns_resolutions(
                     session.key.client,
@@ -947,7 +970,7 @@ fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
 
 fn record_dns_refresh_session_feedback<'a>(
     session: &[&DnsNatObservation],
-    requires_relay: bool,
+    path: PathFeedback,
     resolutions: impl Iterator<Item = &'a DnsResolution>,
 ) {
     for (previous, refreshed) in resolutions.tuple_windows() {
@@ -977,12 +1000,11 @@ fn record_dns_refresh_session_feedback<'a>(
                 .addresses
                 .contains(&before.received.packet.destination());
             let udp = before.submitted.packet.as_udp().is_some();
-            record!(
+            record_with_path!(path;
                 ipv6,
                 udp,
                 answers_changed,
                 old_destination_absent,
-                requires_relay,
             );
 
             let flow_exercised_after_refresh = session.iter().any(|after| {
@@ -994,12 +1016,11 @@ fn record_dns_refresh_session_feedback<'a>(
                     && after.response_received_at.is_some()
             });
             if flow_exercised_after_refresh {
-                record!(
+                record_with_path!(path;
                     ipv6,
                     udp,
                     answers_changed,
                     old_destination_absent,
-                    requires_relay,
                 );
             }
         }
