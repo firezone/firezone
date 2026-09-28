@@ -905,7 +905,7 @@ mod tests {
 
     /// Verifies that `set_token_permissions` produces a file that passes `check_token_permissions`.
     /// On Linux, this requires running as root (CI runs in Docker as root).
-    /// On macOS/Windows, both functions are no-ops so this always passes.
+    /// On macOS, both functions are no-ops so this always passes.
     #[test]
     fn set_token_permissions_satisfies_check() {
         use std::io::Write;

@@ -21,7 +21,8 @@ use windows::{
         Security::{
             ACL,
             Authorization::{
-                ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+                ConvertSecurityDescriptorToStringSecurityDescriptorW, ConvertSidToStringSidW,
+                ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW,
                 SDDL_REVISION_1, SE_FILE_OBJECT, SetNamedSecurityInfoW,
             },
             DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl,
@@ -144,6 +145,64 @@ impl Drop for SecurityDescriptor {
     }
 }
 
+/// Returns the DACL of the named file or directory in SDDL form, e.g.
+/// `D:PAI(A;;FA;;;SY)`.
+pub fn dacl_sddl_for_path(path: &Path) -> Result<String> {
+    let path_wide = wide(path.as_os_str());
+    let mut descriptor = PSECURITY_DESCRIPTOR::default();
+
+    // SAFETY: `path_wide` is null-terminated and `&mut descriptor` is a valid
+    // out-pointer. On success, `descriptor` is set to a buffer that we release
+    // with `LocalFree` below.
+    let err = unsafe {
+        GetNamedSecurityInfoW(
+            PCWSTR(path_wide.as_ptr()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            None,
+            None,
+            &mut descriptor,
+        )
+    };
+
+    if err != ERROR_SUCCESS {
+        return Err(std::io::Error::from_raw_os_error(err.0 as i32))
+            .with_context(|| format!("Failed to get Windows DACL of `{}`", path.display()));
+    }
+
+    let mut out = PWSTR(ptr::null_mut());
+
+    // SAFETY: `descriptor` is a valid security descriptor and `&mut out` is a
+    // valid out-pointer. On success, Windows allocates `out` with `LocalAlloc`.
+    let converted = unsafe {
+        ConvertSecurityDescriptorToStringSecurityDescriptorW(
+            descriptor,
+            SDDL_REVISION_1,
+            DACL_SECURITY_INFORMATION,
+            &mut out,
+            None,
+        )
+    };
+
+    let sddl = converted
+        .context("Failed to convert Windows security descriptor to SDDL")
+        .and_then(|()| {
+            // SAFETY: On success, `out` points to a null-terminated wide string.
+            unsafe { out.to_string() }.context("SDDL is not valid UTF-16")
+        });
+
+    // SAFETY: Both buffers were allocated by Windows with `LocalAlloc` (or are
+    // NULL) and no pointer derived from them is used after this.
+    unsafe {
+        LocalFree(Some(HLOCAL(out.0.cast())));
+        LocalFree(Some(HLOCAL(descriptor.0)));
+    }
+
+    sddl
+}
+
 fn wide(s: impl AsRef<OsStr>) -> Vec<u16> {
     s.as_ref().encode_wide().chain(Some(0)).collect()
 }
@@ -231,6 +290,20 @@ mod tests {
             .unwrap()
             .apply_to_path(&missing);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn dacl_sddl_for_path_returns_applied_aces() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("token.txt");
+        std::fs::write(&path, "").unwrap();
+
+        SecurityDescriptor::from_sddl(PERMISSIVE_SDDL)
+            .unwrap()
+            .apply_to_path(&path)
+            .unwrap();
+
+        assert!(dacl_sddl_for_path(&path).unwrap().ends_with("(A;;FA;;;WD)"));
     }
 
     #[test]

@@ -386,17 +386,8 @@ if config_env() == :prod do
     # Delete expired portal sessions every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
 
-    # Delete old change_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
-
-    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
-    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
-
-    # Delete old session_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
-
-    # Delete old api_request_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
+    # Maintain daily log partitions (pre-create upcoming, drop expired)
+    {"30 3 * * *", Portal.Workers.PartitionLogTables},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}

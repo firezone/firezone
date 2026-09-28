@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the iOS screens on the booted simulator into swift/apple/screenshots/ios/<device>"
+#MISE description="Run the iOS UI tests on the booted simulator, saving the screens they photograph to swift/apple/screenshots/ios/<device>"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -40,7 +40,7 @@ for appearance in light dark; do
 
   xcrun simctl ui "${UDID}" appearance "${appearance}"
 
-  echo "Photographing the iOS screens in ${appearance}..."
+  echo "Running the iOS UI tests in ${appearance}..."
   # xcodebuild forwards TEST_RUNNER_-prefixed variables with the prefix stripped.
   # Only what failed is repeated: a press the app dropped lands the second time,
   # and a screen that is broken fails twice.

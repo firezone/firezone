@@ -89,20 +89,7 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-    "RUSTSEC-2020-0095", # `difference` is unmaintained
     "RUSTSEC-2024-0370", # `proc-macro-error` is unmaintained
-
-    # `gtk-rs` crates are unmaintained
-    "RUSTSEC-2024-0411",
-    "RUSTSEC-2024-0412",
-    "RUSTSEC-2024-0413",
-    "RUSTSEC-2024-0414",
-    "RUSTSEC-2024-0415",
-    "RUSTSEC-2024-0416",
-    "RUSTSEC-2024-0417",
-    "RUSTSEC-2024-0418",
-    "RUSTSEC-2024-0419",
-    "RUSTSEC-2024-0420",
 
     "RUSTSEC-2024-0436", # paste, See #8387
 
@@ -276,7 +263,6 @@ skip = [
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
     "libloading",
-    "linux-raw-sys",
     "nix",
     "nom",
     "object",
@@ -284,7 +270,6 @@ skip = [
     "proc-macro-crate",
     "rand",
     "rand_core",
-    "rustix",
     "serde_spanned",
     "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.
     "syn",

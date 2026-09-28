@@ -4,6 +4,15 @@ defmodule PortalAPI.MCP.JSONSchemaTest do
   alias OpenApiSpex.{Reference, Schema}
   alias PortalAPI.MCP.JSONSchema
 
+  test "subject contracts expose optional attestation fields" do
+    for schema <- [PortalAPI.Schemas.Subject.schema(), PortalAPI.Schemas.SessionSubject.Client.schema()] do
+      converted = JSONSchema.convert(schema, %{})
+      assert converted["properties"]["attested_at"]["format"] == "date-time"
+      assert converted["properties"]["attested_cert_issuer"]["type"] == "string"
+      refute "attested_at" in (converted["required"] || [])
+    end
+  end
+
   test "nullable compositions and enums include an explicit null alternative" do
     for schema <- [
           %Schema{nullable: true, allOf: [%Schema{type: :object}]},

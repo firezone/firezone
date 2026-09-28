@@ -72,7 +72,7 @@ defmodule PortalAPI.LogControllerTest do
           operation: :update,
           before: %{"name" => "Jane Doe"},
           after: %{"name" => "Jane Smith"},
-          subject: %{"actor_id" => Ecto.UUID.generate()}
+          subject: %{"actor_id" => Ecto.UUID.generate(), "attested_device_serial" => "SERIAL"}
         )
 
       conn =
@@ -136,13 +136,20 @@ defmodule PortalAPI.LogControllerTest do
     end
 
     test "bounds the window with begin and end", %{conn: conn, account: account, actor: actor} do
-      old = change_log_fixture(account: account, timestamp: ~U[2026-01-01 00:00:00.000000Z])
-      change_log_fixture(account: account, timestamp: ~U[2026-03-01 00:00:00.000000Z])
+      now = DateTime.utc_now()
+      old = change_log_fixture(account: account, timestamp: DateTime.add(now, -2, :day))
+      change_log_fixture(account: account, timestamp: DateTime.add(now, -1, :day))
+
+      params = %{
+        type: "change",
+        begin: DateTime.to_iso8601(DateTime.add(now, -3, :day)),
+        end: DateTime.to_iso8601(DateTime.add(now, -36, :hour))
+      }
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=change&begin=2025-12-01T00:00:00Z&end=2026-02-01T00:00:00Z")
+        |> get(~p"/logs?#{params}")
 
       assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn, 200)
       assert log_id == old.log_id
@@ -187,14 +194,21 @@ defmodule PortalAPI.LogControllerTest do
 
   describe "index/2 type=session" do
     test "lists session logs most recent first", %{conn: conn, account: account, actor: actor} do
-      oldest = session_log_fixture(account: account, timestamp: ~U[2026-06-01 00:00:00.000000Z])
-      middle = session_log_fixture(account: account, timestamp: ~U[2026-06-02 00:00:00.000000Z])
-      newest = session_log_fixture(account: account, timestamp: ~U[2026-06-03 00:00:00.000000Z])
+      now = DateTime.utc_now()
+      oldest = session_log_fixture(account: account, timestamp: DateTime.add(now, -3, :day))
+      middle = session_log_fixture(account: account, timestamp: DateTime.add(now, -2, :day))
+      newest = session_log_fixture(account: account, timestamp: DateTime.add(now, -1, :day))
+
+      params = %{
+        type: "session",
+        begin: DateTime.to_iso8601(DateTime.add(now, -4, :day)),
+        end: DateTime.to_iso8601(now)
+      }
 
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=session&begin=2026-05-31T00:00:00Z&end=2026-06-04T00:00:00Z")
+        |> get(~p"/logs?#{params}")
 
       assert %{"data" => data} = json_response(conn, 200)
 

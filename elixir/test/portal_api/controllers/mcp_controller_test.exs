@@ -15,6 +15,21 @@ defmodule PortalAPI.MCPControllerTest do
     %{account: account, actor: actor}
   end
 
+  test "log tools preserve attestation in subjects", %{conn: conn, actor: actor, account: account} do
+    log = Portal.SessionLogFixtures.session_log_fixture(
+      account: account,
+      subject: %{"attested_device_serial" => "SERIAL", "attested_at" => "2026-09-01T00:00:00Z"}
+    )
+
+    response = conn
+      |> authorize_mcp_conn(actor, ["logs:read"])
+      |> legacy_rpc("tools/call", %{"name" => "list_logs", "arguments" => %{"type" => "session"}})
+      |> json_response(200)
+
+    assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => [data]}}} = response
+    assert data["subject"] == log.subject
+  end
+
   describe "Streamable HTTP compatibility" do
     test "initializes, lists tools, and calls a tool without modern metadata", %{
       conn: conn,

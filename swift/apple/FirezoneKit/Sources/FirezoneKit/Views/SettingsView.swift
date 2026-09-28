@@ -62,8 +62,12 @@ public struct SettingsView: View {
   @State private var selectedTab: Tab
 
   #if os(iOS)
-    @State private var logTempZipFileURL: URL?
-    @State private var isPresentingExportLogShareSheet = false
+    private struct LogArchive: Identifiable {
+      let url: URL
+      var id: URL { url }
+    }
+
+    @State private var exportedLogArchive: LogArchive?
   #endif
 
   private struct PlaceholderText {
@@ -496,8 +500,7 @@ public struct SettingsView: View {
                   Task {
                     do {
                       let archiveURL = try await store.exportLogs()
-                      self.logTempZipFileURL = archiveURL
-                      self.isPresentingExportLogShareSheet = true
+                      self.exportedLogArchive = LogArchive(url: archiveURL)
                     } catch {
                       Log.error(error)
                       viewModel.isExportingLogs = false
@@ -505,23 +508,20 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .sheet(isPresented: $isPresentingExportLogShareSheet) {
-                if let logfileURL = self.logTempZipFileURL {
+              .sheet(
+                item: $exportedLogArchive,
+                onDismiss: {
+                  viewModel.isExportingLogs = false
+                },
+                content: { archive in
                   ShareSheetView(
-                    localFileURL: logfileURL,
+                    localFileURL: archive.url,
                     completionHandler: {
-                      self.isPresentingExportLogShareSheet = false
-                      viewModel.isExportingLogs = false
-                      self.logTempZipFileURL = nil
+                      self.exportedLogArchive = nil
                     }
                   )
-                  .onDisappear {
-                    self.isPresentingExportLogShareSheet = false
-                    viewModel.isExportingLogs = false
-                    self.logTempZipFileURL = nil
-                  }
                 }
-              }
+              )
               Spacer()
             }
           }

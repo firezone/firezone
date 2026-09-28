@@ -152,8 +152,11 @@
         deliver(app, as: scenario, in: appearance)
       }
     }
+  }
 
-    private func launchApp(scenario: String) -> XCUIApplication {
+  @MainActor
+  extension XCTestCase {
+    func launchApp(scenario: String) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
       app.launch()
@@ -161,7 +164,7 @@
       return app
     }
 
-    private func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
+    fileprivate func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
       guard row.waitForExistence(timeout: 10) else {
         throw IOSScreenshotError.screenDidNotAppear(name)
       }
@@ -179,7 +182,7 @@
     /// it and comes to rest a little further along each time. Pressing before the
     /// drag makes it a scroll, but the drag still hands the list a velocity of its
     /// own, so the finger has to come to a stop before it lifts.
-    private func scrollDown(in app: XCUIApplication) {
+    fileprivate func scrollDown(in app: XCUIApplication) {
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
 
@@ -197,7 +200,7 @@
     /// SwiftUI has drawn the iOS tab bar as different controls across releases, so
     /// the first kind that answers to `label` wins. The tab's own selected trait
     /// would be the cheaper signal, but these controls do not report it.
-    private func selectTab(
+    func selectTab(
       _ label: String, showing anchor: String, in app: XCUIApplication
     ) throws {
       let candidates = [
@@ -215,7 +218,7 @@
     }
 
     /// Opens the Settings sheet from the button the session screen's toolbar carries.
-    private func openSettings(in app: XCUIApplication, on screen: String) throws {
+    func openSettings(in app: XCUIApplication, on screen: String) throws {
       let button = app.buttons["Settings"]
       try waitFor(button, on: screen)
 
@@ -229,7 +232,7 @@
     /// A press that lands while the screen it asks for is still arriving is dropped
     /// without a word, as is one a banner SpringBoard laid over the app caught, and
     /// both leave the wait that follows with nothing to wait for.
-    private func tap(_ control: XCUIElement, until anchor: XCUIElement) -> Bool {
+    func tap(_ control: XCUIElement, until anchor: XCUIElement) -> Bool {
       for _ in 0..<3 {
         control.tap()
 
@@ -244,7 +247,7 @@
     /// The menu itself is an icon carrying no text, so it is taken as the
     /// navigation bar button that is not Settings, and SwiftUI has drawn the items
     /// it holds as different controls across releases.
-    private func openAccountMenu(
+    fileprivate func openAccountMenu(
       showing item: String,
       in app: XCUIApplication,
       on screen: String
@@ -260,7 +263,7 @@
 
     /// Blocks until `element` is on screen, so a capture cannot catch the spinner
     /// the app shows while it loads its state.
-    private func waitFor(_ element: XCUIElement, on screen: String) throws {
+    func waitFor(_ element: XCUIElement, on screen: String) throws {
       guard element.waitForExistence(timeout: 30) else {
         throw IOSScreenshotError.screenDidNotAppear(screen)
       }
@@ -271,7 +274,7 @@
     /// An appearance belongs to the device rather than to a launch, and
     /// `XCUIDevice.appearance` is ignored under `xcodebuild`, so CI sets it with
     /// `simctl ui` and runs the whole suite once per appearance.
-    private func currentAppearance() throws -> Appearance {
+    fileprivate func currentAppearance() throws -> Appearance {
       let name = try XCTUnwrap(
         ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"],
         "SCREENSHOT_APPEARANCE is not set"

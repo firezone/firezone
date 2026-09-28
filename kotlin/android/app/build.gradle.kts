@@ -272,12 +272,12 @@ dependencies {
     // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
     // report step to pick the wrong one from.
     "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps") { isTransitive = false }
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // AndroidX
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("androidx.constraintlayout:constraintlayout:2.2.2")
@@ -292,8 +292,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.10.1")
-    implementation("androidx.navigation:navigation-ui-ktx:2.10.1")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.10.2")
+    implementation("androidx.navigation:navigation-ui-ktx:2.10.2")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
@@ -306,7 +306,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
     kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.10.1")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.10.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
@@ -337,7 +337,7 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.fragment:fragment-testing:1.9.0")
+    androidTestImplementation("androidx.fragment:fragment-testing:1.9.1")
 
     // Import the BoM for the Firebase platform
     implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
@@ -351,13 +351,8 @@ dependencies {
     // UniFFI
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
-    // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
-    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
-    // bundled in the crate source (see settings.gradle.kts).
-    implementation(cargo.rustls.platform.verifier)
-
     // Sentry
-    implementation("io.sentry:sentry-android:8.56.0")
+    implementation("io.sentry:sentry-android:8.57.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")

@@ -120,8 +120,8 @@ I/O optimizations to reduce system calls, task wake-ups, and per-packet overhead
 | -------- | ----------------------------------------------------- |
 | iOS      | 2+ Gbps                                               |
 | Android  | 2+ Gbps                                               |
-| Windows  | 3+ Gbps                                               |
-| macOS    | 4+ Gbps                                               |
+| Windows  | 5+ Gbps                                               |
+| macOS    | 5+ Gbps                                               |
 | Linux    | 5+ Gbps on commodity VMs / 10+ Gbps on tuned hardware |
 
 Throughput varies with round-trip latency, packet loss, hardware, network capacity,

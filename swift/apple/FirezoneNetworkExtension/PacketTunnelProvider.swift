@@ -278,9 +278,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func handleAppMessage(
     _ message: Data, completionHandler: (@Sendable (Data?) -> Void)? = nil
   ) {
+    let providerMessage: ProviderMessage
     do {
-      let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+      providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+    } catch {
+      // An app from another version can send messages this build does not know.
+      Log.debug("Ignoring app message we cannot decode: \(error)")
+      completionHandler?(nil)
+      return
+    }
 
+    do {
       switch providerMessage {
 
       case .setInternetResourceEnabled(let enabled):
