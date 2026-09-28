@@ -273,12 +273,12 @@ where
                         .extend(server_addresses(allocation));
 
                     match e {
-                        FreeReason::NoResponseReceived => {}
                         FreeReason::AuthenticationError
                         | FreeReason::ProtocolFailure
                         | FreeReason::UnhandledResponse => {
                             self.blocked.insert(*rid, now + BLOCK_DURATION);
                         }
+                        FreeReason::NoResponseReceived => {}
                     }
 
                     true
