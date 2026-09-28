@@ -658,14 +658,11 @@ impl TunnelTest {
             Transition::DeployNewRelays(new_relays) => {
                 self.deploy_new_relays(new_relays, now);
             }
-            Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
-                let cut_off = self.flux_capacitor.now::<Instant>() + IDLE_DURATION;
+            Transition::Idle { duration } => {
+                let cut_off = self.flux_capacitor.now::<Instant>() + duration;
 
-                while self.flux_capacitor.now::<Instant>() <= cut_off {
-                    self.flux_capacitor.tick(Duration::from_secs(5));
-                    self.advance(ref_state, portal, &mut buffered_transmits);
-                }
+                self.advance_to(ref_state, portal, &mut buffered_transmits, cut_off);
+                self.flux_capacitor.skip_to(cut_off);
             }
             Transition::PartitionRelaysFromPortal => {
                 // 1. Disconnect all relays.

@@ -15,6 +15,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, SocketAddr},
+    time::Duration,
 };
 
 use connlib_model::{ClientId, GatewayId, ResourceId};
@@ -30,10 +31,12 @@ use crate::{
     reference::ReferenceState,
     resource::{EditEffect, classify},
     sim_gateway::DnsResolution,
-    sim_net::direct_path_possible,
+    sim_net::{EdgeConfig, FilterMode, Mapping, direct_path_possible},
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
+    transition::{
+        DPort, Destination, DnsQuery, DnsTransport, SPort, Transition, idle_duration_bucket,
+    },
 };
 
 const RELAYS_DEPLOYED: u8 = 1 << 0;
@@ -123,9 +126,9 @@ pub struct Recorder {
     gateway_authorization_changes: BTreeMap<ResourceId, u8>,
     peer_authorization_changes: BTreeMap<ClientRoute, u8>,
     resource_edits: BTreeMap<ResourceId, u8>,
-    idled_flows: BTreeSet<FlowId>,
+    idled_flows: BTreeMap<FlowId, Duration>,
     successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
-    current_probe_on_idled_flow: Option<ProbeId>,
+    current_probe_on_idled_flow: Option<IdleFlowAttempt>,
     current_dns_queries: Vec<(ClientId, DnsQuery)>,
     current_tcp_connection: Option<TcpConnectionAttempt>,
 }
@@ -205,13 +208,19 @@ impl Recorder {
             Transition::SendIcmpPacketOnExistingFlow {
                 flow_id, probe_id, ..
             } => {
-                if self.idled_flows.contains(flow_id) {
-                    self.current_probe_on_idled_flow = Some(*probe_id);
+                if let Some(duration) = self.idled_flows.remove(flow_id) {
+                    self.current_probe_on_idled_flow = Some(IdleFlowAttempt {
+                        probe: *probe_id,
+                        duration,
+                    });
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
-                if self.idled_flows.contains(flow_id) {
-                    self.current_probe_on_idled_flow = Some(*probe_id);
+                if let Some(duration) = self.idled_flows.remove(flow_id) {
+                    self.current_probe_on_idled_flow = Some(IdleFlowAttempt {
+                        probe: *probe_id,
+                        duration,
+                    });
                 }
             }
             Transition::ConnectTcp {
@@ -232,9 +241,14 @@ impl Recorder {
             Transition::SendDnsQueries(queries) => {
                 self.current_dns_queries.clone_from(queries);
             }
-            Transition::Idle => {
-                self.idled_flows.extend(reference.icmp_flows.keys());
-                self.idled_flows.extend(reference.udp_flows.keys());
+            Transition::Idle { duration } => {
+                for flow in reference
+                    .icmp_flows
+                    .keys()
+                    .chain(reference.udp_flows.keys())
+                {
+                    *self.idled_flows.entry(*flow).or_default() += *duration;
+                }
             }
             Transition::AddResource(_)
             | Transition::RemoveResource(_)
@@ -254,7 +268,7 @@ impl Recorder {
     /// Records observed state combinations that should guide future fuzzing.
     pub fn record(&mut self, reference: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
         record_translated_icmp_error_feedback(reference, state);
-        record_dns_refresh_feedback(state);
+        record_dns_refresh_feedback(reference, state);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
 
@@ -386,7 +400,10 @@ impl Recorder {
         reference: &ReferenceState,
         completed: &CompletedRoundTrip<'_>,
     ) {
-        if self.current_probe_on_idled_flow != Some(completed.expected.id) {
+        let Some(attempt) = self.current_probe_on_idled_flow else {
+            return;
+        };
+        if attempt.probe != completed.expected.id {
             return;
         }
         let Some(requires_relay) = route_requires_relay(reference, completed) else {
@@ -403,7 +420,16 @@ impl Recorder {
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
             ),
+            attempt.duration >= DNS_NAT_SESSION_TTL,
         );
+
+        let Some((origin_edge, remote_edge)) = route_edge_configs(reference, completed) else {
+            return;
+        };
+        let value = edge_profile(origin_edge)
+            | (edge_profile(remote_edge) << 6)
+            | (idle_duration_bucket(attempt.duration) << 12);
+        record_value!(value);
     }
 
     fn record_connectivity_after_resource_edit(
@@ -632,6 +658,12 @@ struct TcpConnectionAttempt {
     dport: DPort,
 }
 
+#[derive(Clone, Copy)]
+struct IdleFlowAttempt {
+    probe: ProbeId,
+    duration: Duration,
+}
+
 struct CompletedRoundTrip<'a> {
     expected: &'a ExpectedProbe,
     route: Route,
@@ -704,6 +736,45 @@ fn route_requires_relay(
     }
 }
 
+fn route_edge_configs(
+    reference: &ReferenceState,
+    completed: &CompletedRoundTrip<'_>,
+) -> Option<(EdgeConfig, EdgeConfig)> {
+    let origin = reference.clients.get(&completed.expected.origin)?;
+    let remote = match completed.route {
+        Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
+            reference.gateways.get(&gateway)?.edge_config()
+        }
+        Route::Peer(peer) => reference.clients.get(&peer)?.edge_config(),
+    };
+
+    Some((origin.edge_config(), remote))
+}
+
+fn edge_profile(edge: EdgeConfig) -> u16 {
+    let EdgeConfig::Nat(mapping, filter, expiry) = edge else {
+        return 0;
+    };
+    let mapping = match mapping {
+        Mapping::EndpointIndependent => 0,
+        Mapping::EndpointDependent => 1,
+    };
+    let filter = match filter {
+        FilterMode::Open => 0,
+        FilterMode::AddressRestricted => 1,
+        FilterMode::PortRestricted => 2,
+    };
+    let timeout = match expiry.timeout.as_secs() {
+        0..=30 => 0,
+        31..=60 => 1,
+        61..=120 => 2,
+        _ => 3,
+    };
+    let inbound_refreshes = u16::from(expiry.inbound_refreshes);
+
+    1 + mapping + filter * 2 + timeout * 6 + inbound_refreshes * 24
+}
+
 fn gateway_route_requires_relay(
     reference: &ReferenceState,
     origin: ClientId,
@@ -772,6 +843,11 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let Remote::Gateway(gateway) = observation.received.remote else {
             continue;
         };
+        let Some(requires_relay) =
+            gateway_route_requires_relay(reference, observation.submitted.client, gateway)
+        else {
+            continue;
+        };
         let Some(gateway) = state.gateway(gateway) else {
             continue;
         };
@@ -791,11 +867,17 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let old_destination_absent =
             !addresses.contains(&observation.received.packet.destination());
         let udp = observation.submitted.packet.as_udp().is_some();
-        record!(ipv6, udp, answers_changed, old_destination_absent);
+        record!(
+            ipv6,
+            udp,
+            answers_changed,
+            old_destination_absent,
+            requires_relay,
+        );
     }
 }
 
-fn record_dns_refresh_feedback(state: &TunnelTest) {
+fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
     let sessions = DnsNatSessions::new(state.dns_nat_observations()).sessions;
 
     for session in sessions {
@@ -806,6 +888,11 @@ fn record_dns_refresh_feedback(state: &TunnelTest) {
             continue;
         };
         let Some(gateway) = state.gateway(session.key.gateway) else {
+            continue;
+        };
+        let Some(requires_relay) =
+            gateway_route_requires_relay(reference, session.key.client, session.key.gateway)
+        else {
             continue;
         };
         let Some(initial_resolution) = gateway.dns_resolution_before(
@@ -821,6 +908,7 @@ fn record_dns_refresh_feedback(state: &TunnelTest) {
 
         record_dns_refresh_session_feedback(
             &session.observations,
+            requires_relay,
             gateway
                 .dns_resolutions(
                     session.key.client,
@@ -835,6 +923,7 @@ fn record_dns_refresh_feedback(state: &TunnelTest) {
 
 fn record_dns_refresh_session_feedback<'a>(
     session: &[&DnsNatObservation],
+    requires_relay: bool,
     resolutions: impl Iterator<Item = &'a DnsResolution>,
 ) {
     for (previous, refreshed) in resolutions.tuple_windows() {
@@ -864,7 +953,13 @@ fn record_dns_refresh_session_feedback<'a>(
                 .addresses
                 .contains(&before.received.packet.destination());
             let udp = before.submitted.packet.as_udp().is_some();
-            record!(ipv6, udp, answers_changed, old_destination_absent);
+            record!(
+                ipv6,
+                udp,
+                answers_changed,
+                old_destination_absent,
+                requires_relay,
+            );
 
             let flow_exercised_after_refresh = session.iter().any(|after| {
                 after.flow_id == before.flow_id
@@ -875,7 +970,13 @@ fn record_dns_refresh_session_feedback<'a>(
                     && after.response_received_at.is_some()
             });
             if flow_exercised_after_refresh {
-                record!(ipv6, udp, answers_changed, old_destination_absent);
+                record!(
+                    ipv6,
+                    udp,
+                    answers_changed,
+                    old_destination_absent,
+                    requires_relay,
+                );
             }
         }
     }

@@ -148,6 +148,42 @@ pub(super) fn generate(
     Transition::SendDnsQueries(queries)
 }
 
+pub(super) fn generate_for_domain(
+    g: &mut Generator,
+    targets: &[DnsQueryTarget],
+    client: ClientId,
+    domain: &DomainName,
+    record_type: RecordType,
+) -> Option<Transition> {
+    let candidates = targets
+        .iter()
+        .filter(|target| target.client_id == client)
+        .filter(|target| match &target.name {
+            DnsNameSpec::Concrete {
+                domain: candidate, ..
+            } => candidate == domain,
+            DnsNameSpec::Resource { .. } => false,
+            DnsNameSpec::KnownDevice { .. } => false,
+            DnsNameSpec::UnknownDevice { .. } => false,
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let target = candidates[g.choose_index(candidates.len())].clone();
+    let query = DnsQuery {
+        domain: domain.clone(),
+        r_type: record_type,
+        query_id: arb_dns_query_id(g),
+        dns_server: target.dns_server,
+        transport: arb_dns_transport(g),
+    };
+
+    Some(Transition::SendDnsQueries(vec![(client, query)]))
+}
+
 fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQuery) {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),

@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, iter, time::Duration};
 
 use connlib_model::Site;
-use dns_types::DomainName;
+use dns_types::{DomainName, RecordType};
 use smallvec::SmallVec;
 
-use super::context::Generator;
+use super::context::{FlowGuidance, Generator};
 use super::topology::{
     arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
 };
@@ -18,9 +18,9 @@ use super::{dns_queries, packets};
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
-use crate::sim_net::{EdgeConfig, Host};
+use crate::sim_net::{EdgeConfig, Host, direct_path_possible};
 use crate::stub_portal::StubPortal;
-use crate::transition::{Seq, Transition};
+use crate::transition::{IDLE_DURATIONS, Seq, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -93,6 +93,12 @@ pub(super) fn generate(
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+    if let Some(guidance) = g.take_flow_guidance()
+        && let Some(transition) =
+            guided_transition(g, guidance, &existing_flows, &dns_query_targets, state)
+    {
+        return transition;
+    }
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -188,6 +194,11 @@ pub(super) fn generate(
             };
 
             let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
+            if portal.iceless()
+                && let Some(flow) = choose_relayed_flow(g, &existing_flows, state)
+            {
+                g.guide_flow(FlowGuidance::Reuse(flow.id()));
+            }
 
             Transition::DeployNewRelays(relays)
         }
@@ -208,7 +219,14 @@ pub(super) fn generate(
                 .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
         }
-        K::Idle => Transition::Idle,
+        K::Idle => {
+            if let Some(flow) = choose_flow_for_idle(g, &existing_flows, state) {
+                g.guide_flow(FlowGuidance::Reuse(flow.id()));
+            }
+            let duration = IDLE_DURATIONS[g.choose_index(IDLE_DURATIONS.len())];
+
+            Transition::Idle { duration }
+        }
         K::AddResource => {
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)
@@ -264,6 +282,16 @@ pub(super) fn generate(
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let records = arb_dns_record_set(g);
+            let matching_flows = existing_flows
+                .iter()
+                .copied()
+                .filter(|flow| flow.domain(state) == Some(&domain))
+                .collect::<Vec<_>>();
+            if !matching_flows.is_empty() {
+                let flow = matching_flows[g.choose_index(matching_flows.len())];
+                g.guide_flow(FlowGuidance::RefreshDnsThenReuse(flow.id()));
+            }
+
             Transition::UpdateDnsRecords { domain, records }
         }
         K::SendPacket => {
@@ -272,18 +300,7 @@ pub(super) fn generate(
         }
         K::SendPacketOnExistingFlow => {
             let flow = existing_flows[g.choose_index(existing_flows.len())];
-            let probe_id = g.fresh_probe_id();
-
-            match flow {
-                ExistingFlow::Udp(flow_id) => {
-                    Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id }
-                }
-                ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
-                    flow_id,
-                    seq,
-                    probe_id,
-                },
-            }
+            send_on_existing_flow(g, flow)
         }
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
         K::UpdateDevicePoolMembers => {
@@ -297,6 +314,180 @@ pub(super) fn generate(
                 revoked,
             }
         }
+    }
+}
+
+fn guided_transition(
+    g: &mut Generator<'_>,
+    guidance: FlowGuidance,
+    existing_flows: &[ExistingFlow],
+    dns_query_targets: &[dns_queries::DnsQueryTarget],
+    state: &ReferenceState,
+) -> Option<Transition> {
+    let flow_id = match guidance {
+        FlowGuidance::Reuse(flow) => flow,
+        FlowGuidance::RefreshDnsThenReuse(flow) => flow,
+    };
+    let flow = existing_flows
+        .iter()
+        .copied()
+        .find(|flow| flow.id() == flow_id)?;
+
+    match guidance {
+        FlowGuidance::Reuse(_) => Some(send_on_existing_flow(g, flow)),
+        FlowGuidance::RefreshDnsThenReuse(_) => {
+            let (client, domain, record_type) = flow.client_domain_and_record_type(state)?;
+            let query = dns_queries::generate_for_domain(
+                g,
+                dns_query_targets,
+                client,
+                domain,
+                record_type,
+            )?;
+            g.guide_flow(FlowGuidance::Reuse(flow_id));
+
+            Some(query)
+        }
+    }
+}
+
+impl ExistingFlow {
+    fn id(self) -> FlowId {
+        match self {
+            ExistingFlow::Udp(flow) => flow,
+            ExistingFlow::Icmp(flow, _) => flow,
+        }
+    }
+
+    fn domain(self, state: &ReferenceState) -> Option<&DomainName> {
+        let (_, _, destination) = self.client_source_and_destination(state)?;
+        let crate::transition::Destination::DomainName { name, .. } = destination else {
+            return None;
+        };
+
+        Some(name)
+    }
+
+    fn client_domain_and_record_type(
+        self,
+        state: &ReferenceState,
+    ) -> Option<(connlib_model::ClientId, &DomainName, RecordType)> {
+        let (client, source, destination) = self.client_source_and_destination(state)?;
+        let crate::transition::Destination::DomainName { name, .. } = destination else {
+            return None;
+        };
+        let record_type = match source {
+            std::net::IpAddr::V4(_) => RecordType::A,
+            std::net::IpAddr::V6(_) => RecordType::AAAA,
+        };
+
+        Some((client, name, record_type))
+    }
+
+    fn client_source_and_destination(
+        self,
+        state: &ReferenceState,
+    ) -> Option<(
+        connlib_model::ClientId,
+        std::net::IpAddr,
+        &crate::transition::Destination,
+    )> {
+        match self {
+            ExistingFlow::Udp(flow) => state
+                .udp_flows
+                .get(&flow)
+                .map(|flow| (flow.client_id, flow.src, &flow.dst)),
+            ExistingFlow::Icmp(flow, _) => state
+                .icmp_flows
+                .get(&flow)
+                .map(|flow| (flow.client_id, flow.src, &flow.dst)),
+        }
+    }
+
+    fn requires_relay(self, state: &ReferenceState) -> Option<bool> {
+        let (client, route) = match self {
+            ExistingFlow::Udp(flow) => state
+                .udp_flows
+                .get(&flow)
+                .map(|flow| (flow.client_id, flow.route))?,
+            ExistingFlow::Icmp(flow, _) => state
+                .icmp_flows
+                .get(&flow)
+                .map(|flow| (flow.client_id, flow.route))?,
+        };
+        let origin = state.clients.get(&client)?;
+        let remote = match route {
+            crate::probe::Route::Resource { gateway, .. }
+            | crate::probe::Route::Gateway(gateway) => state.gateways.get(&gateway)?,
+            crate::probe::Route::Peer(peer) => {
+                let peer = state.clients.get(&peer)?;
+                let direct = direct_path_possible(
+                    origin.edge_config(),
+                    peer.edge_config(),
+                    origin.ip4.is_some() && peer.ip4.is_some(),
+                    origin.ip6.is_some() && peer.ip6.is_some(),
+                );
+
+                return Some(!direct);
+            }
+        };
+        let direct = direct_path_possible(
+            origin.edge_config(),
+            remote.edge_config(),
+            origin.ip4.is_some() && remote.ip4.is_some(),
+            origin.ip6.is_some() && remote.ip6.is_some(),
+        );
+
+        Some(!direct)
+    }
+}
+
+fn choose_flow_for_idle(
+    g: &mut Generator<'_>,
+    flows: &[ExistingFlow],
+    state: &ReferenceState,
+) -> Option<ExistingFlow> {
+    let max_score = flows.iter().map(|flow| flow_score(*flow, state)).max()?;
+    let candidates = flows
+        .iter()
+        .copied()
+        .filter(|flow| flow_score(*flow, state) == max_score)
+        .collect::<Vec<_>>();
+
+    Some(candidates[g.choose_index(candidates.len())])
+}
+
+fn choose_relayed_flow(
+    g: &mut Generator<'_>,
+    flows: &[ExistingFlow],
+    state: &ReferenceState,
+) -> Option<ExistingFlow> {
+    let candidates = flows
+        .iter()
+        .copied()
+        .filter(|flow| flow.requires_relay(state) == Some(true))
+        .collect::<Vec<_>>();
+    if candidates.is_empty() {
+        return None;
+    }
+
+    Some(candidates[g.choose_index(candidates.len())])
+}
+
+fn flow_score(flow: ExistingFlow, state: &ReferenceState) -> u8 {
+    u8::from(flow.domain(state).is_some()) + u8::from(flow.requires_relay(state) == Some(true)) * 2
+}
+
+fn send_on_existing_flow(g: &mut Generator<'_>, flow: ExistingFlow) -> Transition {
+    let probe_id = g.fresh_probe_id();
+
+    match flow {
+        ExistingFlow::Udp(flow_id) => Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id },
+        ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
+            flow_id,
+            seq,
+            probe_id,
+        },
     }
 }
 

@@ -18,6 +18,32 @@ use std::{
     time::Duration,
 };
 
+pub(crate) const IDLE_DURATIONS: [Duration; 15] = [
+    Duration::from_secs(24),
+    Duration::from_secs(26),
+    Duration::from_secs(29),
+    Duration::from_secs(31),
+    Duration::from_secs(59),
+    Duration::from_secs(61),
+    Duration::from_secs(89),
+    Duration::from_secs(91),
+    Duration::from_secs(119),
+    Duration::from_secs(121),
+    Duration::from_secs(169),
+    Duration::from_secs(171),
+    Duration::from_secs(299),
+    Duration::from_secs(301),
+    Duration::from_secs(360),
+];
+
+pub(crate) fn idle_duration_bucket(duration: Duration) -> u16 {
+    IDLE_DURATIONS
+        .iter()
+        .position(|candidate| *candidate == duration)
+        .and_then(|index| u16::try_from(index).ok())
+        .unwrap_or(15)
+}
+
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]
 pub enum Transition {
@@ -102,7 +128,9 @@ pub enum Transition {
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
-    Idle,
+    Idle {
+        duration: Duration,
+    },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
@@ -155,7 +183,7 @@ impl Transition {
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
+            Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
@@ -220,7 +248,7 @@ impl Transition {
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => true,
+            Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
