@@ -5,7 +5,7 @@ use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{ClientId, PublicKey, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 use std::collections::{BTreeMap, BTreeSet};
@@ -25,6 +25,7 @@ use std::time::Instant;
 /// request fresh access when a previously permitted packet is denied.
 pub(crate) struct ClientOnClient {
     id: ClientId,
+    remote_key: PublicKey,
     local_tun: IpConfig,
     remote_tun: IpConfig,
     remote_name: String,
@@ -67,12 +68,14 @@ pub(crate) enum InboundResult {
 impl ClientOnClient {
     pub(crate) fn new(
         id: ClientId,
+        remote_key: PublicKey,
         local_tun: IpConfig,
         remote_tun: IpConfig,
         remote_name: String,
     ) -> ClientOnClient {
         ClientOnClient {
             id,
+            remote_key,
             local_tun,
             remote_tun,
             remote_name,
@@ -91,6 +94,14 @@ impl ClientOnClient {
 
     pub(crate) fn remote_tun(&self) -> IpConfig {
         self.remote_tun
+    }
+
+    pub(crate) fn remote_key(&self) -> PublicKey {
+        self.remote_key
+    }
+
+    pub(crate) fn set_remote_key(&mut self, key: PublicKey) {
+        self.remote_key = key;
     }
 
     /// The resources through which the remote peer may reach us.
@@ -736,6 +747,7 @@ mod tests {
     fn peer() -> ClientOnClient {
         ClientOnClient::new(
             ClientId::from_u128(1),
+            PublicKey::from([0; 32]),
             local_tun(),
             peer_tun(),
             "peer".to_owned(),
