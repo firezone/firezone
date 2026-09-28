@@ -18,6 +18,9 @@ use std::{
     time::Duration,
 };
 
+/// Samples both sides of keepalive, NAT, DNS NAT, and rekey timers.
+///
+/// Two six-minute transitions retain the TURN channel cooling scenario.
 pub(crate) const IDLE_DURATIONS: [Duration; 15] = [
     Duration::from_secs(24),
     Duration::from_secs(26),
@@ -35,14 +38,6 @@ pub(crate) const IDLE_DURATIONS: [Duration; 15] = [
     Duration::from_secs(301),
     Duration::from_secs(360),
 ];
-
-pub(crate) fn idle_duration_bucket(duration: Duration) -> u16 {
-    IDLE_DURATIONS
-        .iter()
-        .position(|candidate| *candidate == duration)
-        .and_then(|index| u16::try_from(index).ok())
-        .unwrap_or(15)
-}
 
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]

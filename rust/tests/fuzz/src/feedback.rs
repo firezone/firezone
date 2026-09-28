@@ -34,9 +34,7 @@ use crate::{
     sim_net::{EdgeConfig, FilterMode, Mapping, direct_path_possible},
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{
-        DPort, Destination, DnsQuery, DnsTransport, SPort, Transition, idle_duration_bucket,
-    },
+    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
 };
 
 const RELAYS_DEPLOYED: u8 = 1 << 0;
@@ -426,10 +424,39 @@ impl Recorder {
         let Some((origin_edge, remote_edge)) = route_edge_configs(reference, completed) else {
             return;
         };
-        let value = edge_profile(origin_edge)
-            | (edge_profile(remote_edge) << 6)
-            | (idle_duration_bucket(attempt.duration) << 12);
-        record_value!(value);
+        let origin = nat_feedback(origin_edge, attempt.duration);
+        let remote = nat_feedback(remote_edge, attempt.duration);
+        if !origin.behind_nat && !remote.behind_nat {
+            return;
+        }
+
+        record!(
+            origin.behind_nat,
+            remote.behind_nat,
+            origin.expiry_elapsed,
+            remote.expiry_elapsed,
+            requires_relay,
+            matches!(
+                completed.expected.request.destination(),
+                Destination::DomainName { .. }
+            ),
+            completed.submitted.packet.destination().is_ipv6(),
+            completed.is_udp(),
+        );
+        record!(
+            origin.endpoint_dependent,
+            remote.endpoint_dependent,
+            origin.port_restricted,
+            remote.port_restricted,
+            requires_relay,
+        );
+        record!(
+            origin.expiry_elapsed,
+            remote.expiry_elapsed,
+            origin.inbound_refreshes,
+            remote.inbound_refreshes,
+            requires_relay,
+        );
     }
 
     fn record_connectivity_after_resource_edit(
@@ -751,28 +778,32 @@ fn route_edge_configs(
     Some((origin.edge_config(), remote))
 }
 
-fn edge_profile(edge: EdgeConfig) -> u16 {
-    let EdgeConfig::Nat(mapping, filter, expiry) = edge else {
-        return 0;
-    };
-    let mapping = match mapping {
-        Mapping::EndpointIndependent => 0,
-        Mapping::EndpointDependent => 1,
-    };
-    let filter = match filter {
-        FilterMode::Open => 0,
-        FilterMode::AddressRestricted => 1,
-        FilterMode::PortRestricted => 2,
-    };
-    let timeout = match expiry.timeout.as_secs() {
-        0..=30 => 0,
-        31..=60 => 1,
-        61..=120 => 2,
-        _ => 3,
-    };
-    let inbound_refreshes = u16::from(expiry.inbound_refreshes);
+struct NatFeedback {
+    behind_nat: bool,
+    endpoint_dependent: bool,
+    port_restricted: bool,
+    inbound_refreshes: bool,
+    expiry_elapsed: bool,
+}
 
-    1 + mapping + filter * 2 + timeout * 6 + inbound_refreshes * 24
+fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
+    let EdgeConfig::Nat(mapping, filter, expiry) = edge else {
+        return NatFeedback {
+            behind_nat: false,
+            endpoint_dependent: false,
+            port_restricted: false,
+            inbound_refreshes: false,
+            expiry_elapsed: false,
+        };
+    };
+
+    NatFeedback {
+        behind_nat: true,
+        endpoint_dependent: mapping == Mapping::EndpointDependent,
+        port_restricted: filter == FilterMode::PortRestricted,
+        inbound_refreshes: expiry.inbound_refreshes,
+        expiry_elapsed: idle >= expiry.timeout,
+    }
 }
 
 fn gateway_route_requires_relay(
