@@ -1,7 +1,7 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
-use super::reference::ReferenceState;
+use super::reference::{RefRelay, ReferenceState};
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
@@ -133,7 +133,7 @@ impl TunnelTest {
             .iter()
             .map(|(rid, relay)| {
                 let relay = relay.map(
-                    |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, flux_capacitor.now()),
+                    |relay, ip4, ip6| SimRelay::new(relay, ip4, ip6, flux_capacitor.now()),
                     debug_span!("relay", %rid),
                 );
 
@@ -664,18 +664,6 @@ impl TunnelTest {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
                 self.reboot_relays_while_partitioned(new_relays, now);
-            }
-            Transition::ExhaustRelayPorts(relay) => {
-                self.relays
-                    .get_mut(&relay)
-                    .unwrap()
-                    .exec_mut(|r| r.rejects_allocations = true);
-            }
-            Transition::FreeRelayPorts(relay) => {
-                self.relays
-                    .get_mut(&relay)
-                    .unwrap()
-                    .exec_mut(|r| r.rejects_allocations = false);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self
@@ -1632,7 +1620,7 @@ impl TunnelTest {
         response
     }
 
-    fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
+    fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<RefRelay>>, now: Instant) {
         let now_utc = self.flux_capacitor.now::<SystemTime>();
         let disconnected = self
             .relays
@@ -1647,7 +1635,7 @@ impl TunnelTest {
                 (
                     relay_id,
                     relay.map(
-                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        |relay, ip4, ip6| SimRelay::new(relay, ip4, ip6, now_utc),
                         debug_span!("relay", %relay_id),
                     ),
                 )
@@ -1679,7 +1667,7 @@ impl TunnelTest {
 
     fn reboot_relays_while_partitioned(
         &mut self,
-        new_relays: BTreeMap<RelayId, Host<u64>>,
+        new_relays: BTreeMap<RelayId, Host<RefRelay>>,
         now: Instant,
     ) {
         let now_utc = self.flux_capacitor.now::<SystemTime>();
@@ -1694,7 +1682,7 @@ impl TunnelTest {
                 (
                     rid,
                     relay.map(
-                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        |relay, ip4, ip6| SimRelay::new(relay, ip4, ip6, now_utc),
                         debug_span!("relay", %rid),
                     ),
                 )

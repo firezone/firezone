@@ -7,7 +7,7 @@ use tunnel_proto::{
 
 use super::{
     probe::{FlowId, ProbeId, Route},
-    reference::PrivateKey,
+    reference::{PrivateKey, RefRelay},
     resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
     stub_portal::PeerAuthorization,
@@ -100,15 +100,10 @@ pub enum Transition {
         client_id: ClientId,
         key: PrivateKey,
     },
-    DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
+    DeployNewRelays(BTreeMap<RelayId, Host<RefRelay>>),
     PartitionRelaysFromPortal,
     Idle,
-    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
-    /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
-    /// while its existing allocations keep working.
-    ExhaustRelayPorts(RelayId),
-    /// The relay has ports again, without the portal telling anyone.
-    FreeRelayPorts(RelayId),
+    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<RefRelay>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
     ///
@@ -162,8 +157,6 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
-            Transition::ExhaustRelayPorts(_) => false,
-            Transition::FreeRelayPorts(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
             Transition::ExpirePeerAuthorizations { .. } => true,
@@ -229,8 +222,6 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
-            Transition::ExhaustRelayPorts(_) => true,
-            Transition::FreeRelayPorts(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
                 Route::Gateway(_) => false,
