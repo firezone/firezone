@@ -3,12 +3,13 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   # use committed DDL on empty, expired partitions and clean up explicitly.
   use ExUnit.Case, async: true
 
-  import Portal.LogPartitionMirrorFixtures
+  import Portal.LogPartitionFixtures
 
   alias Portal.Repo
   alias Portal.Workers.PartitionLogTables.Database
 
-  @parent "session_logs_partitioned"
+  @parent "session_logs"
+  @prefix "session_logs_partitioned"
   @owner "Portal.Workers.PartitionLogTables"
 
   setup do
@@ -29,7 +30,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "flow logs retain 121 days and expired legacy partitions need no ownership marker" do
-    with_mirror_schema("flow_logs", fn _schema ->
+    with_partition_schema("flow_logs", fn _schema ->
       date = Date.add(Date.utc_today(), -122)
       name = "flow_logs_" <> Calendar.strftime(date, "%Y%m%d")
       lower = Date.to_iso8601(date) <> " 00:00:00+00"
@@ -48,14 +49,14 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "drops expired partitions concurrently and retains the boundary day" do
-    with_mirror_schema("session_logs", fn _schema ->
+    with_partition_schema("session_logs", fn _schema ->
       name = expired_partition()
 
       try do
         assert Database.maintain("session_logs") == %{created: 0, dropped: 1}
         assert Repo.query!("SELECT to_regclass($1)", [name]).rows == [[nil]]
 
-        boundary = @parent <> "_" <> Calendar.strftime(Date.add(Date.utc_today(), -121), "%Y%m%d")
+        boundary = @prefix <> "_" <> Calendar.strftime(Date.add(Date.utc_today(), -121), "%Y%m%d")
         assert [[oid]] = Repo.query!("SELECT to_regclass($1)", [boundary]).rows
         assert is_integer(oid)
       after
@@ -65,7 +66,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "recovers a detach that committed but whose drop never ran" do
-    with_mirror_schema("session_logs", fn _schema ->
+    with_partition_schema("session_logs", fn _schema ->
       name = expired_partition()
 
       try do
@@ -79,7 +80,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "finalizes an interrupted concurrent detach before detaching another partition" do
-    with_mirror_schema("session_logs", fn schema ->
+    with_partition_schema("session_logs", fn schema ->
       name = expired_partition()
       other = expired_partition(-123)
       reader = connection(schema)
@@ -114,9 +115,9 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "reattaches a pending detach inside the extended retention window" do
-    with_mirror_schema("session_logs", fn schema ->
+    with_partition_schema("session_logs", fn schema ->
       date = Date.add(Date.utc_today(), -100)
-      name = @parent <> "_" <> Calendar.strftime(date, "%Y%m%d")
+      name = @prefix <> "_" <> Calendar.strftime(date, "%Y%m%d")
       reader = connection(schema)
 
       try do
@@ -151,14 +152,14 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
   end
 
   test "another maintainer holds the advisory lock" do
-    with_mirror_schema("session_logs", fn schema ->
+    with_partition_schema("session_logs", fn schema ->
       connection = connection(schema)
 
       try do
         Postgrex.query!(
           connection,
           "SELECT pg_advisory_lock(hashtextextended(current_schema() || '.' || $1, 0))",
-          [@parent]
+          [@prefix]
         )
 
         assert Database.maintain("session_logs") == :busy
@@ -170,7 +171,7 @@ defmodule Portal.Workers.PartitionLogTablesRetentionTest do
 
   defp expired_partition(offset \\ -122) do
     date = Date.add(Date.utc_today(), offset)
-    name = @parent <> "_" <> Calendar.strftime(date, "%Y%m%d")
+    name = @prefix <> "_" <> Calendar.strftime(date, "%Y%m%d")
     lower = Date.to_iso8601(date) <> " 00:00:00+00"
     upper = Date.to_iso8601(Date.add(date, 1)) <> " 00:00:00+00"
 

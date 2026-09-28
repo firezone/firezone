@@ -1,9 +1,7 @@
 defmodule Portal.Workers.PartitionLogTables do
   @moduledoc """
-  Maintains daily UTC partitions for all four log streams, following each
-  mirror through its rename to the canonical table. All streams retain the
-  same 121-day UTC window and get 14 days of lookahead. Mirrors are skipped
-  until manually activated.
+  Maintains daily UTC partitions for all four log streams, retaining the same
+  121-day UTC window with 14 days of lookahead.
 
   ATTACH and DETACH CONCURRENTLY allow ingestion to continue. Session advisory
   locks serialize maintenance; interrupted detach/drop operations are resumed
@@ -35,7 +33,6 @@ defmodule Portal.Workers.PartitionLogTables do
     @sources ~w[flow_logs session_logs api_request_logs change_logs]
     @retention_days 121
     @owner "Portal.Workers.PartitionLogTables"
-    @legacy_owner "Portal.Workers.PartitionLogMirrors"
 
     def maintain(source, today \\ Date.utc_today()) when source in @sources do
       Safe.unscoped()
@@ -44,31 +41,8 @@ defmodule Portal.Workers.PartitionLogTables do
       end)
     end
 
-    defp activated?("flow_logs") do
-      query!(
-        "SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass('flow_logs'))"
-      ).rows == [[true]]
-    end
-
-    defp activated?(source) do
-      partitioned?(source) or mirror_activated?(source)
-    end
-
-    defp mirror_activated?(source) do
-      case query!("SELECT to_regclass('log_partition_mirrors')").rows do
-        [[nil]] ->
-          false
-
-        _ ->
-          query!("SELECT EXISTS (SELECT 1 FROM log_partition_mirrors WHERE source_table = $1)", [
-            source
-          ]).rows == [[true]]
-      end
-    end
-
     defp maintain_locked(source, today) do
-      # Keep the same lock key through cutover, and resolve names only AFTER
-      # acquiring it. Cutover uses this key before renaming either parent.
+      # Preserve the established lock keys across rolling releases.
       lock_key = if source == "flow_logs", do: source, else: source <> "_partitioned"
 
       case query!(
@@ -84,9 +58,7 @@ defmodule Portal.Workers.PartitionLogTables do
           try do
             query!("SELECT set_config('lock_timeout', '1s', false)")
 
-            if activated?(source),
-              do: maintain_partitions(table_config(source), today),
-              else: :not_activated
+            maintain_partitions(table_config(source), today)
           after
             query!("SELECT set_config('lock_timeout', $1, false)", [old_timeout])
 
@@ -98,8 +70,8 @@ defmodule Portal.Workers.PartitionLogTables do
       end
     end
 
-    # Preserve the established flow retention and creation window. Mirrors
-    # also need historical partitions for delayed WAL and backfill.
+    # Flow ingestion needs the previous day; the other streams also accept
+    # delayed records throughout the retained window.
     defp table_config("flow_logs"),
       do: %{
         parent: "flow_logs",
@@ -111,7 +83,7 @@ defmodule Portal.Workers.PartitionLogTables do
 
     defp table_config(source),
       do: %{
-        parent: if(partitioned?(source), do: source, else: source <> "_partitioned"),
+        parent: source,
         prefix: source <> "_partitioned",
         timestamp: if(source == "api_request_logs", do: "inserted_at", else: "timestamp"),
         retention_days: @retention_days,
@@ -210,9 +182,9 @@ defmodule Portal.Workers.PartitionLogTables do
         LEFT JOIN pg_inherits i ON i.inhrelid = c.oid
         WHERE n.nspname = current_schema() AND c.relkind = 'r'
           AND (i.inhparent = $1::text::regclass
-               OR (i.inhparent IS NULL AND obj_description(c.oid, 'pg_class') = ANY($2::text[])))
+               OR (i.inhparent IS NULL AND obj_description(c.oid, 'pg_class') = $2))
         """,
-        [parent, [@owner, @legacy_owner]]
+        [parent, @owner]
       ).rows
       |> Enum.flat_map(fn [name, attached, pending] ->
         case partition_date(name, prefix) do
@@ -230,13 +202,6 @@ defmodule Portal.Workers.PartitionLogTables do
         _ ->
           :error
       end
-    end
-
-    defp partitioned?(source) do
-      query!(
-        "SELECT EXISTS (SELECT 1 FROM pg_partitioned_table WHERE partrelid = to_regclass($1))",
-        [source]
-      ).rows == [[true]]
     end
 
     defp partition_name(parent, date), do: parent <> "_" <> Calendar.strftime(date, "%Y%m%d")

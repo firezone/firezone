@@ -1,3 +1,5 @@
+Code.require_file("../migrations/helpers/log_table_migration.exs", __DIR__)
+
 defmodule Portal.Repo.Migrations.BackfillLogTables do
   use Ecto.Migration
 
@@ -22,7 +24,7 @@ defmodule Portal.Repo.Migrations.BackfillLogTables do
   def down, do: :ok
 
   defp backfill(source, batches) do
-    case Portal.LogTableMigration.step(source, @batch_size) do
+    case Portal.Repo.Migrations.LogTableMigration.step(source, @batch_size) do
       :progress ->
         if rem(batches + 1, 100) == 0 do
           Logger.info("Processed #{batches + 1} backfill/verification batches for #{source}")
