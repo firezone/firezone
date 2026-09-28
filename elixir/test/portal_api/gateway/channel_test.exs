@@ -12,6 +12,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -117,7 +118,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
     )
   end
 
-  defp send_create_authorization(socket, client, subject, resource, policy_authorization_id) do
+  defp send_create_authorization(
+         socket,
+         client,
+         subject,
+         resource,
+         policy_authorization_id,
+         extra \\ %{}
+       ) do
+    socket_ref = make_ref()
     expires_at = DateTime.add(DateTime.utc_now(), 30, :second)
     preshared_key = "PSK"
     public_key = Portal.DeviceFixtures.generate_public_key()
@@ -129,26 +138,68 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     send(
       socket.channel_pid,
-      {:create_authorization, {self(), make_ref()},
-       %{
-         client:
-           PortalAPI.Gateway.Views.Client.render(
-             client,
-             public_key,
-             preshared_key,
-             @test_user_agent
-           ),
-         subject: PortalAPI.Gateway.Views.Subject.render(subject),
-         resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
-         resource_id: to_cache(resource).id,
-         policy_authorization_id: policy_authorization_id,
-         authorization_expires_at: expires_at,
-         ice_credentials: ice_credentials,
-         preshared_key: preshared_key
-       }}
+      {:create_authorization, {self(), socket_ref},
+       Map.merge(
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization_id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key
+         },
+         extra
+       )}
     )
 
-    %{expires_at: expires_at, preshared_key: preshared_key, public_key: public_key, ice_credentials: ice_credentials}
+    %{
+      socket_ref: socket_ref,
+      expires_at: expires_at,
+      preshared_key: preshared_key,
+      public_key: public_key,
+      ice_credentials: ice_credentials
+    }
+  end
+
+  # Authorizes a flow and completes the gateway's echo-back, returning the
+  # `use_aes_gcm` the gateway was told after checking the client got the same.
+  defp negotiate_aes_gcm(socket, ctx, initiator_caps) do
+    policy_authorization =
+      policy_authorization_fixture(
+        account: ctx.account,
+        actor: ctx.actor,
+        client: ctx.client,
+        resource: ctx.resource,
+        group: ctx.group
+      )
+
+    %{socket_ref: socket_ref} =
+      send_create_authorization(
+        socket,
+        ctx.client,
+        ctx.subject,
+        ctx.resource,
+        policy_authorization.id,
+        initiator_caps
+      )
+
+    assert_push "authorize_flow", %{ref: ref, use_aes_gcm: use_aes_gcm}
+
+    push_ref = push(socket, "flow_authorized", %{"ref" => ref})
+    assert_reply push_ref, :ok
+
+    assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, _, echoed_use_aes_gcm}
+    assert echoed_use_aes_gcm == use_aes_gcm
+
+    use_aes_gcm
   end
 
   setup do
@@ -1642,7 +1693,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _}
+      assert_receive {:connect, ^socket_ref, _, _, _, gateway_public_key, _, _, _, _, _, _}
       assert gateway_public_key == connected.public_key
     end
 
@@ -3605,7 +3656,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
-        _use_iceless
+        _use_iceless,
+        _use_aes_gcm
       }
     end
 
@@ -3679,7 +3731,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless}
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless, _}
       assert use_iceless == true
     end
 
@@ -3963,7 +4015,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
                receiver: :gateway,
                iceless_feature_enabled: false,
                initiator_iceless_capable: true,
-               receiver_iceless_capable: true
+               receiver_iceless_capable: true,
+               aes_gcm_feature_enabled: false,
+               aes_gcm_account_enabled: false,
+               initiator_aes_gcm_capable: false,
+               receiver_aes_gcm_capable: false
              }
     end
 
@@ -4261,6 +4317,167 @@ defmodule PortalAPI.Gateway.ChannelTest do
   end
 
   # Relay presence tests (CRDT-based, no debouncing)
+  describe "aes_gcm negotiation" do
+    setup %{account: account} do
+      enable_feature(:aes_gcm)
+      %{account: update_account(account, %{config: %{aes_gcm: true}})}
+    end
+
+    test "uses AES-GCM when the flag, the opt-in and both peers allow it", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      assert negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "does not use AES-GCM when the global flag is off", ctx do
+      disable_feature(:aes_gcm)
+
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "does not use AES-GCM when the account has not opted in", ctx do
+      update_account(ctx.account, %{config: %{aes_gcm: false}})
+
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "does not use AES-GCM when the gateway is not capable", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "does not use AES-GCM when the client is not capable", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: false})
+      refute negotiate_aes_gcm(socket, ctx, %{})
+    end
+
+    test "is negotiated independently of ICE-less", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"iceless" => true, "aes_gcm" => true})
+
+      assert negotiate_aes_gcm(socket, ctx, %{
+               initiator_iceless_capable: false,
+               initiator_aes_gcm_capable: true
+             })
+    end
+
+    test "picks up the global flag toggled off after join", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+      assert negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+
+      disable_feature(:aes_gcm)
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "picks up an account opt-in toggled after join", ctx do
+      account = update_account(ctx.account, %{config: %{aes_gcm: false}})
+
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: %{account | config: %{account.config | aes_gcm: true}}
+      })
+
+      assert negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+    end
+
+    test "decodes refs signed before use_aes_gcm existed as false", ctx do
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      socket_ref = make_ref()
+
+      legacy_ref =
+        {self(), socket_ref, Ecto.UUID.dump!(ctx.resource.id), "PSK",
+         %{initiator: %{username: "A", password: "B"}, receiver: %{username: "C", password: "D"}},
+         true}
+        |> :erlang.term_to_binary()
+        |> Base.url_encode64()
+
+      signed_ref =
+        Plug.Crypto.sign(
+          socket.endpoint.config(:secret_key_base),
+          "gateway_reply_ref",
+          legacy_ref
+        )
+
+      push_ref = push(socket, "flow_authorized", %{"ref" => signed_ref})
+      assert_reply push_ref, :ok
+
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, true, false}
+    end
+
+    test "reports AES-GCM inputs separately via telemetry", ctx do
+      test_pid = self()
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :authorization, :granted],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:authorization_granted, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      update_account(ctx.account, %{config: %{aes_gcm: false}})
+
+      socket = join_channel(ctx.gateway, ctx.site, ctx.token)
+      assert_push "init", _
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      refute negotiate_aes_gcm(socket, ctx, %{initiator_aes_gcm_capable: true})
+
+      gateway_channel_pid = socket.channel_pid
+      assert_receive {:authorization_granted, ^gateway_channel_pid, metadata}
+
+      assert %{
+               receiver: :gateway,
+               aes_gcm_feature_enabled: true,
+               aes_gcm_account_enabled: false,
+               initiator_aes_gcm_capable: true,
+               receiver_aes_gcm_capable: true
+             } = metadata
+    end
+  end
+
   describe "handle_info/3 for presence events" do
     test "does not send disconnect when relay reconnects with same stamp secret", %{
       gateway: gateway,

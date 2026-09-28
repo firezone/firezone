@@ -124,7 +124,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         cache: cache,
         authorizations_cache: authorizations_cache,
         pending_authorizations: %{},
-        iceless_capable: false
+        iceless_capable: false,
+        aes_gcm_capable: false
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -361,14 +362,28 @@ defmodule PortalAPI.Client.Channel.Shared do
       ) do
     handle_info(
       {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-       gateway_ipv6, preshared_key, ice_credentials, false},
+       gateway_ipv6, preshared_key, ice_credentials, false, false},
+      socket
+    )
+  end
+
+  # Backwards-compat: tolerate the pre-`use_aes_gcm` tuple from older gateway
+  # nodes during a rolling deploy. Default `use_aes_gcm` to `false`.
+  def handle_info(
+        {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
+         gateway_ipv6, preshared_key, ice_credentials, use_iceless},
+        socket
+      ) do
+    handle_info(
+      {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
+       gateway_ipv6, preshared_key, ice_credentials, use_iceless, false},
       socket
     )
   end
 
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_iceless},
+         gateway_ipv6, preshared_key, ice_credentials, use_iceless, use_aes_gcm},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
@@ -392,6 +407,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             gateway_ipv6: gateway_ipv6,
             gateway_ice_credentials: ice_credentials.receiver,
             use_iceless: use_iceless,
+            use_aes_gcm: use_aes_gcm,
             flow_logs_ingest_token: initiator_token
           }
           |> put_site_id(site_id, socket.assigns.client)
@@ -434,15 +450,22 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
+  # Backwards-compat: tolerate the pre-`use_aes_gcm` ack from older nodes
+  # during a rolling deploy. Default `use_aes_gcm` to `false`.
+  def handle_info({:device_access_acked, ref, use_iceless, client_name}, socket) do
+    handle_info({:device_access_acked, ref, use_iceless, false, client_name}, socket)
+  end
+
   # Client-to-client: the target's channel confirmed it pushed the
   # authorization onto the target's websocket. Only now is it safe to release
   # the initiator, because the target's data plane is guaranteed to receive
   # (and process) the authorization before any relayed ICE candidate, which
   # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
-  # The target already resolved `use_iceless` (reading the flag once, with both
-  # peers' capabilities), so we apply it as-is rather than reading the flag a
-  # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_iceless, client_name}, socket) do
+  # The target already resolved `use_iceless` and `use_aes_gcm` (reading the
+  # flags once, with both peers' capabilities), so we apply them as-is rather
+  # than reading the flags a second time, since a second read could race a
+  # mid-flow toggle and disagree.
+  def handle_info({:device_access_acked, ref, use_iceless, use_aes_gcm, client_name}, socket) do
     case Map.pop(socket.assigns.pending_authorizations, ref) do
       {nil, _} ->
         {:noreply, socket}
@@ -453,6 +476,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         initiator_payload =
           initiator_payload
           |> Map.put(:use_iceless, use_iceless)
+          |> Map.put(:use_aes_gcm, use_aes_gcm)
           |> Map.put(:client_name, client_name)
 
         push(socket, "client_device_access_authorized", initiator_payload)
@@ -465,6 +489,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
     {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
     {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
+    {initiator_aes_gcm_capable, payload} = Map.pop(payload, :initiator_aes_gcm_capable, false)
 
     iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
     initiator_capable = initiator_iceless_capable == true
@@ -472,13 +497,29 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
 
+    aes_gcm_feature_enabled = Portal.Features.cached_enabled?(:aes_gcm)
+    aes_gcm_account_enabled = Portal.Account.aes_gcm_opted_in?(socket.assigns.subject.account)
+    initiator_aes_gcm_capable = initiator_aes_gcm_capable == true
+    receiver_aes_gcm_capable = socket.assigns.aes_gcm_capable == true
+
+    use_aes_gcm =
+      aes_gcm_feature_enabled and aes_gcm_account_enabled and initiator_aes_gcm_capable and
+        receiver_aes_gcm_capable
+
     Portal.Telemetry.authorization_granted(:client,
       iceless_feature_enabled: iceless_feature_enabled,
       initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
+      receiver_iceless_capable: receiver_capable,
+      aes_gcm_feature_enabled: aes_gcm_feature_enabled,
+      aes_gcm_account_enabled: aes_gcm_account_enabled,
+      initiator_aes_gcm_capable: initiator_aes_gcm_capable,
+      receiver_aes_gcm_capable: receiver_aes_gcm_capable
     )
 
-    payload = Map.put(payload, :use_iceless, use_iceless)
+    payload =
+      payload
+      |> Map.put(:use_iceless, use_iceless)
+      |> Map.put(:use_aes_gcm, use_aes_gcm)
 
     authorizations_cache =
       maybe_put_authorization(
@@ -502,9 +543,12 @@ defmodule PortalAPI.Client.Channel.Shared do
     # target's websocket. The initiator is released only after this, so the
     # initiator's ICE candidates (which traverse the same socket) can never
     # overtake the authorization at the target's data plane. We send the
-    # resolved `use_iceless` (not our capability) so the initiator applies the
-    # same decision without reading the flag again.
-    send(ack_to, {:device_access_acked, ref, use_iceless, socket.assigns.client.name})
+    # resolved `use_iceless` and `use_aes_gcm` (not our capabilities) so the
+    # initiator applies the same decisions without reading the flags again.
+    send(
+      ack_to,
+      {:device_access_acked, ref, use_iceless, use_aes_gcm, socket.assigns.client.name}
+    )
 
     socket =
       socket
@@ -1159,7 +1203,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
+    {:noreply,
+     assign(socket,
+       iceless_capable: payload["iceless"] == true,
+       aes_gcm_capable: payload["aes_gcm"] == true
+     )}
   end
 
   def handle_in("no_relays", payload, socket) do
@@ -1388,6 +1436,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
              initiator_iceless_capable: socket.assigns.iceless_capable,
+             initiator_aes_gcm_capable: socket.assigns.aes_gcm_capable,
              flow_logs_ingest_token: responder_token
            }}
 
@@ -1936,6 +1985,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          policy_authorization_id: policy_authorization_id,
          authorization_expires_at: expires_at,
          initiator_iceless_capable: socket.assigns.iceless_capable,
+         initiator_aes_gcm_capable: socket.assigns.aes_gcm_capable,
          flow_logs_ingest_token: responder_token
        }}
 

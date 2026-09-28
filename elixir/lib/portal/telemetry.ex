@@ -320,8 +320,8 @@ defmodule Portal.Telemetry do
   `receiver` is `:gateway` for client-to-gateway authorizations and `:client` for
   client-to-client device access. The initiator is always the requesting client.
 
-  The three inputs the ICE-less decision is derived from are reported separately, so
-  an authorization that did not go ICE-less can be attributed to the account's
+  The inputs the ICE-less and AES-GCM decisions are derived from are reported
+  separately, so an authorization that did not use either can be attributed to a
   feature flag rather than to a peer that never advertised the capability (or the
   other way around).
   """
@@ -331,7 +331,11 @@ defmodule Portal.Telemetry do
       receiver: receiver,
       iceless_feature_enabled: Keyword.fetch!(opts, :iceless_feature_enabled) == true,
       initiator_iceless_capable: Keyword.fetch!(opts, :initiator_iceless_capable) == true,
-      receiver_iceless_capable: Keyword.fetch!(opts, :receiver_iceless_capable) == true
+      receiver_iceless_capable: Keyword.fetch!(opts, :receiver_iceless_capable) == true,
+      aes_gcm_feature_enabled: Keyword.fetch!(opts, :aes_gcm_feature_enabled) == true,
+      aes_gcm_account_enabled: Keyword.fetch!(opts, :aes_gcm_account_enabled) == true,
+      initiator_aes_gcm_capable: Keyword.fetch!(opts, :initiator_aes_gcm_capable) == true,
+      receiver_aes_gcm_capable: Keyword.fetch!(opts, :receiver_aes_gcm_capable) == true
     })
   end
 
@@ -583,7 +587,7 @@ defmodule Portal.Telemetry do
       meter,
       :"portal.authorizations.granted",
       %{
-        description: "Total policy authorizations granted, split by ICE-less eligibility",
+        description: "Total policy authorizations granted, split by ICE-less and AES-GCM eligibility",
         unit: :"1"
       }
     )
@@ -793,7 +797,11 @@ defmodule Portal.Telemetry do
       receiver: receiver,
       iceless_feature_enabled: feature_enabled,
       initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
+      receiver_iceless_capable: receiver_capable,
+      aes_gcm_feature_enabled: aes_gcm_feature_enabled,
+      aes_gcm_account_enabled: aes_gcm_account_enabled,
+      initiator_aes_gcm_capable: initiator_aes_gcm_capable,
+      receiver_aes_gcm_capable: receiver_aes_gcm_capable
     } = metadata
 
     attrs = %{
@@ -802,6 +810,13 @@ defmodule Portal.Telemetry do
       "iceless.feature_enabled" => feature_enabled,
       "iceless.initiator_capable" => initiator_capable,
       "iceless.receiver_capable" => receiver_capable,
+      "aes_gcm.used" =>
+        aes_gcm_feature_enabled and aes_gcm_account_enabled and initiator_aes_gcm_capable and
+          receiver_aes_gcm_capable,
+      "aes_gcm.feature_enabled" => aes_gcm_feature_enabled,
+      "aes_gcm.account_enabled" => aes_gcm_account_enabled,
+      "aes_gcm.initiator_capable" => initiator_aes_gcm_capable,
+      "aes_gcm.receiver_capable" => receiver_aes_gcm_capable,
       "node_name" => config.node_name
     }
 

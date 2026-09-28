@@ -2508,6 +2508,17 @@ defmodule Portal.Repo.Seeds do
       """
     )
 
+    aes_gcm_enabled = System.get_env("FEATURE_AES_GCM_ENABLED") == "true"
+
+    Repo.query!(
+      """
+      INSERT INTO features (feature, enabled)
+      VALUES ('aes_gcm', $1)
+      ON CONFLICT (feature) DO UPDATE SET enabled = $1
+      """,
+      [aes_gcm_enabled]
+    )
+
     account =
       %Account{}
       |> cast(
@@ -2517,7 +2528,8 @@ defmodule Portal.Repo.Seeds do
           slug: "firezone",
           key: Account.new_key(),
           config: %{
-            search_domain: "httpbin.search.test"
+            search_domain: "httpbin.search.test",
+            aes_gcm: aes_gcm_enabled
           }
         },
         [:name, :legal_name, :slug, :key]

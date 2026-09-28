@@ -3,6 +3,19 @@ defmodule Portal.TelemetryTest do
 
   @config %{node_name: "test"}
 
+  @no_iceless [
+    iceless_feature_enabled: false,
+    initiator_iceless_capable: false,
+    receiver_iceless_capable: false
+  ]
+
+  @no_aes_gcm [
+    aes_gcm_feature_enabled: false,
+    aes_gcm_account_enabled: false,
+    initiator_aes_gcm_capable: false,
+    receiver_aes_gcm_capable: false
+  ]
+
   describe "metrics/0" do
     test "returns a non-empty list of metric definitions" do
       metrics = Portal.Telemetry.metrics()
@@ -477,7 +490,11 @@ defmodule Portal.TelemetryTest do
                Portal.Telemetry.authorization_granted(:gateway,
                  iceless_feature_enabled: true,
                  initiator_iceless_capable: true,
-                 receiver_iceless_capable: true
+                 receiver_iceless_capable: true,
+                 aes_gcm_feature_enabled: true,
+                 aes_gcm_account_enabled: true,
+                 initiator_aes_gcm_capable: true,
+                 receiver_aes_gcm_capable: true
                )
 
       assert_receive {:authorization_granted, ^test_pid, measurements, metadata}
@@ -488,26 +505,56 @@ defmodule Portal.TelemetryTest do
                receiver: :gateway,
                iceless_feature_enabled: true,
                initiator_iceless_capable: true,
-               receiver_iceless_capable: true
+               receiver_iceless_capable: true,
+               aes_gcm_feature_enabled: true,
+               aes_gcm_account_enabled: true,
+               initiator_aes_gcm_capable: true,
+               receiver_aes_gcm_capable: true
              }
     end
 
     test "keeps the three iceless inputs apart", %{test_pid: test_pid} do
       assert :ok =
-               Portal.Telemetry.authorization_granted(:client,
-                 iceless_feature_enabled: false,
-                 initiator_iceless_capable: true,
-                 receiver_iceless_capable: false
+               Portal.Telemetry.authorization_granted(
+                 :client,
+                 Keyword.merge(@no_aes_gcm,
+                   iceless_feature_enabled: false,
+                   initiator_iceless_capable: true,
+                   receiver_iceless_capable: false
+                 )
                )
 
       assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
 
-      assert metadata == %{
+      assert %{
                receiver: :client,
                iceless_feature_enabled: false,
                initiator_iceless_capable: true,
                receiver_iceless_capable: false
-             }
+             } = metadata
+    end
+
+    test "keeps the four aes_gcm inputs apart", %{test_pid: test_pid} do
+      assert :ok =
+               Portal.Telemetry.authorization_granted(
+                 :client,
+                 Keyword.merge(@no_iceless,
+                   aes_gcm_feature_enabled: true,
+                   aes_gcm_account_enabled: false,
+                   initiator_aes_gcm_capable: true,
+                   receiver_aes_gcm_capable: false
+                 )
+               )
+
+      assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
+
+      assert %{
+               receiver: :client,
+               aes_gcm_feature_enabled: true,
+               aes_gcm_account_enabled: false,
+               initiator_aes_gcm_capable: true,
+               receiver_aes_gcm_capable: false
+             } = metadata
     end
 
     test "coerces non-boolean inputs so callers can pass assigns as-is", %{test_pid: test_pid} do
@@ -515,7 +562,11 @@ defmodule Portal.TelemetryTest do
                Portal.Telemetry.authorization_granted(:gateway,
                  iceless_feature_enabled: nil,
                  initiator_iceless_capable: "yes",
-                 receiver_iceless_capable: true
+                 receiver_iceless_capable: true,
+                 aes_gcm_feature_enabled: nil,
+                 aes_gcm_account_enabled: "yes",
+                 initiator_aes_gcm_capable: true,
+                 receiver_aes_gcm_capable: nil
                )
 
       assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
@@ -523,13 +574,26 @@ defmodule Portal.TelemetryTest do
       assert metadata.iceless_feature_enabled == false
       assert metadata.initiator_iceless_capable == false
       assert metadata.receiver_iceless_capable == true
+      assert metadata.aes_gcm_feature_enabled == false
+      assert metadata.aes_gcm_account_enabled == false
+      assert metadata.initiator_aes_gcm_capable == true
+      assert metadata.receiver_aes_gcm_capable == false
     end
 
     test "raises when an iceless input is missing" do
       assert_raise KeyError, fn ->
-        Portal.Telemetry.authorization_granted(:gateway,
-          iceless_feature_enabled: true,
-          initiator_iceless_capable: true
+        Portal.Telemetry.authorization_granted(
+          :gateway,
+          Keyword.delete(@no_iceless ++ @no_aes_gcm, :receiver_iceless_capable)
+        )
+      end
+    end
+
+    test "raises when an aes_gcm input is missing" do
+      assert_raise KeyError, fn ->
+        Portal.Telemetry.authorization_granted(
+          :gateway,
+          Keyword.delete(@no_iceless ++ @no_aes_gcm, :aes_gcm_account_enabled)
         )
       end
     end
@@ -541,12 +605,12 @@ defmodule Portal.TelemetryTest do
                Portal.Telemetry.handle_authorization_metric(
                  [:portal, :authorization, :granted],
                  %{count: 1},
-                 %{
+                 Map.merge(Map.new(@no_iceless ++ @no_aes_gcm), %{
                    receiver: :gateway,
                    iceless_feature_enabled: true,
                    initiator_iceless_capable: true,
                    receiver_iceless_capable: true
-                 },
+                 }),
                  @config
                )
     end
@@ -556,12 +620,28 @@ defmodule Portal.TelemetryTest do
                Portal.Telemetry.handle_authorization_metric(
                  [:portal, :authorization, :granted],
                  %{count: 1},
-                 %{
+                 Map.merge(Map.new(@no_iceless ++ @no_aes_gcm), %{
                    receiver: :client,
                    iceless_feature_enabled: false,
                    initiator_iceless_capable: true,
                    receiver_iceless_capable: true
-                 },
+                 }),
+                 @config
+               )
+    end
+
+    test "returns :ok for an AES-GCM authorization" do
+      assert :ok =
+               Portal.Telemetry.handle_authorization_metric(
+                 [:portal, :authorization, :granted],
+                 %{count: 1},
+                 Map.merge(Map.new(@no_iceless ++ @no_aes_gcm), %{
+                   receiver: :gateway,
+                   aes_gcm_feature_enabled: true,
+                   aes_gcm_account_enabled: true,
+                   initiator_aes_gcm_capable: true,
+                   receiver_aes_gcm_capable: true
+                 }),
                  @config
                )
     end

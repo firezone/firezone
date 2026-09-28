@@ -109,7 +109,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     socket =
       assign(socket,
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
-        iceless_capable: false
+        iceless_capable: false,
+        aes_gcm_capable: false
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
@@ -308,6 +309,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     } = payload
 
     initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
+    initiator_aes_gcm_capable = Map.get(payload, :initiator_aes_gcm_capable, false)
     flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -316,7 +318,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
         Account.iceless_enabled?(socket.assigns.account)
 
-    record_authorization_granted(socket, initiator_iceless_capable)
+    use_aes_gcm =
+      socket.assigns.aes_gcm_capable == true and initiator_aes_gcm_capable == true and
+        Account.aes_gcm_opted_in?(socket.assigns.account) and
+        Portal.Features.cached_enabled?(:aes_gcm)
+
+    record_authorization_granted(socket, initiator_iceless_capable, initiator_aes_gcm_capable)
 
     ref =
       encode_ref(socket, {
@@ -325,7 +332,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         rid_bytes,
         preshared_key,
         ice_credentials,
-        use_iceless
+        use_iceless,
+        use_aes_gcm
       })
 
     event = socket.assigns.channel_protocol.create_authorization_event()
@@ -339,6 +347,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
       subject: subject,
       use_iceless: use_iceless,
+      use_aes_gcm: use_aes_gcm,
       flow_logs_ingest_token: flow_logs_ingest_token
     })
 
@@ -392,7 +401,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           client_ipv6: client_ipv6
         })
 
-        record_authorization_granted(socket, false)
+        record_authorization_granted(socket, false, false)
 
         cache =
           socket.assigns.cache
@@ -439,7 +448,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
-        record_authorization_granted(socket, false)
+        record_authorization_granted(socket, false, false)
 
         cache =
           socket.assigns.cache
@@ -615,8 +624,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
       {:ok, ref_tuple} ->
-        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless} =
-          ref_tuple
+        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless,
+         use_aes_gcm} = with_use_aes_gcm(ref_tuple)
 
         send(
           channel_pid,
@@ -631,7 +640,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             socket.assigns.gateway.ipv6,
             preshared_key,
             ice_credentials,
-            use_iceless
+            use_iceless,
+            use_aes_gcm
           }
         )
 
@@ -703,7 +713,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
+    {:noreply,
+     assign(socket,
+       iceless_capable: payload["iceless"] == true,
+       aes_gcm_capable: payload["aes_gcm"] == true
+     )}
   end
 
   def handle_in("no_relays", payload, socket) do
@@ -736,13 +750,27 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
-  # `initiator_iceless_capable` is always false on the deprecated 1.4 paths:
-  # those clients predate the capability handshake, so they can never go ICE-less.
-  defp record_authorization_granted(socket, initiator_iceless_capable) do
+  # Refs signed before `use_aes_gcm` existed carry one element less.
+  defp with_use_aes_gcm(ref_tuple) when tuple_size(ref_tuple) == 6,
+    do: Tuple.insert_at(ref_tuple, 6, false)
+
+  defp with_use_aes_gcm(ref_tuple), do: ref_tuple
+
+  # The initiator capabilities are always false on the deprecated 1.4 paths:
+  # those clients predate the capability handshake.
+  defp record_authorization_granted(
+         socket,
+         initiator_iceless_capable,
+         initiator_aes_gcm_capable
+       ) do
     Telemetry.authorization_granted(:gateway,
       iceless_feature_enabled: Account.iceless_enabled?(socket.assigns.account),
       initiator_iceless_capable: initiator_iceless_capable,
-      receiver_iceless_capable: socket.assigns.iceless_capable
+      receiver_iceless_capable: socket.assigns.iceless_capable,
+      aes_gcm_feature_enabled: Portal.Features.cached_enabled?(:aes_gcm),
+      aes_gcm_account_enabled: Account.aes_gcm_opted_in?(socket.assigns.account),
+      initiator_aes_gcm_capable: initiator_aes_gcm_capable,
+      receiver_aes_gcm_capable: socket.assigns.aes_gcm_capable
     )
   end
 

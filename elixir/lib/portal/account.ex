@@ -147,6 +147,10 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
+  @spec aes_gcm_opted_in?(t()) :: boolean()
+  def aes_gcm_opted_in?(%__MODULE__{config: %Portal.Accounts.Config{aes_gcm: true}}), do: true
+  def aes_gcm_opted_in?(%__MODULE__{}), do: false
+
   # sobelow_skip ["DOS.BinToAtom"]
   for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do

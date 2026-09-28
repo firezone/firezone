@@ -8,6 +8,7 @@ defmodule Portal.Accounts.Config do
   @primary_key false
   embedded_schema do
     field :search_domain, :string
+    field :aes_gcm, :boolean, default: false
 
     embeds_one :clients_upstream_dns, ClientsUpstreamDns,
       primary_key: false,
@@ -75,7 +76,7 @@ defmodule Portal.Accounts.Config do
   """
   def changeset(config \\ %__MODULE__{}, attrs) do
     config
-    |> cast(attrs, [:search_domain])
+    |> cast(attrs, [:search_domain, :aes_gcm])
     |> cast_embed(:clients_upstream_dns, with: &clients_upstream_dns_changeset/2)
     |> cast_embed(:notifications, with: &notifications_changeset/2)
     |> validate_search_domain()

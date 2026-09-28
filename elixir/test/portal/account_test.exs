@@ -81,6 +81,28 @@ defmodule Portal.AccountTest do
     end
   end
 
+  describe "aes_gcm_opted_in?/1" do
+    test "returns true when the account opted in" do
+      account = %Account{config: %Portal.Accounts.Config{aes_gcm: true}}
+      assert Account.aes_gcm_opted_in?(account)
+    end
+
+    test "returns false when the account did not opt in" do
+      account = %Account{config: %Portal.Accounts.Config{}}
+      refute Account.aes_gcm_opted_in?(account)
+    end
+
+    test "returns false when the opt-in is unset" do
+      account = %Account{config: %Portal.Accounts.Config{aes_gcm: nil}}
+      refute Account.aes_gcm_opted_in?(account)
+    end
+
+    test "returns false when the account has no config" do
+      account = %Account{config: nil}
+      refute Account.aes_gcm_opted_in?(account)
+    end
+  end
+
   describe "account-local features" do
     test "log sinks does not require a global rollout flag" do
       account = %Account{features: %Portal.Accounts.Features{log_sinks: true}}

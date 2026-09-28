@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
   import Portal.DeviceFixtures
+  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
@@ -166,6 +167,50 @@ defmodule PortalAPI.Client.ChannelTest do
       channel_pid,
       {:authorization_creation_timeout, resource_id, gateway_authorization_generation(channel_pid, resource_id)}
     )
+  end
+
+
+  # Runs a client-to-client create_flow and returns the `use_aes_gcm` pushed to
+  # the target after checking the initiator was told the same.
+  defp negotiate_c2c_aes_gcm(ctx, initiator_caps, target_caps) do
+    initiating_socket = join_channel(ctx.client, ctx.subject)
+    assert_push "init", _
+
+    target_socket = join_channel(ctx.target_client, ctx.target_subject)
+    assert_push "init", _
+
+    push(initiating_socket, "set_snownet_capabilities", initiator_caps)
+    push(target_socket, "set_snownet_capabilities", target_caps)
+    :sys.get_state(initiating_socket.channel_pid)
+    :sys.get_state(target_socket.channel_pid)
+
+    push(initiating_socket, "create_flow", %{
+      "resource_id" => ctx.pool_resource.id,
+      "ipv4" => Portal.Types.INET.to_string(ctx.target_client.ipv4)
+    })
+
+    assert_push "client_device_access_authorized", %{
+      ice_role: :controlled,
+      use_aes_gcm: use_aes_gcm
+    }
+
+    assert_push "client_device_access_authorized", %{
+      ice_role: :controlling,
+      use_aes_gcm: ^use_aes_gcm
+    }
+
+    use_aes_gcm
+  end
+
+  defp opt_in_to_aes_gcm(ctx, opt_in) do
+    account = update_account(ctx.account, %{config: %{aes_gcm: opt_in}})
+
+    %{
+      ctx
+      | account: account,
+        subject: %{ctx.subject | account: account},
+        target_subject: %{ctx.target_subject | account: account}
+    }
   end
 
   setup do
@@ -3921,6 +3966,88 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_receive :pending_flow_timeout
     end
 
+    test "flow_created carries the gateway's use_aes_gcm", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      gateway: gateway
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(
+          state.assigns.pending_authorizations,
+          %{resource.id => {make_ref(), timer_ref, "ingest-token", nil}}
+        )
+      end)
+
+      send(
+        socket.channel_pid,
+        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, "PSK",
+         %{initiator: %{username: "A", password: "B"}, receiver: %{username: "C", password: "D"}},
+         false, true}
+      )
+
+      assert_push "flow_created", %{use_iceless: false, use_aes_gcm: true}
+    end
+
+    test "flow_created defaults use_aes_gcm to false for older gateway nodes", %{
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      gateway: gateway
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      timer_ref = Process.send_after(self(), :pending_flow_timeout, 60_000)
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(
+          state.assigns.pending_authorizations,
+          %{resource.id => {make_ref(), timer_ref, "ingest-token", nil}}
+        )
+      end)
+
+      send(
+        socket.channel_pid,
+        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, "PSK",
+         %{initiator: %{username: "A", password: "B"}, receiver: %{username: "C", password: "D"}},
+         true}
+      )
+
+      assert_push "flow_created", %{use_iceless: true, use_aes_gcm: false}
+    end
+
+    test "create_flow forwards the client's AES-GCM capability to the gateway", %{
+      dns_resource: resource,
+      client: client,
+      gateway_token: gateway_token,
+      gateway: gateway,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:create_authorization, _, %{initiator_aes_gcm_capable: true}}
+    end
+
     test "works with service accounts", %{
       account: account,
       dns_resource: resource,
@@ -5799,8 +5926,113 @@ defmodule PortalAPI.Client.ChannelTest do
                receiver: :client,
                iceless_feature_enabled: true,
                initiator_iceless_capable: true,
-               receiver_iceless_capable: true
+               receiver_iceless_capable: true,
+               aes_gcm_feature_enabled: false,
+               aes_gcm_account_enabled: false,
+               initiator_aes_gcm_capable: false,
+               receiver_aes_gcm_capable: false
              }
+    end
+
+    test "uses AES-GCM when the flag, the opt-in and both peers allow it", ctx do
+      enable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, true)
+
+      assert negotiate_c2c_aes_gcm(ctx, %{"aes_gcm" => true}, %{"aes_gcm" => true})
+    end
+
+    test "does not use AES-GCM when the global flag is off", ctx do
+      disable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, true)
+
+      refute negotiate_c2c_aes_gcm(ctx, %{"aes_gcm" => true}, %{"aes_gcm" => true})
+    end
+
+    test "does not use AES-GCM when the account has not opted in", ctx do
+      enable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, false)
+
+      refute negotiate_c2c_aes_gcm(ctx, %{"aes_gcm" => true}, %{"aes_gcm" => true})
+    end
+
+    test "does not use AES-GCM when the initiator is not capable", ctx do
+      enable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, true)
+
+      refute negotiate_c2c_aes_gcm(ctx, %{"iceless" => true}, %{"aes_gcm" => true})
+    end
+
+    test "does not use AES-GCM when the target is not capable", ctx do
+      enable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, true)
+
+      refute negotiate_c2c_aes_gcm(ctx, %{"aes_gcm" => true}, %{})
+    end
+
+    test "picks up an account opt-in toggled after join on the target", ctx do
+      enable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, false)
+
+      initiating_socket = join_channel(ctx.client, ctx.subject)
+      assert_push "init", _
+
+      target_socket = join_channel(ctx.target_client, ctx.target_subject)
+      assert_push "init", _
+
+      push(initiating_socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+      push(target_socket, "set_snownet_capabilities", %{"aes_gcm" => true})
+
+      send(target_socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: ctx.account,
+        struct: %{ctx.account | config: %{ctx.account.config | aes_gcm: true}}
+      })
+
+      :sys.get_state(initiating_socket.channel_pid)
+      :sys.get_state(target_socket.channel_pid)
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => ctx.pool_resource.id,
+        "ipv4" => Portal.Types.INET.to_string(ctx.target_client.ipv4)
+      })
+
+      assert_push "client_device_access_authorized", %{ice_role: :controlled, use_aes_gcm: true}
+
+      assert_push "client_device_access_authorized", %{
+        ice_role: :controlling,
+        use_aes_gcm: true
+      }
+    end
+
+    test "reports AES-GCM inputs separately via telemetry", ctx do
+      test_pid = self()
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :authorization, :granted],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:authorization_granted, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      disable_feature(:aes_gcm)
+      ctx = opt_in_to_aes_gcm(ctx, true)
+
+      refute negotiate_c2c_aes_gcm(ctx, %{"aes_gcm" => true}, %{"aes_gcm" => false})
+
+      assert_receive {:authorization_granted, _pid,
+                      %{receiver: :client, initiator_aes_gcm_capable: true} = metadata}
+
+      assert %{
+               aes_gcm_feature_enabled: false,
+               aes_gcm_account_enabled: true,
+               receiver_aes_gcm_capable: false
+             } = metadata
     end
 
     test "sends authorized when target ipv6 is found in presence", %{

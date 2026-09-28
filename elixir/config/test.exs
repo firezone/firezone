@@ -225,6 +225,9 @@ config :portal, :revocation_endpoint_queue, enabled: false
 
 config :portal, Portal.OSReleases, reload_every: false
 
+# Tests toggle global flags per sandbox, so bypass the per-node cache.
+config :portal, Portal.Features, cache_ttl: 0
+
 config :portal, Portal.OSReleases.Sync,
   req_opts: [
     plug: {Req.Test, Portal.OSReleases.Sync},

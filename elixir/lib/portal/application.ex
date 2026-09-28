@@ -54,6 +54,7 @@ defmodule Portal.Application do
       Portal.PubSub,
 
       # Application services
+      Portal.Features.Cache,
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
