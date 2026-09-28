@@ -280,19 +280,15 @@ pub(super) fn generate(
             Transition::SetInternetResourceState { client_id, active }
         }
         K::UpdateDnsRecords => {
-            let dns_flows = existing_flows
+            let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
+            let records = arb_dns_record_set(g);
+            let matching_flows = existing_flows
                 .iter()
                 .copied()
-                .filter(|flow| flow.domain(state).is_some())
+                .filter(|flow| flow.domain(state) == Some(&domain))
                 .collect::<Vec<_>>();
-            let flow = choose_flow_for_idle(g, &dns_flows, state);
-            let domain = flow
-                .and_then(|flow| flow.domain(state).cloned())
-                .unwrap_or_else(|| {
-                    dns_record_domains[g.choose_index(dns_record_domains.len())].clone()
-                });
-            let records = arb_dns_record_set(g);
-            if let Some(flow) = flow {
+            if !matching_flows.is_empty() {
+                let flow = matching_flows[g.choose_index(matching_flows.len())];
                 g.guide_flow(FlowGuidance::RefreshDnsThenReuse(flow.id()));
             }
 
