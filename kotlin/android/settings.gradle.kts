@@ -10,8 +10,8 @@ pluginManagement {
 
 // rustls-platform-verifier delegates connlib's TLS certificate verification to a small
 // Kotlin component (org.rustls.platformverifier.CertificateVerifier) that must be bundled
-// into the APK. The crate ships it as a local Maven repo inside its source; resolve its
-// path and version via cargo metadata so they always match the Rust dependency.
+// into the APK. Upstream publishes it to a Maven repo hosted on GitHub; resolve its version
+// via cargo metadata so it always matches the Rust dependency.
 val cargoMetadata: Map<*, *> =
     JsonSlurper().parseText(
         providers
@@ -46,18 +46,14 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven {
-            url =
-                File(rustlsAndroidPackage["manifest_path"] as String)
-                    .parentFile
-                    .resolve("maven")
-                    .toURI()
+            url = uri("https://github.com/rustls/rustls-platform-verifier/raw/maven-archive/android-release-support/maven/")
             metadataSources { mavenPom() }
-            content { includeGroup("rustls") }
+            content { includeGroup("org.rustls") }
         }
     }
     versionCatalogs {
         create("cargo") {
-            library("rustls-platform-verifier", "rustls", "rustls-platform-verifier")
+            library("rustls-platform-verifier", "org.rustls", "rustls-platform-verifier")
                 .version(rustlsAndroidPackage["version"] as String)
         }
     }

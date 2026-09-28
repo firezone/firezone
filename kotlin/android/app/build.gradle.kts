@@ -352,8 +352,8 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
-    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
-    // bundled in the crate source (see settings.gradle.kts).
+    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from upstream's Maven
+    // repo at the version locked in Cargo.lock (see settings.gradle.kts).
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
