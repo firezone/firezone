@@ -2679,6 +2679,7 @@ dependencies = [
  "tracing",
  "tunnel-bypass-resolver",
  "url",
+ "windows-security",
  "x509-keystore",
 ]
 
