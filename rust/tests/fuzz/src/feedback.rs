@@ -18,8 +18,9 @@ use std::{
     time::Duration,
 };
 
-use connlib_model::{ClientId, GatewayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, ResourceId};
 use itertools::Itertools as _;
+use snownet::ConnectionPath;
 use tunnel_proto::dns;
 
 use crate::{
@@ -31,7 +32,7 @@ use crate::{
     reference::ReferenceState,
     resource::{EditEffect, classify},
     sim_gateway::DnsResolution,
-    sim_net::{EdgeConfig, FilterMode, Mapping, direct_path_possible},
+    sim_net::{EdgeConfig, FilterMode, Mapping},
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
@@ -117,15 +118,15 @@ macro_rules! record {
 
 /// Records a logical outcome together with the network topology that carried it.
 ///
-/// A path uses seven bits: three for each endpoint's NAT behaviour and one for
-/// whether direct connectivity is possible. That leaves nine boolean predicates
-/// for the logical outcome.
+/// A path uses eight bits: three for each endpoint's NAT behaviour and two for
+/// the selected direct or relayed path. That leaves eight boolean predicates for
+/// the logical outcome.
 macro_rules! record_with_path {
     ($path:expr; $($flag:expr),+ $(,)?) => {{
         const {
             assert!(
-                [$(stringify!($flag)),+].len() <= 9,
-                "path feedback supports at most 9 boolean predicates",
+                [$(stringify!($flag)),+].len() <= 8,
+                "path feedback supports at most 8 boolean predicates",
             );
         }
         let path: PathFeedback = $path;
@@ -297,7 +298,7 @@ impl Recorder {
             let Some(completed) = completed_round_trip(expected, state) else {
                 continue;
             };
-            let Some(path) = route_path_feedback(reference, &completed) else {
+            let Some(path) = route_path_feedback(reference, state, &completed) else {
                 continue;
             };
 
@@ -505,7 +506,6 @@ impl Recorder {
             change & RESOURCE_TYPE_EDITED != 0,
             completed.is_udp(),
             completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
             completed.is_peer(),
         );
     }
@@ -647,7 +647,7 @@ impl Recorder {
         let Some(gateway) = reference_client.gateway_for_resource(resource) else {
             return;
         };
-        let Some(path) = gateway_path_feedback(reference, attempt.client, gateway) else {
+        let Some(path) = gateway_path_feedback(reference, state, attempt.client, gateway) else {
             return;
         };
 
@@ -743,22 +743,31 @@ fn completed_round_trip<'a>(
 struct PathFeedback {
     origin: EdgeConfig,
     remote: EdgeConfig,
-    requires_relay: bool,
+    selected: ConnectionPath,
 }
 
 impl PathFeedback {
-    fn new(origin: EdgeConfig, remote: EdgeConfig, shared_ip4: bool, shared_ip6: bool) -> Self {
+    fn new(origin: EdgeConfig, remote: EdgeConfig, selected: ConnectionPath) -> Self {
         Self {
             origin,
             remote,
-            requires_relay: !direct_path_possible(origin, remote, shared_ip4, shared_ip6),
+            selected,
         }
     }
 
     fn code(self) -> u16 {
         edge_code(self.origin)
             | (edge_code(self.remote) << 3)
-            | (u16::from(self.requires_relay) << 6)
+            | (connection_path_code(self.selected) << 6)
+    }
+}
+
+fn connection_path_code(path: ConnectionPath) -> u16 {
+    match path {
+        ConnectionPath::PeerToPeer => 0,
+        ConnectionPath::PeerToRelay => 1,
+        ConnectionPath::RelayToPeer => 2,
+        ConnectionPath::RelayToRelay => 3,
     }
 }
 
@@ -781,34 +790,29 @@ fn edge_code(edge: EdgeConfig) -> u16 {
 
 fn route_path_feedback(
     reference: &ReferenceState,
+    state: &TunnelTest,
     completed: &CompletedRoundTrip<'_>,
 ) -> Option<PathFeedback> {
-    let origin = reference.clients.get(&completed.expected.origin)?;
-    let (remote, shared_ip4, shared_ip6) = match completed.route {
+    let origin_id = completed.expected.origin;
+    let origin = reference.clients.get(&origin_id)?;
+    let (remote, peer) = match completed.route {
         Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
             let remote = reference.gateways.get(&gateway)?;
-            (
-                remote.edge_config(),
-                origin.ip4.is_some() && remote.ip4.is_some(),
-                origin.ip6.is_some() && remote.ip6.is_some(),
-            )
+            (remote.edge_config(), ClientOrGatewayId::Gateway(gateway))
         }
         Route::Peer(peer) => {
             let remote = reference.clients.get(&peer)?;
-            (
-                remote.edge_config(),
-                origin.ip4.is_some() && remote.ip4.is_some(),
-                origin.ip6.is_some() && remote.ip6.is_some(),
-            )
+            (remote.edge_config(), ClientOrGatewayId::Client(peer))
         }
     };
+    let selected = state
+        .clients
+        .get(&origin_id)?
+        .inner()
+        .sut
+        .connection_path(peer)?;
 
-    Some(PathFeedback::new(
-        origin.edge_config(),
-        remote,
-        shared_ip4,
-        shared_ip6,
-    ))
+    Some(PathFeedback::new(origin.edge_config(), remote, selected))
 }
 
 struct NatFeedback {
@@ -835,17 +839,19 @@ fn nat_feedback(edge: EdgeConfig, idle: Duration) -> NatFeedback {
 
 fn gateway_path_feedback(
     reference: &ReferenceState,
+    state: &TunnelTest,
     origin: ClientId,
     gateway: GatewayId,
 ) -> Option<PathFeedback> {
-    let origin = reference.clients.get(&origin)?;
-    let gateway = reference.gateways.get(&gateway)?;
-    Some(PathFeedback::new(
-        origin.edge_config(),
-        gateway.edge_config(),
-        origin.ip4.is_some() && gateway.ip4.is_some(),
-        origin.ip6.is_some() && gateway.ip6.is_some(),
-    ))
+    let origin_edge = reference.clients.get(&origin)?.edge_config();
+    let gateway_edge = reference.gateways.get(&gateway)?.edge_config();
+    let selected = state
+        .clients
+        .get(&origin)?
+        .inner()
+        .sut
+        .connection_path(ClientOrGatewayId::Gateway(gateway))?;
+    Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 
 fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &TunnelTest) {
@@ -857,7 +863,7 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
         if !matches!(remote, Remote::Gateway(_)) {
             continue;
         }
-        let Some(path) = route_path_feedback(reference, &completed) else {
+        let Some(path) = route_path_feedback(reference, state, &completed) else {
             continue;
         };
         let destination_was_translated =
@@ -893,7 +899,8 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let Remote::Gateway(gateway) = observation.received.remote else {
             continue;
         };
-        let Some(path) = gateway_path_feedback(reference, observation.submitted.client, gateway)
+        let Some(path) =
+            gateway_path_feedback(reference, state, observation.submitted.client, gateway)
         else {
             continue;
         };
@@ -938,7 +945,8 @@ fn record_dns_refresh_feedback(reference: &ReferenceState, state: &TunnelTest) {
         let Some(gateway) = state.gateway(session.key.gateway) else {
             continue;
         };
-        let Some(path) = gateway_path_feedback(reference, session.key.client, session.key.gateway)
+        let Some(path) =
+            gateway_path_feedback(reference, state, session.key.client, session.key.gateway)
         else {
             continue;
         };
