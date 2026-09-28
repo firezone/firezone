@@ -804,7 +804,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     test "persists log_id and timestamp end-to-end through flush", %{
       account: account
     } do
-      commit_timestamp = ~U[2026-05-26 12:00:00.999000Z]
+      commit_timestamp = DateTime.utc_now()
 
       state =
         %{
@@ -838,7 +838,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "successfully flushes buffer and clears it", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       attrs1 = %{
         log_id: LogId.build_change_log(@seq_start, 0),
@@ -891,7 +891,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "flushes entries regardless of buffer key order", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       attrs_map = %{
         400 => %{
@@ -944,7 +944,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     test "drops entries for a deleted account but persists valid entries in the batch", %{
       account: account
     } do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
       missing_account_id = Ecto.UUID.generate()
 
       valid_entry = %{
@@ -989,7 +989,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "raises constraint violations that are not a missing account_id", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       # Omitting the NOT NULL vsn column triggers a different Postgrex error. It
       # must surface as a crash rather than being silently dropped like the
@@ -1026,7 +1026,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "skips replayed entries that already committed", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       entry = %{
         log_id: LogId.build_change_log(@seq_start, 0),
