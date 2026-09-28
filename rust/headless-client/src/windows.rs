@@ -7,14 +7,14 @@
 use anyhow::{Context as _, Result, bail};
 use std::path::Path;
 
-/// Full Access for `LocalSystem` and `BUILTIN\Administrators`.
-const TOKEN_ACES: &str = "(A;;FA;;;SY)(A;;FA;;;BA)";
+/// Protected DACL granting Full Access to `LocalSystem` and
+/// `BUILTIN\Administrators` only.
+const TOKEN_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
     let sddl = windows_security::dacl_sddl_for_path(path)?;
-    let aces = sddl.find('(').map_or("", |start| &sddl[start..]);
 
-    if aces != TOKEN_ACES {
+    if sorted_aces(&sddl) != sorted_aces(TOKEN_SDDL) {
         bail!(
             "Token file `{}` should only be accessible by SYSTEM and Administrators but has DACL `{sddl}`",
             path.display()
@@ -25,8 +25,19 @@ pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
 }
 
 pub(crate) fn set_token_permissions(path: &Path) -> Result<()> {
-    windows_security::SecurityDescriptor::from_sddl(&format!("D:P{TOKEN_ACES}"))?
-        .apply_to_path(path)
+    windows_security::SecurityDescriptor::from_sddl(TOKEN_SDDL)?.apply_to_path(path)
+}
+
+/// The ACEs of a DACL in SDDL form, ignoring the DACL flags.
+fn sorted_aces(sddl: &str) -> Vec<&str> {
+    let mut aces = sddl
+        .split(['(', ')'])
+        .filter(|part| !part.is_empty())
+        .skip(1)
+        .collect::<Vec<_>>();
+    aces.sort_unstable();
+
+    aces
 }
 
 /// Writes a token to the specified path.
