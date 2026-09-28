@@ -2,7 +2,6 @@
 package dev.firezone.android.core
 
 import android.app.Application
-import android.content.Context
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -31,9 +30,6 @@ class FirezoneApp : Application() {
         // Load the native library immediately after FirebaseCrashlytics
         // so we catch any issues with the native library early on.
         System.loadLibrary("connlib")
-
-        // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
-        initRustlsPlatformVerifier(this)
 
         val flowLogsDir = TunnelService.flowLogsDir(this)
 
@@ -66,8 +62,5 @@ class FirezoneApp : Application() {
 
     companion object {
         private const val TAG: String = "FirezoneApp"
-
-        @JvmStatic
-        external fun initRustlsPlatformVerifier(context: Context)
     }
 }
