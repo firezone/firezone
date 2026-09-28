@@ -969,6 +969,15 @@ impl ReferenceState {
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Client(client),
                 ..
+            } if self.clients[&client]
+                .inner()
+                .has_reset_connections_within_ice_timeout(sent_at) =>
+            {
+                Some(KnownLoss::ConnectionReset)
+            }
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
             } => self
                 .can_drop_during_rekey(origin, Remote::Client(client), sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
