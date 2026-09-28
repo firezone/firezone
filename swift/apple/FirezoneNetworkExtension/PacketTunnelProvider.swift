@@ -23,7 +23,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private var logCleanupTask: CancellableTask?
 
   private var logExportState: LogExportState = .idle
-  private var hasWarnedAboutUndecodableMessage = false
   // swiftlint:disable:next no_userdefaults_standard - NetworkExtension DI entry point uses shared UserDefaults store
   private let defaults = UserDefaults.standard
 
@@ -284,10 +283,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
     } catch {
       // An app from another version can send messages this build does not know.
-      if !hasWarnedAboutUndecodableMessage {
-        hasWarnedAboutUndecodableMessage = true
-        Log.warning("Ignoring app message we cannot decode: \(error)")
-      }
+      Log.debug("Ignoring app message we cannot decode: \(error)")
       completionHandler?(nil)
       return
     }
