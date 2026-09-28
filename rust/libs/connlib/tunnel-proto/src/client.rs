@@ -1167,6 +1167,16 @@ impl ClientState {
             return Ok(());
         };
 
+        // A peer that reset, e.g. after roaming, comes back with a new key and without its
+        // inbound authorizations for us.
+        if self
+            .node
+            .remote_public_key(&ClientOrGatewayId::Client(cid))
+            .is_some_and(|key| key != client_key)
+        {
+            self.forget_outbound_authorizations(cid);
+        }
+
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,

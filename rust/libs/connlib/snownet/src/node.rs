@@ -277,6 +277,13 @@ where
         self.connections.is_connected(cid)
     }
 
+    /// The public key of the remote we have a connection to under `cid`.
+    pub fn remote_public_key(&self, cid: &TId) -> Option<PublicKey> {
+        self.connections
+            .iter_established()
+            .find_map(|(id, c)| (id == *cid).then_some(c.remote_pub_key))
+    }
+
     /// Upserts a connection to the given remote.
     ///
     /// If we already have a connection with the same parameters, this does nothing.
