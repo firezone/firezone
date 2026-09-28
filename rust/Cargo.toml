@@ -310,6 +310,7 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
+tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" } # Waiting for release of https://github.com/tauri-apps/plugins-workspace/pull/3480.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

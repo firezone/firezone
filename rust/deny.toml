@@ -289,17 +289,9 @@ skip = [
     "toml_edit",
     "webpki-roots",
     "which", # native-dialog 0.9 is still on which 7; aya-build and the workspace are on 8.
-    "windows", # tauri-plugin-opener 2.6 is still on windows 0.61; the rest of the tree is on 0.62.
-    "windows-collections", # See `windows`.
-    "windows-core", # See `windows`.
-    "windows-future", # See `windows`.
     "windows-link",
-    "windows-numerics", # See `windows`.
-    "windows-result",
-    "windows-strings",
     "windows-sys",
     "windows-targets",
-    "windows-threading", # See `windows`.
     "windows_x86_64_msvc",
     "winnow",
     "winreg",
