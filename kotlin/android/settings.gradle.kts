@@ -46,7 +46,9 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven {
-            url = uri("https://github.com/rustls/rustls-platform-verifier/raw/maven-archive/android-release-support/maven/")
+            // Pinned to a commit of upstream's `maven-archive` branch, which could otherwise change the AAR
+            // under a locked version. Move it forward whenever `rustls-platform-verifier-android` is bumped.
+            url = uri("https://raw.githubusercontent.com/rustls/rustls-platform-verifier/1aa691352a5e0c215210dfc9a3c2f2078639dc91/android-release-support/maven/")
             metadataSources { mavenPom() }
             content { includeGroup("org.rustls") }
         }
