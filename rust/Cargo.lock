@@ -7344,11 +7344,11 @@ dependencies = [
 
 [[package]]
 name = "softbuffer"
-version = "0.4.6"
-source = "git+https://github.com/rust-windowing/softbuffer#ba60228f4b7bea6986c67288b29c6320f6c02050"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aac18da81ebbf05109ab275b157c22a653bb3c12cf884450179942f81bcbf6c3"
 dependencies = [
  "bytemuck",
- "cfg_aliases",
  "js-sys",
  "ndk",
  "objc2",
@@ -7361,7 +7361,7 @@ dependencies = [
  "tracing",
  "wasm-bindgen",
  "web-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
