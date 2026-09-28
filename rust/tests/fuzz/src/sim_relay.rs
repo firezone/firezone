@@ -106,27 +106,13 @@ impl SimRelay {
         now_utc: SystemTime,
     ) -> Option<Transmit> {
         let dst = transmit.dst;
-        let mut payload = transmit.payload;
+        let payload = transmit.payload;
         let sender = transmit.src.unwrap();
 
         if self
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
-            if self.rejects_allocations
-                && let Some(response) = self.reject_allocation(&payload)
-            {
-                payload.clear();
-                payload.extend_from_slice(&response);
-
-                return Some(Transmit {
-                    src: Some(dst),
-                    dst: sender,
-                    payload,
-                    ecn: Ecn::NonEct,
-                });
-            }
-
             return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
         }
 
@@ -137,38 +123,6 @@ impl SimRelay {
         )
     }
 
-    /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
-    ///
-    /// Requests without a nonce still reach the server, so clients authenticate first, as they
-    /// would against a real relay.
-    fn reject_allocation(&self, payload: &[u8]) -> Option<Vec<u8>> {
-        let request = MessageDecoder::<Attribute>::new()
-            .decode_from_bytes(payload)
-            .ok()?
-            .ok()?;
-        if request.class() != MessageClass::Request || request.method() != ALLOCATE {
-            return None;
-        }
-        request.get_attribute::<Nonce>()?;
-        let username = request.get_attribute::<Username>()?;
-
-        let mut response = Message::<Attribute>::new(
-            MessageClass::ErrorResponse,
-            ALLOCATE,
-            request.transaction_id(),
-        );
-        response.add_attribute(ErrorCode::from(InsufficientCapacity));
-        let password =
-            relay_proto::auth::generate_password(self.sut.auth_secret(), username.name());
-        let realm = Realm::new("firezone".to_owned()).ok()?;
-        let integrity =
-            MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
-                .ok()?;
-        response.add_attribute(integrity);
-
-        MessageEncoder::new().encode_into_bytes(response).ok()
-    }
-
     fn handle_client_input(
         &mut self,
         mut payload: Buffer<Vec<u8>>,
@@ -176,6 +130,20 @@ impl SimRelay {
         now: Instant,
         now_utc: SystemTime,
     ) -> Option<Transmit> {
+        if self.rejects_allocations
+            && let Some(response) = self.reject_allocation(&payload)
+        {
+            payload.clear();
+            payload.extend_from_slice(&response);
+
+            return Some(Transmit {
+                src: self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
+                dst: client.into_socket(),
+                payload,
+                ecn: Ecn::NonEct,
+            });
+        }
+
         let (port, peer) = self
             .sut
             .handle_client_input(&payload, client, now, now_utc)?;
@@ -218,6 +186,38 @@ impl SimRelay {
             payload,
             ecn: Ecn::NonEct,
         })
+    }
+
+    /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
+    ///
+    /// Requests without a nonce still reach the server, so clients authenticate first, as they
+    /// would against a real relay.
+    fn reject_allocation(&self, payload: &[u8]) -> Option<Vec<u8>> {
+        let request = MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(payload)
+            .ok()?
+            .ok()?;
+        if request.class() != MessageClass::Request || request.method() != ALLOCATE {
+            return None;
+        }
+        request.get_attribute::<Nonce>()?;
+        let username = request.get_attribute::<Username>()?;
+
+        let mut response = Message::<Attribute>::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(InsufficientCapacity));
+        let password =
+            relay_proto::auth::generate_password(self.sut.auth_secret(), username.name());
+        let realm = Realm::new("firezone".to_owned()).ok()?;
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
+                .ok()?;
+        response.add_attribute(integrity);
+
+        MessageEncoder::new().encode_into_bytes(response).ok()
     }
 
     fn handle_peer_traffic(
