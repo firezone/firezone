@@ -63,7 +63,7 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: ClientOrGatewayId,
@@ -130,7 +130,7 @@ impl IpConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GatewayEvent {
     AddedIceCandidates {
         conn_id: ClientId,

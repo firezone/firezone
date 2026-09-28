@@ -19,15 +19,15 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
     collections::BTreeMap,
-    iter,
+    fmt, iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
-use tunnel_proto::dns;
+use tunnel_proto::{ClientEvent, GatewayEvent, dns};
 
 /// Checks the simulated tunnel against the reference state.
 pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
@@ -54,6 +54,21 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         &ref_state.icmp_error_hosts,
     );
     assert_dns_nat(&state.dns_nat_observations, &sim_gateways);
+
+    for (id, client) in &all_sim_clients {
+        let requests = client
+            .events
+            .iter()
+            .filter(|(_, event)| matches!(event, ClientEvent::NoRelays { .. }));
+        assert_relay_requests_do_not_loop(id, requests.map(|(at, _)| *at));
+    }
+    for (id, gateway) in &sim_gateways {
+        let requests = gateway
+            .events
+            .iter()
+            .filter(|(_, event)| matches!(event, GatewayEvent::NoRelays { .. }));
+        assert_relay_requests_do_not_loop(id, requests.map(|(at, _)| *at));
+    }
 
     for (client_id, ref_client_host) in &ref_state.clients {
         let ref_client = ref_client_host.inner();
@@ -385,6 +400,23 @@ fn assert_dns_nat(
                 tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
             }
         }
+    }
+}
+
+/// Asserts that a node does not ask the portal for relays in a loop.
+fn assert_relay_requests_do_not_loop(
+    node: impl fmt::Display,
+    requested_at: impl Iterator<Item = Instant>,
+) {
+    const MAX_REQUESTS_PER_MINUTE: usize = 10;
+
+    let requested_at = requested_at.collect::<Vec<_>>();
+
+    if requested_at
+        .windows(MAX_REQUESTS_PER_MINUTE + 1)
+        .any(|w| w[MAX_REQUESTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
+    {
+        tracing::error!(target: "assertions", %node, "Node asks the portal for relays in a loop");
     }
 }
 

@@ -1266,6 +1266,11 @@ impl TunnelTest {
     ) -> Result<(), NoTurnServers> {
         let now = self.flux_capacitor.now();
 
+        self.clients
+            .get_mut(&src)
+            .unwrap()
+            .exec_mut(|c| c.events.push((now, event.clone())));
+
         // Simulate a client that has not yet reconnected to the portal after a
         // roam: drop the portal-bound messages it emits. Local events (resource,
         // DNS and TUN interface updates) still flow so the harness state stays in
@@ -1567,10 +1572,7 @@ impl TunnelTest {
                     .iter()
                     .filter(|(id, _)| !excluded_relay_ids.contains(id));
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| {
-                    c.relay_requests.record(now);
-                    c.update_relays(iter::empty(), relays, now);
-                });
+                client.exec_mut(|c| c.update_relays(iter::empty(), relays, now));
 
                 Ok(())
             }
@@ -1786,6 +1788,8 @@ fn on_gateway_event(
     global_dns_records: &DnsRecords,
     now: Instant,
 ) {
+    gateway.exec_mut(|g| g.events.push((now, event.clone())));
+
     match event {
         GatewayEvent::AddedIceCandidates {
             conn_id,
@@ -1829,10 +1833,7 @@ fn on_gateway_event(
             let relays = relays
                 .iter()
                 .filter(|(id, _)| !excluded_relay_ids.contains(id));
-            gateway.exec_mut(|g| {
-                g.relay_requests.record(now);
-                g.update_relays(iter::empty(), relays, now);
-            });
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays, now));
         }
     }
 }

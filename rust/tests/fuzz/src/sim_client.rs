@@ -8,7 +8,7 @@ use super::{
     },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
-    sim_relay::{RelayRequests, SimRelay, map_explode},
+    sim_relay::{SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -23,7 +23,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel_proto::{
-    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
@@ -76,7 +76,8 @@ pub(crate) struct SimClient {
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 
-    pub(crate) relay_requests: RelayRequests,
+    /// Every event the node emitted, and when.
+    pub(crate) events: Vec<(Instant, ClientEvent)>,
 }
 
 impl SimClient {
@@ -109,7 +110,7 @@ impl SimClient {
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
-            relay_requests: Default::default(),
+            events: Default::default(),
         }
     }
 

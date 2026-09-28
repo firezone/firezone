@@ -705,7 +705,7 @@ fn encrypt_packet(
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResolveDnsRequest {
     domain: DomainName,
     client: ClientId,
