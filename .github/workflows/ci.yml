@@ -144,6 +144,15 @@ jobs:
           if ! diff -q uniffi_base.txt uniffi_head.txt > /dev/null; then
             jobs="${jobs},kotlin,swift"
           fi
+
+          # The Android build downloads the Kotlin half of `rustls-platform-verifier`
+          # at the version locked for `rustls-platform-verifier-android` (see
+          # kotlin/android/settings.gradle.kts), so a bump of it needs `kotlin` too.
+          git show "$base:rust/Cargo.lock" | grep -A1 '^name = "rustls-platform-verifier-android"' > rpv_android_base.txt || true
+          grep -A1 '^name = "rustls-platform-verifier-android"' rust/Cargo.lock > rpv_android_head.txt || true
+          if ! diff -q rpv_android_base.txt rpv_android_head.txt > /dev/null; then
+            jobs="${jobs},kotlin"
+          fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
           fi
