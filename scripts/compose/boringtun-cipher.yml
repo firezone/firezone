@@ -1,0 +1,9 @@
+# Passes the WireGuard transport cipher selection through to client-1 and gateway.
+# Use with `COMPOSE_FILE=docker-compose.yml:scripts/compose/boringtun-cipher.yml`.
+services:
+  client-1:
+    environment:
+      BORINGTUN_CIPHER: ${BORINGTUN_CIPHER_CLIENT:-${BORINGTUN_CIPHER:-}}
+  gateway:
+    environment:
+      BORINGTUN_CIPHER: ${BORINGTUN_CIPHER_GATEWAY:-${BORINGTUN_CIPHER:-}}
