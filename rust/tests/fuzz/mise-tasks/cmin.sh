@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Minimize a fuzz corpus by AFL++ edge coverage"
+#MISE description="Minimize a fuzz corpus by AFL++ coverage and feedback"
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail
