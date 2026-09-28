@@ -418,7 +418,14 @@ impl Recorder {
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
             ),
+        );
+        record!(
             attempt.duration >= DNS_NAT_SESSION_TTL,
+            requires_relay,
+            matches!(
+                completed.expected.request.destination(),
+                Destination::DomainName { .. }
+            ),
         );
 
         let Some((origin_edge, remote_edge)) = route_edge_configs(reference, completed) else {
@@ -430,32 +437,18 @@ impl Recorder {
             return;
         }
 
-        record!(
-            origin.behind_nat,
-            remote.behind_nat,
-            origin.expiry_elapsed,
-            remote.expiry_elapsed,
-            requires_relay,
-            matches!(
-                completed.expected.request.destination(),
-                Destination::DomainName { .. }
-            ),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.is_udp(),
-        );
+        record!(origin.expiry_elapsed, remote.expiry_elapsed, requires_relay,);
         record!(
             origin.endpoint_dependent,
             remote.endpoint_dependent,
             origin.port_restricted,
             remote.port_restricted,
-            requires_relay,
         );
         record!(
             origin.expiry_elapsed,
             remote.expiry_elapsed,
             origin.inbound_refreshes,
             remote.inbound_refreshes,
-            requires_relay,
         );
     }
 
