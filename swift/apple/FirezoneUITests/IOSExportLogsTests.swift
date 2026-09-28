@@ -10,7 +10,7 @@
   @MainActor
   final class IOSExportLogsTests: XCTestCase {
     func testExportLogsPresentsTheShareSheet() throws {
-      let app = launchApp(scenario: "connected")
+      let app = launchApp(scenario: "connected-large-logs")
       defer { app.terminate() }
 
       try openSettings(in: app, on: "settings")
@@ -18,21 +18,23 @@
 
       let export = app.buttons["Export Logs"]
       try waitFor(export, on: "settings-logs")
-      export.tap()
 
-      XCTAssertTrue(
-        shareSheetContent(in: app).waitForExistence(timeout: 30),
-        "The share sheet never showed its activities"
-      )
+      let ready = NSPredicate(format: "enabled == true AND hittable == true")
 
-      dismissShareSheet(in: app)
+      for attempt in 1...2 {
+        export.tap()
 
-      let ready = XCTNSPredicateExpectation(
-        predicate: NSPredicate(format: "enabled == true AND hittable == true"), object: export)
-      XCTAssertEqual(
-        XCTWaiter.wait(for: [ready], timeout: 10), .completed,
-        "Export Logs did not become available again after the share sheet closed"
-      )
+        guard shareSheetContent(in: app).waitForExistence(timeout: 120) else {
+          return XCTFail("The share sheet never showed its activities on export \(attempt)")
+        }
+
+        dismissShareSheet(in: app)
+
+        let available = XCTNSPredicateExpectation(predicate: ready, object: export)
+        guard XCTWaiter.wait(for: [available], timeout: 10) == .completed else {
+          return XCTFail("Export Logs did not become available again after export \(attempt)")
+        }
+      }
     }
 
     /// Any of the things the share sheet draws once it has the archive: the activity list,
