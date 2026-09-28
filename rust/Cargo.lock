@@ -4938,33 +4938,32 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-core"
-version = "0.8.2"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b897d7bd4f0af82e68d40d0344cf37e97f9c97ddf74a098de3e4da05e96ca395"
-dependencies = [
- "paste",
-]
+checksum = "2d6e2daf9a8c2e21302714706860a0e6be02e03d17294ecc66b354ea7d4059dd"
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.31.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2288fcb784eb3defd5fb16f4c4160d5f477de192eac730f43e1d11c24d9a007"
+checksum = "59d48ffc8b73a506e1ff0878528c72668f2bfbc3d875b6be890a96be5d0d5576"
 dependencies = [
  "bitflags 2.10.0",
  "libc",
  "log",
  "netlink-packet-core",
+ "zerocopy",
 ]
 
 [[package]]
 name = "netlink-proto"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b65d130ee111430e47eed7896ea43ca693c387f097dd97376bffafbf25812128"
+checksum = "97e03ae6247c6cdb499e8f14e98c72b83954d85822b687056e3a21150b438f2b"
 dependencies = [
  "bytes",
- "futures",
+ "futures-channel",
+ "futures-util",
  "log",
  "netlink-packet-core",
  "netlink-sys",
@@ -4973,12 +4972,12 @@ dependencies = [
 
 [[package]]
 name = "netlink-sys"
-version = "0.8.7"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c903aa70590cb93691bf97a767c8d1d6122d2cc9070433deb3bbf36ce8bd23"
+checksum = "c99d38e00b420df49e940fe0826e667c3dad82ac68eb4c2bbf754c1c14a83a10"
 dependencies = [
  "bytes",
- "futures",
+ "futures-util",
  "libc",
  "log",
  "tokio",
@@ -6478,8 +6477,9 @@ dependencies = [
 
 [[package]]
 name = "rtnetlink"
-version = "0.21.0"
-source = "git+https://github.com/rust-netlink/rtnetlink?branch=main#e7799b6ee24267586e6aadc0e3fb415b4d921dd4"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90f60a3ee149005c5819e03e3d73ba4a470bc18b52b0c8422cfe1bea2cae63c6"
 dependencies = [
  "futures-channel",
  "futures-util",
