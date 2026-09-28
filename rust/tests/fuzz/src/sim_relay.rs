@@ -1,10 +1,10 @@
-use super::reference::RefRelay;
 use super::sim_net::{ExecMutScope, Host};
 use bufferpool::Buffer;
+use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::RelayId;
 use ip_packet::Ecn;
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
+use relay_proto::{AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
@@ -12,17 +12,18 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
+use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
+use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use uuid::Uuid;
-
-/// The first port of the range RFC 8656 recommends for allocations.
-const FIRST_ALLOCATION_PORT: u16 = 49152;
-
-/// As many allocations as there are ports from [`FIRST_ALLOCATION_PORT`] to 65535.
-pub(crate) const MAX_ALLOCATIONS: u16 = u16::MAX - FIRST_ALLOCATION_PORT + 1;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
+
+    /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
+    /// as if the relay had run out of ports. Existing allocations keep working.
+    pub(crate) rejects_allocations: bool,
 
     created_at: SystemTime,
 }
@@ -46,23 +47,23 @@ pub(crate) fn map_explode<'a>(
 
 impl SimRelay {
     pub(crate) fn new(
-        relay: RefRelay,
+        seed: u64,
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
         created_at: SystemTime,
     ) -> Self {
-        // The server answers `508 Insufficient Capacity` once every port holds an allocation.
         let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
-            rand::rngs::StdRng::seed_from_u64(relay.seed),
+            rand::rngs::StdRng::seed_from_u64(seed),
             3478,
-            FIRST_ALLOCATION_PORT..=FIRST_ALLOCATION_PORT + (relay.max_allocations - 1),
+            49152..=65535,
         );
         sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
 
         Self {
             sut,
             allocations: Default::default(),
+            rejects_allocations: false,
             created_at,
         }
     }
@@ -105,13 +106,27 @@ impl SimRelay {
         now_utc: SystemTime,
     ) -> Option<Transmit> {
         let dst = transmit.dst;
-        let payload = transmit.payload;
+        let mut payload = transmit.payload;
         let sender = transmit.src.unwrap();
 
         if self
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
+            if self.rejects_allocations
+                && let Some(response) = self.reject_allocation(&payload)
+            {
+                payload.clear();
+                payload.extend_from_slice(&response);
+
+                return Some(Transmit {
+                    src: Some(dst),
+                    dst: sender,
+                    payload,
+                    ecn: Ecn::NonEct,
+                });
+            }
+
             return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
         }
 
@@ -120,6 +135,38 @@ impl SimRelay {
             PeerSocket::new(sender),
             AllocationPort::new(dst.port()),
         )
+    }
+
+    /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
+    ///
+    /// Requests without a nonce still reach the server, so clients authenticate first, as they
+    /// would against a real relay.
+    fn reject_allocation(&self, payload: &[u8]) -> Option<Vec<u8>> {
+        let request = MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(payload)
+            .ok()?
+            .ok()?;
+        if request.class() != MessageClass::Request || request.method() != ALLOCATE {
+            return None;
+        }
+        request.get_attribute::<Nonce>()?;
+        let username = request.get_attribute::<Username>()?;
+
+        let mut response = Message::<Attribute>::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(InsufficientCapacity));
+        let password =
+            relay_proto::auth::generate_password(self.sut.auth_secret(), username.name());
+        let realm = Realm::new("firezone".to_owned()).ok()?;
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
+                .ok()?;
+        response.add_attribute(integrity);
+
+        MessageEncoder::new().encode_into_bytes(response).ok()
     }
 
     fn handle_client_input(
@@ -221,6 +268,12 @@ impl SimRelay {
 }
 
 impl ExecMutScope for SimRelay {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}
+
+impl ExecMutScope for u64 {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}

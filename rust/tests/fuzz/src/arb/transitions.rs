@@ -16,7 +16,7 @@ use super::values::{
 };
 use super::{dns_queries, packets};
 use crate::probe::FlowId;
-use crate::reference::{RefRelay, ReferenceState};
+use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
@@ -50,19 +50,22 @@ enum TransitionKind {
     SendPacketOnExistingFlow,
     SendDnsQueries,
     UpdateDevicePoolMembers,
+    ExhaustRelayPorts,
+    FreeRelayPorts,
 }
 
 /// The transitions that open no connection.
 ///
-/// A node that no relay has room for cannot open any connection, and which nodes get an
-/// allocation on a full relay is up to timing that the reference model does not predict.
-/// Unless a relay has room for all nodes, only these are legal.
-const LEGAL_WITHOUT_RELAY_FOR_ALL_NODES: [TransitionKind; 6] = [
+/// A node whose allocations all failed cannot open any connection until it gets a relay back,
+/// which the reference model does not predict. While every relay is exhausted or recovering,
+/// only these are legal.
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
     TransitionKind::RoamClient,
     TransitionKind::DeployNewRelays,
     TransitionKind::PartitionRelaysFromPortal,
     TransitionKind::RebootRelaysWhilePartitioned,
     TransitionKind::RestartClient,
+    TransitionKind::FreeRelayPorts,
     TransitionKind::Idle,
 ];
 
@@ -107,7 +110,24 @@ pub(super) fn generate(
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
-    let has_relay_for_all_nodes = state.has_relay_for_all_nodes();
+    let accepting_relays = state
+        .relays
+        .keys()
+        .filter(|relay| !state.exhausted_relays.contains(relay))
+        .copied()
+        .collect::<Vec<_>>();
+    let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
+    let healthy_relays = accepting_relays
+        .iter()
+        .filter(|relay| !state.recovering_relays.contains_key(relay))
+        .count();
+    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.iceless() {
+        healthy_relays > 1
+    } else {
+        !accepting_relays.is_empty()
+    };
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -140,10 +160,12 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
+        (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
-    .filter(|(kind, _)| has_relay_for_all_nodes || LEGAL_WITHOUT_RELAY_FOR_ALL_NODES.contains(kind))
+    .filter(|(kind, _)| healthy_relays > 0 || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
@@ -203,29 +225,23 @@ pub(super) fn generate(
                 None
             };
 
-            let relays = iter::empty()
-                .chain(retained)
-                .chain(arb_relays(g, portal.iceless()))
-                .collect();
+            let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
 
             Transition::DeployNewRelays(relays)
         }
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
         K::RebootRelaysWhilePartitioned => {
-            // Reboot the *existing* relays with fresh credentials (same ids and capacity, as
-            // nodes keep ignoring a relay that rejected them for a while).
+            // Reboot the *existing* relays with fresh credentials (same ids).
             let relays = state
                 .relays
-                .iter()
-                .map(|(id, relay)| {
-                    let relay = RefRelay {
-                        seed: g.u64(),
-                        ..*relay.inner()
-                    };
+                .keys()
+                .copied()
+                .map(|id| {
+                    let seed = g.u64();
                     let latency = g.latency(50);
-                    let host = Host::new(relay, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+                    let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
                     let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
-                    (*id, host)
+                    (id, host)
                 })
                 .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
@@ -318,6 +334,12 @@ pub(super) fn generate(
                 members,
                 revoked,
             }
+        }
+        K::ExhaustRelayPorts => {
+            Transition::ExhaustRelayPorts(accepting_relays[g.choose_index(accepting_relays.len())])
+        }
+        K::FreeRelayPorts => {
+            Transition::FreeRelayPorts(exhausted_relays[g.choose_index(exhausted_relays.len())])
         }
     }
 }

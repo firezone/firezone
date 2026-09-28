@@ -23,16 +23,15 @@ use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
 use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
-use crate::reference::{RefRelay, ReferenceState};
+use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
-use crate::sim_relay::MAX_ALLOCATIONS;
 use crate::stub_portal::{PoolMembers, StubPortal};
 
 pub(super) fn generate(g: &mut Generator, portal: &StubPortal) -> ReferenceState {
     let clients = arb_clients(g, portal);
     let gateways = arb_gateways(g, portal);
-    let relays = arb_relays(g, portal.iceless());
+    let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, portal);
     let icmp_error_hosts =
         arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
@@ -73,27 +72,15 @@ pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
     &sites[g.choose_index(sites.len())]
 }
 
-pub(super) fn arb_relays(g: &mut Generator, iceless: bool) -> BTreeMap<RelayId, Host<RefRelay>> {
+pub(super) fn arb_relays(g: &mut Generator) -> BTreeMap<RelayId, Host<u64>> {
     let n = g.count(1, 2);
 
     (0..n)
-        .map(|i| {
+        .map(|_| {
             let id = g.fresh_relay_id();
             let seed = g.u64();
-            // An ICE-less connection without a relay for longer than a WireGuard handshake
-            // attempt expires, which the reference does not predict. ICE-less nodes therefore
-            // always have a relay with room for all of them.
-            let max_allocations = if (iceless && i == 0) || !g.flip(20) {
-                MAX_ALLOCATIONS
-            } else {
-                g.u16_in(1..=16)
-            };
-            let relay = RefRelay {
-                seed,
-                max_allocations,
-            };
             let latency = g.latency(50);
-            let host = Host::new(relay, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+            let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
             let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
             (id, host)
         })
