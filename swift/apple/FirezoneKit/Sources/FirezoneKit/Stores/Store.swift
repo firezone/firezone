@@ -400,9 +400,10 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
+        Telemetry.setEnvironmentOrClose(configuration.apiURL)
+        guard vpnConfigurationManager != nil else { return }
         Log.debug("Startup: loadDeviceTrustCertificateSummary")
         await loadDeviceTrustCertificateSummary()
-        Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
           await drainFlowLogsOnLaunch()
