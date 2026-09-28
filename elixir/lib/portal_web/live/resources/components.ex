@@ -1595,78 +1595,77 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </div>
           <div class="border-t border-border pt-4">
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                Conditions
-                <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
-                  (optional)
-                </span>
-              </h4>
-              <div
-                :if={
-                  @policy_conditions_enabled? and
-                    available_conditions(@resource) -- @active_conditions != []
-                }
-                class="relative"
-              >
-                <button
-                  type="button"
-                  phx-click="toggle_conditions_dropdown"
-                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
-                </button>
-                <div :if={@conditions_dropdown_open}>
-                  <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
-                    <button
-                      :for={type <- available_conditions(@resource) -- @active_conditions}
-                      type="button"
-                      phx-click="add_condition"
-                      phx-value-type={type}
-                      class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                    >
-                      {condition_type_label(type)}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <%= if @policy_conditions_enabled? == false do %>
-              <.upgrade_locked_section
-                id="resource-grant-conditions-locked-container"
-                account={@account}
-                message="Upgrade your plan to unlock policy conditions."
-                description="Add policy restrictions like IP ranges, identity providers, and time windows."
-              >
-                <p class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border">
-                  No conditions — access is unrestricted
-                </p>
-              </.upgrade_locked_section>
-            <% else %>
-              <p
-                :if={@active_conditions == []}
-                class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
-              >
-                No conditions — access is unrestricted
-              </p>
-              <div :if={@active_conditions != []} class="space-y-2">
-                <.grant_condition_card
-                  :for={type <- @active_conditions}
-                  type={type}
-                  providers={@providers}
-                  conditions_state={@conditions_state}
-                />
-              </div>
-            <% end %>
-          </div>
-          <.postures_section id="resource-grant-postures" account={@account} state={@postures} />
-          <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_form}
               internet_resource?={@resource.type == :internet}
             />
           </div>
+          <.policy_restrictions id="resource-grant-postures" account={@account} state={@postures}>
+            <div class="border-t border-border pt-4">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                  Conditions
+                  <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
+                    (optional)
+                  </span>
+                </h4>
+                <div
+                  :if={
+                    @policy_conditions_enabled? and
+                      available_conditions(@resource) -- @active_conditions != []
+                  }
+                  class="relative"
+                >
+                  <button
+                    type="button"
+                    phx-click="toggle_conditions_dropdown"
+                    class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+                  </button>
+                  <div :if={@conditions_dropdown_open}>
+                    <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
+                    <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
+                      <button
+                        :for={type <- available_conditions(@resource) -- @active_conditions}
+                        type="button"
+                        phx-click="add_condition"
+                        phx-value-type={type}
+                        class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                      >
+                        {condition_type_label(type)}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <%= if @policy_conditions_enabled? == false do %>
+                <.upgrade_locked_section
+                  id="resource-grant-conditions-locked-container"
+                  account={@account}
+                  message="Upgrade your plan to unlock policy conditions."
+                  description="Add policy restrictions like IP ranges, identity providers, and time windows."
+                >
+                  <.conditions_preview />
+                </.upgrade_locked_section>
+              <% else %>
+                <p
+                  :if={@active_conditions == []}
+                  class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
+                >
+                  No conditions — access is unrestricted
+                </p>
+                <div :if={@active_conditions != []} class="space-y-2">
+                  <.grant_condition_card
+                    :for={type <- @active_conditions}
+                    type={type}
+                    providers={@providers}
+                    conditions_state={@conditions_state}
+                  />
+                </div>
+              <% end %>
+            </div>
+          </.policy_restrictions>
         </div>
       </div>
       <div

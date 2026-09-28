@@ -11,7 +11,7 @@ defmodule PortalAPI.MCP.Safety do
         "Security-sensitive: can change administrator access, sign-in settings, or device trust."
 
       :credential_issuance ->
-        "Security-sensitive: returns a live credential to the MCP client. Store it securely. " <>
+        "Security-sensitive: returns a live credential to the MCP client. " <>
           "Disconnecting OAuth does not revoke credentials issued by this tool."
 
       nil ->

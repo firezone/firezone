@@ -74,8 +74,7 @@ defmodule PortalWeb.Settings.LogSinks do
         sentinel_setup_tab: "portal",
         submit_failed?: false,
         sentinel_verification_ref: nil,
-        s3_setup_tab: "console",
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        s3_setup_tab: "console"
       )
 
     {:ok, init(socket, new: true)}
@@ -308,7 +307,6 @@ defmodule PortalWeb.Settings.LogSinks do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>

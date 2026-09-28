@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the macOS screens into swift/apple/screenshots/macos/<release>"
+#MISE description="Run the macOS UI tests, saving the screens they photograph to swift/apple/screenshots/macos/<release>"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -21,7 +21,7 @@ cd "${APPLE_DIR}"
 
 rm -rf "${RESULT_BUNDLE}"
 
-echo "Photographing the macOS screens..."
+echo "Running the macOS UI tests..."
 # Only what failed is repeated: a press the app dropped lands the second time,
 # and a screen that is broken fails twice.
 xcodebuild test-without-building \

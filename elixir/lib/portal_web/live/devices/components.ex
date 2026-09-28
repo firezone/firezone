@@ -303,13 +303,6 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
 
   def device_details_view(assigns) do
-    posture_tab? = device_posture_enabled?()
-
-    assigns =
-      assigns
-      |> assign(:posture_tab?, posture_tab?)
-      |> assign(:tab, visible_device_tab(assigns.tab, posture_tab?))
-
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.device_details_header device={@device} />
@@ -326,7 +319,6 @@ defmodule PortalWeb.Devices.Components do
               selected={@tab == :authorizations}
             />
             <.device_tab
-              :if={@posture_tab?}
               tab="posture"
               label="Posture"
               selected={@tab == :posture}
@@ -1397,12 +1389,6 @@ defmodule PortalWeb.Devices.Components do
 
   defp attested_action_label(:attested_verify), do: "Verify"
   defp attested_action_label(_action), do: "Revoke verification"
-
-  # The Posture tab is hidden while the feature is off for the whole
-  # deployment, so a link into it lands on the overview rather than on blank
-  # space.
-  defp visible_device_tab(:posture, false), do: :overview
-  defp visible_device_tab(tab, _posture_tab?), do: tab
 
   defp posture_tab_state(assigns) do
     cond do

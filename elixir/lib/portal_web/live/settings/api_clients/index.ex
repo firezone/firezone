@@ -110,7 +110,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> assign(selected_actor: nil)
       |> assign(form: nil, encoded_token: nil)
       |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
     {:ok, socket}
   end
@@ -175,7 +174,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

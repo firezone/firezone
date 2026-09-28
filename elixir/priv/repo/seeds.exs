@@ -2503,7 +2503,7 @@ defmodule Portal.Repo.Seeds do
     Repo.query!(
       """
       INSERT INTO features (feature, enabled)
-      VALUES ('x509_auth', true), ('device_posture', true)
+      VALUES ('x509_auth', true)
       ON CONFLICT (feature) DO UPDATE SET enabled = true
       """
     )

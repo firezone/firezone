@@ -166,8 +166,8 @@ mimalloc = { version = "0.1.52" }
 mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
-netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.31.0"
+netlink-packet-core = "0.9.0"
+netlink-packet-route = "0.33.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
 nu-ansi-term = "0.50.3"
@@ -202,7 +202,7 @@ ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
@@ -310,10 +310,8 @@ sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "m
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
-rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

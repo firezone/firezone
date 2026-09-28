@@ -15,7 +15,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
 
   describe "rate limiting" do
     test "allows up to capacity then returns 429 with retry-after", %{unique_ip: unique_ip} do
-      opts = IngestionRateLimit.init(refill_rate: 0, capacity: 5)
+      opts = IngestionRateLimit.init(refill_rate: 1, capacity: 5)
 
       for _ <- 1..5 do
         conn = build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)
@@ -31,7 +31,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
     end
 
     test "different IPs have independent buckets", %{unique_ip: unique_ip} do
-      opts = IngestionRateLimit.init(refill_rate: 0, capacity: 1)
+      opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
       other_ip = put_elem(unique_ip, 0, 11)
 
       conn = build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)

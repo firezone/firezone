@@ -40,7 +40,7 @@ defmodule Portal.Queue.CallbacksTest do
       on_flush = Keyword.fetch!(PortalAPI.Client.Socket.client_session_queue_opts(), :on_flush)
 
       timestamp = DateTime.utc_now()
-      subject = %{"actor_id" => actor.id, "actor_email" => actor.email}
+      subject = %{ "actor_id" => actor.id, "actor_email" => actor.email, "attested_device_serial" => "SERIAL", "attested_at" => "2026-09-01T00:00:00Z"}
       metadata = %{subject: subject, timestamp: timestamp}
 
       assert 1 = on_flush.([{attrs, metadata}])
@@ -58,6 +58,9 @@ defmodule Portal.Queue.CallbacksTest do
       assert session_log.subject["actor_email"] == actor.email
       assert session_log.subject["device_id"] == client.id
       assert session_log.subject["token_id"] == token.id
+      assert session_log.subject["attested_device_serial"] == "SERIAL"
+      assert session_log.subject["attested_at"] == "2026-09-01T00:00:00Z"
+      refute Map.has_key?(session_log.subject, "attested_mdm_device_id")
     end
 
     test "persists a merged firezone_id carried by the session entry" do

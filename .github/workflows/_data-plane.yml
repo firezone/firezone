@@ -323,7 +323,7 @@ jobs:
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
-        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}

@@ -3,14 +3,12 @@ defmodule Portal.Intune.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
-  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
 
   alias Portal.Intune.{Device, PostureProvider, Sync}
   alias Portal.Microsoft.Graph.APIClient
 
   setup do
-    enable_device_posture()
     Req.Test.stub(APIClient, fn conn -> Req.Test.json(conn, %{"error" => "not mocked"}) end)
     :ok
   end
@@ -383,20 +381,6 @@ defmodule Portal.Intune.SyncTest do
   test "does not sync an account that lost the device_posture feature" do
     downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
     provider = intune_posture_provider_fixture(account: downgraded)
-    stub_managed_devices([full_intune_api_device_fixture()])
-
-    assert :ok =
-             perform_job(Sync, %{
-               account_id: provider.account_id,
-               posture_provider_id: provider.id
-             })
-
-    assert Repo.aggregate(Device, :count) == 0
-  end
-
-  test "does not sync when the global device_posture flag is off" do
-    enable_device_posture(false)
-    provider = intune_posture_provider_fixture()
     stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok =

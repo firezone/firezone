@@ -2176,7 +2176,11 @@ defmodule PortalAPI.Client.Channel.Shared do
       :ok = push(socket, "config_changed", payload)
     end
 
-    {:noreply, socket}
+    if Portal.Account.device_posture_enabled?(old_account) != Portal.Account.device_posture_enabled?(account) do
+      refresh_posture_rows(socket)
+    else
+      {:noreply, socket}
+    end
   end
 
   # MEMBERSHIPS

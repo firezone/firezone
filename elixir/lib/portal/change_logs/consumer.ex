@@ -277,16 +277,25 @@ defmodule Portal.ChangeLogs.Consumer do
 
       entries
       |> Enum.chunk_every(@insert_chunk_size)
-      |> Enum.reduce(0, fn chunk, inserted ->
-        {count, _} =
-          Safe.unscoped()
-          |> Safe.insert_all(ChangeLog, chunk,
-            on_conflict: :nothing,
-            conflict_target: [:lsn]
-          )
+      |> Enum.reduce(0, fn chunk, inserted -> inserted + insert_chunk(chunk) end)
+    end
 
-        inserted + count
-      end)
+    defp insert_chunk(chunk) do
+      {:ok, %{rows: [[cutoff]]}} =
+        Safe.unscoped()
+        |> Safe.query("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date - 121", [])
+
+      # Replayed WAL must not stall ingestion after its partition has expired.
+      chunk = Enum.reject(chunk, &(Date.compare(DateTime.to_date(&1.timestamp), cutoff) == :lt))
+
+      {count, _} =
+        Safe.unscoped()
+        |> Safe.insert_all(ChangeLog, chunk,
+          on_conflict: :nothing,
+          conflict_target: [:timestamp, :lsn]
+        )
+
+      count
     end
 
     # Entries for accounts that were hard-deleted since the WAL record was
