@@ -257,7 +257,6 @@ skip = [
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
     "libloading",
-    "linux-raw-sys",
     "nix",
     "nom",
     "object",
@@ -265,7 +264,6 @@ skip = [
     "proc-macro-crate",
     "rand",
     "rand_core",
-    "rustix",
     "serde_spanned",
     "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.
     "syn",
