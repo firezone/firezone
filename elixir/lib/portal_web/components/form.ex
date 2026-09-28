@@ -1,12 +1,12 @@
-defmodule PortalWeb.FormComponents do
+defmodule PortalWeb.Components.Form do
   @moduledoc """
   Provides Form UI components.
   """
   use Phoenix.Component
   use PortalWeb, :verified_routes
 
-  import PortalWeb.CoreComponents,
-    only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
+  alias PortalWeb.Components.Core
+  alias PortalWeb.Components.Navigation
 
   @doc """
   Renders a themed LiveView file picker with upload progress, removal, and errors.
@@ -23,7 +23,7 @@ defmodule PortalWeb.FormComponents do
   def file_upload(assigns) do
     ~H"""
     <div class="space-y-2">
-      <.label for={@upload.ref}>{@label}</.label>
+      <Core.label for={@upload.ref}>{@label}</Core.label>
       <div class="group relative flex items-center gap-3 rounded border border-input-border bg-input p-1 pl-3 text-sm text-body focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
         <span class="min-w-0 flex-1 truncate" aria-hidden="true">
           {if @upload.entries == [],
@@ -47,7 +47,7 @@ defmodule PortalWeb.FormComponents do
       </p>
       <div :for={entry <- @upload.entries} class="space-y-1">
         <div class="flex items-center gap-3 rounded border border-border bg-surface px-3 py-2 text-sm text-body">
-          <.icon name="ri-file-line" class="h-4 w-4 shrink-0 text-subtle" />
+          <Core.icon name="ri-file-line" class="h-4 w-4 shrink-0 text-subtle" />
           <span class="min-w-0 flex-1 truncate">{entry.client_name}</span>
           <progress
             value={entry.progress}
@@ -65,10 +65,10 @@ defmodule PortalWeb.FormComponents do
             class="shrink-0"
           />
         </div>
-        <.error :for={error <- upload_errors(@upload, entry)} role="alert">{@error_message.(error)}</.error>
+        <Core.error :for={error <- upload_errors(@upload, entry)} role="alert">{@error_message.(error)}</Core.error>
       </div>
-      <.error :for={error <- upload_errors(@upload)} role="alert">{@error_message.(error)}</.error>
-      <.error :for={error <- @errors}>{error}</.error>
+      <Core.error :for={error <- upload_errors(@upload)} role="alert">{@error_message.(error)}</Core.error>
+      <Core.error :for={error <- @errors}>{error}</Core.error>
     </div>
     """
   end
@@ -84,8 +84,8 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.input field={@form[:email]} type="email" />
-      <.input name="my-input" errors={["oh no!"]} />
+      <Form.input field={@form[:email]} type="email" />
+      <Form.input name="my-input" errors={["oh no!"]} />
   """
   attr :id, :any, default: nil
   attr :name, :any
@@ -151,7 +151,7 @@ defmodule PortalWeb.FormComponents do
         true ->
           field.errors
       end
-      |> Enum.map(&translate_error(&1))
+      |> Enum.map(&Core.translate_error(&1))
 
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
@@ -235,9 +235,9 @@ defmodule PortalWeb.FormComponents do
         />
         {@label}
       </label>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <Core.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -247,7 +247,7 @@ defmodule PortalWeb.FormComponents do
 
     ~H"""
     <div>
-      <.label :if={@label} for={@id}>{@label}</.label>
+      <Core.label :if={@label} for={@id}>{@label}</Core.label>
       <input
         :if={not is_nil(@value) and @rest[:disabled] == true}
         type="hidden"
@@ -285,9 +285,9 @@ defmodule PortalWeb.FormComponents do
           <% end %>
         <% end %>
       </select>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <Core.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -297,7 +297,7 @@ defmodule PortalWeb.FormComponents do
 
     ~H"""
     <div>
-      <.label :if={@label} for={@id}>{@label}</.label>
+      <Core.label :if={@label} for={@id}>{@label}</Core.label>
       <input
         :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
         type="hidden"
@@ -336,7 +336,7 @@ defmodule PortalWeb.FormComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label} for={@id}>{@label}</.label>
+      <Core.label :if={@label} for={@id}>{@label}</Core.label>
       <textarea
         id={@id}
         name={@name}
@@ -354,9 +354,9 @@ defmodule PortalWeb.FormComponents do
         ]}
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <Core.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -376,7 +376,7 @@ defmodule PortalWeb.FormComponents do
   def input(%{type: "readonly"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label}>{@label}</.label>
+      <Core.label :if={@label}>{@label}</Core.label>
       <div class="border border-input-border rounded-md px-3 py-2 text-sm text-subtle bg-raised">
         {assigns.value}
       </div>
@@ -388,9 +388,9 @@ defmodule PortalWeb.FormComponents do
         {@rest}
       />
 
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <Core.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -398,7 +398,7 @@ defmodule PortalWeb.FormComponents do
   def input(assigns) do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={@label} for={@id}>{@label}</.label>
+      <Core.label :if={@label} for={@id}>{@label}</Core.label>
       <div class={field_row_class(assigns)}>
         <input
           type={@type}
@@ -451,18 +451,18 @@ defmodule PortalWeb.FormComponents do
         "xl:absolute xl:left-full xl:top-1/2 xl:-translate-y-1/2"
       ]}
     >
-      <.error :for={msg <- @errors} inline data-validation-error-for={@name}>
+      <Core.error :for={msg <- @errors} inline data-validation-error-for={@name}>
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
 
   defp field_errors(assigns) do
     ~H"""
-    <.error :for={msg <- @errors} inline={@inline} data-validation-error-for={@name}>
+    <Core.error :for={msg <- @errors} inline={@inline} data-validation-error-for={@name}>
       {msg}
-    </.error>
+    </Core.error>
     """
   end
 
@@ -492,24 +492,24 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.modal id="my-modal">
+      <Form.modal id="my-modal">
         <:title>Welcome</:title>
         <:body>
           This is the modal content.
         </:body>
         <:footer>
-          <.button phx-click="close-modal">Close</.button>
+          <Form.button phx-click="close-modal">Close</Form.button>
         </:footer>
-      </.modal>
+      </Form.modal>
 
-      <.modal id="confirm-modal" on_cancel="dismiss" on_confirm="proceed">
+      <Form.modal id="confirm-modal" on_cancel="dismiss" on_confirm="proceed">
         <:title>Are you sure?</:title>
         <:body>
           This cannot be undone.
         </:body>
         <:cancel_button>Cancel</:cancel_button>
         <:confirm_button>Continue</:confirm_button>
-      </.modal>
+      </Form.modal>
   """
   attr :id, :string, required: true, doc: "The id of the modal"
   attr :class, :string, default: "", doc: "Custom classes to be added to the modal"
@@ -576,7 +576,7 @@ defmodule PortalWeb.FormComponents do
             class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t"
           >
             <h3 class="text-xl font-semibold text-heading flex items-center gap-3">
-              <.provider_icon
+              <Core.provider_icon
                 :for={title_slot <- @title}
                 :if={Map.get(title_slot, :provider)}
                 provider={Map.get(title_slot, :provider)}
@@ -677,7 +677,7 @@ defmodule PortalWeb.FormComponents do
               type="submit"
               value="cancel"
             >
-              <.icon name="ri-close-line" class="h-4 w-4" />
+              <Core.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
             </button>
           </div>
@@ -733,12 +733,12 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.button style="primary" navigate={~p"/actors/new"} icon="ri-add-line">
+      <Form.button style="primary" navigate={~p"/actors/new"} icon="ri-add-line">
         Add user
-      </.button>
+      </Form.button>
 
-      <.button>Send!</.button>
-      <.button phx-click="go" class="ml-2">Send!</.button>
+      <Form.button>Send!</Form.button>
+      <Form.button phx-click="go" class="ml-2">Send!</Form.button>
   """
   attr :navigate, :string,
     required: false,
@@ -757,7 +757,7 @@ defmodule PortalWeb.FormComponents do
   attr :patch, :string,
     required: false,
     doc: """
-    The path to patch to using live navigation, when set a <.link> tag with patch will be used,
+    The path to patch to using live navigation, when set a <Navigation.link class={nil}> tag with patch will be used,
     otherwise a <button> tag will be used
     """
 
@@ -776,28 +776,28 @@ defmodule PortalWeb.FormComponents do
 
   def button(%{href: _} = assigns) do
     ~H"""
-    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} href={@href} {@rest}>
-      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
+    <Navigation.link class={button_style(@style) ++ button_size(@size) ++ [@class]} href={@href} {@rest}>
+      <Core.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
-    </.link>
+    </Navigation.link>
     """
   end
 
   def button(%{navigate: _} = assigns) do
     ~H"""
-    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
-      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
+    <Navigation.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
+      <Core.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
-    </.link>
+    </Navigation.link>
     """
   end
 
   def button(%{patch: _} = assigns) do
     ~H"""
-    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} patch={@patch} {@rest}>
-      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
+    <Navigation.link class={button_style(@style) ++ button_size(@size) ++ [@class]} patch={@patch} {@rest}>
+      <Core.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -812,7 +812,7 @@ defmodule PortalWeb.FormComponents do
       class={button_style(@computed_style) ++ button_size(@size) ++ [@class]}
       {@rest}
     >
-      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
+      <Core.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
     </button>
     """
@@ -824,9 +824,9 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
-      <.icon_button style="outline" icon="ri-arrow-left-s-line" title="Previous page" phx-click="prev_page" disabled={@page <= 1} />
-      <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" size="sm" class="shrink-0" />
+      <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+      <Form.icon_button style="outline" icon="ri-arrow-left-s-line" title="Previous page" phx-click="prev_page" disabled={@page <= 1} />
+      <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" size="sm" class="shrink-0" />
   """
   attr :icon, :string, required: true, doc: "The remix icon name"
   attr :title, :string, default: nil, doc: "Tooltip shown on hover (recommended for accessibility)"
@@ -849,7 +849,7 @@ defmodule PortalWeb.FormComponents do
       aria-label={@title}
       {@rest}
     >
-      <.icon name={@icon} class={icon_button_icon_size(@size)} />
+      <Core.icon name={@icon} class={icon_button_icon_size(@size)} />
     </button>
     """
   end
@@ -863,12 +863,12 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
+      <Form.panel_header title="Edit Client" close_event="cancel_client_edit_form" />
 
-      <.panel_header title={"Edit \#{@provider_name}"} variant="plain">
-        <:leading><.provider_icon provider={@type} size="md" /></:leading>
-        <:adornment><.docs_action path={"/authenticate/\#{@type}"} /></:adornment>
-      </.panel_header>
+      <Form.panel_header title={"Edit \#{@provider_name}"} variant="plain">
+        <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
+        <:adornment><Navigation.docs_action path={"/authenticate/\#{@type}"} /></:adornment>
+      </Form.panel_header>
   """
   attr :title, :string, required: true
   attr :variant, :string, default: "elevated", values: ~w[elevated plain]
@@ -907,10 +907,10 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.panel_footer>
-        <.panel_footer_button phx-click="close_panel">Cancel</.panel_footer_button>
-        <.panel_footer_button type="submit" style="primary">Save</.panel_footer_button>
-      </.panel_footer>
+      <Form.panel_footer>
+        <Form.panel_footer_button phx-click="close_panel">Cancel</Form.panel_footer_button>
+        <Form.panel_footer_button type="submit" style="primary">Save</Form.panel_footer_button>
+      </Form.panel_footer>
   """
   attr :class, :any, default: nil
   slot :inner_block, required: true
@@ -1002,7 +1002,7 @@ defmodule PortalWeb.FormComponents do
       class={action_button_style(@style) ++ button_size(@size) ++ [@class]}
       {@rest}
     >
-      <.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" />
+      <Core.icon :if={@icon} name={@icon} class="w-3.5 h-3.5" />
       <span>{render_slot(@inner_block)}</span>
     </button>
     """
@@ -1014,13 +1014,13 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-      <.upgrade_locked_section
+      <Form.upgrade_locked_section
         account={@account}
         message="Upgrade your plan to unlock policy conditions."
         description="Add policy restrictions like IP ranges, identity providers, and time windows."
       >
         <.placeholder_or_preview />
-      </.upgrade_locked_section>
+      </Form.upgrade_locked_section>
   """
   attr :account, :any, required: true
   attr :message, :string, required: true
@@ -1035,7 +1035,7 @@ defmodule PortalWeb.FormComponents do
     <div id={@id} class={["relative", @class]} {@rest}>
       <div class="absolute inset-0 z-20 flex items-center justify-center p-3">
         <div class="flex max-w-xs flex-col items-center gap-2 rounded-lg border border-border bg-elevated px-4 py-3 text-center text-subtle shadow-md">
-          <.icon name="ri-lock-2-line" class="h-5 w-5" />
+          <Core.icon name="ri-lock-2-line" class="h-5 w-5" />
           <div class="flex flex-col items-center gap-0.5">
             <p class="text-xs font-medium text-heading">
               {@message}
@@ -1067,9 +1067,9 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-    <.submit_button>
+    <Form.submit_button>
       Save
-    </.submit_button>
+    </Form.submit_button>
   """
 
   attr :rest, :global, include: ~w(class icon)
@@ -1091,13 +1091,13 @@ defmodule PortalWeb.FormComponents do
 
   ## Examples
 
-    <.add_button navigate={~p"/actors/new"}>
+    <Form.add_button navigate={~p"/actors/new"}>
       Add user
-    </.add_button>
+    </Form.add_button>
 
-    <.add_button patch={~p"/actors/new"}>
+    <Form.add_button patch={~p"/actors/new"}>
       Add user
-    </.add_button>
+    </Form.add_button>
   """
   attr :navigate, :any, required: false, doc: "Path to navigate to"
   attr :patch, :any, required: false, doc: "Path to patch to"

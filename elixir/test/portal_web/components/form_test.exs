@@ -1,31 +1,31 @@
-defmodule PortalWeb.FormComponentsTest.Fixture do
+defmodule PortalWeb.Components.FormTest.Fixture do
   use Phoenix.Component
 
-  import PortalWeb.FormComponents
+  alias PortalWeb.Components.Form
 
   def render(assigns) do
     ~H"""
-    <.panel_footer class="test-footer">
-      <.panel_footer_button id="cancel" phx-click="close_panel">
+    <Form.panel_footer class="test-footer">
+      <Form.panel_footer_button id="cancel" phx-click="close_panel">
         Cancel
-      </.panel_footer_button>
-      <.panel_footer_button id="save" type="submit" style="primary" disabled>
+      </Form.panel_footer_button>
+      <Form.panel_footer_button id="save" type="submit" style="primary" disabled>
         Save
-      </.panel_footer_button>
-      <.panel_footer_button id="back" patch="/groups">
+      </Form.panel_footer_button>
+      <Form.panel_footer_button id="back" patch="/groups">
         Back
-      </.panel_footer_button>
-    </.panel_footer>
+      </Form.panel_footer_button>
+    </Form.panel_footer>
     """
   end
 end
 
-defmodule PortalWeb.FormComponentsTest do
+defmodule PortalWeb.Components.FormTest do
   use PortalWeb.ConnCase, async: true
 
   test "panel footer composes consistently sized base buttons" do
     html =
-      render_component(&PortalWeb.FormComponentsTest.Fixture.render/1, %{})
+      render_component(&PortalWeb.Components.FormTest.Fixture.render/1, %{})
       |> Floki.parse_fragment!()
 
     assert [footer] = Floki.find(html, ".test-footer")
@@ -121,7 +121,7 @@ defmodule PortalWeb.FormComponentsTest do
         options: [{"A", "a"}, {"B", "b"}]
       })
 
-    render_component(&PortalWeb.FormComponents.input/1, assigns)
+    render_component(&PortalWeb.Components.Form.input/1, assigns)
   end
 
   defp selected_options(html) do

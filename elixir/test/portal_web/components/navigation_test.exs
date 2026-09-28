@@ -1,4 +1,4 @@
-defmodule PortalWeb.NavigationComponentsTest do
+defmodule PortalWeb.Components.NavigationTest do
   use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures

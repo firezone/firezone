@@ -64,8 +64,8 @@ defmodule PortalWeb.FindAccount do
 
   def render(assigns) do
     ~H"""
-    <.flash flash={@flash} kind={:error} />
-    <.flash flash={@flash} kind={:info} />
+    <Core.flash flash={@flash} kind={:error} />
+    <Core.flash flash={@flash} kind={:info} />
 
     <.email_form :if={@step == :enter_email} form={@form} />
     <.email_sent :if={@step == :email_sent} email={@submitted_email} />
@@ -78,7 +78,7 @@ defmodule PortalWeb.FindAccount do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
-        <.icon name="ri-team-line" class="w-5 h-5 text-link" />
+        <Core.icon name="ri-team-line" class="w-5 h-5 text-link" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-heading tracking-tight">
@@ -96,7 +96,7 @@ defmodule PortalWeb.FindAccount do
       </label>
       <div class="flex gap-2">
         <div class="flex-1">
-          <.input
+          <Form.input
             field={@form[:email]}
             type="email"
             placeholder="you@company.com"
@@ -118,7 +118,7 @@ defmodule PortalWeb.FindAccount do
     <div class="mt-8 pt-6 border-t border-border text-center space-y-1.5">
       <p class="text-xs text-subtle">
         Not sure where to start?
-        <.link href={~p"/getting_started"} class={[link_style()]}>Let's get started.</.link>
+        <Navigation.link href={~p"/getting_started"}>Let's get started.</Navigation.link>
       </p>
     </div>
     """
@@ -130,7 +130,7 @@ defmodule PortalWeb.FindAccount do
     ~H"""
     <div class="flex items-center gap-3 mb-8">
       <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
-        <.icon name="ri-mail-line" class="w-5 h-5 text-link" />
+        <Core.icon name="ri-mail-line" class="w-5 h-5 text-link" />
       </div>
       <div>
         <h1 class="text-xl font-bold text-heading tracking-tight">Check your inbox</h1>
@@ -174,7 +174,7 @@ defmodule PortalWeb.FindAccount do
 
     <div class="pt-6 border-t border-border text-center">
       <p class="text-xs text-subtle">
-        Wrong address? <.link href={~p"/find_account"} class={[link_style()]}>Try again.</.link>
+        Wrong address? <Navigation.link href={~p"/find_account"}>Try again.</Navigation.link>
       </p>
     </div>
     """

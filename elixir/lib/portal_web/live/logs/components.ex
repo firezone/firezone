@@ -10,7 +10,8 @@ defmodule PortalWeb.Logs.Components do
   use Phoenix.Component
   use PortalWeb, :verified_routes
   alias PortalWeb.Devices
-  alias PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
+  alias PortalWeb.Components.Navigation
 
   @doc """
   Single timestamp cell, abbreviated with the full value in a hover popover.
@@ -26,7 +27,7 @@ defmodule PortalWeb.Logs.Components do
 
   def timestamp_cell(assigns) do
     ~H"""
-    <CoreComponents.popover>
+    <Core.popover>
       <:target>
         <span
           id={"#{@id_prefix}-#{@log_id}"}
@@ -41,7 +42,7 @@ defmodule PortalWeb.Logs.Components do
           {PortalWeb.Format.iso_datetime(@timestamp, @display_tz)}
         </span>
       </:content>
-    </CoreComponents.popover>
+    </Core.popover>
     """
   end
 
@@ -170,19 +171,19 @@ defmodule PortalWeb.Logs.Components do
 
   def op_label(%{op: :insert} = assigns) do
     ~H"""
-    <CoreComponents.badge type="success" class="uppercase">Insert</CoreComponents.badge>
+    <Core.badge type="success" class="uppercase">Insert</Core.badge>
     """
   end
 
   def op_label(%{op: :update} = assigns) do
     ~H"""
-    <CoreComponents.badge type="warning" class="uppercase">Update</CoreComponents.badge>
+    <Core.badge type="warning" class="uppercase">Update</Core.badge>
     """
   end
 
   def op_label(%{op: :delete} = assigns) do
     ~H"""
-    <CoreComponents.badge type="danger" class="uppercase">Delete</CoreComponents.badge>
+    <Core.badge type="danger" class="uppercase">Delete</Core.badge>
     """
   end
 
@@ -253,7 +254,7 @@ defmodule PortalWeb.Logs.Components do
             class="shrink-0 flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
             title="Close (Esc)"
           >
-            <CoreComponents.icon name="ri-close-line" class="w-4 h-4" />
+            <Core.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
         <div class="flex flex-1 min-h-0 divide-x divide-border">
@@ -310,7 +311,7 @@ defmodule PortalWeb.Logs.Components do
             "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
             actor_type_bg(@type_str)
           ]}>
-            <CoreComponents.icon
+            <Core.icon
               name={actor_type_icon(@type_str)}
               class={"w-5 h-5 #{actor_type_fg(@type_str)}"}
             />
@@ -330,7 +331,7 @@ defmodule PortalWeb.Logs.Components do
                 :if={@email not in [nil, ""]}
                 class="mt-1 flex items-center gap-1.5 text-xs text-body min-w-0"
               >
-                <CoreComponents.icon
+                <Core.icon
                   name="ri-mail-line"
                   class="w-3.5 h-3.5 shrink-0 text-subtle"
                 />
@@ -414,13 +415,13 @@ defmodule PortalWeb.Logs.Components do
 
   def session_context_icon(%{context: :gateway} = assigns) do
     ~H"""
-    <CoreComponents.icon name="ri-server-line" title="Gateway" class={@class} />
+    <Core.icon name="ri-server-line" title="Gateway" class={@class} />
     """
   end
 
   def session_context_icon(%{context: :portal} = assigns) do
     ~H"""
-    <CoreComponents.icon name="ri-shield-user-line" title="Portal" class={@class} />
+    <Core.icon name="ri-shield-user-line" title="Portal" class={@class} />
     """
   end
 
@@ -429,7 +430,7 @@ defmodule PortalWeb.Logs.Components do
       assign(assigns, :icon_name, Devices.Components.os_icon_name(assigns.user_agent))
 
     ~H"""
-    <CoreComponents.icon name={@icon_name} title={@user_agent || "Client"} class={@class} />
+    <Core.icon name={@icon_name} title={@user_agent || "Client"} class={@class} />
     """
   end
 
@@ -441,11 +442,11 @@ defmodule PortalWeb.Logs.Components do
   def log_sinks_notice(assigns) do
     ~H"""
     <span class="hidden lg:inline-flex items-center gap-1.5 whitespace-nowrap">
-      <CoreComponents.icon name="ri-information-line" class="w-3.5 h-3.5 shrink-0" />
+      <Core.icon name="ri-information-line" class="w-3.5 h-3.5 shrink-0" />
       <span>
         Log streaming to SIEMs and other destinations can be configured in
-        <.link navigate={~p"/#{@account}/settings/log_sinks"} class={CoreComponents.link_style()}>
-          log sinks</.link>.
+        <Navigation.link navigate={~p"/#{@account}/settings/log_sinks"}>
+          log sinks</Navigation.link>.
       </span>
     </span>
     """
@@ -524,7 +525,7 @@ defmodule PortalWeb.Logs.Components do
         rel="noopener noreferrer"
         class="flex items-center justify-center gap-1 px-3 py-2 border-t border-border text-[11px] text-body hover:text-brand hover:bg-surface transition-colors"
       >
-        <CoreComponents.icon name="ri-external-link-line" class="w-3 h-3" />
+        <Core.icon name="ri-external-link-line" class="w-3 h-3" />
         View on Google Maps
       </a>
     </div>
@@ -535,7 +536,7 @@ defmodule PortalWeb.Logs.Components do
     ~H"""
     <div class="rounded border border-dashed border-border bg-raised overflow-hidden">
       <div class="aspect-[2/1] flex flex-col items-center justify-center gap-2 text-center">
-        <CoreComponents.icon name="ri-map-pin-line" class="w-6 h-6 text-subtle" />
+        <Core.icon name="ri-map-pin-line" class="w-6 h-6 text-subtle" />
         <p class="text-xs text-subtle">Location unknown</p>
       </div>
       <div :if={@caption != []} class="px-3 py-2 border-t border-border bg-surface">

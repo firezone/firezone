@@ -29,7 +29,7 @@ defmodule PortalWeb.SupportForm do
         phx-target={@myself}
         class="text-sm text-body hover:text-heading"
       >Feedback</button>
-      <.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
+      <Form.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
         <:title>{if @sent?, do: "Thank you for your feedback", else: "Submit feedback"}</:title>
         <:body>
           <div :if={@sent?} role="status" class="space-y-3">
@@ -45,7 +45,7 @@ defmodule PortalWeb.SupportForm do
             phx-submit="submit"
             class="space-y-4"
           >
-            <.input
+            <Form.input
               field={@form[:message]}
               type="textarea"
               label="What would you like to see improved?"
@@ -54,7 +54,7 @@ defmodule PortalWeb.SupportForm do
               rows="6"
             />
             <p class="text-sm text-subtle">Up to 1,000 characters.</p>
-            <.file_upload
+            <Form.file_upload
               upload={@uploads.screenshot}
               label="Screenshot (optional)"
               cancel_event="cancel-upload"
@@ -62,12 +62,12 @@ defmodule PortalWeb.SupportForm do
               error_message={&upload_error/1}
             >
               <:hint>One PNG, JPEG, GIF, or WebP image, up to 2 MB.</:hint>
-            </.file_upload>
-            <.error :if={@error} role="alert">{@error}</.error>
+            </Form.file_upload>
+            <Core.error :if={@error} role="alert">{@error}</Core.error>
           </.form>
         </:body>
         <:footer>
-          <.button
+          <Form.button
             :if={@sent?}
             type="button"
             style="primary"
@@ -76,8 +76,8 @@ defmodule PortalWeb.SupportForm do
             class="ml-auto"
           >
             Done
-          </.button>
-          <.button
+          </Form.button>
+          <Form.button
             :if={!@sent?}
             type="submit"
             form="support-form"
@@ -86,9 +86,9 @@ defmodule PortalWeb.SupportForm do
             class="ml-auto"
           >
             Submit feedback
-          </.button>
+          </Form.button>
         </:footer>
-      </.modal>
+      </Form.modal>
     </div>
     """
   end

@@ -1,7 +1,7 @@
 defmodule PortalWeb.Logs.ChangeLogs do
   use PortalWeb, :live_view
 
-  import PortalWeb.Logs.Components
+  alias PortalWeb.Logs.Components, as: LogComponents
 
   alias PortalWeb.Logs.JSONDiff
   alias __MODULE__.Database
@@ -10,14 +10,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
   @filter_key "change_logs_filter"
 
   def mount(_params, _session, socket) do
-    browser_tz = browser_tz_from_connect(socket)
+    browser_tz = LogComponents.browser_tz_from_connect(socket)
 
     socket =
       socket
       |> assign(page_title: "Change Logs")
       |> assign(selected_change_log: nil, browser_tz: browser_tz)
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
-      |> assign_live_table(@table_id,
+      |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:change_logs, :timestamp}, {:change_logs, :log_id}],
         callback: &handle_change_logs_update!/2
@@ -33,8 +33,8 @@ defmodule PortalWeb.Logs.ChangeLogs do
       ) do
     socket =
       socket
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     case Database.fetch_change_log(log_id, socket.assigns.subject) do
       {:ok, change_log} ->
@@ -58,15 +58,15 @@ defmodule PortalWeb.Logs.ChangeLogs do
     socket =
       socket
       |> assign(selected_change_log: nil)
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     {:noreply, socket}
   end
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
     {:noreply,
@@ -111,10 +111,10 @@ defmodule PortalWeb.Logs.ChangeLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.logs_nav account={@account} current_path={@current_path} />
+      <Navigation.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="change_logs"
           rows={@change_logs}
           row_id={&"change_log-#{&1.change_log.log_id}"}
@@ -137,7 +137,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
           row_item={& &1}
         >
           <:col :let={row} field={{:change_logs, :timestamp}} label="Timestamp" class="w-44">
-            <.timestamp_cell
+            <LogComponents.timestamp_cell
               log_id={row.change_log.log_id}
               timestamp={row.change_log.timestamp}
               tz_mode={@tz_mode}
@@ -155,10 +155,10 @@ defmodule PortalWeb.Logs.ChangeLogs do
             </span>
           </:col>
           <:col :let={row} label="Actor" class="w-64">
-            <.actor_cell subject={row.change_log.subject} />
+            <LogComponents.actor_cell subject={row.change_log.subject} />
           </:col>
           <:col :let={row} label="Operation" class="w-28">
-            <.op_label op={row.change_log.operation} />
+            <LogComponents.op_label op={row.change_log.operation} />
           </:col>
           <:col :let={row} label="Changes" class="w-24">
             <.changes_cell op={row.change_log.operation} count={row.changed_count} />
@@ -166,7 +166,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-history-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-history-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No change logs</p>
@@ -177,22 +177,22 @@ defmodule PortalWeb.Logs.ChangeLogs do
             </div>
           </:empty>
           <:footer>
-            <.log_sinks_notice account={@account} />
+            <LogComponents.log_sinks_notice account={@account} />
           </:footer>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.show_panel id="change-log-panel" open?={not is_nil(@selected_change_log)}>
+      <LogComponents.show_panel id="change-log-panel" open?={not is_nil(@selected_change_log)}>
         <:title>
           <%= if @selected_change_log do %>
-            <.op_label op={@selected_change_log.operation} />
+            <LogComponents.op_label op={@selected_change_log.operation} />
             <span class="font-mono text-sm font-semibold text-heading truncate">
               {@selected_change_log.object}
             </span>
           <% end %>
         </:title>
         <div :if={@selected_change_log} class="flex-1 flex flex-col min-h-0 overflow-auto p-5 gap-4">
-          <.actor_card
+          <LogComponents.actor_card
             :if={not is_nil(@selected_change_log.subject)}
             name={subject_field(@selected_change_log, "actor_name")}
             email={subject_field(@selected_change_log, "actor_email")}
@@ -223,14 +223,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
             <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
-            <.location_map
+            <LogComponents.location_map
               lat={subject_field(@selected_change_log, "ip_lat")}
               lon={subject_field(@selected_change_log, "ip_lon")}
             >
               <:caption>
                 <div class="flex items-center justify-between gap-2 text-xs">
                   <div class="flex items-center gap-2 min-w-0">
-                    <.icon
+                    <Core.icon
                       name="ri-map-pin-line"
                       class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
@@ -257,73 +257,73 @@ defmodule PortalWeb.Logs.ChangeLogs do
                   </span>
                 </div>
               </:caption>
-            </.location_map>
+            </LogComponents.location_map>
           </section>
         </div>
-        <.show_panel_sidebar :if={@selected_change_log}>
+        <LogComponents.show_panel_sidebar :if={@selected_change_log}>
           <section>
-            <.section_heading label="Details" />
+            <LogComponents.section_heading label="Details" />
             <dl class="space-y-2.5">
-              <.detail_row label="Timestamp">
-                <.timestamp_cell
+              <LogComponents.detail_row label="Timestamp">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-timestamp"
                   log_id={@selected_change_log.log_id}
                   timestamp={@selected_change_log.timestamp}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
-              <.detail_row label="Log ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Log ID">
                 <span class="font-mono text-[11px] text-body break-all">
                   {@selected_change_log.log_id}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Identifiers" />
+            <LogComponents.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
-              <.detail_row :if={subject_field(@selected_change_log, "actor_id")} label="Actor ID">
+              <LogComponents.detail_row :if={subject_field(@selected_change_log, "actor_id")} label="Actor ID">
                 <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_change_log, "actor_id")}
                 </span>
-              </.detail_row>
-              <.detail_row
+              </LogComponents.detail_row>
+              <LogComponents.detail_row
                 :if={subject_field(@selected_change_log, "auth_provider_id")}
                 label="Auth provider ID"
               >
                 <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_change_log, "auth_provider_id")}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Source" />
+            <LogComponents.section_heading label="Source" />
             <dl class="space-y-2.5">
-              <.detail_row :if={subject_field(@selected_change_log, "ip")} label="IP address">
+              <LogComponents.detail_row :if={subject_field(@selected_change_log, "ip")} label="IP address">
                 <span class="font-mono text-xs text-heading">
                   {subject_field(@selected_change_log, "ip")}
                 </span>
-              </.detail_row>
-              <.detail_row
+              </LogComponents.detail_row>
+              <LogComponents.detail_row
                 :if={subject_field(@selected_change_log, "user_agent")}
                 label="User agent"
               >
                 <span class="font-mono text-xs text-body break-all">
                   {subject_field(@selected_change_log, "user_agent")}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
-        </.show_panel_sidebar>
-      </.show_panel>
+        </LogComponents.show_panel_sidebar>
+      </LogComponents.show_panel>
     </div>
     """
   end

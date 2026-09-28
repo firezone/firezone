@@ -120,12 +120,12 @@ defmodule PortalWeb.SignInHTML do
           </div>
           <p class="text-sm text-center text-body">{@error}</p>
           <div class="flex justify-center">
-            <.link
+            <Navigation.link
               href={@retry_path}
               class="inline-flex items-center justify-center rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500"
             >
               Return to sign in
-            </.link>
+            </Navigation.link>
           </div>
         </div>
       </body>

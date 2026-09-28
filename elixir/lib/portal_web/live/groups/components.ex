@@ -1,14 +1,8 @@
 defmodule PortalWeb.Groups.Components do
   use PortalWeb, :component_library
-  import PortalWeb.Policies.PostureComponents
+  alias PortalWeb.Policies.PostureComponents
 
-  import PortalWeb.Policies.Components,
-    only: [
-      grant_condition_card: 1,
-      available_conditions: 1,
-      condition_type_label: 1,
-      flow_log_uploads_toggle: 1
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
   attr :account, :any, required: true
   attr :group, :any, default: nil
@@ -94,19 +88,19 @@ defmodule PortalWeb.Groups.Components do
       <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-2 min-w-0">
-            <.link
+            <Navigation.link
               :if={@panel_view == :edit_form && @group}
               patch={~p"/#{@account}/groups/#{@group.id}"}
               class="flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
               title="Back to group"
             >
-              <.icon name="ri-arrow-left-line" class="w-4 h-4" />
-            </.link>
+              <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+            </Navigation.link>
             <h2 class="text-sm font-semibold text-heading truncate">
               {if @panel_view == :new_form, do: "New Group", else: "Edit #{@group && @group.name}"}
             </h2>
           </div>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" class="shrink-0" />
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" class="shrink-0" />
         </div>
       </div>
       <.form
@@ -117,8 +111,8 @@ defmodule PortalWeb.Groups.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
-          <.input
+          <Core.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
+          <Form.input
             field={@form[:name]}
             label="Group Name"
             placeholder="Enter group name"
@@ -152,7 +146,7 @@ defmodule PortalWeb.Groups.Components do
                     class="shrink-0 text-subtle hover:text-error transition-colors"
                     title="Remove from current members"
                   >
-                    <.icon name="ri-close-line" class="w-4 h-4" />
+                    <Core.icon name="ri-close-line" class="w-4 h-4" />
                   </button>
                 </:actions>
               </.member_bucket>
@@ -175,7 +169,7 @@ defmodule PortalWeb.Groups.Components do
                     class="shrink-0 text-subtle hover:text-error transition-colors"
                     title="Remove from pending additions"
                   >
-                    <.icon name="ri-close-line" class="w-4 h-4" />
+                    <Core.icon name="ri-close-line" class="w-4 h-4" />
                   </button>
                 </:actions>
               </.member_bucket>
@@ -198,15 +192,15 @@ defmodule PortalWeb.Groups.Components do
                     class="shrink-0 text-subtle hover:text-heading transition-colors"
                     title="Remove from pending removals"
                   >
-                    <.icon name="ri-close-line" class="w-4 h-4" />
+                    <Core.icon name="ri-close-line" class="w-4 h-4" />
                   </button>
                 </:actions>
               </.member_bucket>
             </div>
           </div>
         </div>
-        <.panel_footer>
-          <.panel_footer_button
+        <Form.panel_footer>
+          <Form.panel_footer_button
             patch={
               if @panel_view == :edit_form && @group,
                 do: ~p"/#{@account}/groups/#{@group.id}",
@@ -214,8 +208,8 @@ defmodule PortalWeb.Groups.Components do
             }
           >
             Cancel
-          </.panel_footer_button>
-          <.panel_footer_button
+          </Form.panel_footer_button>
+          <Form.panel_footer_button
             type="submit"
             style="primary"
             disabled={
@@ -226,8 +220,8 @@ defmodule PortalWeb.Groups.Components do
             class="font-medium"
           >
             {if @panel_view == :new_form, do: "Create Group", else: "Save Changes"}
-          </.panel_footer_button>
-        </.panel_footer>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
     </div>
     """
@@ -305,7 +299,7 @@ defmodule PortalWeb.Groups.Components do
       <div class="flex items-center gap-4">
         <%!-- Left: icon + name + directory info --%>
         <div class="flex items-center gap-3 min-w-0 flex-1">
-          <.provider_icon provider={provider_type_from_group(@group)} size="lg" variant="circle" />
+          <Core.provider_icon provider={Core.provider_type_from_group(@group)} size="lg" variant="circle" />
           <div class="min-w-0">
             <h2 class="text-sm font-semibold text-heading truncate">
               {@group.name}
@@ -325,14 +319,14 @@ defmodule PortalWeb.Groups.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.link
+          <Navigation.link
             :if={editable_group?(@group) and not @confirm_delete?}
             patch={@edit_path}
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </.link>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+            <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+          </Navigation.link>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -395,14 +389,14 @@ defmodule PortalWeb.Groups.Components do
         </span>
       </button>
       <div :if={@tab == :resources && @tab_view == :list} class="ml-auto pb-2 flex items-center">
-        <.button type="button" phx-click="open_grant_resource_form" size="xs">
-          <.icon name="ri-add-line" class="w-3 h-3" /> Grant access
-        </.button>
+        <Form.button type="button" phx-click="open_grant_resource_form" size="xs">
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Grant access
+        </Form.button>
       </div>
       <div :if={@tab == :members} class="ml-auto pb-2 flex items-center">
         <form id="filter-members-form" phx-change="filter_show_members">
           <div class="relative">
-            <.icon
+            <Core.icon
               name="ri-search-line"
               class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle"
             />
@@ -434,7 +428,7 @@ defmodule PortalWeb.Groups.Components do
   def group_members_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
+      <Core.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
       <div class="flex-1 overflow-y-auto">
         <div
           :if={@panel_members == [] && @member_total == 0}
@@ -450,7 +444,7 @@ defmodule PortalWeb.Groups.Components do
         </div>
         <ul :if={@panel_members != []} class="divide-y divide-border">
           <li :for={actor <- @panel_members} class="transition-colors">
-            <.link
+            <Navigation.link
               navigate={~p"/#{@account}/actors/#{actor.id}"}
               class="flex items-center gap-3 px-5 py-3 hover:bg-raised"
             >
@@ -466,7 +460,7 @@ defmodule PortalWeb.Groups.Components do
                   {actor.email || "(Service Account)"}
                 </p>
               </div>
-            </.link>
+            </Navigation.link>
           </li>
         </ul>
       </div>
@@ -479,14 +473,14 @@ defmodule PortalWeb.Groups.Components do
           <span class="text-subtle">({@member_total} members)</span>
         </span>
         <div class="flex items-center gap-1">
-          <.icon_button
+          <Form.icon_button
             style="outline"
             icon="ri-arrow-left-s-line"
             title="Previous page"
             phx-click="prev_member_page"
             disabled={@member_page <= 1}
           />
-          <.icon_button
+          <Form.icon_button
             style="outline"
             icon="ri-arrow-right-s-line"
             title="Next page"
@@ -565,7 +559,7 @@ defmodule PortalWeb.Groups.Components do
           class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
           title="Back to resource list"
         >
-          <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
+          <Core.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
         </button>
         <span class="text-xs font-semibold text-heading">Grant access</span>
       </div>
@@ -616,7 +610,7 @@ defmodule PortalWeb.Groups.Components do
                 </div>
                 <div class="px-2 pt-1.5 shrink-0">
                   <div class="relative">
-                    <.icon
+                    <Core.icon
                       name="ri-search-line"
                       class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
                     />
@@ -685,7 +679,7 @@ defmodule PortalWeb.Groups.Components do
                           {resource.address}
                         </p>
                       </div>
-                      <.icon
+                      <Core.icon
                         name="ri-close-line"
                         class="w-3.5 h-3.5 text-subtle opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
@@ -710,16 +704,16 @@ defmodule PortalWeb.Groups.Components do
                 ids
                 |> Enum.map(fn id -> Enum.find(@available_resources, &(&1.id == id)) end)
                 |> Enum.reject(&is_nil/1)
-                |> Enum.map(&available_conditions/1)
+                |> Enum.map(&PolicyComponents.available_conditions/1)
                 |> Enum.reduce(&Enum.filter(&2, fn c -> c in &1 end))
             end %>
           <div class="border-t border-border pt-4">
-            <.flow_log_uploads_toggle
+            <PolicyComponents.flow_log_uploads_toggle
               form={@grant_resource_form}
               internet_resource?={Enum.any?(selected_resources, &(&1.type == :internet))}
             />
           </div>
-          <.policy_restrictions id="group-grant-postures" account={@account} state={@postures}>
+          <PostureComponents.policy_restrictions id="group-grant-postures" account={@account} state={@postures}>
             <div class="border-t border-border pt-4">
               <div class="flex items-center justify-between mb-3">
                 <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
@@ -737,7 +731,7 @@ defmodule PortalWeb.Groups.Components do
                     phx-click="toggle_conditions_dropdown"
                     class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                   >
-                    <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+                    <Core.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
                   </button>
                   <div :if={@conditions_dropdown_open?}>
                     <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
@@ -749,7 +743,7 @@ defmodule PortalWeb.Groups.Components do
                         phx-value-type={type}
                         class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                       >
-                        {condition_type_label(type)}
+                        {PolicyComponents.condition_type_label(type)}
                       </button>
                     </div>
                   </div>
@@ -762,7 +756,7 @@ defmodule PortalWeb.Groups.Components do
                 No conditions - access is unrestricted
               </p>
               <div class="space-y-2">
-                <.grant_condition_card
+                <PolicyComponents.grant_condition_card
                   :for={type <- @active_conditions}
                   type={type}
                   providers={@providers}
@@ -770,7 +764,7 @@ defmodule PortalWeb.Groups.Components do
                 />
               </div>
             </div>
-          </.policy_restrictions>
+          </PostureComponents.policy_restrictions>
         </div>
       </div>
       <div
@@ -779,18 +773,18 @@ defmodule PortalWeb.Groups.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_resource_form.errors}>{msg}</p>
       </div>
-      <.panel_footer>
-        <.panel_footer_button type="button" phx-click="close_grant_resource_form">
+      <Form.panel_footer>
+        <Form.panel_footer_button type="button" phx-click="close_grant_resource_form">
           Cancel
-        </.panel_footer_button>
-        <.panel_footer_button
+        </Form.panel_footer_button>
+        <Form.panel_footer_button
           type="submit"
           style="primary"
           disabled={@grant_selected_resource_ids == [] or PortalWeb.Policies.Postures.blocked?(@postures)}
         >
           Grant access
-        </.panel_footer_button>
-      </.panel_footer>
+        </Form.panel_footer_button>
+      </Form.panel_footer>
     </.form>
     """
   end
@@ -832,10 +826,10 @@ defmodule PortalWeb.Groups.Components do
               </span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
-              <.button type="button" phx-click="cancel_remove_resource_access" size="xs">
+              <Form.button type="button" phx-click="cancel_remove_resource_access" size="xs">
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 type="button"
                 phx-click="remove_resource_access"
                 phx-value-resource_id={row.resource.id}
@@ -843,7 +837,7 @@ defmodule PortalWeb.Groups.Components do
                 size="xs"
               >
                 Remove
-              </.button>
+              </Form.button>
             </div>
           </div>
           <div
@@ -853,7 +847,7 @@ defmodule PortalWeb.Groups.Components do
               @resource_access_actions_open_id == row.resource.id && "relative z-20"
             ]}
           >
-            <.link
+            <Navigation.link
               navigate={~p"/#{@account}/resources/#{row.resource.id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
@@ -862,10 +856,10 @@ defmodule PortalWeb.Groups.Components do
             >
               <div class={[
                 "shrink-0 flex",
-                type_badge_col_class(Enum.map(@resources, & &1.resource.type))
+                ResourceType.type_badge_col_class(Enum.map(@resources, & &1.resource.type))
               ]}>
-                <span class={type_badge_class(row.resource.type)}>
-                  {resource_type_label(row.resource.type)}
+                <span class={ResourceType.type_badge_class(row.resource.type)}>
+                  {ResourceType.resource_type_label(row.resource.type)}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
@@ -884,8 +878,8 @@ defmodule PortalWeb.Groups.Components do
                   {row.resource.address}
                 </span>
               </div>
-            </.link>
-            <.actions_dropdown
+            </Navigation.link>
+            <Core.actions_dropdown
               open={@resource_access_actions_open_id == row.resource.id}
               close_event="close_resource_access_actions"
               button_class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
@@ -901,7 +895,7 @@ defmodule PortalWeb.Groups.Components do
                 phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
-                <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
+                <Core.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable
               </button>
               <button
                 :if={row.policy_is_disabled}
@@ -910,7 +904,7 @@ defmodule PortalWeb.Groups.Components do
                 phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
-                <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
+                <Core.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable
               </button>
               <button
                 type="button"
@@ -918,9 +912,9 @@ defmodule PortalWeb.Groups.Components do
                 phx-value-resource_id={row.resource.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
               >
-                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
               </button>
-            </.actions_dropdown>
+            </Core.actions_dropdown>
           </div>
         </li>
       </ul>
@@ -964,19 +958,19 @@ defmodule PortalWeb.Groups.Components do
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
             <dd class="text-xs text-body mt-0.5 font-medium">
-              <.relative_datetime datetime={@group.inserted_at} />
+              <Core.relative_datetime datetime={@group.inserted_at} />
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
             <dd class="text-xs text-body mt-0.5 font-medium">
-              <.relative_datetime datetime={@group.updated_at} />
+              <Core.relative_datetime datetime={@group.updated_at} />
             </dd>
           </div>
           <div :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}>
             <dt class="text-[10px] text-subtle mb-0.5">Last Synced</dt>
             <dd class="text-xs text-body mt-0.5 font-medium">
-              <.relative_datetime datetime={@group.sync_state.synced_at} />
+              <Core.relative_datetime datetime={@group.sync_state.synced_at} />
             </dd>
           </div>
           <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
@@ -1001,7 +995,7 @@ defmodule PortalWeb.Groups.Components do
           phx-click="confirm_delete_group"
           class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
         >
-          <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete group
+          <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete group
         </button>
         <div
           :if={@confirm_delete?}
@@ -1014,10 +1008,10 @@ defmodule PortalWeb.Groups.Components do
             All associated policies will also be deleted and clients will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_delete_group" size="xs">
+            <Form.button type="button" phx-click="cancel_delete_group" size="xs">
               Cancel
-            </.button>
-            <.button
+            </Form.button>
+            <Form.button
               type="button"
               phx-click="delete"
               phx-value-id={@group.id}
@@ -1025,7 +1019,7 @@ defmodule PortalWeb.Groups.Components do
               size="xs"
             >
               Delete
-            </.button>
+            </Form.button>
           </div>
         </div>
       </section>
@@ -1045,17 +1039,17 @@ defmodule PortalWeb.Groups.Components do
     ]}>
       <%= case @actor.type do %>
         <% :service_account -> %>
-          <.icon
+          <Core.icon
             name="ri-server-line"
             class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
           />
         <% :account_admin_user -> %>
-          <.icon
+          <Core.icon
             name="ri-shield-check-line"
             class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"}
           />
         <% _ -> %>
-          <.icon name="ri-user-line" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
+          <Core.icon name="ri-user-line" class={"w-4 h-4 #{actor_type_icon_text_color(@actor.type)}"} />
       <% end %>
     </div>
     """
@@ -1072,7 +1066,7 @@ defmodule PortalWeb.Groups.Components do
       phx-click-away="blur_search"
     >
       <div class="relative">
-        <.icon
+        <Core.icon
           name="ri-search-line"
           class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
         />

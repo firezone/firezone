@@ -1,4 +1,4 @@
-defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
+defmodule PortalWeb.Components.Form.SelectWithGroups do
   @moduledoc """
   This components allows selecting options from a grouped list with a search.
 
@@ -6,7 +6,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
   support large lists of options without loading them all at once.
   """
   use Phoenix.LiveComponent
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
   alias Phoenix.LiveView.JS
 
   @impl true
@@ -144,7 +144,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
     |> assign(:field, nil)
     |> assign_new(:errors, fn ->
       if Phoenix.Component.used_input?(field),
-        do: Enum.map(field.errors, &translate_error(&1)),
+        do: Enum.map(field.errors, &Core.translate_error(&1)),
         else: []
     end)
     |> assign_new(:name, fn ->
@@ -298,7 +298,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                       {render_slot(@option, slot_assigns)}
                     </div>
                     <div :if={value == @value} class="ml-auto">
-                      <.icon name="ri-check-line" class="w-4 h-4" />
+                      <Core.icon name="ri-check-line" class="w-4 h-4" />
                     </div>
                   </div>
                 </label>
@@ -316,9 +316,9 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         </div>
       </div>
 
-      <.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
+      <Core.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
         {message}
-      </.error>
+      </Core.error>
 
       <%= if @options == [] and is_nil(@value) and @no_options != [] and @search_query in [nil, ""] do %>
         {render_slot(@no_options, @name <> "_name")}
@@ -336,7 +336,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         |> JS.set_attribute({"aria-expanded", "false"}, to: "##{@id}-input")
       }
     >
-      <.label :if={@label} for={"#{@id}-input"}>{@label}</.label>
+      <Core.label :if={@label} for={"#{@id}-input"}>{@label}</Core.label>
 
       <div class="relative group">
         <input type="text" name={@name} value={@value} class="hidden" />
@@ -381,7 +381,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             end
           }
         >
-          <.icon
+          <Core.icon
             name="ri-arrow-down-s-line"
             class={["w-5 h-5", if(@disabled, do: "text-muted", else: "text-body")]}
           />
@@ -484,7 +484,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                         {render_slot(@option, slot_assigns)}
                       </div>
                       <div :if={value == @value} class="ml-auto">
-                        <.icon name="ri-check-line" class="w-4 h-4" />
+                        <Core.icon name="ri-check-line" class="w-4 h-4" />
                       </div>
                     </div>
                   </label>
@@ -505,9 +505,9 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         </div>
       </div>
 
-      <.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
+      <Core.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
         {message}
-      </.error>
+      </Core.error>
 
       <%= if @options == [] and is_nil(@value) and @no_options != [] and @search_query in [nil, ""] do %>
         {render_slot(@no_options, @name <> "_name")}
