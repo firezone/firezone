@@ -34,7 +34,7 @@ defmodule PortalWeb.Settings.DNS do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
       />
@@ -43,13 +43,13 @@ defmodule PortalWeb.Settings.DNS do
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <h2 class="text-xs font-semibold text-heading">DNS Configuration</h2>
           <div class="flex items-center gap-2">
-            <.docs_action path="/deploy/dns" />
-            <.link
+            <Navigation.docs_action path="/deploy/dns" />
+            <Navigation.link
               patch={~p"/#{@account}/settings/dns/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
-            </.link>
+              <Core.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
+            </Navigation.link>
           </div>
         </div>
 
@@ -90,20 +90,20 @@ defmodule PortalWeb.Settings.DNS do
           :if={@live_action == :edit and assigns[:form] != nil}
           class="flex flex-col h-full overflow-hidden"
         >
-          <.panel_header title="Edit DNS Settings" variant="plain">
-            <:adornment><.docs_action path="/deploy/dns" /></:adornment>
-          </.panel_header>
+          <Form.panel_header title="Edit DNS Settings" variant="plain">
+            <:adornment><Navigation.docs_action path="/deploy/dns" /></:adornment>
+          </Form.panel_header>
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <.dns_form form={@form} />
           </div>
-          <.panel_footer>
-            <.panel_footer_button phx-click="close_panel">
+          <Form.panel_footer>
+            <Form.panel_footer_button phx-click="close_panel">
               Cancel
-            </.panel_footer_button>
-            <.panel_footer_button form="dns-form" type="submit" style="primary">
+            </Form.panel_footer_button>
+            <Form.panel_footer_button form="dns-form" type="submit" style="primary">
               Save
-            </.panel_footer_button>
-          </.panel_footer>
+            </Form.panel_footer_button>
+          </Form.panel_footer>
         </div>
       </div>
     </div>
@@ -139,7 +139,7 @@ defmodule PortalWeb.Settings.DNS do
         Upstream DNS
       </p>
       <div class="flex items-center gap-2">
-        <.icon name={@icon} class="w-4 h-4 text-brand" />
+        <Core.icon name={@icon} class="w-4 h-4 text-brand" />
         <span class="text-sm font-semibold text-heading">{@label}</span>
       </div>
       <p :if={@description} class="mt-1 text-xs text-subtle">{@description}</p>
@@ -187,7 +187,7 @@ defmodule PortalWeb.Settings.DNS do
             >
               Search Domain
             </label>
-            <.input
+            <Form.input
               field={config_form[:search_domain]}
               placeholder="E.g. example.com"
               phx-debounce="300"
@@ -212,7 +212,7 @@ defmodule PortalWeb.Settings.DNS do
             <.inputs_for :let={dns_form} field={config_form[:clients_upstream_dns]}>
               <div class="grid gap-3 grid-cols-3 mb-6">
                 <div>
-                  <.input
+                  <Form.input
                     id="dns-type--system"
                     type="radio_button_group"
                     field={dns_form[:type]}
@@ -229,7 +229,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" /> System
+                      <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0" /> System
                     </span>
                     <span class="text-xs text-body my-auto">
                       Use the device's default DNS resolvers.
@@ -238,7 +238,7 @@ defmodule PortalWeb.Settings.DNS do
                 </div>
 
                 <div>
-                  <.input
+                  <Form.input
                     id="dns-type--secure"
                     type="radio_button_group"
                     field={dns_form[:type]}
@@ -255,7 +255,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <.icon name="ri-lock-line" class="w-4 h-4 shrink-0" /> Secure
+                      <Core.icon name="ri-lock-line" class="w-4 h-4 shrink-0" /> Secure
                     </span>
                     <span class="text-xs text-body my-auto">
                       Use DNS-over-HTTPS from trusted providers.
@@ -264,7 +264,7 @@ defmodule PortalWeb.Settings.DNS do
                 </div>
 
                 <div>
-                  <.input
+                  <Form.input
                     id="dns-type--custom"
                     type="radio_button_group"
                     field={dns_form[:type]}
@@ -281,7 +281,7 @@ defmodule PortalWeb.Settings.DNS do
                     ]}
                   >
                     <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-                      <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
+                      <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Custom
                     </span>
                     <span class="text-xs text-body my-auto">
                       Configure your own DNS server addresses.
@@ -297,7 +297,7 @@ defmodule PortalWeb.Settings.DNS do
                 >
                   DNS-over-HTTPS Provider
                 </label>
-                <.input
+                <Form.input
                   type="select"
                   field={dns_form[:doh_provider]}
                   options={[
@@ -309,9 +309,9 @@ defmodule PortalWeb.Settings.DNS do
                 />
                 <p class="mt-1.5 text-xs text-subtle">
                   Secure DNS is only supported on recent Clients. See the
-                  <.website_link path="/kb/deploy/dns" fragment="secure-dns">
+                  <Navigation.website_link path="/kb/deploy/dns" fragment="secure-dns">
                     DNS configuration documentation
-                  </.website_link>
+                  </Navigation.website_link>
                   for supported client versions.
                 </p>
               </div>
@@ -345,7 +345,7 @@ defmodule PortalWeb.Settings.DNS do
                     </label>
                     <div class="flex gap-2 items-start">
                       <div class="flex-1">
-                        <.input
+                        <Form.input
                           field={address_form[:address]}
                           placeholder="E.g. 1.1.1.1"
                           phx-debounce="300"
@@ -358,22 +358,22 @@ defmodule PortalWeb.Settings.DNS do
                         phx-click={JS.dispatch("change")}
                         class="flex items-center justify-center w-9 h-9 rounded text-error hover:bg-raised transition-colors shrink-0"
                       >
-                        <.icon name="ri-delete-bin-line" class="w-4 h-4" />
+                        <Core.icon name="ri-delete-bin-line" class="w-4 h-4" />
                       </button>
                     </div>
                   </div>
                 </.inputs_for>
 
-                <.error :for={{msg, _opts} <- dns_form[:addresses].errors}>
+                <Core.error :for={{msg, _opts} <- dns_form[:addresses].errors}>
                   {msg}
-                </.error>
+                </Core.error>
 
                 <input
                   type="hidden"
                   name="account[config][clients_upstream_dns][addresses_drop][]"
                 />
 
-                <.button
+                <Form.button
                   :if={Enum.count(dns_form[:addresses].value || []) < 8}
                   type="button"
                   name="account[config][clients_upstream_dns][addresses_sort][]"
@@ -383,7 +383,7 @@ defmodule PortalWeb.Settings.DNS do
                   icon="ri-add-line"
                 >
                   Add Resolver
-                </.button>
+                </Form.button>
                 <p
                   :if={Enum.count(dns_form[:addresses].value || []) >= 8}
                   class="text-xs text-subtle"

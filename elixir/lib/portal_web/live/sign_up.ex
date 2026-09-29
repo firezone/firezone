@@ -223,8 +223,8 @@ defmodule PortalWeb.SignUp do
 
   def render(assigns) do
     ~H"""
-    <.flash flash={@flash} kind={:error} />
-    <.flash flash={@flash} kind={:info} />
+    <Core.flash flash={@flash} kind={:error} />
+    <Core.flash flash={@flash} kind={:info} />
 
     <.method_chooser :if={@step == :choose} />
     <.sign_up_form :if={@step == :fill_form} form={@form} />
@@ -251,11 +251,11 @@ defmodule PortalWeb.SignUp do
   defp sign_up_form(assigns) do
     ~H"""
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
-      <.input
+      <Form.input
         field={@form[:email]}
         type="email"
         beside_errors
@@ -267,7 +267,7 @@ defmodule PortalWeb.SignUp do
       />
 
       <.inputs_for :let={account} field={@form[:account]}>
-        <.input
+        <Form.input
           field={account[:name]}
           type="text"
           beside_errors
@@ -279,7 +279,7 @@ defmodule PortalWeb.SignUp do
       </.inputs_for>
 
       <.inputs_for :let={actor} field={@form[:actor]}>
-        <.input
+        <Form.input
           field={actor[:name]}
           type="text"
           beside_errors
@@ -288,13 +288,13 @@ defmodule PortalWeb.SignUp do
           required
           phx-debounce="blur"
         />
-        <.input field={actor[:type]} type="hidden" />
+        <Form.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
       <.survey_fields form={@form} />
 
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
-        <.input
+        <Form.input
           field={@form[:phone]}
           type="text"
           beside_errors
@@ -319,7 +319,7 @@ defmodule PortalWeb.SignUp do
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Prefer to use Google?
-        <.link patch={~p"/sign_up"} class={[link_style()]}>Sign up with Google.</.link>
+        <Navigation.link patch={~p"/sign_up"}>Sign up with Google.</Navigation.link>
       </p>
       <.sign_in_links />
     </.footer>
@@ -329,25 +329,25 @@ defmodule PortalWeb.SignUp do
   defp method_chooser(assigns) do
     ~H"""
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
         <button type="submit" class={method_button_style()}>
-          <.provider_icon provider="google" size="md" />
+          <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
-          <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
         </button>
       </.form>
 
-      <.link patch={~p"/sign_up/email"} class={method_button_style()}>
+      <Navigation.link patch={~p"/sign_up/email"} class={method_button_style()}>
         <span class="shrink-0 w-6 h-6 flex items-center justify-center">
-          <.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
+          <Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
         </span>
         <span class="flex-1 text-left">Sign up with <strong>email</strong></span>
-        <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
-      </.link>
+        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+      </Navigation.link>
     </div>
 
     <.terms_notice />
@@ -364,7 +364,7 @@ defmodule PortalWeb.SignUp do
   defp google_sign_up_form(assigns) do
     ~H"""
     <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
-      <:icon><.provider_icon provider="google" size="md" /></:icon>
+      <:icon><Core.provider_icon provider="google" size="md" /></:icon>
     </.step_header>
 
     <.form
@@ -377,14 +377,14 @@ defmodule PortalWeb.SignUp do
       <div>
         <label class="block text-sm font-medium text-heading mb-1">Work Email</label>
         <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
-          <.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
+          <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
           <span class="truncate">{@email}</span>
           <span class="ml-auto text-xs text-subtle shrink-0">Verified by Google</span>
         </div>
       </div>
 
       <.inputs_for :let={account} field={@form[:account]}>
-        <.input
+        <Form.input
           field={account[:name]}
           type="text"
           beside_errors
@@ -397,7 +397,7 @@ defmodule PortalWeb.SignUp do
       </.inputs_for>
 
       <.inputs_for :let={actor} field={@form[:actor]}>
-        <.input
+        <Form.input
           field={actor[:name]}
           type="text"
           beside_errors
@@ -424,7 +424,7 @@ defmodule PortalWeb.SignUp do
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Wrong Google account?
-        <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
+        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
     </.footer>
     """
@@ -535,7 +535,7 @@ defmodule PortalWeb.SignUp do
         other_placeholder="E.g. Product Manager"
         other_max_length={@other_max_length}
       />
-      <.input
+      <Form.input
         field={survey[:switching]}
         type="select"
         beside_errors
@@ -568,7 +568,7 @@ defmodule PortalWeb.SignUp do
 
   defp survey_question(assigns) do
     ~H"""
-    <.input
+    <Form.input
       field={@field}
       type="select"
       beside_errors
@@ -577,7 +577,7 @@ defmodule PortalWeb.SignUp do
       options={@options}
       required
     />
-    <.input
+    <Form.input
       :if={@field.value == "other"}
       field={@other_field}
       type="text"
@@ -596,20 +596,20 @@ defmodule PortalWeb.SignUp do
   defp existing_accounts(assigns) do
     ~H"""
     <.step_header title="You already have an account" subtitle="Your Google email is the owner of the organizations below. Sign in to continue.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <div class="flex flex-col gap-2">
-      <.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
+      <Navigation.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
         <span class="flex-1 text-left truncate">{account.name}</span>
-        <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
-      </.link>
+        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+      </Navigation.link>
     </div>
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Want a separate organization?
-        <.link patch={~p"/sign_up/email"} class={[link_style()]}>Sign up with a different email.</.link>
+        <Navigation.link patch={~p"/sign_up/email"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
     """
@@ -646,10 +646,9 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div class="mt-2 pt-2 text-center">
       <p class="text-xs text-subtle mt-1.5">
-        By signing up you agree to our <.link
+        By signing up you agree to our <Navigation.link
           href="https://www.firezone.dev/terms"
-          class={link_style()}
-        >Terms of Use</.link>.
+        >Terms of Use</Navigation.link>.
       </p>
     </div>
     """
@@ -669,11 +668,11 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <p class="text-xs text-subtle leading-relaxed">
       Organization already have an account?
-      <.link href={~p"/sign_in"} class={[link_style()]}>Sign in here.</.link>
+      <Navigation.link href={~p"/sign_in"}>Sign in here.</Navigation.link>
     </p>
     <p class="text-xs text-subtle leading-relaxed">
       Not sure where to start?
-      <.link href={~p"/getting_started"} class={[link_style()]}>Let's get started.</.link>
+      <Navigation.link href={~p"/getting_started"}>Let's get started.</Navigation.link>
     </p>
     """
   end
@@ -689,7 +688,7 @@ defmodule PortalWeb.SignUp do
   defp email_sent(assigns) do
     ~H"""
     <.step_header title="Check your email" subtitle="We've sent a sign-up link to your inbox.">
-      <:icon><.icon name="ri-mail-line" class="w-5 h-5 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
@@ -736,7 +735,7 @@ defmodule PortalWeb.SignUp do
     <div class="pt-6 border-t border-border text-center">
       <p class="text-xs text-subtle">
         Wrong address or didn't receive it?
-        <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
+        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
     </div>
     """
@@ -745,7 +744,7 @@ defmodule PortalWeb.SignUp do
   defp welcome(assigns) do
     ~H"""
     <.step_header title="Your account has been created!" subtitle="You're all set. Sign in to get started.">
-      <:icon><.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-4">
@@ -761,9 +760,9 @@ defmodule PortalWeb.SignUp do
         <div class="flex justify-between items-baseline">
           <dt class="text-xs font-medium text-subtle">Sign In URL</dt>
           <dd class="text-sm text-body font-medium">
-            <.link class={[link_style()]} href={~p"/#{@account}"}>
+            <Navigation.link href={~p"/#{@account}"}>
               {url(~p"/#{@account}")}
-            </.link>
+            </Navigation.link>
           </dd>
         </div>
       </dl>
@@ -779,7 +778,7 @@ defmodule PortalWeb.SignUp do
             1
           </span>
           <span class="text-sm text-body">
-            <.website_link path="/kb/client-apps">Download the Firezone Client</.website_link>
+            <Navigation.website_link path="/kb/client-apps">Download the Firezone Client</Navigation.website_link>
             for your platform
           </span>
         </li>
@@ -788,20 +787,20 @@ defmodule PortalWeb.SignUp do
             2
           </span>
           <span class="text-sm text-body">
-            <.website_link path="/kb/quickstart">View the Quickstart Guide</.website_link>
+            <Navigation.website_link path="/kb/quickstart">View the Quickstart Guide</Navigation.website_link>
             to get started
           </span>
         </li>
       </ul>
     </div>
 
-    <.link
+    <Navigation.link
       :if={@google_provider}
       href={~p"/#{@account}/sign_in/google/#{@google_provider.id}"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
       Sign In with Google
-    </.link>
+    </Navigation.link>
 
     <.form
       :if={is_nil(@google_provider)}
@@ -811,7 +810,7 @@ defmodule PortalWeb.SignUp do
       action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
       method="post"
     >
-      <.input type="hidden" name="email[email]" value={@actor.email} />
+      <Form.input type="hidden" name="email[email]" value={@actor.email} />
       <button
         type="submit"
         class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
@@ -825,7 +824,7 @@ defmodule PortalWeb.SignUp do
   defp verifying(assigns) do
     ~H"""
     <.step_header title="Verifying your sign-up link…" subtitle="This will only take a moment.">
-      <:icon><.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" /></:icon>
+      <:icon><Core.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
@@ -853,7 +852,7 @@ defmodule PortalWeb.SignUp do
   defp sign_up_error(assigns) do
     ~H"""
     <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." variant="error">
-      <:icon><.icon name="ri-error-warning-line" class="w-5 h-5 text-danger" /></:icon>
+      <:icon><Core.icon name="ri-error-warning-line" class="w-5 h-5 text-danger" /></:icon>
     </.step_header>
 
     <div class="rounded border border-danger/30 bg-danger-light p-4 mb-6">
@@ -866,7 +865,7 @@ defmodule PortalWeb.SignUp do
       </p>
       <ul class="space-y-2">
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
@@ -875,34 +874,34 @@ defmodule PortalWeb.SignUp do
           </span>
         </li>
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
           <span class="text-sm text-body">
             If you already have an account,
-            <.link href={~p"/"} class={link_style()}>sign in here.</.link>
+            <Navigation.link href={~p"/"}>sign in here.</Navigation.link>
           </span>
         </li>
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
           <span class="text-sm text-body">
             Still having trouble?
-            <a class={link_style()} href="mailto:support@firezone.dev">Contact support.</a>
+            <a class={Core.link_style()} href="mailto:support@firezone.dev">Contact support.</a>
           </span>
         </li>
       </ul>
     </div>
 
-    <.link
+    <Navigation.link
       href={~p"/sign_up"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
       Try again
-    </.link>
+    </Navigation.link>
     """
   end
 

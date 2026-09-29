@@ -38,7 +38,7 @@ defmodule PortalWeb.Settings.Profile do
       <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
         <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-brand" />
+          <Core.icon name="ri-user-line" class="shrink-0 w-16 h-16 text-brand" />
           <div class="flex-1 min-w-0">
             <h1 class="text-base font-semibold text-heading">{@subject.actor.name}</h1>
             <p class="mt-0.5 text-sm text-body">{@subject.actor.email}</p>
@@ -75,27 +75,27 @@ defmodule PortalWeb.Settings.Profile do
           >
             <div :for={grant <- @connections} class="relative px-4 py-3.5">
               <div class="flex items-start gap-3">
-                <.client_icon client={grant.oauth_client} class="w-10 h-10" />
+                <Page.client_icon client={grant.oauth_client} class="w-10 h-10" />
 
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-heading truncate">
                     {grant.oauth_client.client_name}
                   </p>
                   <p class="flex items-center gap-1.5 mt-0.5">
-                    <.icon name="ri-lock-line" class="w-3 h-3 text-brand shrink-0" />
+                    <Core.icon name="ri-lock-line" class="w-3 h-3 text-brand shrink-0" />
                     <span class="text-xs font-mono text-body break-all">
-                      {client_host(grant.oauth_client.client_id)}
+                      {Page.client_host(grant.oauth_client.client_id)}
                     </span>
                   </p>
                   <p class="text-xs text-subtle mt-0.5 break-all">
                     {grant.oauth_client.client_id}
                   </p>
                   <p class="text-xs text-subtle mt-0.5">
-                    Connected <.relative_datetime datetime={grant.inserted_at} />
+                    Connected <Core.relative_datetime datetime={grant.inserted_at} />
                   </p>
                 </div>
 
-                <.button
+                <Form.button
                   :if={@confirm_disconnect_id != grant.id}
                   style="danger"
                   size="xs"
@@ -103,7 +103,7 @@ defmodule PortalWeb.Settings.Profile do
                   phx-value-id={grant.id}
                 >
                   Disconnect
-                </.button>
+                </Form.button>
               </div>
 
               <%!-- Floated over the card rather than inserted into it, so opening
@@ -120,10 +120,10 @@ defmodule PortalWeb.Settings.Profile do
                     It will lose access immediately and any tokens it holds stop working.
                   </p>
                   <div class="flex items-center gap-1.5">
-                    <.button type="button" phx-click="cancel_disconnect" size="xs">
+                    <Form.button type="button" phx-click="cancel_disconnect" size="xs">
                       Cancel
-                    </.button>
-                    <.button
+                    </Form.button>
+                    <Form.button
                       type="button"
                       phx-click="disconnect"
                       phx-value-id={grant.id}
@@ -131,7 +131,7 @@ defmodule PortalWeb.Settings.Profile do
                       size="xs"
                     >
                       Disconnect
-                    </.button>
+                    </Form.button>
                   </div>
                 </div>
               </div>
@@ -143,7 +143,7 @@ defmodule PortalWeb.Settings.Profile do
                 class="mt-3 flex items-center gap-1 text-xs text-body hover:text-heading transition-colors"
               >
                 {permissions_summary(grant.scopes)}
-                <.icon
+                <Core.icon
                   name={
                     if @expanded_grant_id == grant.id,
                       do: "ri-arrow-up-s-line",
@@ -230,7 +230,7 @@ defmodule PortalWeb.Settings.Profile do
         checked={@selected}
         class="sr-only"
       />
-      <.icon name={@option.icon} class="w-5 h-5" />
+      <Core.icon name={@option.icon} class="w-5 h-5" />
       <span class="text-xs font-medium">{@option.label}</span>
     </label>
     """

@@ -74,8 +74,8 @@ defmodule PortalWeb.SignIn.Email do
 
   def render(assigns) do
     ~H"""
-    <.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
-    <.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
+    <Core.flash flash={@flash} kind={:error} phx-click={JS.hide(transition: "fade-out")} />
+    <Core.flash flash={@flash} kind={:info} phx-click={JS.hide(transition: "fade-out")} />
 
     <h1 class="text-xl font-semibold text-heading mb-2">
       Check your email
@@ -97,7 +97,7 @@ defmodule PortalWeb.SignIn.Email do
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
     >
       <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
-      <.input
+      <Form.input
         :for={{key, value} <- @redirect_params}
         type="hidden"
         name={key}
@@ -131,13 +131,13 @@ defmodule PortalWeb.SignIn.Email do
     </form>
 
     <div class={["mt-4 grid gap-2", if(@resend_action, do: "grid-cols-2", else: "grid-cols-1")]}>
-      <.link
+      <Navigation.link
         href={~p"/#{@account_id_or_slug}?#{@redirect_params}"}
         class="relative flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-body" />
+        <Core.icon name="ri-arrow-left-line" class="absolute left-4 w-4 h-4 text-body" />
         Different method
-      </.link>
+      </Navigation.link>
       <.resend
         :if={@resend_action}
         resend_action={@resend_action}
@@ -183,7 +183,7 @@ defmodule PortalWeb.SignIn.Email do
         target="_blank"
         class="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-mail-open-line" class="w-4 h-4 text-body shrink-0" />
+        <Core.icon name="ri-mail-open-line" class="w-4 h-4 text-body shrink-0" />
         Open local mailbox
       </a>
       """
@@ -201,13 +201,13 @@ defmodule PortalWeb.SignIn.Email do
       action={@resend_action}
       method="post"
     >
-      <.input type="hidden" name="email[email]" value={@email} />
-      <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
+      <Form.input type="hidden" name="email[email]" value={@email} />
+      <Form.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
       <button
         type="submit"
         class="relative w-full flex items-center justify-center px-4 py-2.5 rounded-md border border-border-strong bg-surface hover:bg-raised transition-colors text-sm font-medium text-heading"
       >
-        <.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-body" />
+        <Core.icon name="ri-loop-left-line" class="absolute left-4 w-4 h-4 text-body" />
         Resend email
       </button>
     </.form>

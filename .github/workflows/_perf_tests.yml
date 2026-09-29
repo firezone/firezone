@@ -14,8 +14,8 @@ jobs:
     with:
       id: perf
       # `http-test-server` has no perf image, and the perf tests don't use it.
-      pull_services: "elixir postgres portal relay-1 relay-2 gateway client-1 iperf3 secnetperf network-config"
-      build_services: "client-1-router gateway-router relay-1-router relay-2-router portal-router"
+      pull_services: "elixir postgres portal relay-1 relay-2 gateway primary-client iperf3 secnetperf network-config"
+      build_services: "primary-client-router gateway-router relay-1-router relay-2-router portal-router"
       gateway_image: "ghcr.io/firezone/perf/gateway"
       client_image: "ghcr.io/firezone/perf/client"
       relay_image: "ghcr.io/firezone/perf/relay"
@@ -86,7 +86,7 @@ jobs:
           retry docker compose up -d portal --no-build --pull never
           retry docker compose up -d relay-1 relay-2 --no-build --pull never
           retry docker compose up -d gateway --no-build --pull never
-          retry docker compose up -d client-1 --no-build --pull never
+          retry docker compose up -d primary-client --no-build --pull never
           retry docker compose up -d network-config --pull never
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
@@ -102,12 +102,12 @@ jobs:
       - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
         with:
-          services: client-1 relay-1 relay-2 gateway portal iperf3 secnetperf
+          services: primary-client relay-1 relay-2 gateway portal iperf3 secnetperf
 
       - name: Ensure no warnings are logged
         if: "!cancelled()"
         run: |
-          docker compose logs client-1 |
+          docker compose logs primary-client |
             grep " WARN " && exit 1 || exit 0
 
           docker compose logs gateway |
@@ -124,7 +124,7 @@ jobs:
       - name: Ensure no UDP socket errors
         if: "!cancelled() && startsWith(matrix.test, 'tcp')"
         run: |
-          docker compose exec client-1 /bin/sh -c 'nstat -s' |
+          docker compose exec primary-client /bin/sh -c 'nstat -s' |
             grep -i "error" && exit 1 || exit 0
 
           docker compose exec gateway /bin/sh -c 'nstat -s' |

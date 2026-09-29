@@ -1,11 +1,12 @@
-defmodule PortalWeb.TableComponents do
+defmodule PortalWeb.Components.Table do
   @moduledoc """
   Provides Table UI components.
   """
   use Phoenix.Component
   use PortalWeb, :verified_routes
   use Gettext, backend: PortalWeb.Gettext
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
+  alias PortalWeb.Components.Navigation
 
   attr :table_id, :string, required: true, doc: "id of the parent table"
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
@@ -55,7 +56,7 @@ defmodule PortalWeb.TableComponents do
       phx-value-table_id={@table_id}
       phx-value-order_by={"#{assoc_name}:#{current_order || :asc}:#{field_name}"}
     >
-      <.icon
+      <Core.icon
         name={
           cond do
             current_order == :asc ->
@@ -106,13 +107,13 @@ defmodule PortalWeb.TableComponents do
         :for={{col, _i} <- Enum.with_index(@columns)}
         class={["px-4 py-3", Map.get(col, :class, "")]}
       >
-        <.link
+        <Navigation.link
           :if={@patch}
           patch={@patch.(@row)}
           class="block -mx-3 -my-3 px-3 py-3"
         >
           {render_slot(col, @mapper.(@row))}
-        </.link>
+        </Navigation.link>
         <span :if={!@patch}>
           {render_slot(col, @mapper.(@row))}
         </span>

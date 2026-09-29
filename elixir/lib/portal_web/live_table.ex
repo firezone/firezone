@@ -4,14 +4,14 @@ defmodule PortalWeb.LiveTable do
   on top of `Portal.Repo.list/3` and allows to render a table with sorting, filtering and pagination.
   """
   use Phoenix.LiveView
-  import PortalWeb.TableComponents
-  import PortalWeb.CoreComponents
-  import PortalWeb.FormComponents
+  alias PortalWeb.Components.Table
+  alias PortalWeb.Components.Core
+  alias PortalWeb.Components.Form
 
   @page_size_values ["10", "25", "50"]
 
   @doc """
-  A drop-in replacement of `PortalWeb.TableComponents.table/1` component that adds sorting, filtering and pagination.
+  A drop-in replacement of `PortalWeb.Components.Table.table/1` component that adds sorting, filtering and pagination.
   """
   attr :id, :string, required: true, doc: "the id of the table"
   attr :ordered_by, :any, required: true, doc: "the current order for the table"
@@ -67,7 +67,7 @@ defmodule PortalWeb.LiveTable do
           class={["w-full text-sm text-left text-body table-fixed shrink-0"]}
           id={@id}
         >
-          <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
+          <Table.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
           <tbody :if={@prepend_rows != []}>
             {render_slot(@prepend_rows)}
           </tbody>
@@ -75,7 +75,7 @@ defmodule PortalWeb.LiveTable do
             id={"#{@id}-rows"}
             phx-update={match?(%Phoenix.LiveView.LiveStream{}, @rows) && "stream"}
           >
-            <.table_row
+            <Table.table_row
               :for={row <- @rows}
               columns={@col}
               actions={@action}
@@ -103,7 +103,7 @@ defmodule PortalWeb.LiveTable do
         >
           <div class="flex flex-col items-center gap-3 py-16">
             <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-              <.icon name="ri-search-line" class="w-4 h-4 text-subtle" />
+              <Core.icon name="ri-search-line" class="w-4 h-4 text-subtle" />
             </div>
             <div class="text-center">
               <p class="text-sm font-medium text-heading">No results found</p>
@@ -111,7 +111,7 @@ defmodule PortalWeb.LiveTable do
                 Try adjusting your search or filters.
               </p>
             </div>
-            <.button
+            <Form.button
               phx-click="filter"
               phx-value-table_id={@id}
               phx-value-filter={nil}
@@ -120,7 +120,7 @@ defmodule PortalWeb.LiveTable do
               class="font-medium"
             >
               Clear filters
-            </.button>
+            </Form.button>
           </div>
         </div>
       </div>
@@ -215,7 +215,7 @@ defmodule PortalWeb.LiveTable do
         data-prevent-enter-submit
         class="flex flex-wrap items-center gap-x-3 gap-y-2 flex-1 min-w-0"
       >
-        <.input type="hidden" name="table_id" value={@live_table_id} />
+        <Form.input type="hidden" name="table_id" value={@live_table_id} />
         <.filter
           :for={filter <- @filters}
           live_table_id={@live_table_id}
@@ -231,10 +231,10 @@ defmodule PortalWeb.LiveTable do
           class="order-last inline-flex items-center gap-1 px-2.5 h-8 rounded text-xs font-medium text-body hover:text-heading hover:bg-surface cursor-pointer transition-colors shrink-0"
           title="Clear all filters"
         >
-          <.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
+          <Core.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
         </button>
       </.form>
-      <.button
+      <Form.button
         :if={@stale}
         id={"#{@live_table_id}-reload-btn"}
         type="button"
@@ -245,8 +245,8 @@ defmodule PortalWeb.LiveTable do
         phx-value-table_id={@live_table_id}
         class="shrink-0"
       >
-        <.icon name="ri-loop-left-line" class="mr-1 w-3 h-3" /> Reload
-      </.button>
+        <Core.icon name="ri-loop-left-line" class="mr-1 w-3 h-3" /> Reload
+      </Form.button>
       <span
         :for={notice <- @notice}
         class={["text-sm px-3 py-1.5 rounded-sm shrink-0", notice_style(notice[:type])]}
@@ -345,7 +345,7 @@ defmodule PortalWeb.LiveTable do
       class={["relative w-full shrink-0", @width_class]}
       phx-feedback-for={@form[@filter.name].name}
     >
-      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
+      <Core.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -361,12 +361,12 @@ defmodule PortalWeb.LiveTable do
           @form[@filter.name].errors != [] && "border-danger"
         ]}
       />
-      <.error
+      <Core.error
         :for={msg <- @form[@filter.name].errors}
         data-validation-error-for={@form[@filter.name].name}
       >
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -394,12 +394,12 @@ defmodule PortalWeb.LiveTable do
           @form[@filter.name].errors != [] && "border-danger"
         ]}
       />
-      <.error
+      <Core.error
         :for={msg <- @form[@filter.name].errors}
         data-validation-error-for={@form[@filter.name].name}
       >
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -407,7 +407,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :protocol_port}}} = assigns) do
     ~H"""
     <div class="relative w-36 shrink-0" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="ri-route-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
+      <Core.icon name="ri-route-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -428,12 +428,12 @@ defmodule PortalWeb.LiveTable do
           @form[@filter.name].errors != [] && "border-danger"
         ]}
       />
-      <.error
+      <Core.error
         :for={msg <- @form[@filter.name].errors}
         data-validation-error-for={@form[@filter.name].name}
       >
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -441,7 +441,7 @@ defmodule PortalWeb.LiveTable do
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
     <div class="relative flex-1 max-w-xs" phx-feedback-for={@form[@filter.name].name}>
-      <.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
+      <Core.icon name="ri-search-line" class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-subtle pointer-events-none" />
       <input
         type="text"
         name={@form[@filter.name].name}
@@ -457,12 +457,12 @@ defmodule PortalWeb.LiveTable do
           @form[@filter.name].errors != [] && "border-danger"
         ]}
       />
-      <.error
+      <Core.error
         :for={msg <- @form[@filter.name].errors}
         data-validation-error-for={@form[@filter.name].name}
       >
         {msg}
-      </.error>
+      </Core.error>
     </div>
     """
   end
@@ -506,7 +506,7 @@ defmodule PortalWeb.LiveTable do
         >
           {@selected_count}
         </span>
-        <.icon name="ri-arrow-down-s-line" class="w-3.5 h-3.5 text-subtle" />
+        <Core.icon name="ri-arrow-down-s-line" class="w-3.5 h-3.5 text-subtle" />
       </button>
       <div
         id={@panel_id}
@@ -537,7 +537,7 @@ defmodule PortalWeb.LiveTable do
     ~H"""
     <div class="flex items-center order-4">
       <div class="w-full">
-        <.input
+        <Form.input
           type="group_select"
           field={@form[@filter.name]}
           options={
@@ -580,7 +580,7 @@ defmodule PortalWeb.LiveTable do
         </option>
       </select>
       <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-subtle">
-        <.icon name="ri-arrow-down-s-line" class="w-3.5 h-3.5" />
+        <Core.icon name="ri-arrow-down-s-line" class="w-3.5 h-3.5" />
       </span>
     </div>
     """
@@ -600,7 +600,7 @@ defmodule PortalWeb.LiveTable do
           )
         ]}
       >
-        <.input
+        <Form.input
           id={"#{@live_table_id}-#{@filter.name}-__all__"}
           type="radio"
           field={@form[@filter.name]}
@@ -621,7 +621,7 @@ defmodule PortalWeb.LiveTable do
           )
         ]}
       >
-        <.input
+        <Form.input
           id={"#{@live_table_id}-#{@filter.name}-#{value}"}
           type="radio"
           field={@form[@filter.name]}
@@ -639,7 +639,7 @@ defmodule PortalWeb.LiveTable do
     ~H"""
     <div class="flex items-center order-4">
       <div class="w-full">
-        <.input
+        <Form.input
           type="select"
           field={@form[@filter.name]}
           prompt={"For any " <> @filter.title}
@@ -663,7 +663,7 @@ defmodule PortalWeb.LiveTable do
     ~H"""
     <div class="inline-flex shrink-0">
       <input type="hidden" name={@form[@filter.name].name} value="false" />
-      <.toggle
+      <Core.toggle
         id={"#{@live_table_id}-#{@filter.name}-toggle"}
         name={@form[@filter.name].name}
         value="true"
@@ -726,7 +726,7 @@ defmodule PortalWeb.LiveTable do
                 </option>
               </select>
               <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-subtle">
-                <.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
+                <Core.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
               </span>
             </div>
           </label>
@@ -743,7 +743,7 @@ defmodule PortalWeb.LiveTable do
             phx-value-page={@previous_page}
             phx-value-table_id={@id}
           >
-            <.icon name="ri-arrow-left-s-line" class="w-5 h-5" />
+            <Core.icon name="ri-arrow-left-s-line" class="w-5 h-5" />
           </button>
           <button
             disabled={is_nil(@metadata.next_offset)}
@@ -756,7 +756,7 @@ defmodule PortalWeb.LiveTable do
             phx-value-page={@next_page}
             phx-value-table_id={@id}
           >
-            <.icon name="ri-arrow-right-s-line" class="w-5 h-5" />
+            <Core.icon name="ri-arrow-right-s-line" class="w-5 h-5" />
           </button>
         </div>
       </div>

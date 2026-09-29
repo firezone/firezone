@@ -371,6 +371,27 @@ defmodule PortalWeb.GroupsTest do
       refute html =~ "Already Granted Resource"
     end
 
+    test "resource row links to the granting policy and menu links to the resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Internal DB")
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id})
+
+      assert html =~ ~p"/#{account}/policies/#{policy.id}"
+      assert html =~ "Go to Resource"
+      assert html =~ ~p"/#{account}/resources/#{resource.id}"
+    end
+
     test "disables, enables, and removes resource access", %{
       conn: conn,
       account: account,
