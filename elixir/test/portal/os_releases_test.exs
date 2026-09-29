@@ -66,6 +66,21 @@ defmodule Portal.OSReleasesTest do
     assert OSReleases.row_up_to_date?(%Portal.SentinelOne.Device{os_type: "windows", os_revision: "24H2"}, table) == nil
     assert OSReleases.row_up_to_date?(%Portal.SentinelOne.Device{os_type: "linux", os_revision: "24.04.2 LTS"}, table) == nil
     assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: nil, os_version: nil}, table) == nil
+
+    assert OSReleases.row_up_to_date?(
+             %Portal.Sophos.Device{os_platform: "macOS", os_major_version: 15, os_minor_version: 6, os_build: 1},
+             table
+           )
+
+    refute OSReleases.row_up_to_date?(
+             %Portal.Sophos.Device{os_platform: "macOS", os_major_version: 15, os_minor_version: 5},
+             table
+           )
+
+    assert OSReleases.row_up_to_date?(
+             %Portal.Sophos.Device{os_platform: "windows", os_major_version: 10, os_minor_version: 0, os_build: 26100},
+             table
+           ) == nil
   end
 
   test "latest_android_bulletin/1 is this month once its first Monday has passed" do

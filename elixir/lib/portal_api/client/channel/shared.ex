@@ -30,7 +30,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     Portal.Iru.PostureProvider,
     Portal.Defender.PostureProvider,
     Portal.Santa.PostureProvider,
-    Portal.SentinelOne.PostureProvider
+    Portal.SentinelOne.PostureProvider,
+    Portal.Sophos.PostureProvider
   ]
 
   # The interval at which the inbound policy_authorizations cache is pruned.

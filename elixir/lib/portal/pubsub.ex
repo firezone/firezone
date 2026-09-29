@@ -58,6 +58,7 @@ defmodule Portal.PubSub do
             | :defender_devices
             | :santa_devices
             | :sentinelone_devices
+            | :sophos_devices
             | :portal_sessions
             | :posture_providers
             | :resources

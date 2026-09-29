@@ -65,6 +65,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "defender_posture_providers" in tables
       assert "santa_posture_providers" in tables
       assert "sentinelone_posture_providers" in tables
+      assert "sophos_posture_providers" in tables
 
       refute "posture_providers" in tables
       refute "intune_devices" in tables
@@ -72,6 +73,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       refute "defender_devices" in tables
       refute "santa_devices" in tables
       refute "sentinelone_devices" in tables
+      refute "sophos_devices" in tables
     end
   end
 

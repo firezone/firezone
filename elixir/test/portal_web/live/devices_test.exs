@@ -12,6 +12,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.IruFixtures
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
+  import Portal.SophosFixtures
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
@@ -1268,6 +1269,39 @@ defmodule PortalWeb.DevicesTest do
 
       assert html =~ "S1 Prod"
       assert html =~ "s1-endpoint-01"
+      assert html =~ "Attested serial"
+    end
+
+    test "shows the Sophos record matched on serial", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = sophos_posture_provider_fixture(account: account, name: "Sophos Prod")
+
+      sophos_device_fixture(
+        provider: provider,
+        hostname: "sophos-mac-01",
+        serial_number: "SOPHOS-1",
+        health_overall: "suspicious"
+      )
+
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SOPHOS-1",
+          last_attested_cert_fingerprint: "fp-8"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Sophos Prod"
+      assert html =~ "sophos-mac-01"
+      assert html =~ "suspicious"
       assert html =~ "Attested serial"
     end
 

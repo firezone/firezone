@@ -16,7 +16,7 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
   test "platforms follow from the fields each check reads" do
     expected = %{
       compliant: ~w[windows macos ios android]a,
-      disk_encryption: ~w[windows macos ios android]a,
+      disk_encryption: ~w[windows macos linux ios android]a,
       endpoint_protection: ~w[windows macos linux ios android]a,
       no_active_threats: ~w[windows macos linux]a,
       firewall: ~w[windows macos linux]a,
@@ -33,6 +33,23 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
     }
 
     assert Map.new(Checks.all(), &{&1.name, &1.platforms}) == expected
+  end
+
+  test "a check keeps its tree from before Sophos joined it" do
+    {:ok, check} = Checks.fetch(:disk_encryption)
+
+    assert check.previous == [
+             %{
+               "or" => [
+                 %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
+                 %{"field" => "intune.attestation_bit_locker_enabled", "op" => "is", "value" => true},
+                 %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true}
+               ]
+             }
+           ]
+
+    {:ok, compliant} = Checks.fetch(:compliant)
+    assert compliant.previous == []
   end
 
   test "names/0 and fetch/1 agree" do
