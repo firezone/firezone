@@ -68,6 +68,7 @@ internal fun uniffi.connlib.ConnectedDevice.toModel(): ConnectedDevice =
     ConnectedDevice(
         id = id,
         name = name,
+        slug = slug,
         tunIpv4 = tunIpv4,
         tunIpv6 = tunIpv6,
     )

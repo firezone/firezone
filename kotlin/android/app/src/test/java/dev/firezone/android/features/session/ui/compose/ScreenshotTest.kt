@@ -99,7 +99,7 @@ class ScreenshotTest {
     fun devicePoolDetails() = captureSheet("device-pool-details", rowText = "Lab hardware")
 
     @Test
-    fun deviceDetails() = captureSheet("device-details", rowText = "Lab hardware", sheetRowText = "bench-controller-01")
+    fun deviceDetails() = captureSheet("device-details", rowText = "Lab hardware", sheetRowText = "bench-controller-01.firezone.network")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(

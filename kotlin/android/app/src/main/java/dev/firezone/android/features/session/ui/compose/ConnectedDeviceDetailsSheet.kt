@@ -30,9 +30,19 @@ fun ConnectedDeviceDetailsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             SheetTitle(
-                text = device.name,
-                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Client Name", device.name) },
+                text = deviceLabel(device),
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Device Domain", device.domain) },
             )
+
+            DetailSection(label = "Name") {
+                Text(
+                    text = device.name,
+                    modifier =
+                        Modifier.clickable {
+                            ClipboardUtils.copyToClipboard(context, "Client Name", device.name)
+                        },
+                )
+            }
 
             DetailSection(label = "Tunnel IPs") {
                 Text(

@@ -241,7 +241,7 @@ private fun device(
     tunIpv4: String,
     tunIpv6: String,
     vararg pools: String,
-) = pools.toList() to ConnectedDevice(id = id, name = name, tunIpv4 = tunIpv4, tunIpv6 = tunIpv6)
+) = pools.toList() to ConnectedDevice(id = id, name = name, slug = name, tunIpv4 = tunIpv4, tunIpv6 = tunIpv6)
 
 private fun devicePool(
     id: String,
