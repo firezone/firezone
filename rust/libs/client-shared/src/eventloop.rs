@@ -22,9 +22,9 @@ use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
-    DeviceDomainResolutionFailed, DeviceDomainResolved, EgressMessages, FailReason,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
-    ResourceFiltersUpdated,
+    DeviceDomainBrowseFailed, DeviceDomainBrowsed, DeviceDomainResolutionFailed,
+    DeviceDomainResolved, EgressMessages, FailReason, GatewayIceCandidates, IngressMessages,
+    InitClient, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
@@ -453,6 +453,14 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            Ok(ClientEvent::DeviceDomainPtrQueried { domain }) => {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::BrowseDeviceDomain {
+                        domain: domain.to_string(),
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
             Ok(ClientEvent::ResourcesChanged { resources }) => {
                 self.resource_list_sender
                     .send(resources)
@@ -723,6 +731,7 @@ impl Eventloop {
                     | FailReason::AmbiguousAddress
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
+                    | FailReason::NotADevice
                     | FailReason::Unknown => {}
                 }
             }
@@ -826,6 +835,7 @@ impl Eventloop {
                     | FailReason::AmbiguousAddress
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
+                    | FailReason::NotADevice
                     | FailReason::Unknown => {}
                 }
             }
@@ -835,7 +845,7 @@ impl Eventloop {
                 };
                 tunnel
                     .state_mut()
-                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)));
+                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)), now);
             }
             IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
@@ -846,7 +856,30 @@ impl Eventloop {
                 };
                 tunnel
                     .state_mut()
-                    .handle_device_domain_resolved(domain, Err(reason));
+                    .handle_device_domain_resolved(domain, Err(reason), now);
+            }
+            IngressMessages::DeviceDomainBrowsed(DeviceDomainBrowsed { domain, names, ttl }) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                let names = names
+                    .iter()
+                    .filter_map(|name| parse_portal_domain(name))
+                    .collect();
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_browsed(domain, Ok((names, ttl)), now);
+            }
+            IngressMessages::DeviceDomainBrowseFailed(DeviceDomainBrowseFailed {
+                domain,
+                reason,
+            }) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_browsed(domain, Err(reason), now);
             }
         }
 

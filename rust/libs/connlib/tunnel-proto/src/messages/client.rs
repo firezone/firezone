@@ -284,6 +284,22 @@ pub struct DeviceDomainResolutionFailed {
     pub reason: FailReason,
 }
 
+/// Portal's answer to a PTR query in the device domain.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowsed {
+    pub domain: String,
+    pub names: Vec<String>,
+    /// How long, in seconds, the answer may be cached.
+    pub ttl: u32,
+}
+
+/// Portal's response when a PTR query in the device domain cannot be answered.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowseFailed {
+    pub domain: String,
+    pub reason: FailReason,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
@@ -295,6 +311,7 @@ pub enum FailReason {
     AmbiguousAddress,
     MissingAddress,
     InvalidAddress,
+    NotADevice,
     #[serde(other)]
     Unknown,
 }
@@ -345,6 +362,8 @@ pub enum IngressMessages {
 
     DeviceDomainResolved(DeviceDomainResolved),
     DeviceDomainResolutionFailed(DeviceDomainResolutionFailed),
+    DeviceDomainBrowsed(DeviceDomainBrowsed),
+    DeviceDomainBrowseFailed(DeviceDomainBrowseFailed),
 
     /// A resource's filters have changed while at least one authorization
     /// referencing it remains active.
@@ -400,6 +419,9 @@ pub enum EgressMessages {
         preferred_gateways: Vec<GatewayId>,
     },
     ResolveDeviceDomain {
+        domain: String,
+    },
+    BrowseDeviceDomain {
         domain: String,
     },
     NoRelays {},
@@ -1032,6 +1054,83 @@ mod tests {
             msg,
             IngressMessages::DeviceDomainResolutionFailed(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_not_a_device_reason() {
+        let json = serde_json::json!({
+            "event": "device_domain_resolution_failed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "reason": "not_a_device"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainResolutionFailed(failed) = msg else {
+            panic!("expected DeviceDomainResolutionFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotADevice));
+    }
+
+    #[test]
+    fn browse_device_domain_serialises_correctly() {
+        let msg = EgressMessages::BrowseDeviceDomain {
+            domain: "firezone.network".to_owned(),
+        };
+
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "browse_device_domain",
+            "payload": {
+                "domain": "firezone.network",
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browsed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browsed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "names": ["alice-laptop.firezone.network", "alice-desktop.firezone.network"],
+                "ttl": 30
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowsed(browsed) = msg else {
+            panic!("expected DeviceDomainBrowsed")
+        };
+        assert_eq!(browsed.domain, "your-devices.firezone.network");
+        assert_eq!(
+            browsed.names,
+            [
+                "alice-laptop.firezone.network",
+                "alice-desktop.firezone.network"
+            ]
+        );
+        assert_eq!(browsed.ttl, 30);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browse_failed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browse_failed",
+            "payload": {
+                "domain": "ghost.firezone.network",
+                "reason": "not_found"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowseFailed(failed) = msg else {
+            panic!("expected DeviceDomainBrowseFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotFound));
     }
 
     #[test]
