@@ -21,7 +21,7 @@ build_afl
 
 ijon_offset=""
 if [ "$target" = tunnel-proto ]; then
-    map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")"
+    map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")" || true
     [[ "$map_size" =~ ^[0-9]+$ ]] || {
         echo "Could not determine AFL++ coverage map size" >&2
         exit 1
