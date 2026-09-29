@@ -265,6 +265,10 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
+            dialog::error(
+                "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
+            )?;
+
             return Err(anyhow);
         }
     };
