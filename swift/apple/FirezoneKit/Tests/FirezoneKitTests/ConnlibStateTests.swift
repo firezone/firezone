@@ -49,6 +49,7 @@ struct ConnlibStateTests {
     #expect(pool.type == .devicePool)
     #expect(device.id == "device-1")
     #expect(device.name == "Device device-1")
+    #expect(device.slug == "device-1")
     #expect(device.tunIPv4 == "100.64.0.1")
     #expect(device.tunIPv6 == "fd00:2021:1111::1")
   }
@@ -198,6 +199,7 @@ struct ConnlibStateTests {
     FirezoneKit.ConnectedDevice(
       id: id,
       name: "Device \(id)",
+      slug: id,
       tunIPv4: "100.64.0.1",
       tunIPv6: "fd00:2021:1111::1"
     )

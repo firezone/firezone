@@ -35,23 +35,31 @@
     }
   }
 
-  /// A single connected device, labelled by name, with details in a submenu.
+  /// A single connected device, labelled by slug, with details in a submenu.
   struct ConnectedDeviceMenuItem: View {
     let device: ConnectedDevice
 
     var body: some View {
-      Menu(device.name) {
+      Menu(device.slug) {
         ConnectedDeviceDetailsSubmenu(device: device)
       }
     }
   }
 
-  /// Copyable details for a connected device: tunnel IPs and client details.
+  /// Copyable details for a connected device: domain, tunnel IPs and client details.
   struct ConnectedDeviceDetailsSubmenu: View {
     let device: ConnectedDevice
 
     var body: some View {
       Group {
+        Text("Device")
+          .foregroundStyle(.secondary)
+        Button(device.domain) {
+          Clipboard.copy(device.domain)
+        }
+
+        Divider()
+
         Text("Tunnel IPs")
           .foregroundStyle(.secondary)
         Button(device.tunIPv4) {

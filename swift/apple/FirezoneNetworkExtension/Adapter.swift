@@ -767,6 +767,7 @@ extension FirezoneKit.ConnectedDevice {
     self.init(
       id: device.id,
       name: device.name,
+      slug: device.slug,
       tunIPv4: device.tunIpv4,
       tunIPv6: device.tunIpv6
     )

@@ -22,7 +22,7 @@
         } else {
           ForEach(devices) { device in
             NavigationLink(value: device) {
-              Text(device.name)
+              deviceLabel(device)
             }
           }
         }
@@ -30,13 +30,17 @@
     }
   }
 
-  /// Detail screen for a connected device: tunnel IPs and client details,
+  /// Detail screen for a connected device: domain, tunnel IPs and client details,
   /// each copyable via a long-press context menu.
   struct ConnectedDeviceView: View {
     let device: ConnectedDevice
 
     var body: some View {
       List {
+        Section(header: Text("Device")) {
+          copyableRow(device.domain, label: deviceLabel(device).font(.headline))
+        }
+
         Section(header: Text("Tunnel IPs")) {
           copyableRow(device.tunIPv4)
           copyableRow(device.tunIPv6)
@@ -52,8 +56,8 @@
     }
 
     @ViewBuilder
-    private func copyableRow(_ value: String) -> some View {
-      Text(value)
+    private func copyableRow(_ value: String, label: Text? = nil) -> some View {
+      (label ?? Text(value))
         .contextMenu {
           Button(
             action: { Clipboard.copy(value) },
@@ -64,5 +68,10 @@
           )
         }
     }
+  }
+
+  /// A device's slug, followed by the device domain in secondary colour.
+  private func deviceLabel(_ device: ConnectedDevice) -> Text {
+    Text(device.slug) + Text(ConnectedDevice.domainSuffix).foregroundColor(.secondary)
   }
 #endif
