@@ -223,6 +223,8 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{all_devices.name} - Device Pool - policy: Everyone")
     IO.puts("  #{group_devices.name} - Device Pool - policy: Everyone")
     IO.puts("")
+
+    [all_devices, group_devices]
   end
 
   # Helper function to create gateway directly without context module
@@ -2629,28 +2631,31 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    for {seed_account, seed_everyone_group} <- [
-          {account, everyone_group},
-          {other_account, other_everyone_group}
-        ] do
-      self_device_pool =
-        %Resource{account_id: seed_account.id}
-        |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
-        |> Resource.changeset()
+    [self_device_pool, _other_self_device_pool] =
+      for {seed_account, seed_everyone_group} <- [
+            {account, everyone_group},
+            {other_account, other_everyone_group}
+          ] do
+        self_device_pool =
+          %Resource{account_id: seed_account.id}
+          |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+          |> Resource.changeset()
+          |> Repo.insert!()
+
+        %Policy{
+          account_id: seed_account.id,
+          group_id: seed_everyone_group.id,
+          resource_id: self_device_pool.id,
+          description: "Lets every actor reach their own devices."
+        }
         |> Repo.insert!()
 
-      %Policy{
-        account_id: seed_account.id,
-        group_id: seed_everyone_group.id,
-        resource_id: self_device_pool.id,
-        description: "Lets every actor reach their own devices."
-      }
-      |> Repo.insert!()
+        IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
+        IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
+        IO.puts("")
 
-      IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
-      IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
-      IO.puts("")
-    end
+        self_device_pool
+      end
 
     # Create auth providers for main account
     system_subject = %Authentication.Subject{
@@ -3108,7 +3113,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{primary_client_actor.name} token: #{primary_client_encoded_token}")
     IO.puts("")
 
-    seed_device_pool_load(account, admin_subject, everyone_group)
+    load_device_pools = seed_device_pool_load(account, admin_subject, everyone_group)
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
@@ -3987,6 +3992,18 @@ defmodule Portal.Repo.Seeds do
         },
         admin_subject
       )
+
+    for resource <- [self_device_pool | load_device_pools] do
+      {:ok, _} =
+        create_policy.(
+          %{
+            description: "Synced Group Access To #{resource.name}",
+            group_id: synced_group.id,
+            resource_id: resource.id
+          },
+          admin_subject
+        )
+    end
 
     IO.puts("Policies Created")
     IO.puts("")
