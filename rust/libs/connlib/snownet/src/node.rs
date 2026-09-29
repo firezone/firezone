@@ -300,11 +300,8 @@ where
 
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
-        let cipher_suite = if use_aes_gcm {
-            CipherSuite::AesGcm
-        } else {
-            CipherSuite::ChaChaPoly
-        };
+        let _ = use_aes_gcm;
+        let cipher_suite = CipherSuite::AesGcm;
 
         // Reuse only if every parameter that feeds boringtun's
         // session matches, including the agent mode — a flag flip
