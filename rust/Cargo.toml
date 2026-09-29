@@ -230,7 +230,7 @@ syn = "3.0.0"
 tauri = "2.12.0"
 tauri-build = { version = "2.7.0", default-features = false }
 tauri-plugin-dialog = "2.8.0"
-tauri-plugin-opener = "2.6.0"
+tauri-plugin-opener = "2.7.0"
 tauri-runtime = "2.12.0"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = { version = "2.10.0", default-features = false }
@@ -306,7 +306,6 @@ ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "mas
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
-tauri-plugin-opener = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v2" } # Waiting for release of https://github.com/tauri-apps/plugins-workspace/pull/3480.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
