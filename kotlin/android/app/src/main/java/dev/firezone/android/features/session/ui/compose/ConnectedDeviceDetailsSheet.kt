@@ -79,22 +79,6 @@ fun ConnectedDeviceDetailsSheet(
                     )
                 }
             }
-
-            if (device.pools.isNotEmpty()) {
-                DetailRow(label = if (device.pools.size == 1) "Pool:" else "Pools:") {
-                    Column {
-                        device.pools.forEach { pool ->
-                            Text(
-                                text = pool,
-                                modifier =
-                                    Modifier.clickable {
-                                        ClipboardUtils.copyToClipboard(context, "Pool", pool)
-                                    },
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }

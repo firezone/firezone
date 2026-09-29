@@ -39,7 +39,6 @@ private fun ConnectedDeviceRowPreview() {
                     "Device 1",
                     "100.96.0.12",
                     "fd00:2021:1111::1",
-                    listOf("engineering"),
                 ),
                 onClick = {},
             )
@@ -49,7 +48,6 @@ private fun ConnectedDeviceRowPreview() {
                     "Device 2",
                     "100.96.0.30",
                     "fd00:2021:1111::2",
-                    listOf("engineering", "ops"),
                 ),
                 onClick = {},
             )
@@ -59,7 +57,6 @@ private fun ConnectedDeviceRowPreview() {
                     "Device 3",
                     "100.96.0.41",
                     "fd00:2021:1111::3",
-                    emptyList(),
                 ),
                 onClick = {},
             )

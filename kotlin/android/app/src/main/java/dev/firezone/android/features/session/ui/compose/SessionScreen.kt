@@ -31,7 +31,6 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.features.session.ui.isInternetResource
-import dev.firezone.android.tunnel.model.ConnectedDevice
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.parcelize.Parcelize
 
@@ -42,7 +41,6 @@ private const val TAB_ALL = 1
 fun SessionScreen(
     actorName: String?,
     resources: ImmutableList<ResourceUiModel>,
-    connectedDevices: ImmutableList<ConnectedDevice>,
     favorites: Favorites,
     onToggleInternet: () -> Unit,
     onAddFavorite: (String) -> Unit,
@@ -82,8 +80,10 @@ fun SessionScreen(
             (selection as? Selection.Resource)?.let { sel -> resources.firstOrNull { it.id == sel.id } }
         }
     val selectedDevice =
-        remember(connectedDevices, selection) {
-            (selection as? Selection.Device)?.let { sel -> connectedDevices.firstOrNull { it.id == sel.id } }
+        remember(resources, selection) {
+            (selection as? Selection.Device)?.let { sel ->
+                resources.firstNotNullOfOrNull { resource -> resource.devices.firstOrNull { it.id == sel.id } }
+            }
         }
 
     val profileName = actorName ?: stringResource(R.string.signed_in)
@@ -132,29 +132,17 @@ fun SessionScreen(
             }
 
             val resourcesTitle = stringResource(R.string.resources)
-            val connectedDevicesTitle = stringResource(R.string.connected_devices)
             val resourceList = if (hasFavorites && effectiveTab == TAB_FAVORITES) favoriteResources else allResources
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
-                // Favourites shows just the filtered resource list, so the Resources/Connected Devices
-                // headings only appear on the All tab.
+                // Favourites shows just the filtered resource list, so the Resources heading only
+                // appears on the All tab.
                 if (effectiveTab == TAB_ALL) {
                     item(key = "resources-heading") { SectionTitle(text = resourcesTitle) }
                 }
                 itemsIndexed(resourceList, key = { _, resource -> resource.id }) { index, resource ->
                     if (index > 0) HorizontalDivider()
                     ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
-                }
-                // Connected devices is a niche feature, so it sits in its own section below the
-                // resources, sharing the same heading style rather than drawing extra attention.
-                if (effectiveTab == TAB_ALL && connectedDevices.isNotEmpty()) {
-                    item(key = "devices-heading") {
-                        SectionTitle(text = connectedDevicesTitle, modifier = Modifier.padding(top = 24.dp))
-                    }
-                    itemsIndexed(connectedDevices, key = { _, device -> "dev-${device.id}" }) { index, device ->
-                        if (index > 0) HorizontalDivider()
-                        ConnectedDeviceRow(device = device, onClick = { selection = Selection.Device(device.id) })
-                    }
                 }
             }
         }
@@ -167,6 +155,7 @@ fun SessionScreen(
             onAddFavorite = { onAddFavorite(resource.id) },
             onRemoveFavorite = { onRemoveFavorite(resource.id) },
             onToggleInternet = onToggleInternet,
+            onSelectDevice = { id -> selection = Selection.Device(id) },
             onDismiss = { selection = null },
         )
     }

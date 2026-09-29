@@ -20,9 +20,7 @@ import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceUiModel
-import dev.firezone.android.tunnel.mockConnectedDevices
 import dev.firezone.android.tunnel.mockResources
-import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.toModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
@@ -65,10 +63,7 @@ class ScreenshotTest {
     @Test
     fun sessionScreenWithoutResources() =
         capture("session-screen-no-resources") {
-            SessionScreenSample(
-                resources = persistentListOf(),
-                connectedDevices = persistentListOf(),
-            )
+            SessionScreenSample(resources = persistentListOf())
         }
 
     // Any row part-way down does; it is scrolled to by index rather than by swipe because a fling
@@ -100,9 +95,11 @@ class ScreenshotTest {
     @Test
     fun resourceDetails() = captureSheet("resource-details", rowText = "Engineering wiki")
 
-    // The first sample device belongs to two pools, so the sheet shows the plural row.
     @Test
-    fun deviceDetails() = captureSheet("device-details", rowText = "bench-controller-01")
+    fun devicePoolDetails() = captureSheet("device-pool-details", rowText = "Lab hardware")
+
+    @Test
+    fun deviceDetails() = captureSheet("device-details", rowText = "Lab hardware", sheetRowText = "bench-controller-01")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
@@ -119,6 +116,7 @@ class ScreenshotTest {
     private fun captureSheet(
         name: String,
         rowText: String,
+        sheetRowText: String? = null,
     ) {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
         composeRule
@@ -126,6 +124,10 @@ class ScreenshotTest {
             .performScrollToNode(hasText(rowText, substring = true))
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
+        sheetRowText?.let {
+            composeRule.onNodeWithText(it).performClick()
+            composeRule.waitForIdle()
+        }
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
 }
@@ -133,13 +135,11 @@ class ScreenshotTest {
 @Composable
 private fun SessionScreenSample(
     resources: ImmutableList<ResourceUiModel> = sampleResources,
-    connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
     favorites: Favorites = Favorites(HashSet()),
 ) {
     SessionScreen(
         actorName = "Jane Doe",
         resources = resources,
-        connectedDevices = connectedDevices,
         favorites = favorites,
         onToggleInternet = {},
         onAddFavorite = {},
@@ -153,6 +153,3 @@ private fun SessionScreenSample(
 // the galleries and the mock launch cannot drift apart.
 private val sampleResources: ImmutableList<ResourceUiModel> =
     mockResources.map { ResourceUiModel(it.toModel(), ResourceState.ENABLED) }.toImmutableList()
-
-private val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
-    mockConnectedDevices.map { it.toModel() }.toImmutableList()

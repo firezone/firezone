@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -31,6 +34,7 @@ import androidx.core.net.toUri
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.features.session.ui.ResourceUiModel
+import dev.firezone.android.features.session.ui.isDevicePool
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.StatusEnum
 
@@ -42,13 +46,16 @@ fun ResourceDetailsSheet(
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
     onToggleInternet: () -> Unit,
+    onSelectDevice: (String) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            if (resource.isInternetResource()) {
+            if (resource.isDevicePool()) {
+                DevicePoolDetails(resource, onSelectDevice)
+            } else if (resource.isInternetResource()) {
                 InternetResourceDetails(resource, onToggleInternet)
             } else {
                 NonInternetResourceDetails(resource, isFavorite, onAddFavorite, onRemoveFavorite)
@@ -56,6 +63,26 @@ fun ResourceDetailsSheet(
             resource.sites?.firstOrNull()?.let { site ->
                 SiteSection(siteName = site.name, status = resource.status)
             }
+        }
+    }
+}
+
+@Composable
+private fun DevicePoolDetails(
+    resource: ResourceUiModel,
+    onSelectDevice: (String) -> Unit,
+) {
+    Column(Modifier.verticalScroll(rememberScrollState())) {
+        SectionLabel("Device Pool")
+        DetailRow(label = "Name:") { Text(resource.name) }
+
+        SectionLabel("Devices")
+        if (resource.devices.isEmpty()) {
+            Text("No connected devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        resource.devices.forEachIndexed { index, device ->
+            if (index > 0) HorizontalDivider()
+            ConnectedDeviceRow(device = device, onClick = { onSelectDevice(device.id) })
         }
     }
 }

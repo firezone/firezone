@@ -12,5 +12,4 @@ data class ConnectedDevice(
     val name: String,
     val tunIpv4: String,
     val tunIpv6: String,
-    val pools: List<String>,
 ) : Parcelable

@@ -101,7 +101,6 @@ class FirstRunE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
             ),
         )
 
