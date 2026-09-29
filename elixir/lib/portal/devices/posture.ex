@@ -67,8 +67,12 @@ defmodule Portal.Devices.Posture do
       device_ids ->
         account_id = devices |> hd() |> Map.fetch!(:account_id)
 
+        keys = keys_by_id |> Map.values() |> List.flatten()
+        mdm_ids = for {:mdm_device_id, id} <- keys, uniq: true, do: id
+        serials = for {rung, serial} <- keys, rung != :mdm_device_id, uniq: true, do: serial
+
         account_id
-        |> Database.list_matches(device_ids, providers)
+        |> Database.list_matches(device_ids, mdm_ids, serials, providers)
         |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
         |> Map.new(fn {device_id, rows} -> {device_id, matches(rows, Map.fetch!(keys_by_id, device_id))} end)
     end
@@ -259,15 +263,27 @@ defmodule Portal.Devices.Posture do
     # actor may read, and the account filter keeps them in bounds. The join
     # conditions are the matching ladder; `rung_fields/2` names the same
     # columns so the credit given to a returned row can never disagree.
-    def list_matches(account_id, device_ids, providers) do
+    #
+    # Each provider table is first narrowed to the batch's identifiers, passed
+    # as plain lists so the lookups use the id and serial indexes. Joining on
+    # the device columns directly made Postgres scan the whole table instead.
+    # The narrowed sets are materialized so each is built once per statement,
+    # not once per device.
+    def list_matches(account_id, device_ids, mdm_ids, serials, providers) do
       all? = providers == :all
+      batch = %{all?: all?, account_id: account_id, mdm_ids: mdm_ids, serials: serials}
 
       from(d in Device, as: :device, where: d.account_id == ^account_id and d.id in ^device_ids)
-      |> join_intune(all?)
-      |> join_iru(all?)
-      |> join_santa(all?)
-      |> join_sentinelone(all?)
-      |> join_sophos(all?)
+      |> with_cte("intune_candidates", as: ^candidates(Intune.Device, Intune.PostureProvider, :intune_id, batch), materialized: true)
+      |> join_intune()
+      |> with_cte("iru_candidates", as: ^candidates(Iru.Device, Iru.PostureProvider, :iru_id, batch), materialized: true)
+      |> join_iru()
+      |> with_cte("santa_candidates", as: ^candidates(Santa.Device, Santa.PostureProvider, nil, batch), materialized: true)
+      |> join_santa()
+      |> with_cte("sentinelone_candidates", as: ^candidates(SentinelOne.Device, SentinelOne.PostureProvider, nil, batch), materialized: true)
+      |> join_sentinelone()
+      |> with_cte("sophos_candidates", as: ^candidates(Sophos.Device, Sophos.PostureProvider, nil, batch), materialized: true)
+      |> join_sophos()
       |> join_defender(all?)
       |> select(
         [device: d, intune: i, iru: r, santa: s, sentinelone: o, sophos: x, defender: f],
@@ -277,8 +293,8 @@ defmodule Portal.Devices.Posture do
       |> Safe.all()
     end
 
-    defp join_intune(query, all?) do
-      join(query, :left, [device: d], i in subquery(rows(Intune.Device, Intune.PostureProvider, all?)),
+    defp join_intune(query) do
+      join(query, :left, [device: d], i in {"intune_candidates", Intune.Device},
         as: :intune,
         on:
           i.account_id == d.account_id and
@@ -288,8 +304,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_iru(query, all?) do
-      join(query, :left, [device: d], r in subquery(rows(Iru.Device, Iru.PostureProvider, all?)),
+    defp join_iru(query) do
+      join(query, :left, [device: d], r in {"iru_candidates", Iru.Device},
         as: :iru,
         on:
           r.account_id == d.account_id and
@@ -299,8 +315,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_santa(query, all?) do
-      join(query, :left, [device: d], s in subquery(rows(Santa.Device, Santa.PostureProvider, all?)),
+    defp join_santa(query) do
+      join(query, :left, [device: d], s in {"santa_candidates", Santa.Device},
         as: :santa,
         on:
           s.account_id == d.account_id and
@@ -308,8 +324,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_sentinelone(query, all?) do
-      join(query, :left, [device: d], o in subquery(rows(SentinelOne.Device, SentinelOne.PostureProvider, all?)),
+    defp join_sentinelone(query) do
+      join(query, :left, [device: d], o in {"sentinelone_candidates", SentinelOne.Device},
         as: :sentinelone,
         on:
           o.account_id == d.account_id and
@@ -317,8 +333,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_sophos(query, all?) do
-      join(query, :left, [device: d], x in subquery(rows(Sophos.Device, Sophos.PostureProvider, all?)),
+    defp join_sophos(query) do
+      join(query, :left, [device: d], x in {"sophos_candidates", Sophos.Device},
         as: :sophos,
         on:
           x.account_id == d.account_id and
@@ -332,6 +348,22 @@ defmodule Portal.Devices.Posture do
         on:
           f.account_id == d.account_id and
             f.entra_device_id == i.entra_device_id
+      )
+    end
+
+    defp candidates(device_schema, provider_schema, nil, batch) do
+      device_schema
+      |> rows(provider_schema, batch.all?)
+      |> where([r], r.account_id == ^batch.account_id and r.serial_number in ^batch.serials)
+    end
+
+    defp candidates(device_schema, provider_schema, mdm_id, batch) do
+      device_schema
+      |> rows(provider_schema, batch.all?)
+      |> where(
+        [r],
+        r.account_id == ^batch.account_id and
+          (field(r, ^mdm_id) in ^batch.mdm_ids or r.serial_number in ^batch.serials)
       )
     end
 
