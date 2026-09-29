@@ -2612,6 +2612,7 @@ impl ClientState {
         }
 
         self.resource_list.update(self.resource_list_snapshot());
+        self.dns_cache.flush("Resource added");
     }
 
     fn log_activating_resource(&self, resource: &Resource) {
