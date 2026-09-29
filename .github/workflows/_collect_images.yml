@@ -16,7 +16,7 @@ on:
         description: "Space-separated compose services to build once and ship in the archive."
         required: false
         type: string
-        default: "client-1-router gateway-router relay-1-router relay-2-router portal-router client-2-router"
+        default: "primary-client-router gateway-router relay-1-router relay-2-router portal-router pool-member-router"
       portal_image:
         required: false
         type: string

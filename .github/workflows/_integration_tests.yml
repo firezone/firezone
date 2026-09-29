@@ -159,7 +159,7 @@ jobs:
           - script: dns-nm
           - script: dns-two-resources
           - script: device-pool
-            extra_services: client-2
+            extra_services: pool-member
             min_client_version: 1.5.9
           - name: dns-systemd-resolved
             script: systemd/dns-systemd-resolved
@@ -282,7 +282,7 @@ jobs:
           retry docker compose up -d relay-1 --no-build --pull never
           retry docker compose up -d relay-2 --no-build --pull never
           retry docker compose up -d gateway --no-build --pull never
-          retry docker compose up -d client-1 ${{ matrix.test.extra_services }} --no-build --pull never
+          retry docker compose up -d primary-client ${{ matrix.test.extra_services }} --no-build --pull never
           retry docker compose up -d network-config --pull never
 
           docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
@@ -301,7 +301,7 @@ jobs:
         if: "!cancelled()"
         run: |
           # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
-          docker compose logs client-1 client-2 | \
+          docker compose logs primary-client pool-member | \
             grep --invert "I/O error (os error 5)" | \
             grep " WARN " && exit 1 || exit 0
       - name: Ensure Gateway emitted no warnings
@@ -315,7 +315,7 @@ jobs:
       - uses: ./.github/actions/show-compose-logs
         if: "!cancelled()"
         with:
-          services: client-1 client-2 relay-1 relay-2 gateway portal postgres
+          services: primary-client pool-member relay-1 relay-2 gateway portal postgres
 
       - name: Ensure no eBPF checksum errors on relay-1
         if: "!cancelled() && steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure'"

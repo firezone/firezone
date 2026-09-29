@@ -17,4 +17,4 @@ jq --null-input --arg name "${TEST_NAME}" --argjson bps "$((kbps * 1000))" \
     '{ ($name): { "throughput": { "value": $bps } } }' >"${TEST_NAME}.bmf.json"
 
 assert_process_state "gateway" "S"
-assert_process_state "client-1" "S"
+assert_process_state "primary-client" "S"
