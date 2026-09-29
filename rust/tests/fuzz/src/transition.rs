@@ -6,11 +6,10 @@ use tunnel_proto::{
 };
 
 use super::{
-    os::WINDOWS_TCP_TIMEOUT_SECONDS,
-    probe::{DNS_NAT_SESSION_TTL, FlowId, ProbeId, Route},
-    reference::{MIN_IDLE_FOR_REKEY_DROP, PrivateKey},
+    probe::{FlowId, ProbeId, Route},
+    reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
-    sim_net::{Host, NAT_TIMEOUTS},
+    sim_net::Host,
     stub_portal::PeerAuthorization,
 };
 use std::{
@@ -18,44 +17,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
-
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(25);
-const TURN_CHANNEL_COOLING_IDLE: Duration = Duration::from_secs(6 * 60);
-
-const _: () = assert!(NAT_TIMEOUTS[2].as_secs() == DNS_NAT_SESSION_TTL.as_secs());
-
-/// Samples both sides of keepalive, NAT, DNS NAT, TCP, and rekey timers.
-pub(crate) const IDLE_DURATIONS: [Duration; 15] = [
-    // Bracket `path_agent::PRIMARY_KEEPALIVE` and snownet's private
-    // `BINDING_INTERVAL`, both 25 seconds.
-    before(KEEPALIVE_INTERVAL),
-    after(KEEPALIVE_INTERVAL),
-    before(NAT_TIMEOUTS[0]),
-    after(NAT_TIMEOUTS[0]),
-    before(NAT_TIMEOUTS[1]),
-    after(NAT_TIMEOUTS[1]),
-    before(Duration::from_secs(WINDOWS_TCP_TIMEOUT_SECONDS)),
-    after(Duration::from_secs(WINDOWS_TCP_TIMEOUT_SECONDS)),
-    // The 120-second NAT timeout is also `DNS_NAT_SESSION_TTL`.
-    before(NAT_TIMEOUTS[2]),
-    after(NAT_TIMEOUTS[2]),
-    before(MIN_IDLE_FOR_REKEY_DROP),
-    after(MIN_IDLE_FOR_REKEY_DROP),
-    // The longest generated NAT timeout is also the TURN channel refresh threshold.
-    before(NAT_TIMEOUTS[3]),
-    after(NAT_TIMEOUTS[3]),
-    // Retain the original six-minute idle. Two consecutive idles enter the
-    // 10-15 minute window where TURN channels are cooling down.
-    TURN_CHANNEL_COOLING_IDLE,
-];
-
-const fn before(duration: Duration) -> Duration {
-    Duration::from_secs(duration.as_secs() - 1)
-}
-
-const fn after(duration: Duration) -> Duration {
-    Duration::from_secs(duration.as_secs() + 1)
-}
 
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]

@@ -16,13 +16,6 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_relay::SimRelay;
 
-pub(crate) const NAT_TIMEOUTS: [Duration; 4] = [
-    Duration::from_secs(30),
-    Duration::from_secs(60),
-    Duration::from_secs(120),
-    Duration::from_secs(300),
-];
-
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
     inner: T,

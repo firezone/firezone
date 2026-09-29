@@ -20,7 +20,7 @@ use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
-use crate::transition::{IDLE_DURATIONS, Seq, Transition};
+use crate::transition::{Seq, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -209,7 +209,7 @@ pub(super) fn generate(
             Transition::RebootRelaysWhilePartitioned(relays)
         }
         K::Idle => Transition::Idle {
-            duration: IDLE_DURATIONS[g.choose_index(IDLE_DURATIONS.len())],
+            duration: Duration::from_secs(5 * g.count(1, 72) as u64),
         },
         K::AddResource => {
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
