@@ -1604,7 +1604,7 @@ defmodule PortalWeb.PoliciesTest do
       assert has_element?(lv, "li", "Compliant")
       assert has_element?(lv, "li", "Firezone Client up to date")
 
-      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
       assert toggle(lv, "compliant") =~ "checked"
       assert toggle(lv, "client_up_to_date") =~ "checked"

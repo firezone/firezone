@@ -360,6 +360,9 @@ defmodule Portal.Repo.Migrations.LogTableMigration do
       :cutover
     end
 
+    # Publications are read from the catalogs rather than pg_publication_tables,
+    # which expands every publication by name and fails if another session
+    # drops one while the view is being read.
     defp check_dependencies!(source) do
       [[blocked]] =
         query!(
@@ -367,7 +370,10 @@ defmodule Portal.Repo.Migrations.LogTableMigration do
           SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE confrelid = $1::text::regclass)
             OR EXISTS (SELECT 1 FROM pg_depend d JOIN pg_rewrite r ON d.classid = 'pg_rewrite'::regclass AND d.objid = r.oid
                        WHERE d.refobjid = $1::text::regclass)
-            OR EXISTS (SELECT 1 FROM pg_publication_tables WHERE schemaname = current_schema() AND tablename = $1)
+            OR EXISTS (SELECT 1 FROM pg_publication WHERE puballtables)
+            OR EXISTS (SELECT 1 FROM pg_publication_rel WHERE prrelid = $1::text::regclass)
+            OR EXISTS (SELECT 1 FROM pg_publication_namespace n JOIN pg_class c ON c.relnamespace = n.pnnspid
+                       WHERE c.oid = $1::text::regclass)
           """,
           [source]
         ).rows
