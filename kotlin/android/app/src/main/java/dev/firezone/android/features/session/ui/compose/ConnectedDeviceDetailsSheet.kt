@@ -24,7 +24,7 @@ fun ConnectedDeviceDetailsSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {

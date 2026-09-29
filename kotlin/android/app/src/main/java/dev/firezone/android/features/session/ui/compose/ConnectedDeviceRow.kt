@@ -24,7 +24,7 @@ fun ConnectedDeviceRow(
     Text(
         text = device.name,
         style = MaterialTheme.typography.bodyMedium,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
     )
 }
 
