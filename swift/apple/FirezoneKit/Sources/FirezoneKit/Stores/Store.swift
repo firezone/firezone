@@ -342,14 +342,16 @@ public final class Store: ObservableObject {
               // a diagnostic and must not be reported as telemetry.
               Log.info(reason)
 
-              // Only show the alert if we haven't shown this specific error before
+              // Only show the notification if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
                 switch code {
                 case .sessionExpired:
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: true)
                 case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: false)
                 }
                 self.markAlertAsShown(id)
               }

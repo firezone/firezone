@@ -575,13 +575,8 @@ actor Adapter {
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
-        // Only a session ended by an unusable token can be restored by signing in again.
-        // Offering it for anything else sends the user somewhere that cannot help them.
-        if requiresSignIn {
-          SessionNotification.showDisconnectedNotificationiOS(userMessage)
-        } else {
-          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(userMessage)
-        }
+        SessionNotification.showDisconnectedNotification(
+          userMessage, requiresSignIn: requiresSignIn)
       #endif
 
       let sendableError = SendableError(userMessage, requiresSignIn: requiresSignIn)
