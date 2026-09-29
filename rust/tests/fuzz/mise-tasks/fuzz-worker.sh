@@ -12,6 +12,9 @@ target="${usage_target:?}"
 source ./helpers.sh
 
 export AFL_FUZZER_LOOPCOUNT=1 AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1 AFL_AUTORESUME=1
+# Run independent campaigns so queue synchronization cannot overrun `-V`.
+# Shuffling gives workers different starting points in the shared seed corpus.
+export AFL_NO_SYNC=1 AFL_SHUFFLE_QUEUE=1
 # Each worker calibrates the full corpus before its discovery time budget starts.
 export AFL_FAST_CAL=1
 ulimit -c 0
