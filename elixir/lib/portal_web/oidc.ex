@@ -655,6 +655,21 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
+  Reads the tenant from an admin consent error saying the app's service
+  principal already exists (AADSTS650051). Entra reports that for a repeated or
+  concurrent consent, so the consent still stands and the caller can continue to
+  the tenant proof, which verifies the tenant from a signed ID token.
+  """
+  def entra_service_principal_exists_tenant("AADSTS650051" <> _ = description) do
+    case Regex.run(~r/for the tenant ([0-9a-f-]{36})/i, description, capture: :all_but_first) do
+      [tenant_id] -> {:ok, tenant_id}
+      _ -> :error
+    end
+  end
+
+  def entra_service_principal_exists_tenant(_description), do: :error
+
+  @doc """
   Returns whether the verified Entra identity has a tenant-wide role authorized
   to approve Firezone's setup. Role IDs must come from a signature-verified token.
   """
