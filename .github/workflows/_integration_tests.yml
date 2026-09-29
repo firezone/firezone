@@ -158,7 +158,7 @@ jobs:
           - script: dns-portal-down
           - script: dns-nm
           - script: dns-two-resources
-          - script: static-device-pool
+          - script: device-pool
             extra_services: client-2
             min_client_version: 1.5.9
           - name: dns-systemd-resolved

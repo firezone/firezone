@@ -2793,11 +2793,11 @@ defmodule Portal.Repo.Seeds do
         allow_email_otp_sign_in: true
       })
 
-    {:ok, service_account_actor} =
+    {:ok, primary_client_actor} =
       Repo.insert(%Actor{
         account_id: account.id,
         type: :service_account,
-        name: "Backup Manager"
+        name: "CI Primary Client"
       })
 
     {:ok, pool_member_actor} =
@@ -3052,11 +3052,11 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_token =
+    primary_client_token =
       %ClientToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
-        account_id: service_account_actor.account_id,
-        actor_id: service_account_actor.id,
+        account_id: primary_client_actor.account_id,
+        actor_id: primary_client_actor.id,
         secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
         secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5",
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
@@ -3086,8 +3086,8 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_actor_encoded_token =
-      "n" <> Authentication.encode_fragment!(service_account_token)
+    primary_client_encoded_token =
+      "n" <> Authentication.encode_fragment!(primary_client_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"
@@ -3105,7 +3105,7 @@ defmodule Portal.Repo.Seeds do
       )
     end
 
-    IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
+    IO.puts("  #{primary_client_actor.name} token: #{primary_client_encoded_token}")
     IO.puts("")
 
     seed_device_pool_load(account, admin_subject, everyone_group)
@@ -3230,7 +3230,7 @@ defmodule Portal.Repo.Seeds do
           firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
-          # Pinned so the static-device-pool test can target a known tun IP.
+          # Pinned so the device-pool test can target a known tun IP.
           ipv4: "100.64.0.2",
           ipv6: "fd00:2021:1111::2"
         },
@@ -3265,7 +3265,7 @@ defmodule Portal.Repo.Seeds do
     all_actors = [
       unprivileged_actor,
       admin_actor,
-      service_account_actor | other_actors
+      primary_client_actor | other_actors
     ]
 
     actor_ids = Enum.map(all_actors, & &1.id)
@@ -3407,11 +3407,11 @@ defmodule Portal.Repo.Seeds do
     }
     |> Repo.insert!()
 
-    # Add service account (Backup Manager) to synced group
+    # Add service account (CI Primary Client) to synced group
     %Membership{
       group_id: synced_group.id,
-      actor_id: service_account_actor.id,
-      account_id: service_account_actor.account_id
+      actor_id: primary_client_actor.id,
+      account_id: primary_client_actor.account_id
     }
     |> Repo.insert!()
 
@@ -3788,8 +3788,8 @@ defmodule Portal.Repo.Seeds do
       create_resource(
         %{
           type: :device_pool,
-          name: "CI Static Pool",
-          address_description: "CI integration test static device pool",
+          name: "CI Pool",
+          address_description: "CI integration test device pool",
           device_membership_criteria:
             Portal.Resource.DeviceMembershipCriteria.devices([pool_member_device.id]),
           filters: []
@@ -3980,7 +3980,7 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To CI Static Pool",
+          description: "All Access To CI Pool",
           # synced_group, not everyone_group: service accounts don't auto-join Everyone.
           group_id: synced_group.id,
           resource_id: pool_resource.id
@@ -4099,7 +4099,7 @@ defmodule Portal.Repo.Seeds do
         )
     }
 
-    seed_audit_logs(account, subjects, service_account_actor, api_token_id)
+    seed_audit_logs(account, subjects, primary_client_actor, api_token_id)
 
     # Last, so the fleet's auto-assigned tunnel addresses cannot collide with
     # the hand-picked ones the Clients and Gateways above are seeded with.
