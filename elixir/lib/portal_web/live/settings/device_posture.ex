@@ -638,7 +638,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
       />
@@ -650,12 +650,12 @@ defmodule PortalWeb.Settings.DevicePosture do
               <h2 class="text-xs font-semibold text-heading">Posture Providers</h2>
               <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
             </div>
-            <.link
+            <Navigation.link
               patch={~p"/#{@account}/settings/device_posture/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-            </.link>
+              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+            </Navigation.link>
           </div>
 
           <div class="flex-1 overflow-auto">
@@ -663,7 +663,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               <div class="flex items-center justify-center h-full">
                 <div class="flex flex-col items-center gap-3 py-16">
                   <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+                    <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
                   </div>
                   <div class="text-center">
                     <p class="text-sm font-medium text-heading">No posture providers yet</p>
@@ -671,12 +671,12 @@ defmodule PortalWeb.Settings.DevicePosture do
                       Add a posture provider to allow device health checks before granting access.
                     </p>
                   </div>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/device_posture/new"}
                     class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                   >
-                    <.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-                  </.link>
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+                  </Navigation.link>
                 </div>
               </div>
             <% else %>
@@ -732,47 +732,47 @@ defmodule PortalWeb.Settings.DevicePosture do
           :if={@live_action == :select_type and is_nil(@interest_provider)}
           class="flex flex-col h-full overflow-hidden"
         >
-          <.panel_header title="Select Provider Type" variant="plain" />
+          <Form.panel_header title="Select Provider Type" variant="plain" />
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <p class="mb-4 text-xs text-subtle">
               Select the provider that manages your devices:
             </p>
             <ul class="flex flex-col gap-2">
               <li>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/device_posture/intune/new"}
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider="intune" size="xl" />
+                    <Core.provider_icon provider="intune" size="xl" />
                     <span class="text-sm font-medium text-heading">Microsoft Intune</span>
                   </span>
                   <span class="text-xs text-body">
                     Sync managed devices from a Microsoft Intune tenant.
                   </span>
-                </.link>
+                </Navigation.link>
               </li>
               <li>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/device_posture/iru/new"}
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider="iru" size="xl" />
+                    <Core.provider_icon provider="iru" size="xl" />
                     <span class="text-sm font-medium text-heading">Iru</span>
                   </span>
                   <span class="text-xs text-body">
                     Sync devices and posture from an Iru (formerly Kandji) tenant.
                   </span>
-                </.link>
+                </Navigation.link>
               </li>
               <li>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/device_posture/defender/new"}
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider="defender" size="xl" />
+                    <Core.provider_icon provider="defender" size="xl" />
                     <span class="text-sm font-medium text-heading">
                       Microsoft Defender for Endpoint
                     </span>
@@ -780,35 +780,35 @@ defmodule PortalWeb.Settings.DevicePosture do
                   <span class="text-xs text-body">
                     Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
                   </span>
-                </.link>
+                </Navigation.link>
               </li>
               <li>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/device_posture/santa/new"}
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider="santa" size="xl" />
+                    <Core.provider_icon provider="santa" size="xl" />
                     <span class="text-sm font-medium text-heading">Santa</span>
                   </span>
                   <span class="text-xs text-body">
                     Sync Santa hosts from North Pole Security Workshop.
                   </span>
-                </.link>
+                </Navigation.link>
               </li>
               <li>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/device_posture/sentinelone/new"}
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider="sentinelone" size="xl" />
+                    <Core.provider_icon provider="sentinelone" size="xl" />
                     <span class="text-sm font-medium text-heading">SentinelOne</span>
                   </span>
                   <span class="text-xs text-body">
                     Sync endpoint agents and posture from a SentinelOne tenant.
                   </span>
-                </.link>
+                </Navigation.link>
               </li>
               <li :for={provider <- @coming_soon_providers}>
                 <button
@@ -820,7 +820,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                   class={select_type_classes()}
                 >
                   <span class="flex items-center gap-3 w-2/5 shrink-0">
-                    <.provider_icon provider={provider.type} size="xl" />
+                    <Core.provider_icon provider={provider.type} size="xl" />
                     <span class="text-sm font-medium text-heading">{provider.title}</span>
                   </span>
                   <span class="text-xs text-body text-left">{provider.description}</span>
@@ -843,12 +843,12 @@ defmodule PortalWeb.Settings.DevicePosture do
                 class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                 title="Back"
               >
-                <.icon name="ri-arrow-left-line" class="w-4 h-4" />
+                <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
               </button>
-              <.provider_icon provider={@interest_provider.type} size="sm" />
+              <Core.provider_icon provider={@interest_provider.type} size="sm" />
               <h2 class="text-sm font-semibold text-heading">{@interest_provider.title}</h2>
             </div>
-            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
 
           <div class="flex-1 overflow-y-auto px-5 py-6">
@@ -867,7 +867,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                 class="mt-6 rounded border border-success/30 bg-success-light p-4 text-sm text-success"
               >
                 <div class="flex items-center gap-2 font-medium">
-                  <.icon name="ri-checkbox-circle-line" class="size-4" />
+                  <Core.icon name="ri-checkbox-circle-line" class="size-4" />
                   Thanks for your feedback!
                 </div>
               </div>
@@ -878,7 +878,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                 phx-submit="submit_interest_feedback"
                 class="mt-6 space-y-3"
               >
-                <.input
+                <Form.input
                   id="posture-provider-feedback"
                   name="feedback[message]"
                   type="textarea"
@@ -889,7 +889,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                   errors={List.wrap(@feedback_error)}
                 />
                 <div class="flex justify-end">
-                  <.button type="submit" style="primary">Send feedback</.button>
+                  <Form.button type="submit" style="primary">Send feedback</Form.button>
                 </div>
               </form>
             </div>
@@ -899,22 +899,22 @@ defmodule PortalWeb.Settings.DevicePosture do
         <div :if={@live_action in [:new, :edit] and @form} class="flex flex-col h-full overflow-hidden">
           <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
             <div class="flex items-center gap-2">
-              <.link
+              <Navigation.link
                 :if={@live_action == :new}
                 patch={~p"/#{@account}/settings/device_posture/new"}
                 class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                 title="Back"
               >
-                <.icon name="ri-arrow-left-line" class="w-4 h-4" />
-              </.link>
-              <.provider_icon provider={@type} size="sm" />
+                <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+              </Navigation.link>
+              <Core.provider_icon provider={@type} size="sm" />
               <h2 class="text-sm font-semibold text-heading">
                 {if @live_action == :new,
                   do: "Add #{provider_title(@type)}",
                   else: "Edit #{provider_title(@type)}"}
               </h2>
             </div>
-            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
 
           <div class="flex-1 overflow-y-auto px-5 py-4">
@@ -928,7 +928,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
 
           <div class="shrink-0 flex items-center justify-between gap-2 px-5 py-4 border-t border-border">
-            <.button
+            <Form.button
               :if={@live_action == :edit}
               type="button"
               style="danger"
@@ -937,17 +937,17 @@ defmodule PortalWeb.Settings.DevicePosture do
               data-confirm="Delete this provider and all devices synced from it?"
             >
               Delete
-            </.button>
+            </Form.button>
             <div class="ml-auto flex items-center gap-2">
-              <.button type="button" phx-click="close_panel">Cancel</.button>
-              <.button
+              <Form.button type="button" phx-click="close_panel">Cancel</Form.button>
+              <Form.button
                 form="device-posture-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 {if @live_action == :new, do: "Create", else: "Save"}
-              </.button>
+              </Form.button>
             </div>
           </div>
         </div>
@@ -996,7 +996,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               <tr class="border-b border-border">
                 <td class="px-6 py-3">
                   <div class="flex items-center gap-3">
-                    <.provider_icon provider="intune" size="lg" />
+                    <Core.provider_icon provider="intune" size="lg" />
                     <div class="min-w-0">
                       <span class="text-sm font-medium text-heading truncate block">
                         Microsoft Intune
@@ -1006,7 +1006,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </div>
                 </td>
                 <td class="px-6 py-3 w-28">
-                  <.status_badge style={:success}>Active</.status_badge>
+                  <Core.status_badge style={:success}>Active</Core.status_badge>
                 </td>
                 <td class="px-6 py-3 w-48">
                   <span class="text-sm text-body font-mono truncate block">
@@ -1020,7 +1020,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               <tr class="border-b border-border">
                 <td class="px-6 py-3">
                   <div class="flex items-center gap-3">
-                    <.provider_icon provider="iru" size="lg" />
+                    <Core.provider_icon provider="iru" size="lg" />
                     <div class="min-w-0">
                       <span class="text-sm font-medium text-heading truncate block">
                         Iru
@@ -1030,7 +1030,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </div>
                 </td>
                 <td class="px-6 py-3 w-28">
-                  <.status_badge style={:success}>Active</.status_badge>
+                  <Core.status_badge style={:success}>Active</Core.status_badge>
                 </td>
                 <td class="px-6 py-3 w-48">
                   <span class="text-sm text-body font-mono truncate block">acme</span>
@@ -1045,7 +1045,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
         <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
           <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-            <.icon name="ri-shield-star-fill" class="w-8 h-8" />
+            <Core.icon name="ri-shield-star-fill" class="w-8 h-8" />
             <div class="flex flex-col items-center gap-1 text-center">
               <p class="text-sm font-medium text-heading">
                 Device Posture
@@ -1054,13 +1054,13 @@ defmodule PortalWeb.Settings.DevicePosture do
                 Restrict access to resources based on device telemetry provided by MDM and EDR solutions
               </p>
             </div>
-            <.button
+            <Form.button
               style="primary"
               icon="ri-sparkling-fill"
               navigate={~p"/#{@account}/settings/account"}
             >
               Upgrade to Unlock
-            </.button>
+            </Form.button>
           </div>
         </div>
       </div>
@@ -1077,7 +1077,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     <tr class="border-b border-border hover:bg-raised">
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon provider={@provider.type} size="lg" />
+          <Core.provider_icon provider={@provider.type} size="lg" />
           <div class="min-w-0">
             <span class="text-sm font-medium text-heading truncate block" title={@provider.name}>
               {@provider.name}
@@ -1099,26 +1099,26 @@ defmodule PortalWeb.Settings.DevicePosture do
       </td>
       <td class="px-6 py-3 w-40">
         <span :if={@provider.synced_at} class="text-xs text-body">
-          <.relative_datetime datetime={@provider.synced_at} />
+          <Core.relative_datetime datetime={@provider.synced_at} />
         </span>
         <span :if={is_nil(@provider.synced_at)} class="text-xs text-subtle">Never</span>
       </td>
       <td class="px-6 py-3 w-14">
         <div class="flex justify-end">
-          <.actions_dropdown
+          <Core.actions_dropdown
             open={@open_actions_id == @provider.id}
             close_event="close_provider_actions"
             phx-click="toggle_provider_actions"
             phx-value-id={@provider.id}
           >
-            <.link
+            <Navigation.link
               patch={
                 ~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"
               }
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-            </.link>
+              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+            </Navigation.link>
             <button
               type="button"
               phx-click="sync"
@@ -1126,17 +1126,17 @@ defmodule PortalWeb.Settings.DevicePosture do
               disabled={@provider.is_disabled}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
             </button>
             <div class="my-1 border-t border-border"></div>
-            <.link
+            <Navigation.link
               :if={@provider.is_disabled and @provider.disabled_reason == "Sync error"}
               patch={~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
-            </.link>
+            </Navigation.link>
             <button
               :if={not (@provider.is_disabled and @provider.disabled_reason == "Sync error")}
               type="button"
@@ -1144,13 +1144,13 @@ defmodule PortalWeb.Settings.DevicePosture do
               phx-value-id={@provider.id}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon
+              <Core.icon
                 name={if @provider.is_disabled, do: "ri-play-line", else: "ri-pause-line"}
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @provider.is_disabled, do: "Enable", else: "Disable"}
             </button>
-          </.actions_dropdown>
+          </Core.actions_dropdown>
         </div>
       </td>
     </tr>
@@ -1181,7 +1181,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     assigns = assign(assigns, style: style, label: label)
 
     ~H"""
-    <.status_badge style={@style}>{@label}</.status_badge>
+    <Core.status_badge style={@style}>{@label}</Core.status_badge>
     """
   end
 
@@ -1201,10 +1201,10 @@ defmodule PortalWeb.Settings.DevicePosture do
       phx-submit="submit"
       class="space-y-5"
     >
-      <.input field={@form[:name]} type="text" label="Name" autocomplete="off" />
+      <Form.input field={@form[:name]} type="text" label="Name" autocomplete="off" />
 
       <div :if={@type == "iru"}>
-        <.input
+        <Form.input
           field={@form[:region]}
           type="select"
           label="Region"
@@ -1217,7 +1217,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       </div>
 
       <div :if={@type == "santa"}>
-        <.input
+        <Form.input
           field={@form[:api_url]}
           type="url"
           label="Workshop URL"
@@ -1235,7 +1235,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
           API Key <span class="text-error">*</span>
         </label>
-        <.input
+        <Form.input
           field={@form[:api_key]}
           value={typed_api_key(@form)}
           type="password"
@@ -1252,7 +1252,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       </div>
 
       <div :if={@type == "sentinelone"}>
-        <.input
+        <Form.input
           field={@form[:management_url]}
           type="text"
           label="Management URL"
@@ -1271,7 +1271,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         <label for={@form[:api_token].id} class="block text-xs font-medium text-body mb-1.5">
           API Token <span class="text-error">*</span>
         </label>
-        <.input
+        <Form.input
           field={@form[:api_token]}
           value={typed_api_token(@form)}
           type="password"
@@ -1295,7 +1295,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       </div>
 
       <div :if={@type == "iru"}>
-        <.input
+        <Form.input
           field={@form[:subdomain]}
           type="text"
           label="Subdomain"
@@ -1314,7 +1314,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         <label for={@form[:api_token].id} class="block text-xs font-medium text-body mb-1.5">
           API Token <span class="text-error">*</span>
         </label>
-        <.input
+        <Form.input
           field={@form[:api_token]}
           value={typed_api_token(@form)}
           type="password"
@@ -1355,9 +1355,9 @@ defmodule PortalWeb.Settings.DevicePosture do
       </div>
 
       <div id="provider-verification" class="p-4 border border-border bg-raised rounded">
-        <.flash :if={@verification_error} kind={:error}>
+        <Core.flash :if={@verification_error} kind={:error}>
           {@verification_error}
-        </.flash>
+        </Core.flash>
         <div class="flex items-center justify-between">
           <div class="flex-1">
             <h3 class="text-sm font-semibold text-heading">Provider Verification</h3>
@@ -1403,10 +1403,10 @@ defmodule PortalWeb.Settings.DevicePosture do
         id="provider-verification-status"
         class="flex items-center text-success bg-success-light px-4 py-2 rounded-sm"
       >
-        <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
+        <Core.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
         <span class="font-medium">Verified</span>
       </div>
-      <.button
+      <Form.button
         :if={not @verified? and not @verifying}
         id="provider-verification-button"
         type="button"
@@ -1417,10 +1417,10 @@ defmodule PortalWeb.Settings.DevicePosture do
         phx-click="start_verification"
       >
         Verify Now
-      </.button>
-      <.button :if={not @verified? and @verifying} type="button" style="primary" disabled>
+      </Form.button>
+      <Form.button :if={not @verified? and @verifying} type="button" style="primary" disabled>
         Verifying...
-      </.button>
+      </Form.button>
     </div>
     """
   end

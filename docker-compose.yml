@@ -17,7 +17,7 @@ x-health-check: &health-check
   retries: 15
   timeout: 1s
 
-# Shared by the client-2 container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID).
+# Shared by the pool-member container (FIREZONE_ID) and the seeds (POOL_MEMBER_FIREZONE_ID).
 x-pool-member-firezone-id: &pool-member-firezone-id "68511a32d29b4c81591877beea18d3c95e4d12c52314b1aa2f5a568eccc0e6ad"
 
 services:
@@ -118,7 +118,7 @@ services:
         condition: "service_healthy"
 
   # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
-  client-1:
+  primary-client:
     extends:
       file: scripts/compose/client.yml
       service: client
@@ -139,14 +139,14 @@ services:
 
         exec firezone-headless-client
     depends_on:
-      client-1-router:
+      primary-client-router:
         condition: "service_healthy"
     networks:
-      client-1-internal:
+      primary-client-internal:
         ipv4_address: 172.30.0.100
         ipv6_address: 172:30:0::100
 
-  client-1-router:
+  primary-client-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -154,7 +154,7 @@ services:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
       NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
-      client-1-internal:
+      primary-client-internal:
         ipv4_address: 172.30.0.254
         ipv6_address: 172:30:0::254
         interface_name: internal
@@ -162,16 +162,16 @@ services:
         interface_name: internet
 
   # One-shot secnetperf client for QUIC performance tests. Shares the network
-  # namespace of `client-1` so its traffic is routed through the tunnel.
+  # namespace of `primary-client` so its traffic is routed through the tunnel.
   # Run with `docker compose run --rm secnetperf-client secnetperf -target:...`.
   secnetperf-client:
     image: ghcr.io/firezone/secnetperf:v2.6.0
-    network_mode: service:client-1
+    network_mode: service:primary-client
     depends_on:
-      client-1:
+      primary-client:
         condition: "service_healthy"
 
-  client-2:
+  pool-member:
     extends:
       file: scripts/compose/client.yml
       service: client
@@ -192,14 +192,14 @@ services:
 
         exec firezone-headless-client
     depends_on:
-      client-2-router:
+      pool-member-router:
         condition: "service_healthy"
     networks:
-      client-2-internal:
+      pool-member-internal:
         ipv4_address: 172.32.0.100
         ipv6_address: 172:32:0::100
 
-  client-2-router:
+  pool-member-router:
     extends:
       file: scripts/compose/router.yml
       service: router
@@ -207,7 +207,7 @@ services:
       MASQUERADE_TYPE: ${POOL_MEMBER_MASQUERADE:-}
       NETWORK_LATENCY_MS: "${EDGE_ROUTER_LATENCY_MS:-}"
     networks:
-      client-2-internal:
+      pool-member-internal:
         ipv4_address: 172.32.0.254
         ipv6_address: 172:32:0::254
         interface_name: internal
@@ -485,14 +485,14 @@ networks:
         - subnet: 172.29.2.0/24
         - subnet: 172:29:2::/64
 
-  client-1-internal:
+  primary-client-internal:
     enable_ipv6: true
     ipam:
       config:
         - subnet: 172.30.0.0/24
         - subnet: 172:30:0::/64
 
-  client-2-internal:
+  pool-member-internal:
     enable_ipv6: true
     ipam:
       config:

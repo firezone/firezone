@@ -13,7 +13,7 @@ defmodule PortalWeb do
   on imports, uses and aliases.
 
   Do NOT define functions inside the quoted expressions
-  below. Instead, define additional modules and import
+  below. Instead, define additional modules and alias
   those modules here.
   """
 
@@ -56,7 +56,7 @@ defmodule PortalWeb do
       use Phoenix.LiveView,
         layout: Keyword.get(unquote(opts), :layout, {PortalWeb.Layouts, :app})
 
-      import PortalWeb.LiveTable
+      alias PortalWeb.LiveTable
 
       unquote(html_helpers())
 
@@ -147,14 +147,8 @@ defmodule PortalWeb do
   def components do
     quote do
       use Gettext, backend: PortalWeb.Gettext
-      import PortalWeb.AuthorizationComponents
-      import PortalWeb.CoreComponents
-      import PortalWeb.NavigationComponents
-      import PortalWeb.FormComponents
-      import PortalWeb.TableComponents
-      import PortalWeb.PageComponents
-      import PortalWeb.JSONComponents
-      import PortalWeb.ResourceTypeComponents
+      alias PortalWeb.Components.{Authorization, Core, Form, Navigation, Page, ResourceType, Table}
+      alias PortalWeb.Components.JSON, as: JSONView
     end
   end
 

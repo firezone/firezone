@@ -36,6 +36,8 @@
     let connectedDevices: [ConnectedDevice]
     let favorites: [String]
     let providerLogFolderSize: Int64
+    /// Bytes of random data the app's log directory holds on top of its fixed lines.
+    let appLogFolderSize: Int?
 
     enum VPNStatus: String, Decodable, Sendable {
       case invalid
@@ -180,6 +182,9 @@
 
       seedConfiguration(with: scenario)
 
+      let logDirectory =
+        logDirectory ?? MockFixtures.makeLogDirectory(randomBytes: scenario.appLogFolderSize ?? 0)
+
       let session = MockTunnelSession(
         status: scenario.vpnStatus.status,
         resources: scenario.resources,
@@ -201,14 +206,14 @@
           updateChecker: MockUpdateChecker(),
           tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+          logDirectory: logDirectory
         )
       #else
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
-          logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
+          logDirectory: logDirectory
         )
       #endif
     }
@@ -354,7 +359,7 @@
             // The observer runs on the main queue, whatever the compiler can see of it.
             nonisolated(unsafe) let menu = notification.object as? NSMenu
 
-            MainActor.assumeIsolated { menu?.appearance = appearance }
+            MainActor.assumeIsolated { menu?.appearance = NSApplication.shared.appearance }
           })
       }
 
@@ -446,7 +451,11 @@
   private enum MockFixtures {
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.
-    static func makeLogDirectory() -> URL {
+    ///
+    /// `randomBytes` of random data, in files of 20 MB, go into the subfolders a real
+    /// log directory has. Random data does not compress, so an archive of it stays as
+    /// large and takes as long to write as one of real logs that size.
+    static func makeLogDirectory(randomBytes: Int) -> URL {
       let fileManager = FileManager.default
       let directory = fileManager.temporaryDirectory
         .appendingPathComponent("firezone-mock-logs-\(UUID().uuidString)")
@@ -457,11 +466,26 @@
           .write(to: directory.appendingPathComponent("app.log"))
         try Data("2026-01-01T00:00:00 DEBUG Tunnel interface is up\n".utf8)
           .write(to: directory.appendingPathComponent("connlib.log"))
+        try fill(directory, withRandomBytes: randomBytes)
       } catch {
         Log.warning("MockFixtures: failed to seed the log directory: \(error)")
       }
 
       return directory
+    }
+
+    private static func fill(_ directory: URL, withRandomBytes count: Int) throws {
+      let fileSize = 20_000_000
+      let folders = ["app", "connlib", "tunnel"]
+
+      for index in 0..<count / fileSize {
+        let folder = directory.appendingPathComponent(folders[index % folders.count])
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+
+        var data = Data(count: fileSize)
+        data.withUnsafeMutableBytes { arc4random_buf($0.baseAddress, $0.count) }
+        try data.write(to: folder.appendingPathComponent("\(index).log"))
+      }
     }
   }
 #endif

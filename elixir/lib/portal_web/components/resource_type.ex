@@ -1,4 +1,4 @@
-defmodule PortalWeb.ResourceTypeComponents do
+defmodule PortalWeb.Components.ResourceType do
   @moduledoc """
   How a resource's type is labelled and badged.
 

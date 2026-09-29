@@ -1,7 +1,7 @@
 defmodule PortalWeb.Logs.APIRequestLogs do
   use PortalWeb, :live_view
 
-  import PortalWeb.Logs.Components
+  alias PortalWeb.Logs.Components, as: LogComponents
 
   alias __MODULE__.Database
 
@@ -9,14 +9,14 @@ defmodule PortalWeb.Logs.APIRequestLogs do
   @filter_key "api_request_logs_filter"
 
   def mount(_params, _session, socket) do
-    browser_tz = browser_tz_from_connect(socket)
+    browser_tz = LogComponents.browser_tz_from_connect(socket)
 
     socket =
       socket
       |> assign(page_title: "API Request Logs")
       |> assign(selected_log: nil, browser_tz: browser_tz)
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
-      |> assign_live_table(@table_id,
+      |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:api_request_logs, :inserted_at}, {:api_request_logs, :log_id}],
         callback: &handle_logs_update!/2
@@ -32,8 +32,8 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       ) do
     socket =
       socket
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     case Database.fetch_log(log_id, socket.assigns.subject) do
       {:ok, row} ->
@@ -57,15 +57,15 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     socket =
       socket
       |> assign(selected_log: nil)
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     {:noreply, socket}
   end
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
     {:noreply,
@@ -96,10 +96,10 @@ defmodule PortalWeb.Logs.APIRequestLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.logs_nav account={@account} current_path={@current_path} />
+      <Navigation.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="api_request_logs"
           rows={@api_request_logs}
           row_id={&"api-request-log-#{&1.log.log_id}"}
@@ -126,7 +126,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             label="Timestamp"
             class="w-44"
           >
-            <.timestamp_cell
+            <LogComponents.timestamp_cell
               log_id={row.log.log_id}
               timestamp={row.log.inserted_at}
               tz_mode={@tz_mode}
@@ -153,7 +153,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             <.client_display user_agent={row.log.user_agent} />
           </:col>
           <:col :let={row} label="IP" class="w-32">
-            <.ip_cell ip={row.log.ip} />
+            <LogComponents.ip_cell ip={row.log.ip} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
             <span class="block truncate text-xs text-body">
@@ -163,7 +163,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-terminal-box-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-terminal-box-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No API requests</p>
@@ -174,12 +174,12 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             </div>
           </:empty>
           <:footer>
-            <.log_sinks_notice account={@account} />
+            <LogComponents.log_sinks_notice account={@account} />
           </:footer>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.show_panel id="api-request-log-panel" open?={not is_nil(@selected_log)}>
+      <LogComponents.show_panel id="api-request-log-panel" open?={not is_nil(@selected_log)}>
         <:title>
           <%= if @selected_log do %>
             <.method_badge method={@selected_log.log.method} />
@@ -189,7 +189,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           <% end %>
         </:title>
         <div :if={@selected_log} class="flex-1 flex flex-col min-h-0 overflow-auto p-5 gap-4">
-          <.actor_card
+          <LogComponents.actor_card
             name={@selected_log.actor && @selected_log.actor.name}
             email={@selected_log.actor && @selected_log.actor.email}
             type={@selected_log.actor && @selected_log.actor.type}
@@ -224,11 +224,11 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
-            <.location_map lat={@selected_log.log.ip_lat} lon={@selected_log.log.ip_lon}>
+            <LogComponents.location_map lat={@selected_log.log.ip_lat} lon={@selected_log.log.ip_lon}>
               <:caption>
                 <div class="flex items-center justify-between gap-2 text-xs">
                   <div class="flex items-center gap-2 min-w-0">
-                    <.icon
+                    <Core.icon
                       name="ri-map-pin-line"
                       class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
@@ -239,7 +239,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
                       :if={@selected_log.log.ip}
                       class="font-mono text-[10px] text-subtle shrink-0"
                     >
-                      · {format_ip(@selected_log.log.ip)}
+                      · {LogComponents.format_ip(@selected_log.log.ip)}
                     </span>
                   </div>
                   <span
@@ -254,73 +254,73 @@ defmodule PortalWeb.Logs.APIRequestLogs do
                   </span>
                 </div>
               </:caption>
-            </.location_map>
+            </LogComponents.location_map>
           </section>
         </div>
-        <.show_panel_sidebar :if={@selected_log}>
+        <LogComponents.show_panel_sidebar :if={@selected_log}>
           <section>
-            <.section_heading label="Details" />
+            <LogComponents.section_heading label="Details" />
             <dl class="space-y-2.5">
-              <.detail_row label="Timestamp">
-                <.timestamp_cell
+              <LogComponents.detail_row label="Timestamp">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-timestamp"
                   log_id={@selected_log.log.log_id}
                   timestamp={@selected_log.log.inserted_at}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
-              <.detail_row label="Log ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Log ID">
                 <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.log_id}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Identifiers" />
+            <LogComponents.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
-              <.detail_row label="Actor ID">
+              <LogComponents.detail_row label="Actor ID">
                 <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.actor_id}
                 </span>
-              </.detail_row>
-              <.detail_row label="Token ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Token ID">
                 <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.api_token_id}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
           <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Source" />
+            <LogComponents.section_heading label="Source" />
             <dl class="space-y-2.5">
-              <.detail_row :if={@selected_log.log.ip_city} label="City">
+              <LogComponents.detail_row :if={@selected_log.log.ip_city} label="City">
                 <span class="text-xs text-heading">
                   {@selected_log.log.ip_city}
                 </span>
-              </.detail_row>
-              <.detail_row :if={@selected_log.log.ip_region} label="Region">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_log.log.ip_region} label="Region">
                 <span class="text-xs text-heading">
                   {Portal.Geo.country_common_name!(@selected_log.log.ip_region) ||
                     @selected_log.log.ip_region}
                 </span>
-              </.detail_row>
-              <.detail_row :if={@selected_log.log.user_agent} label="User agent">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_log.log.user_agent} label="User agent">
                 <span class="font-mono text-xs text-body break-all">
                   {@selected_log.log.user_agent}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
-        </.show_panel_sidebar>
-      </.show_panel>
+        </LogComponents.show_panel_sidebar>
+      </LogComponents.show_panel>
     </div>
     """
   end
@@ -367,7 +367,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
 
     ~H"""
     <div class="flex items-center gap-2 text-xs text-body" title={@user_agent}>
-      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
       <span class="truncate">{@label}</span>
     </div>
     """
@@ -379,7 +379,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     assigns = assign(assigns, :type, method_badge_type(method))
 
     ~H"""
-    <.badge type={@type} class="uppercase font-mono">{@method}</.badge>
+    <Core.badge type={@type} class="uppercase font-mono">{@method}</Core.badge>
     """
   end
 

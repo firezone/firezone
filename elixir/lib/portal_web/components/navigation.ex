@@ -1,7 +1,41 @@
-defmodule PortalWeb.NavigationComponents do
+defmodule PortalWeb.Components.Navigation do
   use Phoenix.Component
+  import Phoenix.Component, except: [link: 1]
   use PortalWeb, :verified_routes
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
+
+  @doc """
+  Renders a Phoenix link with the default text-link styling.
+
+  Supply `class` to replace the default styling for buttons, navigation items,
+  or other custom links. All navigation, method, and CSRF behavior is delegated
+  to `Phoenix.Component.link/1`.
+  """
+  attr :href, :any, default: nil
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :replace, :boolean, default: false
+  attr :method, :string, default: "get"
+  attr :csrf_token, :any, default: true
+  attr :class, :any, default: ["text-link", "hover:underline"]
+  attr :rest, :global, include: ~w(download hreflang referrerpolicy rel target type)
+
+  slot :inner_block, required: true
+
+  def link(assigns) do
+    ~H"""
+    <Phoenix.Component.link
+      href={@href}
+      navigate={@navigate}
+      patch={@patch}
+      replace={@replace}
+      method={@method}
+      csrf_token={@csrf_token}
+      class={@class}
+      {@rest}
+    >{render_slot(@inner_block)}</Phoenix.Component.link>
+    """
+  end
 
   @doc """
   Renders the top navigation bar.
@@ -43,9 +77,9 @@ defmodule PortalWeb.NavigationComponents do
             class="flex items-center justify-center p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
             aria-label="Change theme"
           >
-            <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
-            <.icon name="ri-moon-line" class="theme-icon-dark w-4 h-4" />
-            <.icon name="ri-computer-line" class="theme-icon-system w-4 h-4" />
+            <Core.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
+            <Core.icon name="ri-moon-line" class="theme-icon-dark w-4 h-4" />
+            <Core.icon name="ri-computer-line" class="theme-icon-system w-4 h-4" />
           </button>
           <div
             id="theme-dropdown"
@@ -59,9 +93,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="system"
                   class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-computer-line" class="w-4 h-4 shrink-0" />
+                  <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0" />
                   <span>System</span>
-                  <.icon name="ri-check-line" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
+                  <Core.icon name="ri-check-line" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
               <li>
@@ -71,9 +105,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="light"
                   class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-sun-line" class="w-4 h-4 shrink-0" />
+                  <Core.icon name="ri-sun-line" class="w-4 h-4 shrink-0" />
                   <span>Light</span>
-                  <.icon name="ri-check-line" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
+                  <Core.icon name="ri-check-line" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
               <li>
@@ -83,9 +117,9 @@ defmodule PortalWeb.NavigationComponents do
                   data-theme-option="dark"
                   class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-moon-line" class="w-4 h-4 shrink-0" />
+                  <Core.icon name="ri-moon-line" class="w-4 h-4 shrink-0" />
                   <span>Dark</span>
-                  <.icon name="ri-check-line" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
+                  <Core.icon name="ri-check-line" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
                 </button>
               </li>
             </ul>
@@ -94,7 +128,7 @@ defmodule PortalWeb.NavigationComponents do
         <.dropdown id="user-menu">
           <:button>
             <span class="sr-only">Open user menu</span>
-            <.avatar actor={@subject.actor} size={25} class="rounded-full" />
+            <Core.avatar actor={@subject.actor} size={25} class="rounded-full" />
           </:button>
           <:dropdown>
             <.subject_dropdown subject={@subject} />
@@ -313,14 +347,14 @@ defmodule PortalWeb.NavigationComponents do
             aria-hidden="true"
           >
           </span>
-          <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
+          <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
           <span
             data-sidebar-label
             class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
           >
             Settings
           </span>
-          <.new_badge class="ml-auto" data-sidebar-badge />
+          <Core.new_badge class="ml-auto" data-sidebar-badge />
         </.link>
       </div>
 
@@ -334,7 +368,7 @@ defmodule PortalWeb.NavigationComponents do
           class="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm text-body hover:text-heading hover:bg-raised transition-colors"
           title="Toggle sidebar"
         >
-          <.icon
+          <Core.icon
             name="ri-arrow-left-s-fill"
             data-sidebar-chevron
             class="w-4 h-4 shrink-0 transition-transform duration-200"
@@ -383,14 +417,14 @@ defmodule PortalWeb.NavigationComponents do
           aria-hidden="true"
         >
         </span>
-        <.icon name={@icon} class="w-4 h-4 shrink-0" />
+        <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
           class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
         >
           {render_slot(@inner_block)}
         </span>
-        <.new_badge :if={@badge} label={@badge} class="ml-auto" data-sidebar-badge />
+        <Core.new_badge :if={@badge} label={@badge} class="ml-auto" data-sidebar-badge />
       </.link>
     </li>
     """
@@ -411,7 +445,7 @@ defmodule PortalWeb.NavigationComponents do
       <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
         <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
         <div class="flex items-center gap-5">
-          <.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-brand" />
+          <Core.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-brand" />
           <div class="flex-1 min-w-0">
             <div class="flex items-start justify-between gap-4">
               <div class="min-w-0">
@@ -555,9 +589,9 @@ defmodule PortalWeb.NavigationComponents do
           "border-transparent text-body hover:text-heading hover:border-border-strong"
       ]}
     >
-      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
       {render_slot(@inner_block)}
-      <.new_badge :if={@badge} label={@badge} data-settings-tab-badge />
+      <Core.new_badge :if={@badge} label={@badge} data-settings-tab-badge />
     </.link>
     """
   end
@@ -581,7 +615,7 @@ defmodule PortalWeb.NavigationComponents do
         <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
         <div class="flex items-start gap-5">
           <div class="hidden md:block shrink-0 mt-0.5">
-            <.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
+            <Core.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
           </div>
           <div class="flex-1 min-w-0">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -656,7 +690,7 @@ defmodule PortalWeb.NavigationComponents do
           "border-transparent text-body hover:text-heading hover:border-border-strong"
       ]}
     >
-      <.icon name={@icon} class="w-4 h-4 shrink-0" />
+      <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
       {render_slot(@inner_block)}
     </.link>
     """
@@ -707,7 +741,7 @@ defmodule PortalWeb.NavigationComponents do
 
   ## Examples
 
-      <.back navigate={~p"/posts"}>Back to posts</.back>
+      <Navigation.back navigate={~p"/posts"}>Back to posts</Navigation.back>
   """
   attr :navigate, :any, required: true
   slot :inner_block, required: true
@@ -719,7 +753,7 @@ defmodule PortalWeb.NavigationComponents do
         navigate={@navigate}
         class="text-sm font-semibold leading-6 text-heading hover:text-body"
       >
-        <.icon name="ri-arrow-left-fill" class="h-3 w-3" />
+        <Core.icon name="ri-arrow-left-fill" class="h-3 w-3" />
         {render_slot(@inner_block)}
       </.link>
     </div>
@@ -731,9 +765,9 @@ defmodule PortalWeb.NavigationComponents do
 
   ## Examples
 
-    <.website_link path="/pricing">Pricing</.website_link>
-    <.website_link path="/kb/deploy/gateways">Deploy Gateway(s)</.website_link>
-    <.website_link path="/contact/sales">Contact Sales</.website_link>
+    <Navigation.website_link path="/pricing">Pricing</Navigation.website_link>
+    <Navigation.website_link path="/kb/deploy/gateways">Deploy Gateway(s)</Navigation.website_link>
+    <Navigation.website_link path="/contact/sales">Contact Sales</Navigation.website_link>
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
@@ -745,7 +779,7 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <.link
       href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
-      class={@class || link_style()}
+      class={@class || Core.link_style()}
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
@@ -758,7 +792,7 @@ defmodule PortalWeb.NavigationComponents do
 
   ## Examples
 
-    <.docs_action path="/kb/deploy/gateways">Deploy Gateway(s)</.docs_action>
+    <Navigation.docs_action path="/kb/deploy/gateways">Deploy Gateway(s)</Navigation.docs_action>
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
@@ -773,7 +807,7 @@ defmodule PortalWeb.NavigationComponents do
       rel="noopener noreferrer"
       {@rest}
     >
-      <.icon name="ri-question-line" class="mr-2 w-5 h-5 text-body hover:text-heading" />
+      <Core.icon name="ri-question-line" class="mr-2 w-5 h-5 text-body hover:text-heading" />
     </.link>
     """
   end
