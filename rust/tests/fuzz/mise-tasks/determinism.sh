@@ -8,8 +8,7 @@ cd "$(dirname "$0")/.."
 target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
-# Standalone AFL++ tools do not detect the target's deferred-forkserver marker.
-export LC_ALL=C AFL_FUZZER_LOOPCOUNT=1 __AFL_DEFER_FORKSRV=1
+export LC_ALL=C AFL_FUZZER_LOOPCOUNT=1
 unset AFL_CMIN_ALLOW_ANY AFL_CMIN_CRASHES_ONLY
 ulimit -c 0
 shopt -s nullglob
