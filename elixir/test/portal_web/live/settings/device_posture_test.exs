@@ -1444,7 +1444,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: true)
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: false)
 
-    {:ok, lv, html} =
+    {:ok, _lv, html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
     assert html =~ "Contoso Intune"
