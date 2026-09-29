@@ -107,6 +107,8 @@ fun SessionScreen(
                 .padding(innerPadding)
                 .padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp),
         ) {
+            SectionTitle(text = stringResource(R.string.resources))
+
             // The tab bar is the top-level switcher, pinned below the app bar so it stays visible and
             // accessible no matter how far the list is scrolled.
             if (hasFavorites) {
@@ -131,15 +133,9 @@ fun SessionScreen(
                 }
             }
 
-            val resourcesTitle = stringResource(R.string.resources)
             val resourceList = if (hasFavorites && effectiveTab == TAB_FAVORITES) favoriteResources else allResources
 
             LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
-                // Favourites shows just the filtered resource list, so the Resources heading only
-                // appears on the All tab.
-                if (effectiveTab == TAB_ALL) {
-                    item(key = "resources-heading") { SectionTitle(text = resourcesTitle) }
-                }
                 itemsIndexed(resourceList, key = { _, resource -> resource.id }) { index, resource ->
                     if (index > 0) HorizontalDivider()
                     ResourceRow(resource = resource, onClick = { selection = Selection.Resource(resource.id) })
