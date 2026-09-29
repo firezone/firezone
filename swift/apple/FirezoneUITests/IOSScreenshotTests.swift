@@ -115,6 +115,17 @@
       deliver(app, as: "resource-details-internet", in: appearance)
     }
 
+    func testDevicePoolDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
+      try waitFor(app.staticTexts["Devices"], on: "device-pool-details")
+      deliver(app, as: "device-pool-details", in: appearance)
+    }
+
     func testDeviceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
