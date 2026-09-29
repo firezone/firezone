@@ -7,6 +7,8 @@ pub struct Tun {
     name: String,
     outbound_tx: tun::OutboundTx,
     inbound_rx: tun::InboundRx,
+    _send: tun::Worker,
+    _recv: tun::Worker,
     _fd: OwnedFd,
 }
 
@@ -52,29 +54,27 @@ impl Tun {
             ],
         ));
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx, write),
-                    "Failed to send to TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
-                    "Failed to recv from TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
+        let _guard = runtime.enter(); // `tun::Worker::spawn` may resolve the ambient runtime.
+
+        let send = tun::Worker::spawn("TUN send", async move {
+            logging::unwrap_or_warn!(
+                tun::unix::tun_send(fd, outbound_rx, write).await,
+                "Failed to send to TUN device: {}"
+            )
+        })?;
+        let recv = tun::Worker::spawn("TUN recv", async move {
+            logging::unwrap_or_warn!(
+                tun::unix::tun_recv(fd, inbound_tx, read).await,
+                "Failed to recv from TUN device: {}"
+            )
+        })?;
 
         Ok(Tun {
             name,
             outbound_tx,
             inbound_rx,
+            _send: send,
+            _recv: recv,
             _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
         })
     }

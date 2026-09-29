@@ -35,7 +35,7 @@ mod utils;
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
+pub use sockets::UdpSocketTaskStopped;
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].

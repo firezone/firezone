@@ -266,8 +266,7 @@ fn run_service(arguments: Vec<OsString>) {
         return;
     }
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
+    let rt = io_runtime::main_runtime_builder()
         .thread_name("connlib")
         .enable_all()
         .build()

@@ -30,6 +30,8 @@ pub struct Tun {
     name: String,
     outbound_tx: tun::OutboundTx,
     inbound_rx: tun::InboundRx,
+    _send: tun::Worker,
+    _recv: tun::Worker,
 }
 
 /// Finds the `utun` descriptor the NetworkExtension opened for this process.
@@ -79,29 +81,27 @@ impl Tun {
             ],
         ));
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::apple::send(fd, outbound_rx),
-                    "Failed to send to TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::apple::recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
+        let _guard = runtime.enter(); // `tun::Worker::spawn` may resolve the ambient runtime.
+
+        let send = tun::Worker::spawn("TUN send", async move {
+            logging::unwrap_or_warn!(
+                tun::apple::send(fd, outbound_rx).await,
+                "Failed to send to TUN device: {}"
+            )
+        })?;
+        let recv = tun::Worker::spawn("TUN recv", async move {
+            logging::unwrap_or_warn!(
+                tun::apple::recv(fd, inbound_tx).await,
+                "Failed to recv from TUN device: {}"
+            )
+        })?;
 
         Ok(Tun {
             name,
             outbound_tx,
             inbound_rx,
+            _send: send,
+            _recv: recv,
         })
     }
 }

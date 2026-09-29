@@ -25,7 +25,7 @@ pub use platform::TunDeviceManager;
 /// Dropping closes the channels and then joins both workers. Platform state
 /// that the workers additionally need released in order to exit (e.g. the
 /// WinTUN session) must be released before this drops.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 pub(crate) struct TunWorkers {
     state: Option<WorkerState>,
 
@@ -33,13 +33,13 @@ pub(crate) struct TunWorkers {
     recv_thread: Option<std::thread::JoinHandle<()>>,
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 struct WorkerState {
     outbound_tx: tun::OutboundTx,
     inbound_rx: tun::InboundRx,
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 impl TunWorkers {
     /// Spawns the send and recv worker threads for a TUN device.
     ///
@@ -100,7 +100,7 @@ impl TunWorkers {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "windows")]
 impl Drop for TunWorkers {
     fn drop(&mut self) {
         use std::time::{Duration, Instant};

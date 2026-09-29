@@ -30,6 +30,7 @@ futures = { workspace = true }
 gui-ipc = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
+io-runtime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 keyring-core = { workspace = true }

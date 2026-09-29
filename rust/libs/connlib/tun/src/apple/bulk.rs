@@ -25,7 +25,7 @@ const EMPTY_IOVEC: iovec = iovec {
 };
 
 /// Sends batches of packets from `outbound_rx` to the TUN device.
-pub fn send(
+pub async fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
     mut outbound_rx: crate::OutboundRx,
@@ -33,164 +33,147 @@ pub fn send(
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
+    let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
 
-            while let Some(packets) = outbound_rx.recv().await {
-                let mut offset = 0;
-                while offset < packets.len() {
-                    let result = fd
-                        .async_io(Interest::WRITABLE, |fd| {
-                            // Safety: The file descriptor is valid within this module.
-                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &packets[offset..]) }
-                        })
-                        .await;
+    while let Some(packets) = outbound_rx.recv().await {
+        let mut offset = 0;
+        while offset < packets.len() {
+            let result = fd
+                .async_io(Interest::WRITABLE, |fd| {
+                    // Safety: The file descriptor is valid within this module.
+                    unsafe { send_batch(syscalls, fd.as_raw_fd(), &packets[offset..]) }
+                })
+                .await;
 
-                    match result {
-                        // A genuine "can't send now" arrives as `Err(WouldBlock)` (the syscall
-                        // returns -1/EWOULDBLOCK), which `async_io` parks on. `Ok(0)` means "sent
-                        // nothing without erroring", which shouldn't happen; break rather than spin
-                        // on `offset += 0`.
-                        Ok(0) => break,
-                        Ok(n) => {
-                            batch_count.record(
-                                n as u64,
-                                &[
-                                    KeyValue::new("system.device", "tun"),
-                                    KeyValue::new("network.io.direction", "transmit"),
-                                ],
-                            );
-                            offset += n;
-                        }
-                        Err(e) => {
-                            // `sendmsg_x` does not report how many datagrams it sent before
-                            // failing, so we cannot resubmit the tail without risking a
-                            // re-injection of an already-sent prefix. Drop the rest of the batch.
-                            let dropped = packets.len() - offset;
-                            dropped_packets.add(dropped as u64, &drop_attributes(&e));
+            match result {
+                // A genuine "can't send now" arrives as `Err(WouldBlock)` (the syscall
+                // returns -1/EWOULDBLOCK), which `async_io` parks on. `Ok(0)` means "sent
+                // nothing without erroring", which shouldn't happen; break rather than spin
+                // on `offset += 0`.
+                Ok(0) => break,
+                Ok(n) => {
+                    batch_count.record(
+                        n as u64,
+                        &[
+                            KeyValue::new("system.device", "tun"),
+                            KeyValue::new("network.io.direction", "transmit"),
+                        ],
+                    );
+                    offset += n;
+                }
+                Err(e) => {
+                    // `sendmsg_x` does not report how many datagrams it sent before
+                    // failing, so we cannot resubmit the tail without risking a
+                    // re-injection of an already-sent prefix. Drop the rest of the batch.
+                    let dropped = packets.len() - offset;
+                    dropped_packets.add(dropped as u64, &drop_attributes(&e));
 
-                            if e.raw_os_error() == Some(libc::ENOSPC) {
-                                // The TUN queue is full; like any congested device, dropping is by design.
-                                tracing::debug!(dropped, "TUN queue full while writing: {e}");
-                            } else {
-                                tracing::warn!(dropped, "Failed to write to TUN FD: {e}");
-                            }
-
-                            break;
-                        }
+                    if e.raw_os_error() == Some(libc::ENOSPC) {
+                        // The TUN queue is full; like any congested device, dropping is by design.
+                        tracing::debug!(dropped, "TUN queue full while writing: {e}");
+                    } else {
+                        tracing::warn!(dropped, "Failed to write to TUN FD: {e}");
                     }
+
+                    break;
                 }
             }
+        }
+    }
 
-            anyhow::Ok(())
-        })?;
-
-    anyhow::Ok(())
+    Ok(())
 }
 
 /// Receives batches of packets from the TUN device into `inbound_tx`.
-pub fn recv(
+pub async fn recv(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
     inbound_tx: crate::InboundTx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
+    let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            let mut bufs: Vec<IpPacketBuf> =
-                (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
-            let mut lens = [0usize; MAX_BATCH_SIZE];
+    let mut bufs: Vec<IpPacketBuf> = (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+    let mut lens = [0usize; MAX_BATCH_SIZE];
 
-            'recv: loop {
-                let n = {
-                    let recv = pin!(fd.async_io(Interest::READABLE, |fd| {
-                        // Safety: The file descriptor is valid within this module.
-                        unsafe { recv_batch(syscalls, fd.as_raw_fd(), &mut bufs, &mut lens) }
-                    }));
-                    let closed = pin!(inbound_tx.closed());
+    'recv: loop {
+        let n = {
+            let recv = pin!(fd.async_io(Interest::READABLE, |fd| {
+                // Safety: The file descriptor is valid within this module.
+                unsafe { recv_batch(syscalls, fd.as_raw_fd(), &mut bufs, &mut lens) }
+            }));
+            let closed = pin!(inbound_tx.closed());
 
-                    match future::select(recv, closed).await {
-                        Either::Left((n, _)) => n.context("Failed to read from TUN FD")?,
-                        Either::Right(((), _)) => {
-                            tracing::debug!("Inbound packet receiver gone, shutting down task");
-                            break;
-                        }
-                    }
-                };
-
-                // `recvmsg_x` reports "nothing to read" as `-1`/`EWOULDBLOCK` (which `async_io`
-                // parks on); `0` datagrams means EOF — the fd has been closed.
-                if n == 0 {
-                    bail!("TUN file descriptor is closed");
-                }
-
-                batch_count.record(
-                    n as u64,
-                    &[
-                        KeyValue::new("system.device", "tun"),
-                        KeyValue::new("network.io.direction", "receive"),
-                    ],
-                );
-
-                let mut batch = PacketBatch::default();
-
-                for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
-                    if len == 0 {
-                        continue; // Empty or truncated datagram.
-                    }
-
-                    // `Default` refills the slot with a fresh buffer from the pool.
-                    let buf = std::mem::take(buf);
-
-                    match IpPacket::new(buf, len).context("Failed to parse IP packet") {
-                        Ok(packet) => {
-                            #[cfg(debug_assertions)]
-                            tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                            let Err(packet) = batch.try_push(packet) else {
-                                continue;
-                            };
-
-                            // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
-                            // packets per syscall, but a full batch is handed off all the same.
-                            if inbound_tx
-                                .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
-                                .await
-                                .is_err()
-                            {
-                                tracing::debug!("Inbound packet receiver gone, shutting down task");
-                                break 'recv;
-                            }
-                        }
-                        Err(e) if e.any_is::<ip_packet::Fragmented>() => tracing::debug!("{e:#}"),
-                        Err(e) => tracing::warn!("{e:#}"),
-                    }
-                }
-
-                if batch.is_empty() {
-                    continue;
-                }
-
-                if inbound_tx.send(batch).await.is_err() {
+            match future::select(recv, closed).await {
+                Either::Left((n, _)) => n.context("Failed to read from TUN FD")?,
+                Either::Right(((), _)) => {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
                     break;
                 }
             }
+        };
 
-            anyhow::Ok(())
-        })?;
+        // `recvmsg_x` reports "nothing to read" as `-1`/`EWOULDBLOCK` (which `async_io`
+        // parks on); `0` datagrams means EOF: the fd has been closed.
+        if n == 0 {
+            bail!("TUN file descriptor is closed");
+        }
 
-    anyhow::Ok(())
+        batch_count.record(
+            n as u64,
+            &[
+                KeyValue::new("system.device", "tun"),
+                KeyValue::new("network.io.direction", "receive"),
+            ],
+        );
+
+        let mut batch = PacketBatch::default();
+
+        for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
+            if len == 0 {
+                continue; // Empty or truncated datagram.
+            }
+
+            // `Default` refills the slot with a fresh buffer from the pool.
+            let buf = std::mem::take(buf);
+
+            match IpPacket::new(buf, len).context("Failed to parse IP packet") {
+                Ok(packet) => {
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                    let Err(packet) = batch.try_push(packet) else {
+                        continue;
+                    };
+
+                    // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
+                    // packets per syscall, but a full batch is handed off all the same.
+                    if inbound_tx
+                        .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+                        break 'recv;
+                    }
+                }
+                Err(e) if e.any_is::<ip_packet::Fragmented>() => tracing::debug!("{e:#}"),
+                Err(e) => tracing::warn!("{e:#}"),
+            }
+        }
+
+        if batch.is_empty() {
+            continue;
+        }
+
+        if inbound_tx.send(batch).await.is_err() {
+            tracing::debug!("Inbound packet receiver gone, shutting down task");
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 /// Writes `batch` to `fd` in one `sendmsg_x`, returning the number of packets sent.

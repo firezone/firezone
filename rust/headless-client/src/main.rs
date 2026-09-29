@@ -321,8 +321,7 @@ fn try_main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
+    let rt = io_runtime::main_runtime_builder()
         .thread_name("connlib")
         .enable_all()
         .build()

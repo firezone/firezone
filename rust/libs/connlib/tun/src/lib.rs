@@ -119,6 +119,40 @@ impl std::ops::Deref for PacketBatch {
     }
 }
 
+/// One direction of TUN I/O, running as a task on an IO runtime (see [`io_runtime`]).
+///
+/// Dropping it aborts the task and releases the runtime.
+pub struct Worker {
+    task: tokio::task::AbortHandle,
+    _runtime: io_runtime::TaskRuntime,
+}
+
+impl Worker {
+    /// Spawns `future` on the IO runtime for the component `name`.
+    ///
+    /// # Panics
+    ///
+    /// In `main` mode, panics when called outside a Tokio runtime context.
+    pub fn spawn(
+        name: &str,
+        future: impl Future<Output = ()> + Send + 'static,
+    ) -> std::io::Result<Self> {
+        let runtime = io_runtime::task_runtime(name)?;
+        let task = runtime.handle().spawn(future).abort_handle();
+
+        Ok(Self {
+            task,
+            _runtime: runtime,
+        })
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
 pub trait Tun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
     fn sender(&self) -> &OutboundTx;

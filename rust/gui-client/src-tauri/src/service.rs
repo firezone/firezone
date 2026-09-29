@@ -1008,8 +1008,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
+    let rt = io_runtime::main_runtime_builder()
         .thread_name("connlib")
         .enable_all()
         .build()?;

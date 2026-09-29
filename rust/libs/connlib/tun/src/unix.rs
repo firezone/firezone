@@ -19,7 +19,7 @@ const MAX_ENOSPC_RETRIES: u32 = 24;
 /// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
 const SPIN_LIMIT: u32 = 6;
 
-pub fn tun_send<T>(
+pub async fn tun_send<T>(
     fd: T,
     mut outbound_rx: crate::OutboundRx,
     write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
@@ -30,59 +30,51 @@ where
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+    let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
 
-            while let Some(mut batch) = outbound_rx.recv().await {
-                for packet in batch.drain() {
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::send", ?packet);
+    while let Some(mut batch) = outbound_rx.recv().await {
+        for packet in batch.drain() {
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::dev::send", ?packet);
 
-                    let mut attempt = 0;
+            let mut attempt = 0;
 
-                    loop {
-                        match fd
-                            .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                                write(fd.as_raw_fd(), &packet)
-                            })
-                            .await
-                        {
-                            Ok(_) => {
-                                record_write_retries(&write_retry_histogram, attempt);
+            loop {
+                match fd
+                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
+                        write(fd.as_raw_fd(), &packet)
+                    })
+                    .await
+                {
+                    Ok(_) => {
+                        record_write_retries(&write_retry_histogram, attempt);
 
-                                break;
-                            }
-                            Err(e) if should_retry(&e, attempt) => {
-                                spin_and_yield(attempt).await;
+                        break;
+                    }
+                    Err(e) if should_retry(&e, attempt) => {
+                        spin_and_yield(attempt).await;
 
-                                attempt += 1;
-                            }
-                            Err(e) => {
-                                record_write_retries(&write_retry_histogram, attempt);
-                                dropped_packets_counter.add(1, &drop_attributes(&e));
+                        attempt += 1;
+                    }
+                    Err(e) => {
+                        record_write_retries(&write_retry_histogram, attempt);
+                        dropped_packets_counter.add(1, &drop_attributes(&e));
 
-                                if is_queue_full(&e) {
-                                    // The TUN queue is still full after all retries; dropping is by design, like for any congested network device.
-                                    tracing::debug!("Failed to write to TUN FD: {e}");
-                                } else {
-                                    tracing::warn!("Failed to write to TUN FD: {e}");
-                                }
-
-                                break;
-                            }
+                        if is_queue_full(&e) {
+                            // The TUN queue is still full after all retries; dropping is by design, like for any congested network device.
+                            tracing::debug!("Failed to write to TUN FD: {e}");
+                        } else {
+                            tracing::warn!("Failed to write to TUN FD: {e}");
                         }
+
+                        break;
                     }
                 }
             }
+        }
+    }
 
-            anyhow::Ok(())
-        })?;
-
-    anyhow::Ok(())
+    Ok(())
 }
 
 /// Whether a failed TUN write should be retried for the given attempt.
@@ -154,7 +146,7 @@ fn drop_attributes(e: &io::Error) -> [KeyValue; 3] {
     ]
 }
 
-pub fn tun_recv<T>(
+pub async fn tun_recv<T>(
     fd: T,
     inbound_tx: crate::InboundTx,
     read: impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
@@ -162,85 +154,74 @@ pub fn tun_recv<T>(
 where
     T: AsRawFd + Clone,
 {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
-            let mut batch = PacketBatch::default();
+    let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
+    let mut batch = PacketBatch::default();
 
-            loop {
-                let readable = pin!(fd.readable());
-                let closed = pin!(inbound_tx.closed());
+    loop {
+        let readable = pin!(fd.readable());
+        let closed = pin!(inbound_tx.closed());
 
-                let mut guard = match future::select(readable, closed).await {
-                    Either::Left((guard, _)) => guard?,
-                    Either::Right(((), _)) => {
-                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+        let mut guard = match future::select(readable, closed).await {
+            Either::Left((guard, _)) => guard?,
+            Either::Right(((), _)) => {
+                tracing::debug!("Inbound packet receiver gone, shutting down task");
 
-                        return anyhow::Ok(());
-                    }
-                };
+                return Ok(());
+            }
+        };
 
-                // Drain the FD before handing the packets off as a single batch, so one
-                // channel item feeds a whole read burst into the state loop instead of
-                // one packet.
-                loop {
-                    let mut ip_packet_buf = IpPacketBuf::new();
+        // Drain the FD before handing the packets off as a single batch, so one
+        // channel item feeds a whole read burst into the state loop instead of
+        // one packet.
+        loop {
+            let mut ip_packet_buf = IpPacketBuf::new();
 
-                    let len = match guard
-                        .try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut ip_packet_buf))
-                    {
-                        Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
-                        Ok(Ok(len)) => len,
-                        Ok(Err(e)) => {
-                            return Err(anyhow::Error::new(e))
-                                .context("Failed to read from TUN FD");
-                        }
-                        Err(_would_block) => break, // FD is drained; hand off what we have.
+            let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut ip_packet_buf)) {
+                Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
+                Ok(Ok(len)) => len,
+                Ok(Err(e)) => {
+                    return Err(anyhow::Error::new(e)).context("Failed to read from TUN FD");
+                }
+                Err(_would_block) => break, // FD is drained; hand off what we have.
+            };
+
+            match IpPacket::new(ip_packet_buf, len) {
+                Ok(packet) => {
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                    let Err(packet) = batch.try_push(packet) else {
+                        continue;
                     };
 
-                    match IpPacket::new(ip_packet_buf, len) {
-                        Ok(packet) => {
-                            #[cfg(debug_assertions)]
-                            tracing::trace!(target: "wire::dev::recv", ?packet);
+                    // The batch is full: hand it off and start a new one.
+                    if inbound_tx
+                        .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!("Inbound packet receiver gone, shutting down task");
 
-                            let Err(packet) = batch.try_push(packet) else {
-                                continue;
-                            };
-
-                            // The batch is full: hand it off and start a new one.
-                            if inbound_tx
-                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
-                                .await
-                                .is_err()
-                            {
-                                tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                                return anyhow::Ok(());
-                            }
-                        }
-                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
-                            tracing::debug!("{e:#}") // Log on debug to be less noisy.
-                        }
-                        Err(e) => tracing::warn!("{e:#}"),
+                        return Ok(());
                     }
                 }
-
-                if batch.is_empty() {
-                    continue;
+                Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                    tracing::debug!("{e:#}") // Log on debug to be less noisy.
                 }
-
-                if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
-                    tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                    return anyhow::Ok(());
-                }
+                Err(e) => tracing::warn!("{e:#}"),
             }
-        })?;
+        }
 
-    anyhow::Ok(())
+        if batch.is_empty() {
+            continue;
+        }
+
+        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
+            tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+            return Ok(());
+        }
+    }
 }
 
 #[cfg(test)]

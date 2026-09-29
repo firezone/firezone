@@ -53,64 +53,56 @@ impl<T> TunFd<T> {
 }
 
 /// Sends packets from `outbound_rx` to the TUN device, coalescing where possible.
-pub fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
+pub async fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
 where
     T: AsRawFd,
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
+    let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
 
-            let mut ready = Vec::new();
-            // `None` when the kernel does not support GSO writes or rejected one at
-            // runtime; packets then pass through 1:1.
-            let mut coalescer = tun_fd.offloads.then(|| {
-                PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
-            });
+    let mut ready = Vec::new();
+    // `None` when the kernel does not support GSO writes or rejected one at
+    // runtime; packets then pass through 1:1.
+    let mut coalescer = tun_fd
+        .offloads
+        .then(|| PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded));
 
-            while let Some(mut batch) = outbound_rx.recv().await {
-                for packet in batch.drain() {
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::send", ?packet);
+    while let Some(mut batch) = outbound_rx.recv().await {
+        for packet in batch.drain() {
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::dev::send", ?packet);
 
-                    match &mut coalescer {
-                        Some(coalescer) => coalescer.enqueue(packet),
-                        None => ready.push(CoalescedPacket::from(packet)),
-                    }
-                }
-
-                if let Some(coalescer) = &mut coalescer {
-                    ready.extend(coalescer.drain());
-                }
-
-                let gso_failed = write_all(
-                    &fd,
-                    &mut ready,
-                    &batch_size_histogram,
-                    &dropped_packets_counter,
-                )
-                .await;
-
-                if gso_failed {
-                    // Some kernel versions carry a bug that makes them reject GSO writes
-                    // with `EINVAL`. Stop coalescing for the remainder of the session;
-                    // the dropped segments are re-sent by the endpoints.
-                    tracing::info!("Kernel rejected GSO write; disabling TUN segmentation offload");
-
-                    coalescer = None;
-                }
+            match &mut coalescer {
+                Some(coalescer) => coalescer.enqueue(packet),
+                None => ready.push(CoalescedPacket::from(packet)),
             }
+        }
 
-            tracing::debug!("Outbound packet sender gone, shutting down task");
+        if let Some(coalescer) = &mut coalescer {
+            ready.extend(coalescer.drain());
+        }
 
-            anyhow::Ok(())
-        })?;
+        let gso_failed = write_all(
+            &fd,
+            &mut ready,
+            &batch_size_histogram,
+            &dropped_packets_counter,
+        )
+        .await;
+
+        if gso_failed {
+            // Some kernel versions carry a bug that makes them reject GSO writes
+            // with `EINVAL`. Stop coalescing for the remainder of the session;
+            // the dropped segments are re-sent by the endpoints.
+            tracing::info!("Kernel rejected GSO write; disabling TUN segmentation offload");
+
+            coalescer = None;
+        }
+    }
+
+    tracing::debug!("Outbound packet sender gone, shutting down task");
 
     Ok(())
 }
@@ -159,18 +151,18 @@ where
     let hdr = virtio::header_for(outgoing);
     let packet = outgoing.packet();
 
-    let iov = [
-        libc::iovec {
-            iov_base: hdr.as_ptr() as *mut _,
-            iov_len: hdr.len(),
-        },
-        libc::iovec {
-            iov_base: packet.as_ptr() as *mut _,
-            iov_len: packet.len(),
-        },
-    ];
-
     fd.async_io(Interest::WRITABLE, |fd| {
+        let iov = [
+            libc::iovec {
+                iov_base: hdr.as_ptr() as *mut _,
+                iov_len: hdr.len(),
+            },
+            libc::iovec {
+                iov_base: packet.as_ptr() as *mut _,
+                iov_len: packet.len(),
+            },
+        ];
+
         // Safety: Both iovecs point at valid memory of the given lengths.
         match unsafe { libc::writev(fd.as_raw_fd(), iov.as_ptr(), iov.len() as _) } {
             -1 => Err(io::Error::last_os_error()),
@@ -181,100 +173,90 @@ where
 }
 
 /// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`](ip_packet::IpPacket)s.
-pub fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
+pub async fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
 where
     T: AsRawFd,
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
 
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .context("Failed to create runtime")?
-        .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
-            let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            let mut batch = PacketBatch::default();
-            let mut overflow = VecDeque::new();
+    let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
+    let mut buf = vec![0u8; READ_BUFFER_SIZE];
+    let mut batch = PacketBatch::default();
+    let mut overflow = VecDeque::new();
 
-            loop {
-                // Without the explicit wake-up on `closed`, this task would idle in
-                // `readable` until the next packet arrives, keeping the TUN fd (and
-                // thereby the device) alive long after the receiver is gone.
-                let readable = pin!(fd.readable());
-                let closed = pin!(inbound_tx.closed());
+    loop {
+        // Without the explicit wake-up on `closed`, this task would idle in
+        // `readable` until the next packet arrives, keeping the TUN fd (and
+        // thereby the device) alive long after the receiver is gone.
+        let readable = pin!(fd.readable());
+        let closed = pin!(inbound_tx.closed());
 
-                let mut guard = match future::select(readable, closed).await {
-                    Either::Left((guard, _)) => guard?,
-                    Either::Right(((), _)) => {
-                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+        let mut guard = match future::select(readable, closed).await {
+            Either::Left((guard, _)) => guard?,
+            Either::Right(((), _)) => {
+                tracing::debug!("Inbound packet receiver gone, shutting down task");
 
-                        return anyhow::Ok(());
-                    }
-                };
+                return Ok(());
+            }
+        };
 
-                loop {
-                    // A full batch spills the rest of its super packet into `overflow`:
-                    // hand off the batch and continue the drain with the spilled packets.
-                    while !overflow.is_empty() {
-                        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
-                            tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                            return anyhow::Ok(());
-                        }
-
-                        while let Some(packet) = overflow.pop_front() {
-                            if let Err(packet) = batch.try_push(packet) {
-                                overflow.push_front(packet);
-                                break;
-                            }
-                        }
-                    }
-
-                    let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
-                        Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
-                        Ok(Ok(len)) => len,
-                        Ok(Err(e)) => {
-                            return Err(anyhow::Error::new(e))
-                                .context("Failed to read from TUN FD");
-                        }
-                        Err(_would_block) => break, // FD is drained; hand off what we have.
-                    };
-
-                    match split::split(&buf[..len]) {
-                        Ok(mut segments) => {
-                            batch_size_histogram
-                                .record(segments.len() as u64, &recv_metric_attributes());
-
-                            for packet in segments.drain(..) {
-                                #[cfg(debug_assertions)]
-                                tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                                if let Err(packet) = batch.try_push(packet) {
-                                    overflow.push_back(packet);
-                                }
-                            }
-                        }
-                        Err(e) if e.any_is::<ip_packet::Fragmented>() => {
-                            tracing::debug!("{e:#}"); // Log on debug to be less noisy.
-                        }
-                        Err(e) => tracing::warn!("{e:#}"),
-                    }
-                }
-
-                if batch.is_empty() {
-                    continue;
-                }
-
+        loop {
+            // A full batch spills the rest of its super packet into `overflow`:
+            // hand off the batch and continue the drain with the spilled packets.
+            while !overflow.is_empty() {
                 if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
 
-                    return anyhow::Ok(());
+                    return Ok(());
+                }
+
+                while let Some(packet) = overflow.pop_front() {
+                    if let Err(packet) = batch.try_push(packet) {
+                        overflow.push_front(packet);
+                        break;
+                    }
                 }
             }
-        })?;
 
-    Ok(())
+            let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
+                Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
+                Ok(Ok(len)) => len,
+                Ok(Err(e)) => {
+                    return Err(anyhow::Error::new(e)).context("Failed to read from TUN FD");
+                }
+                Err(_would_block) => break, // FD is drained; hand off what we have.
+            };
+
+            match split::split(&buf[..len]) {
+                Ok(mut segments) => {
+                    batch_size_histogram.record(segments.len() as u64, &recv_metric_attributes());
+
+                    for packet in segments.drain(..) {
+                        #[cfg(debug_assertions)]
+                        tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                        if let Err(packet) = batch.try_push(packet) {
+                            overflow.push_back(packet);
+                        }
+                    }
+                }
+                Err(e) if e.any_is::<ip_packet::Fragmented>() => {
+                    tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                }
+                Err(e) => tracing::warn!("{e:#}"),
+            }
+        }
+
+        if batch.is_empty() {
+            continue;
+        }
+
+        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
+            tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+            return Ok(());
+        }
+    }
 }
 
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {

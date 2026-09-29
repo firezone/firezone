@@ -9,6 +9,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
 futures = { workspace = true }
+io-runtime = { workspace = true }
 ip-packet = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
@@ -24,6 +25,7 @@ packet-coalescer = { workspace = true }
 
 [dev-dependencies]
 ingot = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
 
 [lints]
 workspace = true

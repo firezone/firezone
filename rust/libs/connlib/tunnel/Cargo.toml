@@ -14,6 +14,7 @@ eventloop-budget = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 http-client = { workspace = true }
+io-runtime = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l4-tcp-dns-server = { workspace = true }

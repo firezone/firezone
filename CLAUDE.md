@@ -27,6 +27,9 @@ These three components are split into multiple threads and connected via bounded
 - 1 thread for handling IPv6 UDP traffic with 1 task each for sending / receiving
 - 1 task on the "main" thread that holds the state and reads / writes from and to the channels connecting to the IO threads
 
+The IO loops are Tokio tasks; the `FIREZONE_IO_RUNTIME` environment variable selects per process which threads host them (see [`io-runtime`](../rust/libs/connlib/io-runtime)):
+`dedicated` (the default) gives every IO task its own thread as listed above, `io-thread` runs all IO tasks on one shared thread, and `main` runs them on the same thread as the state loop.
+
 ## Coding guidelines
 
 For guidelines on generating or reviewing specific parts of the codebase, check for an `AGENT.md` file in the corresponding sub-directory.

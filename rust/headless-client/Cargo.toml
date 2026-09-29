@@ -17,6 +17,7 @@ flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
+io-runtime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 known-dirs = { workspace = true }

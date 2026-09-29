@@ -2582,6 +2582,7 @@ dependencies = [
  "gui-ipc",
  "hex",
  "humantime",
+ "io-runtime",
  "ip-packet",
  "ip_network",
  "keyring-core",
@@ -2653,6 +2654,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "humantime",
+ "io-runtime",
  "ip-packet",
  "ip_network",
  "known-dirs",
@@ -4098,6 +4100,14 @@ checksum = "617ee6cf8e3f66f3b4ea67a4058564628cde41901316e19f559e14c7c72c5e7b"
 dependencies = [
  "core-foundation-sys",
  "mach2",
+]
+
+[[package]]
+name = "io-runtime"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8729,6 +8739,7 @@ dependencies = [
  "bufferpool",
  "futures",
  "ingot",
+ "io-runtime",
  "ip-packet",
  "libc",
  "opentelemetry",
@@ -8770,6 +8781,7 @@ dependencies = [
  "futures",
  "futures-bounded",
  "http-client",
+ "io-runtime",
  "ip-packet",
  "itertools 0.15.0",
  "l4-tcp-dns-server",

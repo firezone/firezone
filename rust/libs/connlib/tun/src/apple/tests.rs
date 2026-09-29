@@ -16,9 +16,9 @@ const LOCAL: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 1);
 const PEER: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 2);
 
 /// Datagrams sent to [`PEER`] route out the utun and must come back through `recv`.
-#[test]
+#[tokio::test]
 #[ignore = "Needs root to create a utun device"]
-fn recv_reads_packets_routed_through_the_interface() {
+async fn recv_reads_packets_routed_through_the_interface() {
     let syscalls = super::sys::batch_syscalls().expect("recvmsg_x/sendmsg_x to resolve on macOS");
 
     let (fd, name) = create_utun();
@@ -27,12 +27,9 @@ fn recv_reads_packets_routed_through_the_interface() {
     configure(&name);
 
     let (tx, mut rx) = crate::inbound_channel();
-    std::thread::Builder::new()
-        .name("test TUN recv".to_owned())
-        .spawn(move || {
-            let _ = super::bulk::recv(fd, syscalls, tx);
-        })
-        .expect("spawn recv thread");
+    tokio::spawn(async move {
+        let _ = super::bulk::recv(fd, syscalls, tx).await;
+    });
 
     // The kernel routes datagrams addressed to the point-to-point peer out the utun,
     // where they queue (we raised the pending limit) for `recv` to read as a batch.
@@ -57,7 +54,7 @@ fn recv_reads_packets_routed_through_the_interface() {
                     .count();
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                std::thread::sleep(Duration::from_millis(10));
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
         }
