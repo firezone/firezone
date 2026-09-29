@@ -334,24 +334,12 @@ public final class Store: ObservableObject {
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
             else {
-              // Every early return in the provider's `startTunnel` reports a
-              // `PacketTunnelProviderError`, which carries neither a reason nor an id and
-              // would otherwise be dropped silently.
+              // Only connlib's errors are worded for the user, so anything else is only logged.
               if PacketTunnelProviderError.isCredentialNotConfigured(error) {
                 // The system started the tunnel while signed out.
                 Log.info(error.localizedDescription)
               } else {
                 Log.error(error)
-              }
-
-              // Deduplicated on the error itself, since only connlib mints an id.
-              let id = "\(nsError.domain):\(nsError.code)"
-              let message = error.localizedDescription
-
-              Task { @MainActor in
-                guard !self.shownAlertIds.contains(id) else { return }
-                await self.sessionNotification.showDisconnectedAlertMacOS(message)
-                self.markAlertAsShown(id)
               }
 
               return
