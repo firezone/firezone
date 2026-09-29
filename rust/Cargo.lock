@@ -921,7 +921,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=noise-aesgcm-cipher-suite#bed686cca384b2e29cc9fa9554074b0b4cceae23"
+source = "git+https://github.com/firezone/boringtun?branch=noise-aesgcm-cipher-suite#ab67297ae753d856b3d25e6eb03b78696b3aed1a"
 dependencies = [
  "aead",
  "blake2",

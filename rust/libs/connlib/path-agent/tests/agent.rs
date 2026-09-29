@@ -8,7 +8,7 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use boringtun::noise::{Index, Tunn, TunnResult};
+use boringtun::noise::{CipherSuite, Index, Tunn, TunnResult};
 use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
@@ -870,6 +870,7 @@ impl Handshake {
             priv_a,
             pub_b,
             None,
+            CipherSuite::default(),
             None,
             Index::new_local(seed as u32 * 2),
             None,
@@ -882,6 +883,7 @@ impl Handshake {
             priv_b,
             pub_a,
             None,
+            CipherSuite::default(),
             None,
             Index::new_local(seed as u32 * 2 + 1),
             None,
@@ -927,6 +929,7 @@ fn reject_all() -> Tunn {
         StaticSecret::from([3u8; 32]),
         PublicKey::from(&StaticSecret::from([4u8; 32])),
         None,
+        CipherSuite::default(),
         None,
         Index::new_local(99),
         None,

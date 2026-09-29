@@ -373,7 +373,7 @@ where
             tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
         };
-        tracing::debug!(%cid, ?cipher_suite, "Using cipher suite for connection");
+        tracing::debug!(%cid, ?cipher_suite, "Selected cipher suite for connection");
 
         agent.apply_ice_config(default_ice_config);
         agent.set_local_credentials(local_creds);
@@ -851,6 +851,7 @@ where
             self.private_key.clone(),
             remote,
             Some(key),
+            cipher_suite,
             None,
             index,
             Some(self.rate_limiter.clone()),
@@ -859,7 +860,6 @@ where
             self.unix_now,
             self.unix_ts,
         );
-        tunnel.set_cipher_suite(cipher_suite);
         // With classic ICE, a 90s rekey-attempt time is bad UX: ICE can think
         // the pair is fine while WireGuard is desynced and stuck, so we shorten
         // it to roughly our ICE timeout to fail fast and re-establish.

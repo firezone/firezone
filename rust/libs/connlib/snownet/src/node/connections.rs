@@ -450,7 +450,7 @@ fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
 #[cfg(test)]
 mod tests {
     use boringtun::{
-        noise::Tunn,
+        noise::{CipherSuite, Tunn},
         x25519::{PublicKey, StaticSecret},
     };
     use bufferpool::BufferPool;
@@ -659,6 +659,7 @@ mod tests {
                 private,
                 PublicKey::from(key),
                 None,
+                CipherSuite::default(),
                 None,
                 new_local,
                 None,
