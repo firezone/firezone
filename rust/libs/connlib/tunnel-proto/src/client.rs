@@ -43,8 +43,8 @@ use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519;
 use connlib_model::{
-    ClientId, ClientOrGatewayId, ConnectedDeviceView, GatewayId, IceCandidate, PublicKey, RelayId,
-    ResourceId, ResourceList, ResourceStatus, ResourceView,
+    ClientId, ClientOrGatewayId, ConnectedDeviceView, DevicePoolResourceView, GatewayId,
+    IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
@@ -180,7 +180,7 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     tun_config: TrackedState<TunConfig>,
     /// Cache of the resource list we emitted to the app.
-    resource_list: TrackedState<ResourceList>,
+    resource_list: TrackedState<Vec<ResourceView>>,
 
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
@@ -258,77 +258,46 @@ impl ClientState {
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
-            .cloned()
-            .filter_map(|r| {
-                let status = self.resource_status(&r);
-                r.with_status(status)
+            .map(|resource| {
+                let status = self.resource_status(resource);
+
+                match resource.clone() {
+                    Resource::Dns(r) => ResourceView::Dns(r.with_status(status)),
+                    Resource::Cidr(r) => ResourceView::Cidr(r.with_status(status)),
+                    Resource::Internet(r) => ResourceView::Internet(r.with_status(status)),
+                    Resource::DevicePool(r) => ResourceView::DevicePool(DevicePoolResourceView {
+                        id: r.id,
+                        name: r.name,
+                        devices: self.connected_devices_in(r.id),
+                    }),
+                }
             })
             .sorted()
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The name and tunnel
-    /// IPs are taken from the live connection state; the pools we reach the device
-    /// through, or it reaches us through, label it.
-    pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
+    /// Returns the connected devices whose flows with us are authorised through the given pool, either way.
+    fn connected_devices_in(&self, pool: ResourceId) -> Vec<ConnectedDeviceView> {
         self.clients
             .iter()
-            .filter_map(|peer| {
-                let client_id = peer.id();
-
-                if !self
-                    .node
-                    .is_connected(&ClientOrGatewayId::Client(client_id))
-                {
-                    return None;
-                }
-
-                let tun_ipv4 = peer.tun_ipv4();
-                let tun_ipv6 = peer.tun_ipv6();
-                let name = peer.remote_name().to_owned();
-
-                let pool_names = self.pool_names_for(peer).sorted().collect_vec();
-
-                if pool_names.is_empty() {
-                    return None;
-                }
-
-                Some(ConnectedDeviceView {
-                    id: client_id,
-                    name,
-                    tun_ipv4,
-                    tun_ipv6,
-                    pools: pool_names,
-                })
+            .filter(|peer| {
+                self.node
+                    .is_connected(&ClientOrGatewayId::Client(peer.id()))
             })
+            .filter(|peer| {
+                self.outbound_authorizations
+                    .client_token(pool, peer.id())
+                    .is_some()
+                    || peer.inbound_resource_ids().contains(&pool)
+            })
+            .map(|peer| ConnectedDeviceView {
+                id: peer.id(),
+                name: peer.remote_name().to_owned(),
+                tun_ipv4: peer.tun_ipv4(),
+                tun_ipv6: peer.tun_ipv6(),
+            })
+            .sorted_by(|a, b| a.name.cmp(&b.name))
             .collect_vec()
-    }
-
-    /// The names of the pools that authorise flows between us and `peer`, either way.
-    fn pool_names_for<'a>(&'a self, peer: &'a ClientOnClient) -> impl Iterator<Item = String> + 'a {
-        let inbound = peer.inbound_resource_ids().collect::<BTreeSet<_>>();
-
-        self.resources_by_id
-            .iter()
-            .filter_map(move |(rid, resource)| {
-                let Resource::DevicePool(pool) = resource else {
-                    return None;
-                };
-
-                let outbound = self
-                    .outbound_authorizations
-                    .client_token(*rid, peer.id())
-                    .is_some();
-
-                (outbound || inbound.contains(rid)).then(|| pool.name.clone())
-            })
-    }
-
-    fn resource_list_snapshot(&self) -> ResourceList {
-        ResourceList {
-            resources: self.resources(),
-            connected_devices: self.connected_devices(),
-        }
     }
 
     fn resource_status(&self, resource: &Resource) -> ResourceStatus {
@@ -367,7 +336,7 @@ impl ClientState {
         }
 
         self.on_resource_connection_failed(id, now);
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     /// Handles cases where access to a device is denied.
@@ -1567,7 +1536,7 @@ impl ClientState {
         self.forget_outbound_authorizations(*disconnected_client);
 
         if self.clients.remove(disconnected_client).is_some() {
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 
@@ -1918,7 +1887,7 @@ impl ClientState {
         }
 
         if any_reset {
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 
@@ -2260,7 +2229,7 @@ impl ClientState {
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
                     self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
-                    self.resource_list.update(self.resource_list_snapshot());
+                    self.resource_list.update(self.resources());
                 }
                 snownet::Event::NoRelays => {
                     self.buffered_events.push_back(ClientEvent::NoRelays);
@@ -2351,7 +2320,7 @@ impl ClientState {
         };
 
         self.sites_status.insert(*sid, (status, now));
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     pub fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -2362,11 +2331,7 @@ impl ClientState {
         }
 
         if let Some(resources) = self.resource_list.take_pending_update() {
-            tracing::debug!(
-                resources = resources.resources.len(),
-                connected_devices = resources.connected_devices.len(),
-                "Updating resource list"
-            );
+            tracing::debug!(count = %resources.len(), "Updating resource list");
 
             return Some(ClientEvent::ResourcesChanged { resources });
         }
@@ -2488,7 +2453,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     pub fn add_resource(
@@ -2560,7 +2525,7 @@ impl ClientState {
 
         self.drain_resource_stub_resolver_events();
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
     }
 
@@ -2592,7 +2557,7 @@ impl ClientState {
             self.log_activating_resource(&resource);
         }
 
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     fn log_activating_resource(&self, resource: &Resource) {
@@ -2611,7 +2576,7 @@ impl ClientState {
         self.routing_tables.remove_by_id(id);
 
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource removed");
     }
 
@@ -2668,7 +2633,7 @@ impl ClientState {
                 now,
             );
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown, now);
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 

@@ -187,6 +187,16 @@ pub enum Resource {
     Dns { resource: DnsResource },
     Cidr { resource: CidrResource },
     Internet { resource: InternetResource },
+    DevicePool { resource: DevicePoolResource },
+}
+
+/// Device pool resource view
+#[derive(uniffi::Record)]
+pub struct DevicePoolResource {
+    pub id: String,
+    pub name: String,
+    /// The devices of this pool we currently have a live connection to.
+    pub devices: Vec<ConnectedDevice>,
 }
 
 /// A device peer that this client currently has a live connection to.
@@ -199,9 +209,6 @@ pub struct ConnectedDevice {
     pub tun_ipv4: String,
     /// Tunnel IPv6 address the device is reachable on.
     pub tun_ipv6: String,
-    /// Names of the device pools this peer belongs to, sorted (typically one,
-    /// but can be multiple).
-    pub pools: Vec<String>,
 }
 
 #[derive(uniffi::Enum)]
@@ -216,7 +223,6 @@ pub enum Event {
     },
     ResourcesUpdated {
         resources: Vec<Resource>,
-        connected_devices: Vec<ConnectedDevice>,
     },
     ConnectedToPortal {
         account_slug: String,
@@ -498,22 +504,10 @@ impl EventStream {
                     ipv6_routes,
                 })
             }
-            client_shared::Event::ResourcesUpdated(resource_list) => {
-                let resources = resource_list
-                    .resources
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                let connected_devices = resource_list
-                    .connected_devices
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
+            client_shared::Event::ResourcesUpdated(resources) => {
+                let resources = resources.into_iter().map(Into::into).collect();
 
-                Some(Event::ResourcesUpdated {
-                    resources,
-                    connected_devices,
-                })
+                Some(Event::ResourcesUpdated { resources })
             }
             client_shared::Event::ConnectedToPortal(connected) => {
                 telemetry::set_account_slug(connected.account_slug.clone());
@@ -941,6 +935,9 @@ impl From<connlib_model::ResourceView> for Resource {
             connlib_model::ResourceView::Internet(internet) => Resource::Internet {
                 resource: internet.into(),
             },
+            connlib_model::ResourceView::DevicePool(pool) => Resource::DevicePool {
+                resource: pool.into(),
+            },
         }
     }
 }
@@ -982,6 +979,16 @@ impl From<connlib_model::InternetResourceView> for InternetResource {
     }
 }
 
+impl From<connlib_model::DevicePoolResourceView> for DevicePoolResource {
+    fn from(pool: connlib_model::DevicePoolResourceView) -> Self {
+        DevicePoolResource {
+            id: pool.id.to_string(),
+            name: pool.name,
+            devices: pool.devices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
@@ -989,7 +996,6 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
             name: device.name,
             tun_ipv4: device.tun_ipv4.to_string(),
             tun_ipv6: device.tun_ipv6.to_string(),
-            pools: device.pools,
         }
     }
 }

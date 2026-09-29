@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
-    ResourceView, Site,
+    Site,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
@@ -220,18 +220,6 @@ impl Resource {
                 Ipv4Network::DEFAULT_ROUTE.into(),
                 Ipv6Network::DEFAULT_ROUTE.into(),
             ],
-        }
-    }
-
-    /// Converts this resource into a [`ResourceView`] for the UI.
-    ///
-    /// Returns `None` for resource types that don't have a UI representation yet.
-    pub fn with_status(self, status: ResourceStatus) -> Option<ResourceView> {
-        match self {
-            Resource::Dns(r) => Some(ResourceView::Dns(r.with_status(status))),
-            Resource::Cidr(r) => Some(ResourceView::Cidr(r.with_status(status))),
-            Resource::Internet(r) => Some(ResourceView::Internet(r.with_status(status))),
-            Resource::DevicePool(_) => None,
         }
     }
 }

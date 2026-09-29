@@ -62,9 +62,9 @@ const REMOVE_FAVORITE: &str = "Remove from favorites";
 const FAVORITE_RESOURCES: &str = "Favorite Resources";
 const RESOURCES: &str = "Resources";
 const OTHER_RESOURCES: &str = "Other Resources";
-const DEVICES: &str = "Devices";
+const NO_CONNECTED_DEVICES: &str = "No connected devices";
 
-/// Maximum number of connected devices listed inline in the Devices submenu.
+/// Maximum number of connected devices listed inline in a device pool's submenu.
 ///
 /// Anything beyond this is summarized as "And N more devices…".
 const MAX_DEVICES_INLINE: usize = 20;
@@ -168,7 +168,6 @@ pub struct SignedIn {
     pub actor_name: String,
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
-    pub connected_devices: Vec<ConnectedDeviceView>,
     pub internet_resource_enabled: Option<bool>,
 }
 
@@ -188,6 +187,10 @@ impl SignedIn {
     /// Builds the submenu that has the resource address, name, desc,
     /// sites online, etc.
     fn resource_submenu(&self, res: &ResourceView) -> Menu {
+        if let ResourceView::DevicePool(pool) = res {
+            return devices_submenu(&pool.devices);
+        }
+
         let mut submenu = Menu::default().resource_description(res);
 
         if res.is_internet_resource() {
@@ -261,7 +264,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
-        connected_devices,
         internet_resource_enabled,
     } = signed_in;
 
@@ -320,17 +322,14 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         menu = menu.separator().add_submenu(OTHER_RESOURCES, submenu);
     }
 
-    if !connected_devices.is_empty() {
-        let label = format!("{DEVICES} ({})", connected_devices.len());
-        menu = menu
-            .separator()
-            .add_submenu(label, devices_submenu(connected_devices));
-    }
-
     menu
 }
 
 fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
+    if connected_devices.is_empty() {
+        return Menu::default().disabled(NO_CONNECTED_DEVICES);
+    }
+
     let mut menu = Menu::default();
     let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
     for device in &connected_devices[..visible] {
@@ -350,9 +349,8 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
 }
 
 fn device_submenu(device: &ConnectedDeviceView) -> Menu {
-    let mut menu = Menu::default().disabled("Device");
-
-    menu = menu
+    Menu::default()
+        .disabled("Device")
         .separator()
         .disabled("Tunnel IPs")
         .copyable(&device.tun_ipv4.to_string())
@@ -360,21 +358,7 @@ fn device_submenu(device: &ConnectedDeviceView) -> Menu {
         .separator()
         .disabled("Client Details")
         .copyable(&device.id.to_string())
-        .copyable(&device.name);
-
-    if !device.pools.is_empty() {
-        let label = if device.pools.len() == 1 {
-            "Pool"
-        } else {
-            "Pools"
-        };
-        menu = menu.separator().disabled(label);
-        for name in &device.pools {
-            menu = menu.copyable(name);
-        }
-    }
-
-    menu
+        .copyable(&device.name)
 }
 
 fn session_heading(actor_name: &str) -> String {
@@ -482,7 +466,6 @@ mod tests {
                 actor_name: "Jane Doe".into(),
                 favorite_resources,
                 resources,
-                connected_devices: Vec::new(),
                 internet_resource_enabled,
             }),
             release: None,
@@ -878,68 +861,55 @@ mod tests {
     }
 
     #[test]
-    fn devices_submenu_lists_connected_devices_with_pool_labels() {
-        use connlib_model::ClientId;
+    fn device_pools_list_their_connected_devices() {
+        use connlib_model::{ClientId, DevicePoolResourceView};
         use std::net::{Ipv4Addr, Ipv6Addr};
         let alpha = ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111);
-        let beta = ClientId::from_u128(0x2222_2222_2222_2222_2222_2222_2222_2222);
         let alpha_ip = Ipv4Addr::new(100, 64, 0, 1);
-        let alpha_ipv6 = Ipv6Addr::LOCALHOST;
-        let beta_ip = Ipv4Addr::new(100, 64, 0, 2);
-        let beta_ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2]);
-        let connected_devices = vec![
-            ConnectedDeviceView {
-                id: alpha,
-                name: "Alpha".into(),
-                tun_ipv4: alpha_ip,
-                tun_ipv6: alpha_ipv6,
-                pools: vec!["Engineering Pool".into()],
-            },
-            ConnectedDeviceView {
-                id: beta,
-                name: "Beta".into(),
-                tun_ipv4: beta_ip,
-                tun_ipv6: beta_ipv6,
-                pools: vec!["Engineering Pool".into(), "QA Pool".into()],
-            },
+        let alpha_ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1]);
+        let resources = vec![
+            ResourceView::DevicePool(DevicePoolResourceView {
+                id: ResourceId::from_u128(1),
+                name: "Engineering Pool".into(),
+                devices: vec![ConnectedDeviceView {
+                    id: alpha,
+                    name: "Alpha".into(),
+                    tun_ipv4: alpha_ip,
+                    tun_ipv6: alpha_ipv6,
+                }],
+            }),
+            ResourceView::DevicePool(DevicePoolResourceView {
+                id: ResourceId::from_u128(2),
+                name: "QA Pool".into(),
+                devices: vec![],
+            }),
         ];
 
-        let actual = devices_submenu(&connected_devices);
+        let actual = signed_in(resources, HashSet::default(), None).into_menu();
 
         let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
             .add_submenu(
-                "Alpha",
-                Menu::default()
-                    .disabled("Device")
-                    .separator()
-                    .disabled("Tunnel IPs")
-                    .copyable(&alpha_ip.to_string())
-                    .copyable(&alpha_ipv6.to_string())
-                    .separator()
-                    .disabled("Client Details")
-                    .copyable(&alpha.to_string())
-                    .copyable("Alpha")
-                    .separator()
-                    .disabled("Pool")
-                    .copyable("Engineering Pool"),
+                "Engineering Pool",
+                Menu::default().add_submenu(
+                    "Alpha",
+                    Menu::default()
+                        .disabled("Device")
+                        .separator()
+                        .disabled("Tunnel IPs")
+                        .copyable(&alpha_ip.to_string())
+                        .copyable(&alpha_ipv6.to_string())
+                        .separator()
+                        .disabled("Client Details")
+                        .copyable(&alpha.to_string())
+                        .copyable("Alpha"),
+                ),
             )
-            .add_submenu(
-                "Beta",
-                Menu::default()
-                    .disabled("Device")
-                    .separator()
-                    .disabled("Tunnel IPs")
-                    .copyable(&beta_ip.to_string())
-                    .copyable(&beta_ipv6.to_string())
-                    .separator()
-                    .disabled("Client Details")
-                    .copyable(&beta.to_string())
-                    .copyable("Beta")
-                    .separator()
-                    .disabled("Pools")
-                    .copyable("Engineering Pool")
-                    .copyable("QA Pool"),
-            );
+            .add_submenu("QA Pool", Menu::default().disabled(NO_CONNECTED_DEVICES))
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -959,7 +929,6 @@ mod tests {
                 name: format!("Device {i}"),
                 tun_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
                 tun_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16]),
-                pools: vec!["Engineering Pool".into()],
             })
             .collect();
 
@@ -980,10 +949,7 @@ mod tests {
                     .separator()
                     .disabled("Client Details")
                     .copyable(&device.id.to_string())
-                    .copyable(&device.name)
-                    .separator()
-                    .disabled("Pool")
-                    .copyable(&device.pools[0]),
+                    .copyable(&device.name),
             );
         }
         expected = expected.separator().disabled("And 3 more devices…");

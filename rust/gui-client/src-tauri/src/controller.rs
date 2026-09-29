@@ -10,7 +10,7 @@ use crate::{
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
-use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
+use connlib_model::{ResourceId, ResourceView, Site};
 use futures::{
     FutureExt, SinkExt, StreamExt,
     stream::{self, BoxStream},
@@ -159,7 +159,7 @@ pub enum Status {
     /// Firezone is ready to use.
     TunnelReady {
         #[debug(skip)]
-        resources: ResourceList,
+        resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal,
@@ -739,11 +739,7 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 }
 
-                tracing::debug!(
-                    resources = resources.resources.len(),
-                    connected_devices = resources.connected_devices.len(),
-                    "Got new Resources"
-                );
+                tracing::debug!(len = resources.len(), "Got new Resources");
 
                 self.status = Status::TunnelReady { resources };
                 self.resolve_connect_replies(gui_ipc::ServerMsg::Ack).await;
@@ -864,7 +860,7 @@ impl<I: GuiIntegration> Controller<I> {
                     )));
                 };
 
-                gui_ipc::ServerMsg::Resources(resources.resources.clone())
+                gui_ipc::ServerMsg::Resources(resources.clone())
             }
             gui_ipc::ClientMsg::SetInternetResourceEnabled(enabled) => {
                 self.set_internet_resource_enabled(enabled).await?;
@@ -1061,8 +1057,7 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: connected.actor_name.clone(),
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
-                        resources: resources.resources.clone(),
-                        connected_devices: resources.connected_devices.clone(),
+                        resources: resources.clone(),
                     }),
                     SessionViewModel::SignedIn {
                         account_slug: connected.account_slug.clone(),
@@ -1151,7 +1146,6 @@ impl<I: GuiIntegration> Controller<I> {
         };
 
         let resource = resources
-            .resources
             .iter()
             .find(|r| r.id() == resource_id)
             .context("Unknown resource")?;
@@ -2406,10 +2400,7 @@ mod tests {
 
         async fn send_resources(&mut self, resources: Vec<ResourceView>) {
             self.tx
-                .send(&service::ServerMsg::OnUpdateResources(ResourceList {
-                    resources,
-                    connected_devices: Vec::new(),
-                }))
+                .send(&service::ServerMsg::OnUpdateResources(resources))
                 .await
                 .unwrap();
         }
