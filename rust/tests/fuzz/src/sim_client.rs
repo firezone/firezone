@@ -1,5 +1,5 @@
 use super::{
-    QueryId,
+    DeviceListing, QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{
@@ -13,7 +13,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceList};
-use dns_types::{DomainName, Query, RecordData, RecordType};
+use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
@@ -64,6 +64,9 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
+    /// The answer to the latest PTR query for each name in the device domain.
+    pub(crate) device_listings: BTreeMap<DomainName, DeviceListing>,
+
     pub(crate) probe_observations: Vec<ProbeObservation>,
     sent_probes: Vec<(ProbeId, ProbeProtocol)>,
 
@@ -97,6 +100,7 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
+            device_listings: Default::default(),
             probe_observations: Default::default(),
             sent_probes: Default::default(),
             routes: Default::default(),
@@ -545,6 +549,21 @@ impl SimClient {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
+        let domain = response.domain();
+        if response.qtype() == RecordType::PTR && dns::is_in_device_domain(&domain) {
+            let records = response
+                .records()
+                .map(|record| {
+                    let ttl = record.ttl().as_secs();
+
+                    (record.into_data().flatten_into(), ttl)
+                })
+                .collect();
+
+            self.device_listings
+                .insert(domain, (response.response_code(), records));
+        }
+
         for record in response.records() {
             #[expect(clippy::wildcard_enum_match_arm)]
             let ip = match record.data() {
@@ -621,6 +640,7 @@ impl SimClient {
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
+        self.device_listings.clear();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }

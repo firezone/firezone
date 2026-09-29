@@ -49,6 +49,7 @@ enum TransitionKind {
     SendPacket,
     SendPacketOnExistingFlow,
     SendDnsQueries,
+    RepeatDeviceListingQuery,
     UpdateDevicePoolMembers,
 }
 
@@ -124,6 +125,7 @@ pub(super) fn generate(
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
+        (!dns_query_targets.is_empty()).then_some((K::RepeatDeviceListingQuery, 2)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
     ]
     .into_iter()
@@ -286,6 +288,7 @@ pub(super) fn generate(
             }
         }
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
+        K::RepeatDeviceListingQuery => dns_queries::generate_repeated_listing(g, state, portal),
         K::UpdateDevicePoolMembers => {
             let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
             let members = packets::arb_pool_members(g, state);

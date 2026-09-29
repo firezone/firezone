@@ -8,11 +8,21 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tunnel_proto::dns;
+use tunnel_proto::messages::client::FailReason;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
 use crate::transition::Transition;
+
+/// The TTL the portal gives the names a PTR query in the device domain lists.
+///
+/// It is below the 5 s connlib caches answers from, so answers never outlive the
+/// transition that asked for them.
+const DEVICE_LISTING_TTL: u32 = 4;
+
+/// The TTL the portal gives listings that are asked for again while connlib caches them.
+pub(crate) const CACHED_DEVICE_LISTING_TTL: u32 = 10;
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
@@ -57,6 +67,8 @@ pub struct StubPortal {
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
     iceless: bool,
+
+    device_listing_ttl: u32,
 }
 
 /// Which clients a device pool admits.
@@ -191,11 +203,19 @@ impl StubPortal {
             upstream_do53,
             upstream_doh,
             iceless: false,
+            device_listing_ttl: DEVICE_LISTING_TTL,
         }
     }
 
     /// Applies the portal-side effect of `transition`.
     pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
+        self.device_listing_ttl =
+            if matches!(transition, Transition::RepeatDeviceListingQuery { .. }) {
+                CACHED_DEVICE_LISTING_TTL
+            } else {
+                DEVICE_LISTING_TTL
+            };
+
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_policy_authorizations(*id);
@@ -246,6 +266,7 @@ impl StubPortal {
             Transition::ConnectTcp { .. } => {}
             Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
+            Transition::RepeatDeviceListingQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}
             Transition::ReconnectPortal { .. } => {}
@@ -318,17 +339,79 @@ impl StubPortal {
             .collect()
     }
 
+    /// The labels of all device pools.
+    pub(crate) fn device_pool_labels(&self) -> impl Iterator<Item = String> + '_ {
+        self.device_pool_resources
+            .values()
+            .map(|pool| pool_label(pool).to_owned())
+    }
+
     /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client's
     /// tunnel IPv4 + IPv6, if the slug corresponds to a known device.
+    ///
+    /// A name that labels one of the `held` pools instead is not a device.
     pub(crate) fn resolve_device_domain(
         &self,
         domain: &DomainName,
-    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
-        let slug = dns::device_slug(domain)?;
+        held: &[ResourceId],
+    ) -> Result<(Ipv4Addr, Ipv6Addr), FailReason> {
+        let slug = dns::device_slug(domain).ok_or(FailReason::NotFound)?;
 
-        let client = self.clients.values().find(|c| c.device_label == slug)?;
+        if let Some(client) = self.clients.values().find(|c| c.device_label == slug) {
+            return Ok((client.ipv4, client.ipv6));
+        }
 
-        Some((client.ipv4, client.ipv6))
+        if self.held_pools(held).any(|pool| pool_label(pool) == slug) {
+            return Err(FailReason::NotADevice);
+        }
+
+        Err(FailReason::NotFound)
+    }
+
+    /// Lists the names a PTR query for `domain` returns to a client holding `held`, and
+    /// for how many seconds they may be cached.
+    ///
+    /// The device domain itself lists the labels of those pools, a label the members of
+    /// the pools it names. A label that names none of them but a device lists nothing.
+    pub(crate) fn browse_device_domain(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Option<(Vec<DomainName>, u32)> {
+        if domain.to_string() == dns::DEVICE_DOMAIN {
+            let labels = self
+                .held_pools(held)
+                .map(|pool| device_name(pool_label(pool)))
+                .sorted()
+                .dedup()
+                .collect();
+
+            return Some((labels, self.device_listing_ttl));
+        }
+
+        let label = dns::device_slug(domain)?;
+        let pools = self
+            .held_pools(held)
+            .filter(|pool| pool_label(pool) == label)
+            .map(|pool| pool.id)
+            .collect::<Vec<_>>();
+
+        if pools.is_empty() {
+            return self
+                .clients
+                .values()
+                .any(|c| c.device_label == label)
+                .then(|| (Vec::new(), self.device_listing_ttl));
+        }
+
+        let members = self
+            .clients
+            .iter()
+            .filter(|(id, _)| pools.iter().any(|pool| self.is_pool_member(*pool, **id)))
+            .map(|(_, c)| device_name(&c.device_label))
+            .collect();
+
+        Some((members, self.device_listing_ttl))
     }
 
     pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {
@@ -476,6 +559,15 @@ impl StubPortal {
         {
             authorization.revoked = true;
         }
+    }
+
+    fn held_pools<'a>(
+        &'a self,
+        held: &'a [ResourceId],
+    ) -> impl Iterator<Item = &'a DevicePoolResource> + 'a {
+        self.device_pool_resources
+            .values()
+            .filter(|pool| held.contains(&pool.id))
     }
 
     fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
@@ -764,6 +856,17 @@ impl StubPortal {
     ) -> Option<Vec<tunnel_proto::messages::Filter>> {
         Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
     }
+}
+
+/// The label a pool is browsed at under the device domain.
+///
+/// The portal derives it from the pool's name; generated names already are labels.
+fn pool_label(pool: &DevicePoolResource) -> &str {
+    &pool.name
+}
+
+fn device_name(label: &str) -> DomainName {
+    format!("{label}.{}", dns::DEVICE_DOMAIN).parse().unwrap()
 }
 
 /// Picks an element from a slice by index (`index % len`), or `None` if empty.

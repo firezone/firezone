@@ -27,6 +27,13 @@ mod transition;
 
 type QueryId = u16;
 
+/// The response code of an answer to a PTR query in the device domain and its records
+/// with their TTLs.
+type DeviceListing = (
+    dns_types::ResponseCode,
+    std::collections::BTreeSet<(dns_types::OwnedRecordData, u32)>,
+);
+
 /// Provides the tunnel-proto target's reference-model harness.
 pub mod tunnel_proto {
     use tracing_subscriber::{

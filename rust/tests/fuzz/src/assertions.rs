@@ -62,6 +62,7 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         assert_tcp_connections(ref_client, sut_client);
         assert_udp_dns_packets_properties(ref_client, sut_client);
         assert_tcp_dns(ref_client, sut_client);
+        assert_device_listings(ref_client, sut_client);
         assert_dns_servers_are_valid(ref_client, sut_client, portal);
         assert_search_domain_is_valid(sut_client, portal);
         assert_routes_are_valid(ref_client, sut_client);
@@ -1029,6 +1030,16 @@ fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
                 tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
                 tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
             }
+        }
+    }
+}
+
+fn assert_device_listings(ref_client: &RefClient, sim_client: &SimClient) {
+    for (domain, expected) in &ref_client.expected_device_listings {
+        let actual = sim_client.device_listings.get(domain);
+
+        if actual != Some(expected) {
+            tracing::error!(target: "assertions", %domain, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");
         }
     }
 }
