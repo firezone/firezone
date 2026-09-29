@@ -453,7 +453,7 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DeviceDomainPtrQueried { domain }) => {
+            Ok(ClientEvent::DeviceDomainBrowsed { domain }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::BrowseDeviceDomain {
                         domain: domain.to_string(),

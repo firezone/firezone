@@ -1637,7 +1637,7 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceDomainPtrQueried { domain } => {
+            ClientEvent::DeviceDomainBrowsed { domain } => {
                 let held = ref_state.clients[&src].inner().device_pool_ids();
                 let result = portal.browse_device_domain(&domain, &held);
 
@@ -1904,7 +1904,7 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::RemovedIceCandidates { .. } => true,
         ClientEvent::RequestAccess { .. } => true,
         ClientEvent::DeviceDomainQueried { .. } => true,
-        ClientEvent::DeviceDomainPtrQueried { .. } => true,
+        ClientEvent::DeviceDomainBrowsed { .. } => true,
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,

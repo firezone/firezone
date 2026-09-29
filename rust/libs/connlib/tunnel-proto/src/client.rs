@@ -2338,7 +2338,7 @@ impl ClientState {
                 }
                 device_stub_resolver::Event::BrowseDomain { domain } => {
                     self.buffered_events
-                        .push_back(ClientEvent::DeviceDomainPtrQueried { domain });
+                        .push_back(ClientEvent::DeviceDomainBrowsed { domain });
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
