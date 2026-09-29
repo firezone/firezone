@@ -848,7 +848,7 @@ defmodule PortalWeb.Groups.Components do
             ]}
           >
             <Navigation.link
-              navigate={~p"/#{@account}/resources/#{row.resource.id}"}
+              navigate={~p"/#{@account}/policies/#{row.policy_id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
                 row.policy_is_disabled && "opacity-50 hover:opacity-75"
@@ -888,6 +888,12 @@ defmodule PortalWeb.Groups.Components do
               phx-value-resource_id={row.resource.id}
               title="More actions"
             >
+              <Navigation.link
+                navigate={~p"/#{@account}/resources/#{row.resource.id}"}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+              >
+                <Core.icon name="ri-server-line" class="w-3.5 h-3.5 shrink-0" /> Go to Resource
+              </Navigation.link>
               <button
                 :if={!row.policy_is_disabled}
                 type="button"

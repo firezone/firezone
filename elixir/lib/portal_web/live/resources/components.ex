@@ -1342,7 +1342,7 @@ defmodule PortalWeb.Resources.Components do
             class="flex items-center gap-1 pr-4 hover:bg-raised group/item"
           >
             <Navigation.link
-              navigate={~p"/#{@account}/groups/#{row.group.id}"}
+              navigate={~p"/#{@account}/policies/#{row.policy_id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
                 row.policy_is_disabled && "opacity-50 hover:opacity-75"
@@ -1376,6 +1376,12 @@ defmodule PortalWeb.Resources.Components do
                 phx-click-away="close_group_actions"
                 class="absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-elevated shadow-lg z-10 py-1"
               >
+                <Navigation.link
+                  navigate={~p"/#{@account}/groups/#{row.group.id}"}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                >
+                  <Core.icon name="ri-group-line" class="w-3.5 h-3.5 shrink-0" /> Go to Group
+                </Navigation.link>
                 <button
                   :if={!row.policy_is_disabled}
                   type="button"

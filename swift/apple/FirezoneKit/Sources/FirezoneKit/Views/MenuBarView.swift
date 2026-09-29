@@ -34,8 +34,8 @@
       Divider()
 
       // Update notification (conditional)
-      if store.updateChecker.updateAvailable {
-        UpdateMenuItem()
+      if let downloadURL = store.updateChecker.downloadURL {
+        UpdateMenuItem(downloadURL: downloadURL)
         Divider()
       }
 
@@ -222,10 +222,12 @@
 
   /// Update notification menu item
   struct UpdateMenuItem: View {
+    let downloadURL: URL
+
     var body: some View {
       Button("Update available…") {
         Task {
-          await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL())
+          await NSWorkspace.shared.openAsync(downloadURL)
         }
       }
     }

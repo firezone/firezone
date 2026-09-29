@@ -136,7 +136,9 @@
 
       app.tunnel.disconnect(with: ConnlibError.disconnected("the portal hung up"))
 
-      try await waitUntil { app.notifications.shown.contains(.disconnected("the portal hung up")) }
+      try await waitUntil {
+        app.notifications.shown.contains(.disconnected("the portal hung up", requiresSignIn: false))
+      }
       #expect(app.store.vpnStatus == .disconnected)
       #expect(app.store.resourceList.asArray().isEmpty)
     }
@@ -149,7 +151,10 @@
 
       app.tunnel.disconnect(with: ConnlibError.sessionExpired("your session expired"))
 
-      try await waitUntil { app.notifications.shown.contains(.signedOut("your session expired")) }
+      try await waitUntil {
+        app.notifications.shown.contains(
+          .disconnected("your session expired", requiresSignIn: true))
+      }
       #expect(app.store.vpnStatus == .disconnected)
     }
 
@@ -161,7 +166,8 @@
       try await app.store.signIn(token: Self.token)
 
       try await waitUntil {
-        app.notifications.shown.contains(.disconnected("connlib failed to start"))
+        app.notifications.shown.contains(
+          .disconnected("connlib failed to start", requiresSignIn: false))
       }
       #expect(app.store.vpnStatus == .disconnected)
     }
