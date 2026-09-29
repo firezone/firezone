@@ -77,7 +77,7 @@ run = """
 set -u
 
 # Capture every client/gateway process (comma-separated for `perf -p`). Idle ones (e.g. an
-# unused `client-2`) contribute ~no samples, so this avoids guessing which container ran the test.
+# unused `pool-member`) contribute ~no samples, so this avoids guessing which container ran the test.
 client=$(pgrep -x firezone-headle | paste -sd, -)
 gateway=$(pgrep -x firezone-gatewa | paste -sd, -)
 [ -n "$client" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
