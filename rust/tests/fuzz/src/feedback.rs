@@ -5,9 +5,11 @@
 //! [`Recorder`] inspects the reference and simulated states after their
 //! invariants have been checked and records selected combinations as IJON set
 //! features. It also remembers disruptions so successful connectivity after a
-//! later transition can guide the fuzzer. A disruption by itself earns no
-//! feedback. Each annotation site has its own feature space, and observing the
-//! same value again does not make an input interesting.
+//! later transition can guide the fuzzer. A small number of bounded stepping
+//! stones reward state needed to reach especially difficult DNS scenarios.
+//! IJON mixes each annotation site's source location into its features, and
+//! observing the same value at the same site again does not make an input
+//! interesting.
 //!
 //! `prepare_runtime` enables the IJON map before discovery starts. Replay still
 //! evaluates the observations, but does not record feedback.
@@ -32,7 +34,7 @@ use crate::{
     reference::ReferenceState,
     resource::{EditEffect, classify},
     sim_gateway::DnsResolution,
-    sim_net::{EdgeConfig, FilterMode, Mapping},
+    sim_net::EdgeConfig,
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
@@ -108,19 +110,15 @@ macro_rules! record {
                 "fuzzer feedback supports at most 16 booleans",
             );
         }
-        let flags: &[bool] = &[$($flag),+];
-        let value = flags.iter().enumerate().fold(0, |value, (bit, flag)| {
-            value | (u16::from(*flag) << bit)
-        });
-        record_value!(value);
+        record_value!(pack(&[$($flag),+]));
     }};
 }
 
-/// Records a logical outcome together with the network topology that carried it.
+/// Records a logical outcome together with the selected network path.
 ///
-/// A path uses eight bits: three for each endpoint's NAT behaviour and two for
-/// the selected direct or relayed path. That leaves eight boolean predicates for
-/// the logical outcome.
+/// The path uses two bits for direct, one-sided relay, and two-sided relay
+/// connections. Logical outcomes remain limited to eight predicates to keep each
+/// annotation site's feature space bounded.
 macro_rules! record_with_path {
     ($path:expr; $($flag:expr),+ $(,)?) => {{
         const {
@@ -131,12 +129,16 @@ macro_rules! record_with_path {
         }
         let path: PathFeedback = $path;
         let flags: &[bool] = &[$($flag),+];
-        let value = flags.iter().enumerate().fold(0, |value, (bit, flag)| {
-            value | (u16::from(*flag) << bit)
-        });
-        let value = value | (path.code() << flags.len());
+        let value = pack(flags) | (path.code() << flags.len());
         record_value!(value);
     }};
+}
+
+fn pack(flags: &[bool]) -> u16 {
+    flags
+        .iter()
+        .enumerate()
+        .fold(0, |value, (bit, flag)| value | (u16::from(*flag) << bit))
 }
 
 /// Records meaningful connectivity observed after earlier disruptions.
@@ -460,7 +462,6 @@ impl Recorder {
             return;
         }
 
-        record_with_path!(path; origin.expiry_elapsed, remote.expiry_elapsed);
         record_with_path!(path;
             origin.expiry_elapsed,
             remote.expiry_elapsed,
@@ -756,9 +757,7 @@ impl PathFeedback {
     }
 
     fn code(self) -> u16 {
-        edge_code(self.origin)
-            | (edge_code(self.remote) << 3)
-            | (connection_path_code(self.selected) << 6)
+        connection_path_code(self.selected)
     }
 }
 
@@ -771,48 +770,28 @@ fn connection_path_code(path: ConnectionPath) -> u16 {
     }
 }
 
-fn edge_code(edge: EdgeConfig) -> u16 {
-    let EdgeConfig::Nat(mapping, filter, _) = edge else {
-        return 0;
-    };
-    let mapping = match mapping {
-        Mapping::EndpointIndependent => 0,
-        Mapping::EndpointDependent => 3,
-    };
-    let filter = match filter {
-        FilterMode::Open => 1,
-        FilterMode::AddressRestricted => 2,
-        FilterMode::PortRestricted => 3,
-    };
-
-    mapping + filter
-}
-
 fn route_path_feedback(
     reference: &ReferenceState,
     state: &TunnelTest,
     completed: &CompletedRoundTrip<'_>,
 ) -> Option<PathFeedback> {
-    let origin_id = completed.expected.origin;
-    let origin = reference.clients.get(&origin_id)?;
-    let (remote, peer) = match completed.route {
+    let origin = completed.expected.origin;
+    let peer = match completed.route {
         Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
-            let remote = reference.gateways.get(&gateway)?;
-            (remote.edge_config(), ClientOrGatewayId::Gateway(gateway))
+            return gateway_path_feedback(reference, state, origin, gateway);
         }
-        Route::Peer(peer) => {
-            let remote = reference.clients.get(&peer)?;
-            (remote.edge_config(), ClientOrGatewayId::Client(peer))
-        }
+        Route::Peer(peer) => peer,
     };
+    let origin_edge = reference.clients.get(&origin)?.edge_config();
+    let remote_edge = reference.clients.get(&peer)?.edge_config();
     let selected = state
         .clients
-        .get(&origin_id)?
+        .get(&origin)?
         .inner()
         .sut
-        .connection_path(peer)?;
+        .connection_path(ClientOrGatewayId::Client(peer))?;
 
-    Some(PathFeedback::new(origin.edge_config(), remote, selected))
+    Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
 
 struct NatFeedback {

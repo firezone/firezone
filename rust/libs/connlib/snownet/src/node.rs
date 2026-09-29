@@ -281,7 +281,7 @@ where
     /// Returns the network path currently selected for `cid`.
     pub fn connection_path(&self, cid: &TId) -> Option<ConnectionPath> {
         self.connections
-            .get(cid)?
+            .get_established(cid)?
             .state
             .peer_socket()
             .map(ConnectionPath::from)

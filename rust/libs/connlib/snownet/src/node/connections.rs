@@ -206,7 +206,7 @@ where
         Ok(connection)
     }
 
-    pub(crate) fn get(&self, id: &TId) -> Option<&Connection<RId>> {
+    pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
         self.established.get(id)
     }
 

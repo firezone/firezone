@@ -93,6 +93,7 @@ pub(super) fn generate(
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
     // destination, protocol and fields from subsequent bytes.
@@ -187,6 +188,7 @@ pub(super) fn generate(
             };
 
             let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
+
             Transition::DeployNewRelays(relays)
         }
         K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
@@ -264,7 +266,6 @@ pub(super) fn generate(
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let records = arb_dns_record_set(g);
-
             Transition::UpdateDnsRecords { domain, records }
         }
         K::SendPacket => {
@@ -273,7 +274,18 @@ pub(super) fn generate(
         }
         K::SendPacketOnExistingFlow => {
             let flow = existing_flows[g.choose_index(existing_flows.len())];
-            send_on_existing_flow(g, flow)
+            let probe_id = g.fresh_probe_id();
+
+            match flow {
+                ExistingFlow::Udp(flow_id) => {
+                    Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id }
+                }
+                ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
+                    flow_id,
+                    seq,
+                    probe_id,
+                },
+            }
         }
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
         K::UpdateDevicePoolMembers => {
@@ -287,19 +299,6 @@ pub(super) fn generate(
                 revoked,
             }
         }
-    }
-}
-
-fn send_on_existing_flow(g: &mut Generator<'_>, flow: ExistingFlow) -> Transition {
-    let probe_id = g.fresh_probe_id();
-
-    match flow {
-        ExistingFlow::Udp(flow_id) => Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id },
-        ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
-            flow_id,
-            seq,
-            probe_id,
-        },
     }
 }
 
