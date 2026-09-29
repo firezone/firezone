@@ -15,7 +15,7 @@
     let devices: [ConnectedDevice]
 
     var body: some View {
-      Section(header: Text("Devices")) {
+      Section(header: Text("Connected Devices")) {
         if devices.isEmpty {
           Text("No connected devices")
             .foregroundColor(.secondary)

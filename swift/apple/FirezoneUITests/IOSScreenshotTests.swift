@@ -122,7 +122,7 @@
 
       try waitFor(app.staticTexts["Office network"], on: "session")
       try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
-      try waitFor(app.staticTexts["Devices"], on: "device-pool-details")
+      try waitFor(app.staticTexts["Connected Devices"], on: "device-pool-details")
       deliver(app, as: "device-pool-details", in: appearance)
     }
 
