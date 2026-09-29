@@ -24,6 +24,11 @@ const DEVICE_LISTING_TTL: u32 = 4;
 /// The TTL the portal gives listings that are asked for again while connlib caches them.
 pub(crate) const CACHED_DEVICE_LISTING_TTL: u32 = 10;
 
+/// The most names the portal lists for a PTR query in the device domain.
+///
+/// Test cases have two clients, so a pool that holds both exceeds it.
+const DEVICE_LISTING_LIMIT: usize = 1;
+
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub struct StubPortal {
@@ -373,11 +378,28 @@ impl StubPortal {
     ///
     /// The device domain itself lists the labels of those pools, a label the members of
     /// the pools it names. A label that names none of them but a device lists nothing.
+    /// A listing of more than [`DEVICE_LISTING_LIMIT`] names is refused.
     pub(crate) fn browse_device_domain(
         &self,
         domain: &DomainName,
         held: &[ResourceId],
-    ) -> Option<(Vec<DomainName>, u32)> {
+    ) -> Result<(Vec<DomainName>, u32), FailReason> {
+        let names = self
+            .device_domain_names(domain, held)
+            .ok_or(FailReason::NotFound)?;
+
+        if names.len() > DEVICE_LISTING_LIMIT {
+            return Err(FailReason::TooManyNames);
+        }
+
+        Ok((names, self.device_listing_ttl))
+    }
+
+    fn device_domain_names(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Option<Vec<DomainName>> {
         if domain.to_string() == dns::DEVICE_DOMAIN {
             let labels = self
                 .held_pools(held)
@@ -386,7 +408,7 @@ impl StubPortal {
                 .dedup()
                 .collect();
 
-            return Some((labels, self.device_listing_ttl));
+            return Some(labels);
         }
 
         let label = dns::device_slug(domain)?;
@@ -401,7 +423,7 @@ impl StubPortal {
                 .clients
                 .values()
                 .any(|c| c.device_label == label)
-                .then(|| (Vec::new(), self.device_listing_ttl));
+                .then(Vec::new);
         }
 
         let members = self
@@ -411,7 +433,7 @@ impl StubPortal {
             .map(|(_, c)| device_name(&c.device_label))
             .collect();
 
-        Some((members, self.device_listing_ttl))
+        Some(members)
     }
 
     pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {

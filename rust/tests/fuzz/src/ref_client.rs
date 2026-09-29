@@ -14,7 +14,7 @@ use super::{
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
-    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
+    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
 };
 
 use chrono::{DateTime, Utc};
@@ -946,21 +946,23 @@ impl RefClient {
     }
 
     /// Expects the latest PTR query for `domain` to be answered with `listing`, the names
-    /// and TTL the portal gave, or NXDOMAIN if it gave none.
+    /// and TTL the portal gave, REFUSED if it refused to list them, or NXDOMAIN if it gave
+    /// none.
     pub(crate) fn expect_device_listing(
         &mut self,
         domain: &DomainName,
-        listing: Option<(Vec<DomainName>, u32)>,
+        listing: Result<(Vec<DomainName>, u32), FailReason>,
     ) {
         let listing = match listing {
-            Some((names, ttl)) => (
+            Ok((names, ttl)) => (
                 ResponseCode::NOERROR,
                 names
                     .into_iter()
                     .map(|name| (dns_types::records::ptr(name), ttl))
                     .collect(),
             ),
-            None => (ResponseCode::NXDOMAIN, BTreeSet::new()),
+            Err(FailReason::TooManyNames) => (ResponseCode::REFUSED, BTreeSet::new()),
+            Err(_) => (ResponseCode::NXDOMAIN, BTreeSet::new()),
         };
 
         self.expected_device_listings

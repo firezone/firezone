@@ -222,8 +222,8 @@ impl ReferenceState {
                 // counted down.
                 let listing =
                     match portal.browse_device_domain(&query.domain, &client.device_pool_ids()) {
-                        Some((names, ttl)) if !names.is_empty() => {
-                            Some((names, ttl - after.as_secs() as u32))
+                        Ok((names, ttl)) if !names.is_empty() => {
+                            Ok((names, ttl - after.as_secs() as u32))
                         }
                         listing => listing,
                     };

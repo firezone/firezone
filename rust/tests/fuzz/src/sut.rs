@@ -1639,9 +1639,7 @@ impl TunnelTest {
             }
             ClientEvent::DeviceDomainPtrQueried { domain } => {
                 let held = ref_state.clients[&src].inner().device_pool_ids();
-                let result = portal
-                    .browse_device_domain(&domain, &held)
-                    .ok_or(FailReason::NotFound);
+                let result = portal.browse_device_domain(&domain, &held);
 
                 let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
