@@ -410,9 +410,8 @@
   final class MockSessionNotification: SessionNotificationProtocol {
     enum Shown: Equatable {
       case resource(title: String, body: String)
+      case disconnected(String, requiresSignIn: Bool)
       #if os(macOS)
-        case signedOut(String?)
-        case disconnected(String?)
         case restartRequired
         case update(version: SemanticVersion)
       #endif
@@ -434,15 +433,11 @@
       shown.append(.resource(title: title, body: body))
     }
 
+    func showDisconnectedNotification(_ message: String, requiresSignIn: Bool) {
+      shown.append(.disconnected(message, requiresSignIn: requiresSignIn))
+    }
+
     #if os(macOS)
-      func showSignedOutAlertMacOS(_ message: String?) async {
-        shown.append(.signedOut(message))
-      }
-
-      func showDisconnectedAlertMacOS(_ message: String?) async {
-        shown.append(.disconnected(message))
-      }
-
       func showRestartRequiredAlertMacOS() {
         shown.append(.restartRequired)
       }

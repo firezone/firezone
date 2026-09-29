@@ -11,9 +11,8 @@ import UserNotifications
   import AppKit
 #endif
 
-// SessionNotification helps with showing iOS local notifications
+// SessionNotification helps with showing local notifications
 // when the session ends.
-// In macOS, it helps with showing an alert when the session ends.
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
@@ -154,81 +153,45 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     }
   }
 
-  #if os(iOS)
-    // In iOS, use User Notifications.
-    // This gets called from the tunnel side.
-    nonisolated public static func showDisconnectedNotificationiOS(_ message: String) {
-      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
-        if notificationSettings.authorizationStatus == .authorized {
-          Log.log(
-            "Notifications are allowed. Alert style is \(notificationSettings.alertStyle.rawValue)"
-          )
-          let content = UNMutableNotificationContent()
-          content.title = "Your Firezone session has ended"
-          content.body = message
-          content.categoryIdentifier =
-            NotificationIndentifier.sessionEndedNotificationCategory.rawValue
-          let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-          let request = UNNotificationRequest(
-            identifier: "FirezoneTunnelShutdown", content: content, trigger: trigger
-          )
-          UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-              Log.error(error)
-            } else {
-              Log.debug("\(#function): Successfully requested notification")
-            }
-          }
+  /// Tells the user the session ended, in the words it ended with, offering to sign in again
+  /// only when that can restore it.
+  ///
+  /// Static because on iOS the network extension posts it, as the app may not be running.
+  nonisolated public static func showDisconnectedNotification(
+    _ message: String, requiresSignIn: Bool
+  ) {
+    UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+      guard notificationSettings.authorizationStatus == .authorized else {
+        Log.info("Cannot show the disconnected notification: notifications are not allowed")
+        return
+      }
+
+      let content = UNMutableNotificationContent()
+      content.title = "Your Firezone session has ended"
+      content.body = message
+      content.sound = .default
+      content.categoryIdentifier =
+        requiresSignIn
+        ? NotificationIndentifier.sessionEndedNotificationCategory.rawValue
+        : NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory.rawValue
+      let request = UNNotificationRequest(
+        identifier: "FirezoneTunnelShutdown",
+        content: content,
+        trigger: nil
+      )
+      UNUserNotificationCenter.current().add(request) { error in
+        if let error {
+          Log.error(error)
         }
       }
     }
+  }
 
-    /// Tells the user the session ended, in the words it ended with, when signing in
-    /// again cannot restore it.
-    nonisolated public static func showDisconnectedNotificationWithoutSignIniOS(_ message: String) {
-      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
-        guard notificationSettings.authorizationStatus == .authorized else {
-          Log.warning("Cannot show the disconnected notification: notifications denied")
-          return
-        }
+  public func showDisconnectedNotification(_ message: String, requiresSignIn: Bool) {
+    Self.showDisconnectedNotification(message, requiresSignIn: requiresSignIn)
+  }
 
-        let content = UNMutableNotificationContent()
-        content.title = "Your Firezone session has ended"
-        content.body = message
-        content.sound = .default
-        content.categoryIdentifier =
-          NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory.rawValue
-        let request = UNNotificationRequest(
-          identifier: "FirezoneTunnelShutdownWithoutSignIn",
-          content: content,
-          trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request) { error in
-          if let error {
-            Log.error(error)
-          } else {
-            Log.debug("Disconnected notification without sign-in requested")
-          }
-        }
-      }
-    }
-  #elseif os(macOS)
-    // In macOS, use a Cocoa alert.
-    // This gets called from the app side.
-    @MainActor
-    public func showSignedOutAlertMacOS(_ message: String?) async {
-      let signInClicked = await MacOSAlert.showSignedOutAlert(message)
-      if signInClicked {
-        Log.log("\(#function): 'Sign In' clicked in notification")
-        await signInHandler()
-      }
-    }
-
-    @MainActor
-    public func showDisconnectedAlertMacOS(_ message: String?) async {
-      await MacOSAlert.showDisconnectedAlert(message)
-    }
-
+  #if os(macOS)
     @MainActor
     public func showRestartRequiredAlertMacOS() {
       MacOSAlert.showRestartRequiredAlert()
