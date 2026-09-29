@@ -92,16 +92,40 @@ defmodule PortalWeb.OIDCController do
   def callback(conn, %{"state" => state, "error" => _error} = params) do
     case parse_callback_state(state) do
       {:entra_auth_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "entra-auth-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:entra_directory_sync, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "entra-directory-sync",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:intune_posture_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "intune-posture-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:defender_posture_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "defender-posture-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:entra_tenant_proof,
        verification_type,
@@ -1581,7 +1605,46 @@ defmodule PortalWeb.OIDCController do
     redirect_with_entra_verification_result(conn, result)
   end
 
-  defp handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref) do
+  defp handle_entra_admin_consent_error(
+         conn,
+         %{"error_description" => description} = params,
+         verification_type,
+         lv_pid_string,
+         verification_ref
+       ) do
+    with {:ok, tenant_id} <- PortalWeb.OIDC.entra_service_principal_exists_tenant(description),
+         {:ok, %{config: config, verifier: verifier}} <-
+           lv_pid_string
+           |> PortalWeb.OIDC.deserialize_pid()
+           |> peek_pending_verification(verification_ref) do
+      redirect_to_entra_tenant_proof(
+        conn,
+        config,
+        verifier,
+        tenant_id,
+        lv_pid_string,
+        verification_ref,
+        verification_type,
+        true
+      )
+    else
+      _ ->
+        handle_entra_verification_error(
+          conn,
+          entra_authorization_error_message(params),
+          lv_pid_string,
+          verification_ref
+        )
+    end
+  end
+
+  defp handle_entra_admin_consent_error(
+         conn,
+         params,
+         _verification_type,
+         lv_pid_string,
+         verification_ref
+       ) do
     handle_entra_verification_error(
       conn,
       entra_authorization_error_message(params),
