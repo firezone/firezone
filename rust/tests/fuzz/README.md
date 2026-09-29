@@ -24,7 +24,7 @@ Minimization retains inputs that contribute edge coverage or fuzzer feedback; di
 AFL edge coverage and IJON feedback guide discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
 The tunnel-proto feedback pass records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states, such as an ICMP error successfully translated through gateway NAT back to the client.
-Each combination of boolean predicates is a feature scoped to its annotation site; repeating a combination does not add feedback.
+Each distinct value recorded at an annotation site is a feature scoped to that site; recording the same value again does not add feedback.
 Replay evaluates annotations without recording feedback.
 
 Pull-request CI checks that discovery coverage is stable within and across forkservers, replays the committed corpora, and rejects increases in uncovered source regions.
