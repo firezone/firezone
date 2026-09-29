@@ -136,11 +136,18 @@ impl From<IceRole> for snownet::IceRole {
 pub struct SnownetCapabilities {
     /// The implementation can negotiate connections without ICE.
     pub iceless: bool,
+    /// The implementation can speak WireGuard with AES-GCM and does so in hardware.
+    pub aes_gcm: bool,
 }
 
 impl SnownetCapabilities {
-    /// Capabilities of the local snownet implementation, hard-coded at compile time.
-    pub const LOCAL: Self = Self { iceless: true };
+    /// Capabilities of the local snownet implementation on this device.
+    pub fn local() -> Self {
+        Self {
+            iceless: true,
+            aes_gcm: boringtun::noise::CipherSuite::is_aes_gcm_hardware_accelerated(),
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -480,13 +487,17 @@ mod tests {
     fn snownet_capabilities_default_is_all_false() {
         assert_eq!(
             SnownetCapabilities::default(),
-            SnownetCapabilities { iceless: false }
+            SnownetCapabilities {
+                iceless: false,
+                aes_gcm: false
+            }
         );
     }
 
-    // Compile-time guard so future edits to `LOCAL` don't accidentally turn
-    // off iceless support without us noticing.
-    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
+    #[test]
+    fn local_snownet_capabilities_include_iceless() {
+        assert!(SnownetCapabilities::local().iceless);
+    }
 
     #[test]
     fn snownet_capabilities_deserialize_empty_object_is_default() {

@@ -1034,6 +1034,7 @@ impl ClientState {
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         use_iceless: bool,
+        use_aes_gcm: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
@@ -1064,6 +1065,7 @@ impl ClientState {
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
             use_iceless,
+            use_aes_gcm,
             now,
         ) {
             Ok(()) => {}
@@ -1153,6 +1155,7 @@ impl ClientState {
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
         use_iceless: bool,
+        use_aes_gcm: bool,
         client_name: String,
         resource_id: Option<ResourceId>,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
@@ -1177,6 +1180,7 @@ impl ClientState {
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
             use_iceless,
+            use_aes_gcm,
             now,
         )?;
 

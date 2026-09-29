@@ -313,6 +313,7 @@ impl GatewayState {
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         use_iceless: bool,
+        use_aes_gcm: bool,
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) -> Result<(), NoTurnServers> {
@@ -326,6 +327,7 @@ impl GatewayState {
             IceConfig::server_default(),
             IceConfig::server_idle(),
             use_iceless,
+            use_aes_gcm,
             now,
         )?;
 

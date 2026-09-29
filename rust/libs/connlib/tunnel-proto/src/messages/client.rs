@@ -140,6 +140,8 @@ pub struct AuthorizationCreated {
     pub gateway_ice_credentials: IceCredentials,
     #[serde(default)]
     pub use_iceless: bool,
+    #[serde(default)]
+    pub use_aes_gcm: bool,
 
     /// The initiator-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
@@ -171,6 +173,8 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
     #[serde(default)]
     pub use_iceless: bool,
+    #[serde(default)]
+    pub use_aes_gcm: bool,
 
     /// The pool the portal picked for the flow we asked about. `None` on the
     /// receiving side.
@@ -616,15 +620,16 @@ mod tests {
         let IngressMessages::AuthorizationCreated(flow) = message else {
             panic!("expected AuthorizationCreated");
         };
-        // Old portals don't send the flag; default is `false`.
+        // Old portals don't send the flags; default is `false`.
         assert!(!flow.use_iceless);
+        assert!(!flow.use_aes_gcm);
     }
 
     #[test]
-    fn authorization_created_picks_up_use_iceless() {
+    fn authorization_created_picks_up_use_iceless_and_use_aes_gcm() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"use_aes_gcm":true,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -633,6 +638,7 @@ mod tests {
             panic!("expected AuthorizationCreated");
         };
         assert!(flow.use_iceless);
+        assert!(flow.use_aes_gcm);
     }
 
     #[test]
@@ -924,8 +930,12 @@ mod tests {
 
     #[test]
     fn serialize_set_snownet_capabilities_message() {
-        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
-        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities {
+            iceless: true,
+            aes_gcm: true,
+        });
+        let expected_json =
+            r#"{"event":"set_snownet_capabilities","payload":{"iceless":true,"aes_gcm":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

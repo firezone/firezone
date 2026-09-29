@@ -1372,6 +1372,7 @@ impl TunnelTest {
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
                 let use_iceless = portal.iceless();
+                let use_aes_gcm = portal.aes_gcm();
 
                 gateway
                     .exec_mut(|g| {
@@ -1388,6 +1389,7 @@ impl TunnelTest {
                             None,
                             resource,
                             use_iceless,
+                            use_aes_gcm,
                             now,
                             test_ingest_token(),
                         )?;
@@ -1432,6 +1434,7 @@ impl TunnelTest {
                             client_ice,
                             gateway_ice,
                             use_iceless,
+                            use_aes_gcm,
                             test_ingest_token(),
                             now,
                         )
@@ -1496,6 +1499,7 @@ impl TunnelTest {
                 let (preshared_key, local_client_ice, remote_client_ice) =
                     make_preshared_key_and_ice(src_key, remote_key);
                 let use_iceless = portal.iceless();
+                let use_aes_gcm = portal.aes_gcm();
 
                 let remote_authorization = ResourceAuthorization {
                     resource_id: pool,
@@ -1513,6 +1517,7 @@ impl TunnelTest {
                             local_client_ice.clone(),
                             tunnel_proto::messages::IceRole::Controlled,
                             use_iceless,
+                            use_aes_gcm,
                             "initiating client".to_owned(),
                             None,
                             Some(remote_authorization),
@@ -1540,6 +1545,7 @@ impl TunnelTest {
                             remote_client_ice,
                             tunnel_proto::messages::IceRole::Controlling,
                             use_iceless,
+                            use_aes_gcm,
                             "target client".to_owned(),
                             Some(pool),
                             None,

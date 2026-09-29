@@ -178,6 +178,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator) -> StubPortal {
         upstream_doh,
     )
     .with_iceless(g.bool())
+    .with_aes_gcm(g.bool())
 }
 
 fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {

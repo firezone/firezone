@@ -57,6 +57,9 @@ pub struct StubPortal {
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
     iceless: bool,
+
+    /// Whether the portal hands out AES-GCM flows, sampled like `iceless`.
+    aes_gcm: bool,
 }
 
 /// Which clients a device pool admits.
@@ -191,6 +194,7 @@ impl StubPortal {
             upstream_do53,
             upstream_doh,
             iceless: false,
+            aes_gcm: false,
         }
     }
 
@@ -308,6 +312,17 @@ impl StubPortal {
     /// Whether the portal hands out ICE-less flows for every connection.
     pub(crate) fn iceless(&self) -> bool {
         self.iceless
+    }
+
+    /// Toggles whether the portal hands out AES-GCM flows.
+    pub(crate) fn with_aes_gcm(mut self, aes_gcm: bool) -> Self {
+        self.aes_gcm = aes_gcm;
+        self
+    }
+
+    /// Whether the portal hands out AES-GCM flows for every connection.
+    pub(crate) fn aes_gcm(&self) -> bool {
+        self.aes_gcm
     }
 
     /// All device labels the portal knows about, in client order.

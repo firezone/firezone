@@ -661,6 +661,7 @@ impl Eventloop {
                 client_ice_credentials,
                 gateway_ice_credentials,
                 use_iceless,
+                use_aes_gcm,
                 flow_logs_ingest_token,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
@@ -678,6 +679,7 @@ impl Eventloop {
                     client_ice_credentials,
                     gateway_ice_credentials,
                     use_iceless,
+                    use_aes_gcm,
                     flow_logs_ingest_token,
                     now,
                 ) {
@@ -737,6 +739,7 @@ impl Eventloop {
                 remote_ice_credentials,
                 ice_role,
                 use_iceless,
+                use_aes_gcm,
                 resource_id,
                 resource,
                 expires_at,
@@ -765,6 +768,7 @@ impl Eventloop {
                     remote_ice_credentials,
                     ice_role,
                     use_iceless,
+                    use_aes_gcm,
                     client_name,
                     resource_id,
                     authorization,
@@ -1012,7 +1016,7 @@ async fn phoenix_channel_event_loop(
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
                 if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
                     PHOENIX_TOPIC,
-                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
+                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::local()),
                 ) {
                     tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
                 }

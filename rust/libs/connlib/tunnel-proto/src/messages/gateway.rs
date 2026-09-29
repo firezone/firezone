@@ -154,6 +154,8 @@ pub struct CreateAuthorization {
 
     #[serde(default)]
     pub use_iceless: bool,
+    #[serde(default)]
+    pub use_aes_gcm: bool,
 
     /// The responder-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
@@ -393,6 +395,7 @@ mod tests {
             panic!("expected CreateAuthorization");
         };
         assert!(!authorization.use_iceless);
+        assert!(!authorization.use_aes_gcm);
         assert_eq!(authorization.flow_logs_ingest_token.as_str(), token);
     }
 
@@ -423,8 +426,12 @@ mod tests {
 
     #[test]
     fn serialize_set_snownet_capabilities_message() {
-        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
-        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities {
+            iceless: true,
+            aes_gcm: true,
+        });
+        let expected_json =
+            r#"{"event":"set_snownet_capabilities","payload":{"iceless":true,"aes_gcm":true}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

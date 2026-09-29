@@ -21,7 +21,7 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
-    HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
+    CipherSuite, HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
 };
 use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
@@ -293,12 +293,18 @@ where
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
         use_iceless: bool,
+        use_aes_gcm: bool,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.last_now = now;
 
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
+        let cipher_suite = if use_aes_gcm {
+            CipherSuite::AesGcm
+        } else {
+            CipherSuite::ChaChaPoly
+        };
 
         // Reuse only if every parameter that feeds boringtun's
         // session matches, including the agent mode — a flag flip
@@ -312,6 +318,7 @@ where
             )
             && c.tunnel.remote_static_public() == remote
             && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
+            && c.tunnel.cipher_suite() == cipher_suite
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
@@ -366,6 +373,7 @@ where
             tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
         };
+        tracing::debug!(%cid, ?cipher_suite, "Using cipher suite for connection");
 
         agent.apply_ice_config(default_ice_config);
         agent.set_local_credentials(local_creds);
@@ -387,6 +395,7 @@ where
             agent,
             remote,
             preshared_key,
+            cipher_suite,
             selected_relay,
             index,
             default_ice_config,
@@ -824,6 +833,7 @@ where
         mut agent: Agent,
         remote: PublicKey,
         key: x25519::StaticSecret,
+        cipher_suite: CipherSuite,
         relay: RId,
         index: Index,
         default_ice_config: IceConfig,
@@ -849,6 +859,7 @@ where
             self.unix_now,
             self.unix_ts,
         );
+        tunnel.set_cipher_suite(cipher_suite);
         // With classic ICE, a 90s rekey-attempt time is bad UX: ICE can think
         // the pair is fine while WireGuard is desynced and stuck, so we shorten
         // it to roughly our ICE timeout to fail fast and re-establish.
