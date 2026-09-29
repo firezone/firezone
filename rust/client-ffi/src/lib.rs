@@ -205,6 +205,8 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
     /// Tunnel IPv6 address the device is reachable on.
@@ -994,6 +996,7 @@ impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
         ConnectedDevice {
             id: device.id.to_string(),
             name: device.name,
+            slug: device.slug,
             tun_ipv4: device.tun_ipv4.to_string(),
             tun_ipv6: device.tun_ipv6.to_string(),
         }

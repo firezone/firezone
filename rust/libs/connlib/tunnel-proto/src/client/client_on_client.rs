@@ -28,6 +28,7 @@ pub(crate) struct ClientOnClient {
     local_tun: IpConfig,
     remote_tun: IpConfig,
     remote_name: String,
+    remote_slug: String,
     /// Inbound resources authorising the remote peer to send packets to us.
     ///
     /// When this map is empty, no inbound traffic from this peer is admitted
@@ -70,12 +71,14 @@ impl ClientOnClient {
         local_tun: IpConfig,
         remote_tun: IpConfig,
         remote_name: String,
+        remote_slug: String,
     ) -> ClientOnClient {
         ClientOnClient {
             id,
             local_tun,
             remote_tun,
             remote_name,
+            remote_slug,
             resources: ExpiringMap::default(),
             rejected_resources: BTreeMap::default(),
             // No resources -> no allowed inbound traffic by default.
@@ -102,8 +105,13 @@ impl ClientOnClient {
         &self.remote_name
     }
 
-    pub(crate) fn set_remote_name(&mut self, name: String) {
+    pub(crate) fn remote_slug(&self) -> &str {
+        &self.remote_slug
+    }
+
+    pub(crate) fn set_remote_identity(&mut self, name: String, slug: String) {
         self.remote_name = name;
+        self.remote_slug = slug;
     }
 
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
@@ -738,6 +746,7 @@ mod tests {
             ClientId::from_u128(1),
             local_tun(),
             peer_tun(),
+            "peer".to_owned(),
             "peer".to_owned(),
         )
     }

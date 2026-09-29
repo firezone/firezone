@@ -220,6 +220,7 @@ fn mock_resource_list() -> Vec<ResourceView> {
                 .map(|(id, name, tun_ipv4, tun_ipv6, _)| ConnectedDeviceView {
                     id: parse(id),
                     name: (*name).to_owned(),
+                    slug: (*name).to_owned(),
                     tun_ipv4: parse(tun_ipv4),
                     tun_ipv6: parse(tun_ipv6),
                 })

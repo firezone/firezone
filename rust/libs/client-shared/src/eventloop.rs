@@ -729,6 +729,7 @@ impl Eventloop {
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
                 client_id,
                 client_name,
+                client_slug,
                 client_public_key,
                 client_ipv4,
                 client_ipv6,
@@ -766,6 +767,7 @@ impl Eventloop {
                     ice_role,
                     use_iceless,
                     client_name,
+                    client_slug,
                     resource_id,
                     authorization,
                     flow_logs_ingest_token,

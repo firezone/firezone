@@ -8,6 +8,7 @@
 use compositor::Image;
 use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
+use tunnel_proto::dns::DEVICE_DOMAIN;
 use url::Url;
 
 use crate::updates::Release;
@@ -333,7 +334,7 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
     let mut menu = Menu::default();
     let visible = connected_devices.len().min(MAX_DEVICES_INLINE);
     for device in &connected_devices[..visible] {
-        menu = menu.add_submenu(device.name.clone(), device_submenu(device));
+        menu = menu.add_submenu(device.slug.clone(), device_submenu(device));
     }
 
     let hidden = connected_devices.len() - visible;
@@ -351,6 +352,7 @@ fn devices_submenu(connected_devices: &[ConnectedDeviceView]) -> Menu {
 fn device_submenu(device: &ConnectedDeviceView) -> Menu {
     Menu::default()
         .disabled("Device")
+        .copyable(&format!("{}.{DEVICE_DOMAIN}", device.slug))
         .separator()
         .disabled("Tunnel IPs")
         .copyable(&device.tun_ipv4.to_string())
@@ -874,6 +876,7 @@ mod tests {
                 devices: vec![ConnectedDeviceView {
                     id: alpha,
                     name: "Alpha".into(),
+                    slug: "alpha".into(),
                     tun_ipv4: alpha_ip,
                     tun_ipv6: alpha_ipv6,
                 }],
@@ -895,9 +898,10 @@ mod tests {
             .add_submenu(
                 "Engineering Pool",
                 Menu::default().add_submenu(
-                    "Alpha",
+                    "alpha",
                     Menu::default()
                         .disabled("Device")
+                        .copyable("alpha.firezone.network")
                         .separator()
                         .disabled("Tunnel IPs")
                         .copyable(&alpha_ip.to_string())
@@ -927,6 +931,7 @@ mod tests {
             .map(|i| ConnectedDeviceView {
                 id: ClientId::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111 + i as u128),
                 name: format!("Device {i}"),
+                slug: format!("device-{i}"),
                 tun_ipv4: Ipv4Addr::new(100, 64, 0, i as u8),
                 tun_ipv6: Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, i as u16]),
             })
@@ -939,9 +944,10 @@ mod tests {
             let ip = device.tun_ipv4.to_string();
             let ipv6 = device.tun_ipv6.to_string();
             expected = expected.add_submenu(
-                device.name.clone(),
+                device.slug.clone(),
                 Menu::default()
                     .disabled("Device")
+                    .copyable(&format!("{}.firezone.network", device.slug))
                     .separator()
                     .disabled("Tunnel IPs")
                     .copyable(&ip)

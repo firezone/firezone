@@ -146,6 +146,8 @@ pub struct ConnectedDeviceView {
     pub id: ClientId,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: Ipv4Addr,
     /// Tunnel IPv6 address the device is reachable on.

@@ -293,10 +293,11 @@ impl ClientState {
             .map(|peer| ConnectedDeviceView {
                 id: peer.id(),
                 name: peer.remote_name().to_owned(),
+                slug: peer.remote_slug().to_owned(),
                 tun_ipv4: peer.tun_ipv4(),
                 tun_ipv6: peer.tun_ipv6(),
             })
-            .sorted_by(|a, b| a.name.cmp(&b.name))
+            .sorted_by(|a, b| a.slug.cmp(&b.slug))
             .collect_vec()
     }
 
@@ -1123,6 +1124,7 @@ impl ClientState {
         ice_role: IceRole,
         use_iceless: bool,
         client_name: String,
+        client_slug: String,
         resource_id: Option<ResourceId>,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         flow_logs_ingest_token: IngestToken,
@@ -1157,12 +1159,18 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(cid, local_tun, client_tun, client_name.clone())
+            ClientOnClient::new(
+                cid,
+                local_tun,
+                client_tun,
+                client_name.clone(),
+                client_slug.clone(),
+            )
         });
 
-        if peer.remote_name() != client_name {
-            tracing::debug!(%cid, name = %client_name, "Updated client peer name");
-            peer.set_remote_name(client_name);
+        if peer.remote_name() != client_name || peer.remote_slug() != client_slug {
+            tracing::debug!(%cid, name = %client_name, slug = %client_slug, "Updated client peer identity");
+            peer.set_remote_identity(client_name, client_slug);
         }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
