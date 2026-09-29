@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# In static device pools the member is addressed by its tun IP.
 # Pings the pool member at its pinned tun IP from the primary client.
 
 source "./scripts/tests/lib.sh"

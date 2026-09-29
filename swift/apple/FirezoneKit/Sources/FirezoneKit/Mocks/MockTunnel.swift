@@ -359,7 +359,7 @@
             // The observer runs on the main queue, whatever the compiler can see of it.
             nonisolated(unsafe) let menu = notification.object as? NSMenu
 
-            MainActor.assumeIsolated { menu?.appearance = appearance }
+            MainActor.assumeIsolated { menu?.appearance = NSApplication.shared.appearance }
           })
       }
 
