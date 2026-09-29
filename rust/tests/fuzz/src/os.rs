@@ -1,3 +1,5 @@
+pub(crate) const WINDOWS_TCP_TIMEOUT_SECONDS: u64 = 90;
+
 /// The operating system a client simulates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimulatedOs {
@@ -17,7 +19,7 @@ impl SimulatedOs {
             // `TCP_MAXRXTSHIFT = 12` gives up after ~7.5 minutes.
             SimulatedOs::MacOs | SimulatedOs::Ios => l3_tcp::Duration::from_secs(450),
             // 5 data retransmissions give up within ~90 seconds.
-            SimulatedOs::Windows => l3_tcp::Duration::from_secs(90),
+            SimulatedOs::Windows => l3_tcp::Duration::from_secs(WINDOWS_TCP_TIMEOUT_SECONDS),
         }
     }
 }

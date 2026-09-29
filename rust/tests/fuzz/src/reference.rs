@@ -23,7 +23,7 @@ use tunnel_proto::messages::Filter;
 
 use crate::resource as client;
 
-const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
+pub(crate) const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
 /// The reference state machine of the tunnel.
 ///

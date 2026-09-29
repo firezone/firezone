@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Duration,
 };
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
@@ -25,7 +24,7 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, NAT_TIMEOUTS, RoutingTable};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
 pub(super) fn generate(g: &mut Generator, portal: &StubPortal) -> ReferenceState {
@@ -447,12 +446,7 @@ fn arb_edge_config(g: &mut Generator) -> EdgeConfig {
 /// traffic on the pair the peer chose, so any expiry-induced connectivity loss
 /// is a real liveness bug and not an artifact of the model.
 fn arb_expiry(g: &mut Generator) -> Expiry {
-    let timeout = Duration::from_secs(match g.choose_index(4) {
-        0 => 30,
-        1 => 60,
-        2 => 120,
-        _ => 300,
-    });
+    let timeout = NAT_TIMEOUTS[g.choose_index(NAT_TIMEOUTS.len())];
 
     Expiry {
         timeout,
