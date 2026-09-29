@@ -141,17 +141,31 @@ jobs:
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
         timeout-minutes: 4
+      - name: Photograph the Windows tray menu with a device pool open
+        id: windows-tray-device-pool
+        if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Lab hardware" --output gui-client/screenshots/windows-tray-menu-device-pool-light.png
+        timeout-minutes: 4
       - name: Photograph the GNOME tray menu
         id: gnome-tray
         if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
         working-directory: ./rust
         run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
         timeout-minutes: 5
+      - name: Photograph the GNOME tray menu with a device pool open
+        id: gnome-tray-device-pool
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Lab hardware" --output gui-client/screenshots/gnome-tray-menu-device-pool-light.png
+        timeout-minutes: 5
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.gnome-tray.outcome == 'success') }}
+        if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.windows-tray-device-pool.outcome == 'success' || steps.gnome-tray.outcome == 'success' || steps.gnome-tray-device-pool.outcome == 'success') }}
         with:
           name: gui-client-tray-screenshots-${{ matrix.runs-on }}
-          path: rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
+          path: |
+            rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
+            rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-device-pool-light.png
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
