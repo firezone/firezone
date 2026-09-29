@@ -1352,7 +1352,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         />
         <p class="mt-1 text-xs text-subtle">
           Create tenant API credentials with the Service Principal Read-Only role in Sophos
-          Central under Global Settings > API Credentials Management.
+          Central under Global Settings > Access Control > API Credentials.
         </p>
       </div>
 
