@@ -46,6 +46,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   # the device domain lists.
   @device_domain_browse_ttl 30
 
+  # The most names a PTR query in the device domain lists, well within the about 2,000 a DNS
+  # message carries even over TCP. A longer listing is refused rather than cut short.
+  @device_domain_browse_limit 1_000
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -845,8 +849,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   # Connlib forwards PTR queries for `firezone.network` and every name under it. The domain
   # itself lists the labels of the pools the client may use, and such a label the devices
   # in those pools that resolve for the client. A label that only names a device the client
-  # may reach lists nothing. Every other name answers `not_found` after the same delay as
-  # `resolve_device_domain`, so pool names cannot be discovered by guessing either.
+  # may reach lists nothing, and a listing of more than `@device_domain_browse_limit` names
+  # fails with `too_many_names`. Every other name answers `not_found` after the same delay
+  # as `resolve_device_domain`, so pool names cannot be discovered by guessing either.
   def handle_in("browse_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
     started_at = System.monotonic_time(:millisecond)
 
@@ -857,6 +862,9 @@ defmodule PortalAPI.Client.Channel.Shared do
           names: names,
           ttl: @device_domain_browse_ttl
         })
+
+      {:error, :too_many_names} ->
+        push(socket, "device_domain_browse_failed", %{domain: domain, reason: :too_many_names})
 
       {:error, :not_found} ->
         schedule_after_constant_time(started_at, {:device_domain_browse_failed, domain})
@@ -1326,9 +1334,9 @@ defmodule PortalAPI.Client.Channel.Shared do
     pools = browsable_device_pools(socket)
 
     if String.downcase(domain) == Portal.Device.domain() do
-      labels = for {label, _pool} <- pools, uniq: true, do: Portal.Device.fqdn_for_slug(label)
+      labels = for {label, _pool} <- pools, uniq: true, do: label
 
-      {:ok, Enum.sort(labels)}
+      device_domain_listing(labels)
     else
       with {:ok, label} <- device_domain_label(domain) do
         browse_device_label(label, pools, socket)
@@ -1344,15 +1352,24 @@ defmodule PortalAPI.Client.Channel.Shared do
         with {:ok, _device} <- fetch_reachable_device(label, socket), do: {:ok, []}
 
       labelled ->
-        slugs =
-          Enum.flat_map(
-            labelled,
-            &Database.all_member_slugs(&1.device_membership_criteria, socket.assigns.subject)
+        labelled
+        |> Enum.flat_map(
+          &Database.member_slugs(
+            &1.device_membership_criteria,
+            @device_domain_browse_limit + 1,
+            socket.assigns.subject
           )
-
-        {:ok, slugs |> Enum.uniq() |> Enum.sort() |> Enum.map(&Portal.Device.fqdn_for_slug/1)}
+        )
+        |> Enum.uniq()
+        |> device_domain_listing()
     end
   end
+
+  defp device_domain_listing(labels) when length(labels) > @device_domain_browse_limit,
+    do: {:error, :too_many_names}
+
+  defp device_domain_listing(labels),
+    do: {:ok, labels |> Enum.sort() |> Enum.map(&Portal.Device.fqdn_for_slug/1)}
 
   defp device_domain_label(domain) do
     domain = String.downcase(domain)
@@ -3268,10 +3285,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     @doc """
-      The slugs of the client devices a pool with these criteria holds when `subject` asks.
+      The slugs of up to `limit` client devices a pool with these criteria holds when
+      `subject` asks.
     """
-    def all_member_slugs(criteria, subject) do
-      from(d in Portal.Device, as: :devices, where: d.type == :client, select: d.slug)
+    def member_slugs(criteria, limit, subject) do
+      from(d in Portal.Device,
+        as: :devices,
+        where: d.type == :client,
+        select: d.slug,
+        limit: ^limit
+      )
       |> Portal.Resource.DeviceMembershipCriteria.where_members(
         criteria,
         Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)

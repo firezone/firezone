@@ -7311,6 +7311,42 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "device_domain_browse_failed", %{domain: ^stranger_domain, reason: :not_found}
     end
 
+    test "lists up to 1000 names and refuses a longer listing", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      [extra | devices] = insert_client_devices(account, 1_001)
+
+      full_pool = device_pool_resource_fixture(account: account, name: "Full Pool", devices: devices)
+      policy_fixture(account: account, group: group, resource: full_pool)
+
+      crowded_pool =
+        device_pool_resource_fixture(
+          account: account,
+          name: "Crowded Pool",
+          devices: [extra | devices]
+        )
+
+      policy_fixture(account: account, group: group, resource: crowded_pool)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "full-pool.firezone.network"})
+
+      names = devices |> Enum.map(&Portal.Device.fqdn/1) |> Enum.sort()
+      assert_push "device_domain_browsed", %{names: ^names}
+
+      push(socket, "browse_device_domain", %{"domain" => "crowded-pool.firezone.network"})
+
+      assert_push "device_domain_browse_failed", %{
+        domain: "crowded-pool.firezone.network",
+        reason: :too_many_names
+      }
+    end
+
     test "answers a name that lists nothing for the client no faster than an unknown one", %{
       account: account,
       client: client,
@@ -9028,5 +9064,31 @@ defmodule PortalAPI.Client.ChannelTest do
     push(socket, "browse_device_domain", %{"domain" => domain})
     assert_push ^event, %{domain: ^domain}
     System.monotonic_time(:millisecond) - started_at
+  end
+
+  # Addresses from 100.80.0.0 and fd00:2021:1111::18:0 up, clear of those the device
+  # fixtures assign.
+  defp insert_client_devices(account, count) do
+    actor = actor_fixture(account: account)
+    now = DateTime.utc_now()
+
+    rows =
+      for n <- 1..count do
+        %{
+          account_id: account.id,
+          actor_id: actor.id,
+          type: :client,
+          name: "Bulk device #{n}",
+          firezone_id: "bulk-device-#{n}",
+          slug: "bulk-device-#{n}",
+          ipv4: {100, 80, div(n, 256), rem(n, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18, n},
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    {^count, devices} = Repo.insert_all(Portal.Device, rows, returning: [:id, :slug])
+    devices
   end
 end
