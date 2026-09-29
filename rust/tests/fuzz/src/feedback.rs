@@ -4,12 +4,14 @@
 //! whether those paths occur in a meaningful combination of protocol states.
 //! [`Recorder`] inspects the reference and simulated states after their
 //! invariants have been checked and records selected combinations as IJON set
-//! features. It also remembers disruptions so successful connectivity after a
-//! later transition can guide the fuzzer. A small number of bounded stepping
-//! stones reward state needed to reach especially difficult DNS scenarios.
-//! IJON mixes each annotation site's source location into its features, and
-//! observing the same value at the same site again does not make an input
-//! interesting.
+//! features. It also logs each change a transition makes with the routes it
+//! affects. Whenever a route carries traffic, each kind of change it has
+//! recovered from since it last did, each pair of those kinds and their number
+//! become features of the selected connection path. A small number of bounded
+//! stepping stones reward state needed to reach especially difficult DNS
+//! scenarios. IJON mixes each annotation site's source location into its
+//! features, and observing the same value at the same site again does not make
+//! an input interesting.
 //!
 //! `prepare_runtime` enables the IJON map before discovery starts. Replay still
 //! evaluates the observations, but does not record feedback.
@@ -39,23 +41,6 @@ use crate::{
     sut::TunnelTest,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
 };
-
-const RELAYS_DEPLOYED: u8 = 1 << 0;
-const RELAYS_PARTITIONED: u8 = 1 << 1;
-const RELAYS_REBOOTED: u8 = 1 << 2;
-
-const GATEWAY_AUTHORIZATION_REVOKED: u8 = 1 << 0;
-const GATEWAY_DEAUTHORIZED_WHILE_PARTITIONED: u8 = 1 << 1;
-
-const PEER_REMOVED_FROM_POOL: u8 = 1 << 0;
-const PEER_AUTHORIZATION_EXPIRED: u8 = 1 << 1;
-const PEER_AUTHORIZATION_REVOKED: u8 = 1 << 2;
-
-const RESOURCE_METADATA_EDITED: u8 = 1 << 0;
-const RESOURCE_FILTERS_EDITED: u8 = 1 << 1;
-const RESOURCE_ACCESS_EDITED: u8 = 1 << 2;
-const DEVICE_POOL_ROUTING_EDITED: u8 = 1 << 3;
-const RESOURCE_TYPE_EDITED: u8 = 1 << 4;
 
 // The AFL runtime defines this symbol weakly. Rust's IJON macros already emit
 // the recording calls; this is the enable flag normally emitted by its LLVM pass.
@@ -142,15 +127,11 @@ fn pack(flags: &[bool]) -> u16 {
         .fold(0, |value, (bit, flag)| value | (u16::from(*flag) << bit))
 }
 
-/// Records meaningful connectivity observed after earlier disruptions.
+/// Records meaningful connectivity observed after earlier changes.
 #[derive(Default)]
 pub struct Recorder {
-    roamed_clients: BTreeSet<ClientId>,
-    restarted_clients: BTreeSet<ClientId>,
-    relay_changes: u8,
-    gateway_authorization_changes: BTreeMap<ResourceId, u8>,
-    peer_authorization_changes: BTreeMap<ClientRoute, u8>,
-    resource_edits: BTreeMap<ResourceId, u8>,
+    changes: Vec<(Scope, Change)>,
+    recovered: BTreeMap<RouteKey, usize>,
     idled_flows: BTreeMap<FlowId, Duration>,
     successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
     current_probe_on_idled_flow: Option<IdleFlowAttempt>,
@@ -159,7 +140,7 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    /// Remembers disruptions whose recovery can be demonstrated by later traffic.
+    /// Logs changes whose recovery can be demonstrated by later traffic.
     pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState) {
         self.current_probe_on_idled_flow = None;
         self.current_dns_queries.clear();
@@ -168,67 +149,69 @@ impl Recorder {
         match transition {
             Transition::EditResource(edit) => {
                 let change = match classify(&edit.old, &edit.new) {
-                    EditEffect::Metadata => RESOURCE_METADATA_EDITED,
-                    EditEffect::Filters { .. } => RESOURCE_FILTERS_EDITED,
-                    EditEffect::Access { .. } => RESOURCE_ACCESS_EDITED,
-                    EditEffect::DevicePoolRouting => DEVICE_POOL_ROUTING_EDITED,
-                    EditEffect::Type { .. } => RESOURCE_TYPE_EDITED,
+                    EditEffect::Metadata => Change::ResourceMetadataEdited,
+                    EditEffect::Filters { .. } => Change::ResourceFiltersEdited,
+                    EditEffect::Access { .. } => Change::ResourceAccessEdited,
+                    EditEffect::DevicePoolRouting => Change::DevicePoolRoutingEdited,
+                    EditEffect::Type { .. } => Change::ResourceTypeEdited,
                 };
-                *self.resource_edits.entry(edit.old.id()).or_default() |= change;
+                self.changes.push((Scope::Resource(edit.old.id()), change));
             }
             Transition::RoamClient { client_id, .. } => {
-                self.roamed_clients.insert(*client_id);
+                self.changes
+                    .push((Scope::Client(*client_id), Change::Roamed));
             }
             Transition::RestartClient { client_id, .. } => {
-                self.restarted_clients.insert(*client_id);
+                self.changes
+                    .push((Scope::Client(*client_id), Change::Restarted));
             }
-            Transition::DeployNewRelays(_) => self.relay_changes |= RELAYS_DEPLOYED,
+            Transition::ReconnectPortal { client_id } => {
+                self.changes
+                    .push((Scope::Client(*client_id), Change::PortalReconnected));
+            }
+            Transition::DeployNewRelays(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::RelaysDeployed));
+            }
             Transition::PartitionRelaysFromPortal => {
-                self.relay_changes |= RELAYS_PARTITIONED;
+                self.changes
+                    .push((Scope::Everything, Change::RelaysPartitioned));
             }
             Transition::RebootRelaysWhilePartitioned(_) => {
-                self.relay_changes |= RELAYS_REBOOTED;
+                self.changes
+                    .push((Scope::Everything, Change::RelaysRebooted));
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
-                *self
-                    .gateway_authorization_changes
-                    .entry(*resource)
-                    .or_default() |= GATEWAY_DEAUTHORIZED_WHILE_PARTITIONED;
+                self.changes.push((
+                    Scope::Resource(*resource),
+                    Change::GatewayDeauthorizedWhilePartitioned,
+                ));
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                *self
-                    .gateway_authorization_changes
-                    .entry(*resource)
-                    .or_default() |= GATEWAY_AUTHORIZATION_REVOKED;
+                self.changes.push((
+                    Scope::Resource(*resource),
+                    Change::GatewayAuthorizationRevoked,
+                ));
             }
             Transition::UpdateDevicePoolMembers { revoked, .. } => {
                 for authorization in revoked {
-                    *self
-                        .peer_authorization_changes
-                        .entry(ClientRoute {
-                            origin: authorization.initiator,
-                            target: authorization.target,
-                        })
-                        .or_default() |= PEER_REMOVED_FROM_POOL;
+                    self.changes.push((
+                        Scope::Peers(authorization.initiator, authorization.target),
+                        Change::PeerRemovedFromPool,
+                    ));
                 }
             }
             Transition::ExpirePeerAuthorizations { client, peer, .. } => {
-                *self
-                    .peer_authorization_changes
-                    .entry(ClientRoute {
-                        origin: *client,
-                        target: *peer,
-                    })
-                    .or_default() |= PEER_AUTHORIZATION_EXPIRED;
+                self.changes.push((
+                    Scope::Peers(*client, *peer),
+                    Change::PeerAuthorizationExpired,
+                ));
             }
             Transition::RevokePeerAuthorization { client, peer, .. } => {
-                *self
-                    .peer_authorization_changes
-                    .entry(ClientRoute {
-                        origin: *client,
-                        target: *peer,
-                    })
-                    .or_default() |= PEER_AUTHORIZATION_REVOKED;
+                self.changes.push((
+                    Scope::Peers(*client, *peer),
+                    Change::PeerAuthorizationRevoked,
+                ));
             }
             Transition::SendIcmpPacketOnExistingFlow {
                 flow_id, probe_id, ..
@@ -267,6 +250,7 @@ impl Recorder {
                 self.current_dns_queries.clone_from(queries);
             }
             Transition::Idle { duration } => {
+                self.changes.push((Scope::Everything, Change::Idled));
                 for flow in reference
                     .icmp_flows
                     .keys()
@@ -274,6 +258,10 @@ impl Recorder {
                 {
                     *self.idled_flows.entry(*flow).or_default() += *duration;
                 }
+            }
+            Transition::UpdateDnsRecords { .. } => {
+                self.changes
+                    .push((Scope::Everything, Change::DnsRecordsChanged));
             }
             Transition::AddResource(_)
             | Transition::RemoveResource(_)
@@ -284,9 +272,7 @@ impl Recorder {
             | Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_)
-            | Transition::UpdateUpstreamSearchDomain(_)
-            | Transition::ReconnectPortal { .. }
-            | Transition::UpdateDnsRecords { .. } => {}
+            | Transition::UpdateUpstreamSearchDomain(_) => {}
         }
     }
 
@@ -305,127 +291,51 @@ impl Recorder {
                 continue;
             };
 
-            self.record_connectivity_after_roam(&completed, path);
-            self.record_connectivity_after_restart(&completed, path);
-            self.record_connectivity_after_relay_change(&completed, path);
-            self.record_connectivity_after_gateway_authorization_change(&completed, path);
-            self.record_connectivity_after_peer_authorization_change(&completed, path);
+            record_with_path!(path;
+                completed.is_udp(),
+                completed.submitted.packet.destination().is_ipv6(),
+                completed.received.packet.destination().is_ipv6(),
+                completed.is_peer(),
+                matches!(expected.request.destination(), Destination::DomainName { .. }),
+            );
+            self.record_recovery(reference, expected.origin, completed.route, path);
             self.record_existing_flow_after_idle(&completed, path);
-            self.record_connectivity_after_resource_edit(reference, &completed, path);
             self.record_gateway_failover(&completed, path);
         }
 
         self.record_tcp_connectivity(reference, state);
     }
 
-    fn record_connectivity_after_roam(
-        &self,
-        completed: &CompletedRoundTrip<'_>,
+    /// Records the kinds of change a route has recovered from since it last carried traffic.
+    fn record_recovery(
+        &mut self,
+        reference: &ReferenceState,
+        origin: ClientId,
+        route: Route,
         path: PathFeedback,
     ) {
-        let origin_roamed = self.roamed_clients.contains(&completed.expected.origin);
-        let remote_roamed = completed
-            .remote_client()
-            .is_some_and(|client| self.roamed_clients.contains(&client));
-        if !origin_roamed && !remote_roamed {
-            return;
+        let route = match route {
+            Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
+            Route::Gateway(gateway) => RouteKey::Gateway(origin, gateway),
+            Route::Peer(peer) => RouteKey::Peer(origin, peer),
+        };
+        let since = self
+            .recovered
+            .insert(route, self.changes.len())
+            .unwrap_or(0);
+        let kinds = self.changes[since..]
+            .iter()
+            .filter(|(scope, _)| scope.covers(route, reference))
+            .map(|(_, change)| *change)
+            .collect::<BTreeSet<_>>();
+
+        for &kind in &kinds {
+            record_value!((kind as u16) << 2 | path.code());
         }
-
-        record_with_path!(path;
-            origin_roamed,
-            remote_roamed,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
-            completed.is_peer(),
-        );
-    }
-
-    fn record_connectivity_after_restart(
-        &self,
-        completed: &CompletedRoundTrip<'_>,
-        path: PathFeedback,
-    ) {
-        let origin_restarted = self.restarted_clients.contains(&completed.expected.origin);
-        let remote_restarted = completed
-            .remote_client()
-            .is_some_and(|client| self.restarted_clients.contains(&client));
-        if !origin_restarted && !remote_restarted {
-            return;
+        for [&first, &second] in kinds.iter().array_combinations() {
+            record_value!((first as u16 * KINDS + second as u16) << 2 | path.code());
         }
-
-        record_with_path!(path;
-            origin_restarted,
-            remote_restarted,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
-            completed.is_peer(),
-        );
-    }
-
-    fn record_connectivity_after_relay_change(
-        &self,
-        completed: &CompletedRoundTrip<'_>,
-        path: PathFeedback,
-    ) {
-        if self.relay_changes == 0 {
-            return;
-        }
-        record_with_path!(path;
-            self.relay_changes & RELAYS_DEPLOYED != 0,
-            self.relay_changes & RELAYS_PARTITIONED != 0,
-            self.relay_changes & RELAYS_REBOOTED != 0,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.is_peer(),
-        );
-    }
-
-    fn record_connectivity_after_gateway_authorization_change(
-        &self,
-        completed: &CompletedRoundTrip<'_>,
-        path: PathFeedback,
-    ) {
-        let Route::Resource { resource, .. } = completed.route else {
-            return;
-        };
-        let Some(change) = self.gateway_authorization_changes.get(&resource) else {
-            return;
-        };
-
-        record_with_path!(path;
-            change & GATEWAY_AUTHORIZATION_REVOKED != 0,
-            change & GATEWAY_DEAUTHORIZED_WHILE_PARTITIONED != 0,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
-        );
-    }
-
-    fn record_connectivity_after_peer_authorization_change(
-        &self,
-        completed: &CompletedRoundTrip<'_>,
-        path: PathFeedback,
-    ) {
-        let Some(peer) = completed.remote_client() else {
-            return;
-        };
-        let Some(change) = self.peer_authorization_changes.get(&ClientRoute {
-            origin: completed.expected.origin,
-            target: peer,
-        }) else {
-            return;
-        };
-
-        record_with_path!(path;
-            change & PEER_REMOVED_FROM_POOL != 0,
-            change & PEER_AUTHORIZATION_EXPIRED != 0,
-            change & PEER_AUTHORIZATION_REVOKED != 0,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
-        );
+        record_value!((kinds.len().min(7) as u16) << 2 | path.code());
     }
 
     fn record_existing_flow_after_idle(
@@ -468,47 +378,6 @@ impl Recorder {
             remote.expiry_elapsed,
             origin.inbound_refreshes,
             remote.inbound_refreshes,
-        );
-    }
-
-    fn record_connectivity_after_resource_edit(
-        &self,
-        reference: &ReferenceState,
-        completed: &CompletedRoundTrip<'_>,
-        path: PathFeedback,
-    ) {
-        let change = match completed.route {
-            Route::Resource { resource, .. } => self
-                .resource_edits
-                .get(&resource)
-                .copied()
-                .unwrap_or_default(),
-            Route::Gateway(_) => 0,
-            Route::Peer(peer) => {
-                let Some(client) = reference.clients.get(&completed.expected.origin) else {
-                    return;
-                };
-
-                client
-                    .inner()
-                    .authorized_pools_towards(peer)
-                    .filter_map(|pool| self.resource_edits.get(&pool))
-                    .fold(0, |changes, change| changes | change)
-            }
-        };
-        if change == 0 {
-            return;
-        }
-
-        record_with_path!(path;
-            change & RESOURCE_METADATA_EDITED != 0,
-            change & RESOURCE_FILTERS_EDITED != 0,
-            change & RESOURCE_ACCESS_EDITED != 0,
-            change & DEVICE_POOL_ROUTING_EDITED != 0,
-            change & RESOURCE_TYPE_EDITED != 0,
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.is_peer(),
         );
     }
 
@@ -593,7 +462,7 @@ impl Recorder {
         }
     }
 
-    fn record_tcp_connectivity(&self, reference: &ReferenceState, state: &TunnelTest) {
+    fn record_tcp_connectivity(&mut self, reference: &ReferenceState, state: &TunnelTest) {
         let Some(attempt) = &self.current_tcp_connection else {
             return;
         };
@@ -632,20 +501,6 @@ impl Recorder {
             return;
         }
 
-        let roamed = self.roamed_clients.contains(&attempt.client);
-        let restarted = self.restarted_clients.contains(&attempt.client);
-        let relays_changed = self.relay_changes != 0;
-        let gateway_authorization_changed =
-            self.gateway_authorization_changes.contains_key(&resource);
-        let resource_edited = self.resource_edits.contains_key(&resource);
-        if !roamed
-            && !restarted
-            && !relays_changed
-            && !gateway_authorization_changed
-            && !resource_edited
-        {
-            return;
-        }
         let Some(gateway) = reference_client.gateway_for_resource(resource) else {
             return;
         };
@@ -654,22 +509,85 @@ impl Recorder {
         };
 
         record_with_path!(path;
-            roamed,
-            restarted,
-            relays_changed,
-            gateway_authorization_changed,
-            resource_edited,
-            reference_client.internet_resource() == Some(resource),
             attempt.src.is_ipv6(),
             matches!(attempt.dst, Destination::DomainName { .. }),
+            reference_client.internet_resource() == Some(resource),
+        );
+        self.record_recovery(
+            reference,
+            attempt.client,
+            Route::Resource { resource, gateway },
+            path,
         );
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct ClientRoute {
-    origin: ClientId,
-    target: ClientId,
+enum Change {
+    Roamed,
+    Restarted,
+    PortalReconnected,
+    RelaysDeployed,
+    RelaysPartitioned,
+    RelaysRebooted,
+    GatewayAuthorizationRevoked,
+    GatewayDeauthorizedWhilePartitioned,
+    PeerRemovedFromPool,
+    PeerAuthorizationExpired,
+    PeerAuthorizationRevoked,
+    ResourceMetadataEdited,
+    ResourceFiltersEdited,
+    ResourceAccessEdited,
+    DevicePoolRoutingEdited,
+    ResourceTypeEdited,
+    Idled,
+    DnsRecordsChanged,
+}
+
+const KINDS: u16 = 18;
+
+#[derive(Clone, Copy)]
+enum Scope {
+    Client(ClientId),
+    Resource(ResourceId),
+    Peers(ClientId, ClientId),
+    Everything,
+}
+
+impl Scope {
+    fn covers(self, route: RouteKey, reference: &ReferenceState) -> bool {
+        match (self, route) {
+            (Scope::Client(client), RouteKey::Resource(origin, _)) => client == origin,
+            (Scope::Client(client), RouteKey::Gateway(origin, _)) => client == origin,
+            (Scope::Client(client), RouteKey::Peer(origin, peer)) => {
+                client == origin || client == peer
+            }
+            (Scope::Resource(resource), RouteKey::Resource(_, target)) => resource == target,
+            (Scope::Resource(_), RouteKey::Gateway(..)) => false,
+            (Scope::Resource(pool), RouteKey::Peer(origin, peer)) => {
+                reference.clients.get(&origin).is_some_and(|client| {
+                    client
+                        .inner()
+                        .authorized_pools_towards(peer)
+                        .contains(&pool)
+                })
+            }
+            (Scope::Peers(..), RouteKey::Resource(..)) => false,
+            (Scope::Peers(..), RouteKey::Gateway(..)) => false,
+            (Scope::Peers(client, peer), RouteKey::Peer(origin, target)) => {
+                client == origin && peer == target
+            }
+            (Scope::Everything, _) => true,
+        }
+    }
+}
+
+/// Keys resource routes by resource rather than gateway, so failing over does not reset them.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RouteKey {
+    Resource(ClientId, ResourceId),
+    Gateway(ClientId, GatewayId),
+    Peer(ClientId, ClientId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -706,14 +624,6 @@ impl CompletedRoundTrip<'_> {
 
     fn is_peer(&self) -> bool {
         matches!(self.route, Route::Peer(_))
-    }
-
-    fn remote_client(&self) -> Option<ClientId> {
-        let Route::Peer(client) = self.route else {
-            return None;
-        };
-
-        Some(client)
     }
 }
 
