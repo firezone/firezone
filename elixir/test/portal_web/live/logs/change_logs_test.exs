@@ -12,12 +12,6 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
     %{account: account, actor: actor, actor_subject: actor_subject}
   end
 
-
-  # Change logs are partitioned by day and only recent partitions exist.
-  defp days_ago_at_noon(days) do
-    Date.utc_today() |> Date.add(-days) |> DateTime.new!(~T[12:00:00.000000])
-  end
-
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
       path = ~p"/#{account}/logs/change_logs"
@@ -410,30 +404,30 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       actor: actor,
       actor_subject: actor_subject
     } do
-      # 12:00 UTC == 21:00 in Asia/Tokyo, which has no DST.
+      # 2026-05-30 12:00 UTC == 2026-05-30 08:00 in America/New_York (EDT)
       cl =
         change_log_fixture(
           account: account,
           subject: actor_subject,
-          timestamp: days_ago_at_noon(2)
+          timestamp: ~U[2026-05-30 12:00:00.000000Z]
         )
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> Phoenix.LiveViewTest.put_connect_params(%{"timezone" => "Asia/Tokyo"})
+        |> Phoenix.LiveViewTest.put_connect_params(%{"timezone" => "America/New_York"})
         |> live(~p"/#{account}/logs/change_logs")
 
       initial = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert initial =~ "12:00 PM"
-      refute initial =~ "9:00 PM"
+      refute initial =~ "8:00 AM"
 
       lv
       |> form("form[phx-change='filter']", change_logs: %{timestamp: %{mode: "local"}})
       |> render_change()
 
       shifted = lv |> element("#timestamp-#{cl.log_id}") |> render()
-      assert shifted =~ "9:00 PM"
+      assert shifted =~ "8:00 AM"
       refute shifted =~ "12:00 PM"
     end
 
@@ -510,14 +504,14 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       older =
         change_log_fixture(
           account: account,
-          timestamp: days_ago_at_noon(3),
+          timestamp: ~U[2026-05-30 12:00:00.000000Z],
           subject: actor_subject
         )
 
       newer =
         change_log_fixture(
           account: account,
-          timestamp: days_ago_at_noon(1),
+          timestamp: ~U[2026-06-01 12:00:00.000000Z],
           subject: actor_subject
         )
 
@@ -551,23 +545,23 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       actor: actor,
       actor_subject: actor_subject
     } do
-      oldest = days_ago_at_noon(3)
-      middle = days_ago_at_noon(2)
-      newest = days_ago_at_noon(1)
+      yesterday = ~U[2026-05-30 12:00:00.000000Z]
+      today = ~U[2026-06-01 12:00:00.000000Z]
+      tomorrow = ~U[2026-06-02 12:00:00.000000Z]
 
       old_cl =
-        change_log_fixture(account: account, timestamp: oldest, subject: actor_subject)
+        change_log_fixture(account: account, timestamp: yesterday, subject: actor_subject)
 
       mid_cl =
-        change_log_fixture(account: account, timestamp: middle, subject: actor_subject)
+        change_log_fixture(account: account, timestamp: today, subject: actor_subject)
 
       new_cl =
-        change_log_fixture(account: account, timestamp: newest, subject: actor_subject)
+        change_log_fixture(account: account, timestamp: tomorrow, subject: actor_subject)
 
       conn = authorize_conn(conn, actor)
 
-      # from-bound only: includes middle + newest, excludes oldest
-      from = "#{DateTime.to_date(middle)}T00:00:00"
+      # from-bound only: includes today + tomorrow, excludes yesterday
+      from = "2026-06-01T00:00:00"
 
       {:ok, _lv, html} =
         live(
@@ -579,8 +573,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       assert html =~ new_cl.log_id
       refute html =~ old_cl.log_id
 
-      # to-bound only: includes oldest + middle, excludes newest
-      to = "#{DateTime.to_date(newest)}T00:00:00"
+      # to-bound only: includes yesterday + today, excludes tomorrow
+      to = "2026-06-02T00:00:00"
 
       {:ok, _lv, html} =
         live(
@@ -592,7 +586,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       assert html =~ mid_cl.log_id
       refute html =~ new_cl.log_id
 
-      # both bounds: includes only middle
+      # both bounds: includes only today
       {:ok, _lv, html} =
         live(
           conn,
@@ -769,7 +763,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           account: account,
           operation: :update,
           object: "actors",
-          timestamp: days_ago_at_noon(2),
+          timestamp: ~U[2026-05-30 12:00:00.000000Z],
           before: %{"x" => 1},
           after: %{"x" => 2}
         )
@@ -784,7 +778,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       # Server-rendered text is the absolute short_datetime form, not "X ago".
       panel_html = lv |> element("#panel-timestamp-#{cl.log_id}") |> render()
       refute panel_html =~ "ago"
-      assert panel_html =~ Calendar.strftime(cl.timestamp, "%-m/%-d/%y")
+      assert panel_html =~ "5/30/26"
     end
 
     test "side panel for a delete renders the red Delete label", %{
