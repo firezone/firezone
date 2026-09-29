@@ -112,7 +112,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
@@ -121,9 +121,17 @@ public final class Store: ObservableObject {
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
+      let sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
+
       self.configuration = configuration ?? Configuration.shared
       self.updateChecker =
-        updateChecker ?? UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+        updateChecker
+        ?? UpdateChecker(
+          configuration: configuration,
+          userDefaults: userDefaults,
+          sessionNotification: sessionNotification
+        )
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
@@ -137,7 +145,7 @@ public final class Store: ObservableObject {
   #else
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
@@ -145,7 +153,8 @@ public final class Store: ObservableObject {
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.sessionNotification = sessionNotification
+      self.sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
       self.tunnelManagerFactory = tunnelManagerFactory
       self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
@@ -224,7 +233,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     /// Returns the appropriate menu bar icon name for the current state
     public var menuBarIconName: String {
-      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.updateAvailable)
+      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.downloadURL != nil)
     }
 
     /// Requests the menu bar dropdown to be opened programmatically.
