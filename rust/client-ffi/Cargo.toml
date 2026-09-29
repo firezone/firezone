@@ -49,9 +49,7 @@ mimalloc = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"
-jni = { workspace = true }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android `cdylib` is `dlopen`-ed, so it needs the dynamic TLS model.
-rustls-platform-verifier = { workspace = true }
 
 [lints]
 workspace = true

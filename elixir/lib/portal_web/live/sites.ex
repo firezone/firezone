@@ -1,7 +1,7 @@
 defmodule PortalWeb.Sites do
   use PortalWeb, :live_view
-  import PortalWeb.Sites.Components
-  import PortalWeb.Resources.Components, only: [map_filters_form_attrs: 1]
+  alias PortalWeb.Sites.Components, as: SiteComponents
+  alias PortalWeb.Resources.Components, as: ResourceComponents
   alias Portal.Presence
   alias __MODULE__.Database
 
@@ -111,7 +111,7 @@ defmodule PortalWeb.Sites do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
   defp site_panel_assigns(site, params, socket) do
@@ -172,27 +172,27 @@ defmodule PortalWeb.Sites do
       phx-window-keydown="handle_keydown"
       phx-key="Escape"
     >
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-map-pin-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-map-pin-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Sites</:title>
         <:description>
           Logical groupings of gateways - typically mapped to a network location or cloud region.
         </:description>
         <:action>
-          <.docs_action path="/deploy/sites" />
-          <.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
+          <Navigation.docs_action path="/deploy/sites" />
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
             New Site
-          </.button>
+          </Form.button>
         </:action>
         <:stats :if={not @sites_loading?}>
-          <.dual_badge type="primary">
+          <Core.dual_badge type="primary">
             <:left>{length(@sites) + if @internet_site, do: 1, else: 0}</:left>
             <:right>Total</:right>
-          </.dual_badge>
+          </Core.dual_badge>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 overflow-auto overflow-x-auto">
         <table class="w-full text-sm border-collapse">
@@ -320,7 +320,7 @@ defmodule PortalWeb.Sites do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="ri-global-line" class="w-5 h-5 text-link" />
+                  <Core.icon name="ri-global-line" class="w-5 h-5 text-link" />
                   <div class={[
                     "font-medium transition-colors",
                     if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,
@@ -330,7 +330,7 @@ defmodule PortalWeb.Sites do
                   ]}>
                     Internet
                   </div>
-                  <.badge type="accent" size="xs">system</.badge>
+                  <Core.badge type="accent" size="xs">system</Core.badge>
                 </div>
                 <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {@internet_site.id}
@@ -348,7 +348,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.site_status_badge status={
+                <SiteComponents.site_status_badge status={
                   compute_site_status(online, @internet_site.health_threshold)
                 } />
               </td>
@@ -391,7 +391,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.site_status_badge status={compute_site_status(online, site.health_threshold)} />
+                <SiteComponents.site_status_badge status={compute_site_status(online, site.health_threshold)} />
               </td>
             </tr>
           </tbody>
@@ -402,7 +402,7 @@ defmodule PortalWeb.Sites do
         >
           <div class="flex flex-col items-center gap-3 py-16">
             <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-              <.icon name="ri-map-pin-line" class="w-5 h-5 text-subtle" />
+              <Core.icon name="ri-map-pin-line" class="w-5 h-5 text-subtle" />
             </div>
             <div class="text-center">
               <p class="text-sm font-medium text-heading">No sites yet</p>
@@ -410,13 +410,13 @@ defmodule PortalWeb.Sites do
                 Create a Site in order to deploy Gateways and attach Resources.
               </p>
             </div>
-            <.button patch={live_table_path(assigns, ~p"/#{@account}/sites/new")} icon="ri-add-line" size="xs">Add a Site</.button>
+            <Form.button patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/sites/new")} icon="ri-add-line" size="xs">Add a Site</Form.button>
           </div>
         </div>
       </div>
 
       <%!-- Right-hand detail panel --%>
-      <.site_panel
+      <SiteComponents.site_panel
         site={@selected_site}
         account={@account}
         resources_counts={@resources_counts}
@@ -427,7 +427,7 @@ defmodule PortalWeb.Sites do
         edit_state={@site_edit}
       />
 
-      <.new_site_panel state={@new_site} />
+      <SiteComponents.new_site_panel state={@new_site} />
     </div>
     """
   end
@@ -533,11 +533,11 @@ defmodule PortalWeb.Sites do
   # ---- Events ----
 
   def handle_event("select_site", %{"id" => id}, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{id}"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{id}"))}
   end
 
   def handle_event("close_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
   def handle_event(
@@ -546,7 +546,7 @@ defmodule PortalWeb.Sites do
         %{assigns: %{selected_site: %Portal.Site{} = site}} = socket
       ) do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{site}", tab: tab))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{site}", tab: tab))}
   end
 
   def handle_event("switch_panel_tab", _params, %{assigns: %{selected_site: nil}} = socket) do
@@ -556,12 +556,12 @@ defmodule PortalWeb.Sites do
   def handle_event("handle_keydown", _params, socket)
       when socket.assigns.site_panel.view == :edit_site do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when socket.assigns.new_site.open do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
@@ -579,7 +579,7 @@ defmodule PortalWeb.Sites do
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_site) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -587,11 +587,11 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_event("open_new_site_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/new"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/new"))}
   end
 
   def handle_event("close_new_site_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
   end
 
   def handle_event("new_site_change", %{"site" => attrs}, socket) do
@@ -615,7 +615,7 @@ defmodule PortalWeb.Sites do
        |> put_flash(:success, "Site #{site.name} created successfully.")
        |> put_state(:new_site, base_new_site_state())
        |> assign(sites: sites)
-       |> push_patch(to: live_table_path(socket, ~p"/#{account}/sites/#{site.id}"))}
+       |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{account}/sites/#{site.id}"))}
     else
       false ->
         changeset =
@@ -926,7 +926,7 @@ defmodule PortalWeb.Sites do
     attrs =
       attrs
       |> then(fn a -> if name_changed?, do: a, else: Map.put(a, "name", a["address"]) end)
-      |> map_filters_form_attrs()
+      |> ResourceComponents.map_filters_form_attrs()
       |> Map.put("site_id", socket.assigns.selected_site.id)
 
     changeset =
@@ -948,7 +948,7 @@ defmodule PortalWeb.Sites do
           do: a,
           else: Map.put(a, "name", a["address"])
       end)
-      |> map_filters_form_attrs()
+      |> ResourceComponents.map_filters_form_attrs()
       |> Map.put("site_id", socket.assigns.selected_site.id)
 
     case Database.create_resource(attrs, socket.assigns.subject) do
@@ -1004,7 +1004,7 @@ defmodule PortalWeb.Sites do
          socket
          |> put_flash(:success, "Site #{socket.assigns.selected_site.name} deleted successfully.")
          |> assign(sites: sites)
-         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
 
       {:error, _changeset} ->
         {:noreply,
@@ -1016,12 +1016,12 @@ defmodule PortalWeb.Sites do
 
   def handle_event("open_site_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}/edit"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}/edit"))}
   end
 
   def handle_event("cancel_site_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{socket.assigns.selected_site.id}"))}
   end
 
   def handle_event("change_site_edit_form", %{"site" => attrs}, socket) do
@@ -1048,7 +1048,7 @@ defmodule PortalWeb.Sites do
            sites: sites,
            resources_counts: resources_counts
          )
-         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{updated_site.id}"))}
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{updated_site.id}"))}
 
       {:error, changeset} ->
         {:noreply,

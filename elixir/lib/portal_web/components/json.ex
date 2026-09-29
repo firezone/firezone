@@ -1,4 +1,4 @@
-defmodule PortalWeb.JSONComponents do
+defmodule PortalWeb.Components.JSON do
   @moduledoc """
   Read-only JSON rendering for show panels.
 
@@ -7,7 +7,7 @@ defmodule PortalWeb.JSONComponents do
   """
   use Phoenix.Component
 
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
 
   alias Phoenix.LiveView.JS
 
@@ -58,10 +58,10 @@ defmodule PortalWeb.JSONComponents do
         <span class="flex items-center gap-2 text-[10px] text-subtle">
           <span :if={@hint}>{@hint}</span>
           <span :if={@collapsed} id={"#{@id}-expand"} class="flex items-center gap-1">
-            Click to expand <.icon name="ri-arrow-down-s-line" class="h-4 w-4" />
+            Click to expand <Core.icon name="ri-arrow-down-s-line" class="h-4 w-4" />
           </span>
           <span :if={@collapsed} id={"#{@id}-collapse"} class="hidden items-center gap-1">
-            Click to collapse <.icon name="ri-arrow-up-s-line" class="h-4 w-4" />
+            Click to collapse <Core.icon name="ri-arrow-up-s-line" class="h-4 w-4" />
           </span>
         </span>
       </div>
@@ -74,10 +74,10 @@ defmodule PortalWeb.JSONComponents do
           class="absolute end-2 top-2 inline-flex h-8 items-center gap-1.5 rounded border border-input-border bg-surface px-2.5 text-xs text-body shadow-sm hover:text-heading"
         >
           <span id={"#{@id}-default-message"} class="inline-flex items-center gap-1.5">
-            <.icon name="ri-clipboard-line" data-icon class="h-3.5 w-3.5" /> Copy
+            <Core.icon name="ri-clipboard-line" data-icon class="h-3.5 w-3.5" /> Copy
           </span>
           <span id={"#{@id}-success-message"} class="hidden items-center gap-1.5">
-            <.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-success" /> Copied
+            <Core.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-success" /> Copied
           </span>
         </button>
       </div>

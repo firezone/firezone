@@ -3,9 +3,9 @@ defmodule PortalWeb.OAuthHTML do
 
   def choose_account(assigns) do
     ~H"""
-    <.oauth_client_header client={@client} />
+    <Page.oauth_client_header client={@client} />
 
-    <.flash :if={@error} kind={:error}>{@error}</.flash>
+    <Core.flash :if={@error} kind={:error}>{@error}</Core.flash>
 
     <p :if={@accounts != []} class="text-sm text-body mb-6">
       Pick which Firezone account to connect
@@ -22,7 +22,7 @@ defmodule PortalWeb.OAuthHTML do
         <div class="flex-1 h-px bg-border"></div>
       </div>
       <div class="flex flex-col gap-2 mb-6">
-        <.account_button
+        <Page.account_button
           :for={account <- @accounts}
           account={account}
           href={~p"/#{account}/oauth/authorize?#{@query}"}
@@ -36,7 +36,7 @@ defmodule PortalWeb.OAuthHTML do
       <div class="flex-1 h-px bg-border"></div>
     </div>
 
-    <.account_slug_form action={~p"/oauth/authorize?#{@query}"} autofocus={@accounts == []} />
+    <Page.account_slug_form action={~p"/oauth/authorize?#{@query}"} autofocus={@accounts == []} />
     """
   end
 
@@ -44,7 +44,7 @@ defmodule PortalWeb.OAuthHTML do
     ~H"""
     <div class="text-center">
       <div class="w-12 h-12 rounded mx-auto mb-4 flex items-center justify-center bg-danger/10">
-        <.icon name="ri-error-warning-line" class="w-7 h-7 text-danger" />
+        <Core.icon name="ri-error-warning-line" class="w-7 h-7 text-danger" />
       </div>
 
       <h1 class="text-2xl font-bold text-heading tracking-tight">This request is not valid</h1>

@@ -20,12 +20,12 @@ defmodule PortalWeb.Sites.Components do
       <div :if={@open} class="flex flex-col h-full overflow-hidden">
         <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 class="text-sm font-semibold text-heading">New Site</h2>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_new_site_panel" />
         </div>
         <div class="flex-1 overflow-y-auto px-5 py-4">
           <.form id="new-site-form" for={@form} phx-change="new_site_change" phx-submit="new_site_submit">
             <div class="space-y-4">
-              <.input
+              <Form.input
                 label="Name"
                 field={@form[:name]}
                 placeholder="Enter a name for this site"
@@ -33,7 +33,7 @@ defmodule PortalWeb.Sites.Components do
                 required
               />
               <div>
-                <.input
+                <Form.input
                   field={@form[:health_threshold]}
                   type="number"
                   label="Health threshold"
@@ -45,12 +45,12 @@ defmodule PortalWeb.Sites.Components do
               </div>
             </div>
             <div class="flex items-center justify-end gap-2 mt-6">
-              <.button type="button" phx-click="close_new_site_panel">
+              <Form.button type="button" phx-click="close_new_site_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" disabled={not @form.source.valid?}>
+              </Form.button>
+              <Form.button type="submit" style="primary" disabled={not @form.source.valid?}>
                 Create Site
-              </.button>
+              </Form.button>
             </div>
           </.form>
         </div>
@@ -165,17 +165,17 @@ defmodule PortalWeb.Sites.Components do
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-heading truncate">{@site.name}</h2>
-            <.badge :if={@site.managed_by == :system} type="accent" size="xs">system</.badge>
+            <Core.badge :if={@site.managed_by == :system} type="accent" size="xs">system</Core.badge>
             <.site_status_badge status={@status} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@site.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button :if={@view == :gateways} phx-click="open_site_edit_form" size="sm">
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </.button>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.button :if={@view == :gateways} phx-click="open_site_edit_form" size="sm">
+            <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+          </Form.button>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -320,50 +320,50 @@ defmodule PortalWeb.Sites.Components do
         </span>
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
-        <.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
-          <.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
-        </.button>
-        <.button
+        <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
+        </Form.button>
+        <Form.button
           :if={@tab == :resources and @site.managed_by == :account}
           phx-click="add_resource"
           size="xs"
         >
-          <.icon name="ri-add-line" class="w-3 h-3" /> Add resource
-        </.button>
-        <.button
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add resource
+        </Form.button>
+        <Form.button
           :if={@tab == :gateways and not @show_all_gateways}
           phx-click="show_all_gateways"
           size="xs"
         >
-          View all <.icon name="ri-arrow-right-line" class="w-3 h-3" />
-        </.button>
-        <.button
+          View all <Core.icon name="ri-arrow-right-line" class="w-3 h-3" />
+        </Form.button>
+        <Form.button
           :if={@tab == :gateways and @show_all_gateways}
           phx-click="show_online_gateways"
           size="xs"
         >
           Online only
-        </.button>
-        <.button
+        </Form.button>
+        <Form.button
           :if={@tab == :tokens and @gateway_tokens != [] and not @confirm_revoke_all_tokens}
           type="button"
           style="danger"
           size="xs"
           phx-click="confirm_revoke_all_tokens"
         >
-          <.icon name="ri-delete-bin-line" class="w-3 h-3" /> Revoke all tokens
-        </.button>
+          <Core.icon name="ri-delete-bin-line" class="w-3 h-3" /> Revoke all tokens
+        </Form.button>
         <div
           :if={@tab == :tokens and @confirm_revoke_all_tokens}
           class="flex items-center gap-2"
         >
           <span class="text-xs text-error">Revoke all tokens?</span>
-          <.button type="button" phx-click="cancel_revoke_all_tokens" size="xs">
+          <Form.button type="button" phx-click="cancel_revoke_all_tokens" size="xs">
             Cancel
-          </.button>
-          <.button type="button" phx-click="revoke_all_gateway_tokens" style="danger" size="xs">
+          </Form.button>
+          <Form.button type="button" phx-click="revoke_all_gateway_tokens" style="danger" size="xs">
             Revoke all
-          </.button>
+          </Form.button>
         </div>
       </div>
     </div>
@@ -407,7 +407,7 @@ defmodule PortalWeb.Sites.Components do
             phx-value-id={gateway.id}
             class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-raised transition-colors group"
           >
-            <.ping_icon
+            <Core.ping_icon
               color={if gateway.online?, do: "success", else: "danger"}
               title={if gateway.online?, do: "Online", else: "Offline"}
             />
@@ -430,20 +430,20 @@ defmodule PortalWeb.Sites.Components do
                 <p class="font-mono text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
                   {gateway.name}
                 </p>
-                <.badge
+                <Core.badge
                   :if={legacy_connected?(gateway, @legacy_token_ids)}
                   type="warning"
                   size="xs"
                   title="This gateway last connected with a legacy site token"
                 >
                   legacy token
-                </.badge>
+                </Core.badge>
               </div>
               <p :if={gateway.last_seen_remote_ip} class="font-mono text-xs text-subtle mt-0.5">
                 {gateway.last_seen_remote_ip}
               </p>
             </div>
-            <.actions_dropdown
+            <Core.actions_dropdown
               open={@gateway_actions_open_id == gateway.id}
               close_event="close_gateway_actions"
               phx-click="toggle_gateway_actions"
@@ -456,7 +456,7 @@ defmodule PortalWeb.Sites.Components do
                 phx-value-id={gateway.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
-                <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Rename gateway
+                <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Rename gateway
               </button>
               <button
                 :if={!reveal?}
@@ -465,7 +465,7 @@ defmodule PortalWeb.Sites.Components do
                 phx-value-id={gateway.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
               >
-                <.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
+                <Core.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
                 {token_action_label(action)}
               </button>
               <button
@@ -474,10 +474,10 @@ defmodule PortalWeb.Sites.Components do
                 phx-value-id={gateway.id}
                 class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
               >
-                <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete gateway
+                <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete gateway
               </button>
-            </.actions_dropdown>
-            <.icon
+            </Core.actions_dropdown>
+            <Core.icon
               name={
                 if @expanded_gateway_id == gateway.id,
                   do: "ri-arrow-up-s-line",
@@ -491,7 +491,7 @@ defmodule PortalWeb.Sites.Components do
             :if={@confirm_delete_gateway_id == gateway.id}
             class="flex items-center gap-3 px-5 py-3"
           >
-            <.ping_icon
+            <Core.ping_icon
               color={if gateway.online?, do: "success", else: "danger"}
               title={if gateway.online?, do: "Online", else: "Offline"}
             />
@@ -516,10 +516,10 @@ defmodule PortalWeb.Sites.Components do
               </p>
             </div>
             <span class="text-xs text-error shrink-0">Delete this gateway?</span>
-            <.button type="button" phx-click="cancel_delete_gateway" size="xs">
+            <Form.button type="button" phx-click="cancel_delete_gateway" size="xs">
               Cancel
-            </.button>
-            <.button
+            </Form.button>
+            <Form.button
               type="button"
               style="danger"
               size="xs"
@@ -527,7 +527,7 @@ defmodule PortalWeb.Sites.Components do
               phx-value-id={gateway.id}
             >
               Delete
-            </.button>
+            </Form.button>
           </div>
           <%!-- Expanded details --%>
           <div
@@ -536,7 +536,7 @@ defmodule PortalWeb.Sites.Components do
           >
             <span class="text-xs text-subtle">Last started</span>
             <span class="text-xs text-heading">
-              <.relative_datetime
+              <Core.relative_datetime
                 datetime={gateway.last_seen_at}
                 popover={false}
                 empty="Unknown"
@@ -544,7 +544,7 @@ defmodule PortalWeb.Sites.Components do
             </span>
             <span class="text-xs text-subtle">Remote IP</span>
             <span class="text-xs text-heading">
-              <.last_seen schema={gateway} />
+              <Core.last_seen schema={gateway} />
             </span>
             <span class="text-xs text-subtle">Version</span>
             <span class="font-mono text-xs text-heading">
@@ -579,7 +579,7 @@ defmodule PortalWeb.Sites.Components do
               class="rounded-md border-2 border-brand bg-brand-muted p-4 space-y-3"
             >
               <div class="flex items-center gap-2">
-                <.icon name="ri-key-2-line" class="w-4 h-4 text-brand" />
+                <Core.icon name="ri-key-2-line" class="w-4 h-4 text-brand" />
                 <span class="text-xs font-semibold text-brand">New gateway token</span>
               </div>
               <p class="text-xs text-body">
@@ -601,7 +601,7 @@ defmodule PortalWeb.Sites.Components do
                 phx-no-format
               >{@rotated_gateway_token.encoded}</code>
               <div class="flex items-center gap-2">
-                <.button
+                <Form.button
                   type="button"
                   size="xs"
                   style="primary"
@@ -611,18 +611,18 @@ defmodule PortalWeb.Sites.Components do
                     id={"gateway-token-reveal-#{gateway.id}-default-message"}
                     class="inline-flex items-center gap-1.5"
                   >
-                    <.icon name="ri-clipboard-line" class="w-3.5 h-3.5" /> Copy token
+                    <Core.icon name="ri-clipboard-line" class="w-3.5 h-3.5" /> Copy token
                   </span>
                   <span
                     id={"gateway-token-reveal-#{gateway.id}-success-message"}
                     class="hidden items-center gap-1.5"
                   >
-                    <.icon name="ri-check-line" class="w-3.5 h-3.5" /> Copied
+                    <Core.icon name="ri-check-line" class="w-3.5 h-3.5" /> Copied
                   </span>
-                </.button>
-                <.button type="button" size="xs" phx-click="dismiss_rotated_gateway_token">
+                </Form.button>
+                <Form.button type="button" size="xs" phx-click="dismiss_rotated_gateway_token">
                   Done
-                </.button>
+                </Form.button>
               </div>
             </div>
             <form
@@ -647,12 +647,12 @@ defmodule PortalWeb.Sites.Components do
                 class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 font-mono text-xs text-heading"
               />
               <div class="flex items-center gap-2">
-                <.button type="button" size="xs" phx-click="cancel_rename_gateway">
+                <Form.button type="button" size="xs" phx-click="cancel_rename_gateway">
                   Cancel
-                </.button>
-                <.button type="submit" size="xs">
+                </Form.button>
+                <Form.button type="submit" size="xs">
                   Save
-                </.button>
+                </Form.button>
               </div>
             </form>
             <div
@@ -689,17 +689,17 @@ defmodule PortalWeb.Sites.Components do
                 This issues a gateway token that only this gateway can use.
               </p>
               <div class="flex items-center gap-2">
-                <.button type="button" size="xs" phx-click="cancel_rotate_gateway_token">
+                <Form.button type="button" size="xs" phx-click="cancel_rotate_gateway_token">
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   type="button"
                   size="xs"
                   phx-click="confirm_rotate_gateway_token"
                   phx-value-id={gateway.id}
                 >
                   {token_action_confirm_label(action)}
-                </.button>
+                </Form.button>
               </div>
             </div>
           </div>
@@ -714,7 +714,7 @@ defmodule PortalWeb.Sites.Components do
           phx-click="deploy_gateway"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
         >
-          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
         </button>
       </div>
       <div
@@ -738,16 +738,16 @@ defmodule PortalWeb.Sites.Components do
     <div class="flex-1 overflow-y-auto">
       <ul>
         <li :for={resource <- @resources} class="border-b border-border">
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/resources/#{resource.id}"}
             class="flex items-center gap-3 px-5 py-3 hover:bg-raised transition-colors group"
           >
             <div class={[
               "shrink-0 flex",
-              type_badge_col_class(Enum.map(@resources, & &1.type))
+              ResourceType.type_badge_col_class(Enum.map(@resources, & &1.type))
             ]}>
-              <span class={type_badge_class(resource.type)}>
-                {resource_type_label(resource.type)}
+              <span class={ResourceType.type_badge_class(resource.type)}>
+                {ResourceType.resource_type_label(resource.type)}
               </span>
             </div>
             <div class="flex-1 min-w-0">
@@ -758,14 +758,14 @@ defmodule PortalWeb.Sites.Components do
                 {resource.address}
               </p>
             </div>
-          </.link>
+          </Navigation.link>
         </li>
       </ul>
       <div :if={@resources == []} class="flex flex-col items-center justify-center gap-3 py-16">
         <p class="text-sm text-subtle">No resources assigned to this site.</p>
-        <.button :if={@site.managed_by == :account} phx-click="add_resource" size="xs">
-          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
-        </.button>
+        <Form.button :if={@site.managed_by == :account} phx-click="add_resource" size="xs">
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a resource
+        </Form.button>
       </div>
     </div>
     """
@@ -790,16 +790,16 @@ defmodule PortalWeb.Sites.Components do
         >
           <div class="flex items-center gap-3">
             <div class="flex items-center justify-center w-7 h-7 rounded border border-border-strong bg-raised shrink-0">
-              <.icon name="ri-key-line" class="w-3.5 h-3.5 text-subtle" />
+              <Core.icon name="ri-key-line" class="w-3.5 h-3.5 text-subtle" />
             </div>
             <div class="flex-1 min-w-0">
               <p class="font-mono text-xs text-body truncate">{token.id}</p>
               <p class="text-[10px] text-subtle mt-0.5">
-                Created <.relative_datetime datetime={token.inserted_at} popover={false} />
+                Created <Core.relative_datetime datetime={token.inserted_at} popover={false} />
               </p>
             </div>
             <.legacy_token_usage_badge count={Map.get(@legacy_token_connections, token.id, 0)} />
-            <.icon_button
+            <Form.icon_button
               :if={@confirm_revoke_token_id != token.id}
               icon="ri-delete-bin-line"
               title="Revoke token"
@@ -809,10 +809,10 @@ defmodule PortalWeb.Sites.Components do
             />
             <div :if={@confirm_revoke_token_id == token.id} class="flex items-center gap-2 shrink-0">
               <span class="text-xs text-error">Revoke this token?</span>
-              <.button type="button" phx-click="cancel_revoke_gateway_token" size="xs">
+              <Form.button type="button" phx-click="cancel_revoke_gateway_token" size="xs">
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 type="button"
                 style="danger"
                 size="xs"
@@ -820,7 +820,7 @@ defmodule PortalWeb.Sites.Components do
                 phx-value-id={token.id}
               >
                 Revoke
-              </.button>
+              </Form.button>
             </div>
           </div>
         </li>
@@ -1035,7 +1035,7 @@ defmodule PortalWeb.Sites.Components do
         phx-click="confirm_delete_site"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete site
+        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete site
       </button>
       <div
         :if={@confirm_delete_site}
@@ -1047,12 +1047,12 @@ defmodule PortalWeb.Sites.Components do
           All associated gateways and resources will also be permanently deleted.
         </p>
         <div class="flex items-center gap-2">
-          <.button type="button" phx-click="cancel_delete_site" size="xs">
+          <Form.button type="button" phx-click="cancel_delete_site" size="xs">
             Cancel
-          </.button>
-          <.button type="button" phx-click="delete_site" style="danger" size="xs" class="font-medium">
+          </Form.button>
+          <Form.button type="button" phx-click="delete_site" style="danger" size="xs" class="font-medium">
             Delete site
-          </.button>
+          </Form.button>
         </div>
       </div>
     </section>
@@ -1076,11 +1076,11 @@ defmodule PortalWeb.Sites.Components do
       <div class="shrink-0 px-5 py-3 border-t border-border bg-raised flex items-center justify-between gap-4">
         <p class="text-xs text-subtle">
           Gateway not connecting? See our
-          <.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
+          <Navigation.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
             troubleshooting guide.
-          </.website_link>
+          </Navigation.website_link>
         </p>
-        <.initial_connection_status
+        <Core.initial_connection_status
           :if={@deploy_env}
           type="gateway"
           navigate={~p"/#{@account}/sites/#{@site}"}
@@ -1096,7 +1096,7 @@ defmodule PortalWeb.Sites.Components do
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold text-heading">Deploy a Gateway</h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
+        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
       </div>
     </div>
     """
@@ -1165,7 +1165,7 @@ defmodule PortalWeb.Sites.Components do
         )
       ]}
     >
-      <.icon name={@icon} class="w-3.5 h-3.5 shrink-0" />
+      <Core.icon name={@icon} class="w-3.5 h-3.5 shrink-0" />
       {@label}
     </button>
     """
@@ -1193,12 +1193,12 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="p-5 space-y-4">
       <p class="text-xs text-body">Run this command on your host:</p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-docker"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_docker_command(@deploy_env) %></.code_block>
+      ><%= gateway_docker_command(@deploy_env) %></Core.code_block>
     </div>
     """
   end
@@ -1209,12 +1209,12 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="p-5 space-y-4">
       <p class="text-xs text-body">Install via systemd:</p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-systemd"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_systemd_command(@deploy_env) %></.code_block>
+      ><%= gateway_systemd_command(@deploy_env) %></Core.code_block>
     </div>
     """
   end
@@ -1227,42 +1227,42 @@ defmodule PortalWeb.Sites.Components do
       <p class="text-xs text-body">
         Step 1: Add the Firezone APT repository:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-debian-repo"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_debian_apt_repository() %></.code_block>
+      ><%= gateway_debian_apt_repository() %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 2: Install the Firezone Gateway:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-debian-install"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_debian_install() %></.code_block>
+      ><%= gateway_debian_install() %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 3: Authenticate the Firezone Gateway:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-debian-auth"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_debian_authenticate() %></.code_block>
+      ><%= gateway_debian_authenticate() %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 4: Use this token when prompted:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-debian-token"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_token(@deploy_env) %></.code_block>
+      ><%= gateway_token(@deploy_env) %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 5: You are now ready to manage the Gateway using the <code class="font-mono">firezone</code>
@@ -1281,48 +1281,48 @@ defmodule PortalWeb.Sites.Components do
         Step 1: Download the latest binary for your architecture:
       </p>
       <p>
-        <.website_link path="/changelog">Firezone changelog</.website_link>
+        <Navigation.website_link path="/changelog">Firezone changelog</Navigation.website_link>
       </p>
 
       <p class="text-xs text-body">
         Step 2: Set required environment variables:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-custom-env"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_manual_env(@deploy_env) %></.code_block>
+      ><%= gateway_manual_env(@deploy_env) %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 3: Enable packet forwarding for IPv4 and IPv6:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-custom-forwarding"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_manual_forwarding() %></.code_block>
+      ><%= gateway_manual_forwarding() %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 4: Enable masquerading for ethernet and Wi-Fi interfaces:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-custom-masquerading"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_manual_masquerading() %></.code_block>
+      ><%= gateway_manual_masquerading() %></Core.code_block>
 
       <p class="text-xs text-body">
         Step 5: Run the binary you downloaded:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-custom-run"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= "sudo ./firezone-gateway-<version>-<architecture>" %></.code_block>
+      ><%= "sudo ./firezone-gateway-<version>-<architecture>" %></Core.code_block>
 
       <p class="text-xs text-body">
         Make sure to save the <code class="font-mono">FIREZONE_TOKEN</code>
@@ -1340,14 +1340,14 @@ defmodule PortalWeb.Sites.Components do
       <p class="text-xs text-body">
         Use `FIREZONE_TOKEN` in your Terraform-managed gateway environment:
       </p>
-      <.code_block
+      <Core.code_block
         id="deploy-code-terraform"
         class="w-full text-xs whitespace-pre-line"
         phx-no-format
         phx-update="ignore"
-      ><%= gateway_token(@deploy_env) %></.code_block>
+      ><%= gateway_token(@deploy_env) %></Core.code_block>
       <p class="text-xs text-body">
-        <.website_link path="/kb/automate">Terraform guides</.website_link>
+        <Navigation.website_link path="/kb/automate">Terraform guides</Navigation.website_link>
       </p>
     </div>
     """
@@ -1394,7 +1394,7 @@ defmodule PortalWeb.Sites.Components do
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
         <h2 class="text-sm font-semibold text-heading">Add Resource</h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_add_resource" />
+        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_add_resource" />
       </div>
     </div>
     """
@@ -1410,7 +1410,7 @@ defmodule PortalWeb.Sites.Components do
       </span>
       <ul class="grid w-full gap-3 grid-cols-3">
         <li>
-          <.input
+          <Form.input
             id="panel-resource-form-type--dns"
             type="radio_button_group"
             field={@resource_form[:type]}
@@ -1424,14 +1424,14 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
+                <Core.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
               </div>
               <div class="w-full text-[10px]">By DNS address</div>
             </div>
           </label>
         </li>
         <li>
-          <.input
+          <Form.input
             id="panel-resource-form-type--ip"
             type="radio_button_group"
             field={@resource_form[:type]}
@@ -1445,14 +1445,14 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
+                <Core.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
               </div>
               <div class="w-full text-[10px]">By IP address</div>
             </div>
           </label>
         </li>
         <li>
-          <.input
+          <Form.input
             id="panel-resource-form-type--cidr"
             type="radio_button_group"
             field={@resource_form[:type]}
@@ -1466,7 +1466,7 @@ defmodule PortalWeb.Sites.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
+                <Core.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
               </div>
               <div class="w-full text-[10px]">By CIDR range</div>
             </div>
@@ -1488,7 +1488,7 @@ defmodule PortalWeb.Sites.Components do
       >
         Address <span class="text-error">*</span>
       </label>
-      <.input
+      <Form.input
         field={@resource_form[:address]}
         autocomplete="off"
         placeholder={
@@ -1512,7 +1512,7 @@ defmodule PortalWeb.Sites.Components do
       >
         Address Description <span class="text-subtle font-normal">(optional)</span>
       </label>
-      <.input
+      <Form.input
         field={@resource_form[:address_description]}
         type="text"
         placeholder="Enter a description or URL"
@@ -1529,7 +1529,7 @@ defmodule PortalWeb.Sites.Components do
       >
         Name <span class="text-error">*</span>
       </label>
-      <.input
+      <Form.input
         field={@resource_form[:name]}
         type="text"
         placeholder="Name this resource"
@@ -1545,7 +1545,7 @@ defmodule PortalWeb.Sites.Components do
   def resource_dns_stack(assigns) do
     ~H"""
     <div>
-      <.input
+      <Form.input
         id="panel-resource-form-ip-stack--dual"
         type="radio_button_group"
         field={@resource_form[:ip_stack]}
@@ -1555,14 +1555,14 @@ defmodule PortalWeb.Sites.Components do
             "#{@resource_form[:ip_stack].value}" == "dual"
         }
       />
-      <.input
+      <Form.input
         id="panel-resource-form-ip-stack--ipv4"
         type="radio_button_group"
         field={@resource_form[:ip_stack]}
         value="ipv4_only"
         checked={"#{@resource_form[:ip_stack].value}" == "ipv4_only"}
       />
-      <.input
+      <Form.input
         id="panel-resource-form-ip-stack--ipv6"
         type="radio_button_group"
         field={@resource_form[:ip_stack]}
@@ -1672,8 +1672,8 @@ defmodule PortalWeb.Sites.Components do
         phx-click="toggle_resource_filters_dropdown"
         class="inline-flex items-center gap-1 text-xs text-body hover:text-heading border border-border rounded px-2 py-1 bg-surface hover:bg-raised transition-colors"
       >
-        <.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
-        <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
+        <Core.icon name="ri-add-line" class="w-3 h-3" /> Add protocol
+        <Core.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
       </button>
       <div
         :if={@filters_dropdown_open}
@@ -1747,7 +1747,7 @@ defmodule PortalWeb.Sites.Components do
         class="shrink-0 text-subtle hover:text-heading transition-colors"
         aria-label={"Remove #{@protocol} filter"}
       >
-        <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+        <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
       </button>
     </div>
     """
@@ -1755,14 +1755,14 @@ defmodule PortalWeb.Sites.Components do
 
   def resource_form_actions(assigns) do
     ~H"""
-    <.panel_footer>
-      <.panel_footer_button type="button" phx-click="close_add_resource">
+    <Form.panel_footer>
+      <Form.panel_footer_button type="button" phx-click="close_add_resource">
         Cancel
-      </.panel_footer_button>
-      <.panel_footer_button type="submit" style="primary">
+      </Form.panel_footer_button>
+      <Form.panel_footer_button type="submit" style="primary">
         Create Resource
-      </.panel_footer_button>
-    </.panel_footer>
+      </Form.panel_footer_button>
+    </Form.panel_footer>
     """
   end
 
@@ -1772,7 +1772,7 @@ defmodule PortalWeb.Sites.Components do
   def site_edit_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <.panel_header title="Edit Site" close_event="cancel_site_edit_form" />
+      <Form.panel_header title="Edit Site" close_event="cancel_site_edit_form" />
       <.form
         :if={@form}
         id="site-edit-form"
@@ -1789,7 +1789,7 @@ defmodule PortalWeb.Sites.Components do
             >
               Name <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:name]}
               type="text"
               placeholder="Name of this site"
@@ -1798,7 +1798,7 @@ defmodule PortalWeb.Sites.Components do
             />
           </div>
           <div>
-            <.input
+            <Form.input
               field={@form[:health_threshold]}
               type="number"
               label="Health threshold"
@@ -1809,14 +1809,14 @@ defmodule PortalWeb.Sites.Components do
             </p>
           </div>
         </div>
-        <.panel_footer>
-          <.panel_footer_button type="button" phx-click="cancel_site_edit_form">
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="cancel_site_edit_form">
             Cancel
-          </.panel_footer_button>
-          <.panel_footer_button type="submit" style="primary" class="font-medium">
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary" class="font-medium">
             Save
-          </.panel_footer_button>
-        </.panel_footer>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
     </div>
     """
@@ -1826,9 +1826,9 @@ defmodule PortalWeb.Sites.Components do
 
   def site_status_badge(assigns) do
     ~H"""
-    <.status_badge style={site_badge_style(@status)}>
+    <Core.status_badge style={site_badge_style(@status)}>
       {Phoenix.Naming.humanize(@status)}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 

@@ -1,4 +1,4 @@
-defmodule PortalWeb.CoreComponents do
+defmodule PortalWeb.Components.Core do
   @moduledoc """
   Provides core UI components.
 
@@ -10,6 +10,8 @@ defmodule PortalWeb.CoreComponents do
   [heroicons_elixir](https://github.com/mveytsman/heroicons_elixir) project.
   """
   use Phoenix.Component
+
+  alias PortalWeb.Components.Navigation
   use PortalWeb, :verified_routes
   alias Phoenix.LiveView.JS
 
@@ -36,7 +38,7 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-  <.code>def foo: do :bar</.code>
+  <Core.code>def foo: do :bar</Core.code>
   """
   attr :id, :string, default: nil
   attr :class, :string, default: ""
@@ -64,9 +66,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-  <.code_block id="foo">
+  <Core.code_block id="foo">
     The lazy brown fox jumped over the quick dog.
-  </.code_block>
+  </Core.code_block>
   """
   attr :id, :string, required: true
   attr :class, :string, default: ""
@@ -117,9 +119,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-  <.copy id="foo">
+  <Core.copy id="foo">
     The lazy brown fox jumped over the quick dog.
-  </.copy>
+  </Core.copy>
   """
   attr :id, :string, required: true
   attr :class, :string, default: ""
@@ -150,9 +152,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-  <.result_page success title="Verification Successful" auto_close_after_ms={1000}>
+  <Core.result_page success title="Verification Successful" auto_close_after_ms={1000}>
     <p>If this window remains open, close it to return to the Firezone portal.</p>
-  </.result_page>
+  </Core.result_page>
   """
   attr :success, :boolean, required: true
   attr :title, :string, required: true
@@ -187,16 +189,16 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-    <.section>
+    <Page.section>
       <:title>
         All gateways
       </:title>
       <:actions>
-        <.add_button navigate={~p"/gateways/new"}>
+        <Form.add_button navigate={~p"/gateways/new"}>
           Deploy gateway
-        </.add_button>
+        </Form.add_button>
       </:actions>
-    </.section>
+    </Page.section>
   """
   slot :title, required: true, doc: "Title of the section"
   slot :actions, required: false, doc: "Buttons or other action elements"
@@ -231,9 +233,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:info} style="toast" flash={@flash} />
-      <.flash kind={:error}>Something went wrong!</.flash>
+      <Core.flash kind={:info} flash={@flash} />
+      <Core.flash kind={:info} style="toast" flash={@flash} />
+      <Core.flash kind={:error}>Something went wrong!</Core.flash>
   """
   attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
@@ -410,10 +412,10 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.list>
+      <Core.list>
         <:item title="Title"><%= @post.title %></:item>
         <:item title="Views"><%= @post.views %></:item>
-      </.list>
+      </Core.list>
   """
   slot :item, required: true do
     attr :title, :string, required: true
@@ -450,10 +452,10 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.icon name="ri-close-fill" />
-      <.icon name="ri-loop-left-line" class="ml-1 w-3 h-3 animate-spin" />
-      <.icon name="ri-user-fill" class="w-5 h-5" />
-      <.icon name="ri-settings-3-line" class="w-4 h-4 text-subtle" />
+      <Core.icon name="ri-close-fill" />
+      <Core.icon name="ri-loop-left-line" class="ml-1 w-3 h-3 animate-spin" />
+      <Core.icon name="ri-user-fill" class="w-5 h-5" />
+      <Core.icon name="ri-settings-3-line" class="w-4 h-4 text-subtle" />
   """
   attr :name, :string, required: true
   attr :class, :any, default: nil
@@ -506,7 +508,7 @@ defmodule PortalWeb.CoreComponents do
   ## Examples
 
   ```heex
-  <.intersperse_blocks>
+  <Core.intersperse_blocks>
     <:separator>
       <span class="sep">|</span>
     </:separator>
@@ -526,7 +528,7 @@ defmodule PortalWeb.CoreComponents do
     <:item>
       settings
     </:item>
-  </.intersperse_blocks>
+  </Core.intersperse_blocks>
   ```
   """
   slot :separator, required: false, doc: "the slot for the separator"
@@ -856,7 +858,7 @@ defmodule PortalWeb.CoreComponents do
       )
 
     ~H"""
-    <.link
+    <Navigation.link
       class={[
         connection_status_size(@size),
         "flex items-center",
@@ -881,7 +883,7 @@ defmodule PortalWeb.CoreComponents do
       <span :if={@connected?}>
         <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> {@done}
       </span>
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -939,7 +941,7 @@ defmodule PortalWeb.CoreComponents do
         ]}>
         <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
       </span>
-      <.link
+      <Navigation.link
         title={"View Group \"#{@group.name}\""}
         navigate={@navigate_url}
         class={[
@@ -948,7 +950,7 @@ defmodule PortalWeb.CoreComponents do
         ]}
       >
         {@group.name}
-      </.link>
+      </Navigation.link>
     </span>
     """
   end
@@ -1074,19 +1076,19 @@ defmodule PortalWeb.CoreComponents do
   This component is meant to be used for step by step instructions
 
   ex.
-  <.step>
+  <Core.step>
     <:title>Step 1. Do Something</:title>
     <:content>
       Here are instructions for step 1...
     </:content>
-  </.step>
+  </Core.step>
 
-  <.step>
+  <Core.step>
     <:title>Step 2. Do Another Thing</:title>
     <:content>
       Here are instructions for step 2...
     </:content>
-  </.step>
+  </Core.step>
 
   """
   slot :title, required: true
@@ -1166,9 +1168,9 @@ defmodule PortalWeb.CoreComponents do
   @doc """
   Renders a logo appropriate for the given provider.
 
-  <.provider_icon provider="google" size="md" />
-  <.provider_icon provider="okta" size="xl" variant="circle" />
-  <.provider_icon provider={@type} size="sm" />
+  <Core.provider_icon provider="google" size="md" />
+  <Core.provider_icon provider="okta" size="xl" variant="circle" />
+  <Core.provider_icon provider={@type} size="sm" />
   """
   attr :provider, :string, required: true
 
@@ -1512,14 +1514,14 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.toggle
+      <Core.toggle
         id="my-toggle"
         checked={@is_enabled}
         phx-click="toggle_enabled"
         phx-value-id={@id}
       />
 
-      <.toggle
+      <Core.toggle
         id="my-toggle"
         checked={@is_enabled}
         label="Enable feature"
@@ -1592,12 +1594,12 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-    <.status_badge style={:success}>Online</.status_badge>
-    <.status_badge style={:neutral}>Offline</.status_badge>
-    <.status_badge style={:warning}>Degraded</.status_badge>
-    <.status_badge style={:danger}>Disabled</.status_badge>
-    <.status_badge style={:success} dot={false}>Active</.status_badge>
-    <.status_badge style={:success} icon="ri-shield-keyhole-line">Online</.status_badge>
+    <Core.status_badge style={:success}>Online</Core.status_badge>
+    <Core.status_badge style={:neutral}>Offline</Core.status_badge>
+    <Core.status_badge style={:warning}>Degraded</Core.status_badge>
+    <Core.status_badge style={:danger}>Disabled</Core.status_badge>
+    <Core.status_badge style={:success} dot={false}>Active</Core.status_badge>
+    <Core.status_badge style={:success} icon="ri-shield-keyhole-line">Online</Core.status_badge>
   """
   attr :style, :atom, required: true, values: [:success, :warning, :danger, :neutral]
   attr :dot, :boolean, default: true
@@ -1630,9 +1632,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.status_popover id="sink-status-1" label="Error" color="red">
+      <Core.status_popover id="sink-status-1" label="Error" color="red">
         <p class="text-xs text-body">Connection refused</p>
-      </.status_popover>
+      </Core.status_popover>
   """
   attr :id, :string, required: true
   attr :label, :string, required: true
@@ -1677,9 +1679,9 @@ defmodule PortalWeb.CoreComponents do
 
   ## Examples
 
-      <.new_badge />
-      <.new_badge class="ml-auto" data-sidebar-badge />
-      <.new_badge label={@badge} class="ml-1.5 normal-case" />
+      <Core.new_badge />
+      <Core.new_badge class="ml-auto" data-sidebar-badge />
+      <Core.new_badge label={@badge} class="ml-1.5 normal-case" />
   """
   attr :label, :string, default: "NEW"
   attr :class, :any, default: nil
