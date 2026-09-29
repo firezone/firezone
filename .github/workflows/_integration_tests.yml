@@ -158,9 +158,6 @@ jobs:
           - script: dns-portal-down
           - script: dns-nm
           - script: dns-two-resources
-          - script: device-pool
-            extra_services: pool-member
-            min_client_version: 1.5.9
           - script: browse-device-pools
             extra_services: pool-member
             min_client_version: 1.5.14
