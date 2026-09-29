@@ -758,16 +758,7 @@ impl PathFeedback {
     }
 
     fn code(self) -> u16 {
-        connection_path_code(self.selected)
-    }
-}
-
-fn connection_path_code(path: ConnectionPath) -> u16 {
-    match path {
-        ConnectionPath::PeerToPeer => 0,
-        ConnectionPath::PeerToRelay => 1,
-        ConnectionPath::RelayToPeer => 2,
-        ConnectionPath::RelayToRelay => 3,
+        self.selected.index() as u16
     }
 }
 

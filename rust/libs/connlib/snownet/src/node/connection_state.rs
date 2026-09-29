@@ -285,7 +285,8 @@ impl ConnectionPath {
         Self::KINDS[self.index()]
     }
 
-    pub(crate) fn index(self) -> usize {
+    /// Returns the index used by connection path metrics.
+    pub fn index(self) -> usize {
         match self {
             ConnectionPath::PeerToPeer => 0,
             ConnectionPath::PeerToRelay => 1,
