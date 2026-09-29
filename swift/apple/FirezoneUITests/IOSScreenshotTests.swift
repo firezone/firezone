@@ -121,6 +121,7 @@
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
       try open(app.staticTexts["bench-controller-01"], in: app, name: "a connected device")
       try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
       deliver(app, as: "device-details", in: appearance)
