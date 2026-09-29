@@ -36,12 +36,6 @@ struct Ipv6Cursor {
     iter: Ipv6NetworkIterator,
 }
 
-#[derive(Clone, Copy)]
-pub(super) enum FlowGuidance {
-    Reuse(FlowId),
-    RefreshDnsThenReuse(FlowId),
-}
-
 impl Ipv6Cursor {
     fn over(net: Ipv6Network) -> Self {
         Self {
@@ -77,7 +71,6 @@ pub struct Generator<'a> {
     next_key: u32,
     next_probe: u64,
     next_flow: u64,
-    flow_guidance: Option<FlowGuidance>,
     icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
     udp_packets: SmallVec<[(SPort, DPort); 20]>,
     tcp_connections: SmallVec<[(SPort, DPort); 20]>,
@@ -114,7 +107,6 @@ impl<'a> Generator<'a> {
             next_key: 0,
             next_probe: 0,
             next_flow: 0,
-            flow_guidance: None,
             icmp_packets: SmallVec::new(),
             udp_packets: SmallVec::new(),
             tcp_connections: SmallVec::new(),
@@ -181,14 +173,6 @@ impl<'a> Generator<'a> {
         let fallback = *range.start();
 
         self.input.int_in_range(range).unwrap_or(fallback)
-    }
-
-    pub(super) fn guide_flow(&mut self, guidance: FlowGuidance) {
-        self.flow_guidance = Some(guidance);
-    }
-
-    pub(super) fn take_flow_guidance(&mut self) -> Option<FlowGuidance> {
-        self.flow_guidance.take()
     }
 
     pub(super) fn socket_ip4(&mut self) -> Ipv4Addr {
