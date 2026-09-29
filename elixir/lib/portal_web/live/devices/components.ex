@@ -672,7 +672,7 @@ defmodule PortalWeb.Devices.Components do
         <.device_detail_row label="Tunnel IPv6">
           <.copyable_value id={"device-ipv6-#{@device.id}"} value={to_string(@device.ipv6)} />
         </.device_detail_row>
-        <.device_detail_row :if={@device.slug} label="Tunnel DNS Name">
+        <.device_detail_row label="Tunnel DNS Name">
           <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
         </.device_detail_row>
       </dl>
