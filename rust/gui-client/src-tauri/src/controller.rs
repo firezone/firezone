@@ -1,5 +1,5 @@
 use crate::{
-    auth, deep_link, dialog,
+    auth, deep_link,
     gui::{self, system_tray},
     logging::{self, FileCount},
     service,
@@ -714,7 +714,12 @@ impl<I: GuiIntegration> Controller<I> {
                     self.disconnect().await?;
                 }
 
-                dialog::error(&user_msg)?;
+                let title = if requires_sign_in {
+                    "Your Firezone session has ended"
+                } else {
+                    "Firezone disconnected"
+                };
+                self.integration.show_notification(title, user_msg)?;
             }
             service::ServerMsg::ConnectedToPortal(connected) => {
                 if connected.actor_name.is_empty() {
@@ -1926,6 +1931,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shows_disconnect_notification() {
+        let _guard = logging::test("debug");
+
+        for (requires_sign_in, expected_title) in [
+            (true, "Your Firezone session has ended"),
+            (false, "Firezone disconnected"),
+        ] {
+            let mut test_controller = Controller::start_for_test();
+            let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+            boot_tunnel(
+                &mut test_controller,
+                &mut mock_tunnel,
+                vec![dns_resource_foo()],
+            )
+            .await;
+
+            mock_tunnel
+                .send_on_disconnect("Reason for the disconnect", requires_sign_in)
+                .await;
+
+            let (title, body) = test_controller
+                .wait_integration(|i| i.nth_notification(1))
+                .await;
+            assert_eq!(title, expected_title);
+            assert_eq!(body, "Reason for the disconnect");
+        }
+    }
+
+    #[tokio::test]
     async fn no_legacy_skips_migration() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -2434,6 +2468,18 @@ mod tests {
         async fn send_gateway_version_mismatch(&mut self, resource_id: ResourceId) {
             self.tx
                 .send(&service::ServerMsg::GatewayVersionMismatch { resource_id })
+                .await
+                .unwrap();
+        }
+
+        async fn send_on_disconnect(&mut self, user_msg: &str, requires_sign_in: bool) {
+            self.tx
+                .send(&service::ServerMsg::OnDisconnect {
+                    user_msg: user_msg.to_owned(),
+                    log_msg: "Diagnostics for the logs".to_owned(),
+                    requires_sign_in,
+                    is_user_facing: true,
+                })
                 .await
                 .unwrap();
         }
