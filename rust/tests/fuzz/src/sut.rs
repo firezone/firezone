@@ -659,10 +659,16 @@ impl TunnelTest {
                 self.deploy_new_relays(new_relays, now);
             }
             Transition::Idle { duration } => {
+                // Jumping straight between deadlines instead of ticking stops
+                // reaching relay allocation expiry and candidate invalidation.
+                const TICK: Duration = Duration::from_secs(5);
                 let cut_off = self.flux_capacitor.now::<Instant>() + duration;
 
-                self.advance_to(ref_state, portal, &mut buffered_transmits, cut_off);
-                self.flux_capacitor.skip_to(cut_off);
+                while self.flux_capacitor.now::<Instant>() < cut_off {
+                    let remaining = cut_off - self.flux_capacitor.now::<Instant>();
+                    self.flux_capacitor.tick(remaining.min(TICK));
+                    self.advance(ref_state, portal, &mut buffered_transmits);
+                }
             }
             Transition::PartitionRelaysFromPortal => {
                 // 1. Disconnect all relays.
