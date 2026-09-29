@@ -166,6 +166,18 @@
       #expect(app.store.vpnStatus == .disconnected)
     }
 
+    @Test("a disconnect connlib did not word shows nothing")
+    func aDisconnectConnlibDidNotWordShowsNothing() async throws {
+      let app = try await signedOut()
+      try await app.store.signIn(token: Self.token)
+      try await waitUntil { app.store.vpnStatus == .connected }
+
+      app.tunnel.disconnect(with: PacketTunnelProviderError.providerConfigurationIsInvalid)
+
+      try await waitUntil { app.store.vpnStatus == .disconnected }
+      #expect(app.notifications.shown.isEmpty)
+    }
+
     @Test("signing out tells the tunnel and stops it without an alert")
     func signingOutTellsTheTunnelAndStopsIt() async throws {
       let app = try await signedOut()

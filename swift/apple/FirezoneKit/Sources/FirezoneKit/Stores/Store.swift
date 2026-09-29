@@ -326,50 +326,31 @@ public final class Store: ObservableObject {
           try manager().session()?.fetchLastDisconnectError { error in
             guard let error else { return }
 
-            let nsError = error as NSError
+            switch DisconnectError(error) {
+            case .connlib(let code, let reason, let id):
+              // Every `ConnlibError` is worded for the user, so it is product copy rather than
+              // a diagnostic and must not be reported as telemetry.
+              Log.info(reason)
 
-            guard nsError.domain == ConnlibError.errorDomain,
-              let code = ConnlibError.Code(rawValue: nsError.code),
-              let reason = nsError.userInfo["reason"] as? String,
-              let id = nsError.userInfo["id"] as? String
-            else {
-              // Every early return in the provider's `startTunnel` reports a
-              // `PacketTunnelProviderError`, which carries neither a reason nor an id and
-              // would otherwise be dropped silently.
-              if PacketTunnelProviderError.isCredentialNotConfigured(error) {
-                // The system started the tunnel while signed out.
-                Log.info(error.localizedDescription)
-              } else {
-                Log.error(error)
-              }
-
-              // Deduplicated on the error itself, since only connlib mints an id.
-              let id = "\(nsError.domain):\(nsError.code)"
-              let message = error.localizedDescription
-
+              // Only show the alert if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                await self.sessionNotification.showDisconnectedAlertMacOS(message)
+                switch code {
+                case .sessionExpired:
+                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
+                case .disconnected:
+                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+                }
                 self.markAlertAsShown(id)
               }
-
-              return
-            }
-
-            // Every `ConnlibError` is worded for the user, so it is product copy rather than
-            // a diagnostic and must not be reported as telemetry.
-            Log.info(reason)
-
-            // Only show the alert if we haven't shown this specific error before
-            Task { @MainActor in
-              guard !self.shownAlertIds.contains(id) else { return }
-              switch code {
-              case .sessionExpired:
-                await self.sessionNotification.showSignedOutAlertMacOS(reason)
-              case .disconnected:
-                await self.sessionNotification.showDisconnectedAlertMacOS(reason)
-              }
-              self.markAlertAsShown(id)
+            case .packetTunnelProvider(.credentialNotConfigured):
+              // The system started the tunnel while signed out.
+              Log.info(error.localizedDescription)
+            case .packetTunnelProvider(.providerConfigurationIsInvalid),
+              .packetTunnelProvider(.firezoneIdIsInvalid),
+              .unknown:
+              // Not worded for the user, so only reported, which is how we learn about new ones.
+              Log.error(error)
             }
           }
         } catch {
