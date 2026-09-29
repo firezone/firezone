@@ -79,13 +79,6 @@ pub enum Transition {
         dns_server: dns::Upstream,
         transport: DnsTransport,
     },
-    /// Sends a PTR query in the device domain and repeats it `after` later, while the
-    /// client still caches the first answer.
-    RepeatDeviceListingQuery {
-        client_id: ClientId,
-        query: DnsQuery,
-        after: Duration,
-    },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
     },
@@ -153,7 +146,6 @@ impl Transition {
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQueries(_) => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
-            Transition::RepeatDeviceListingQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
             Transition::UpdateUpstreamDoHServers(_) => false,
@@ -206,7 +198,6 @@ impl Transition {
             Transition::ConnectTcp { .. } => true,
             Transition::SendDnsQueries(_) => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
-            Transition::RepeatDeviceListingQuery { .. } => true,
             Transition::UpdateSystemDnsServers { .. } => true,
             Transition::UpdateUpstreamDo53Servers(_) => true,
             Transition::UpdateUpstreamDoHServers(_) => true,

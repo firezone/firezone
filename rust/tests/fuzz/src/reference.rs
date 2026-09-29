@@ -208,40 +208,6 @@ impl ReferenceState {
                     });
                 }
             }
-            Transition::RepeatDeviceListingQuery {
-                client_id,
-                query,
-                after,
-            } => {
-                let upstream_do53 = portal.upstream_do53();
-                let global_dns_records = &self.global_dns_records;
-                let icmp_error_hosts = &self.icmp_error_hosts;
-                let client = self.clients[client_id].inner();
-
-                // Answers with records are cached, so the repeat gets them with the TTL
-                // counted down.
-                let listing =
-                    match portal.browse_device_domain(&query.domain, &client.device_pool_ids()) {
-                        Ok((names, ttl)) if !names.is_empty() => {
-                            Ok((names, ttl - after.as_secs() as u32))
-                        }
-                        listing => listing,
-                    };
-
-                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    for _ in 0..2 {
-                        c.on_dns_query(
-                            query,
-                            None,
-                            upstream_do53,
-                            global_dns_records,
-                            icmp_error_hosts,
-                        );
-                    }
-
-                    c.expect_device_listing(&query.domain, listing);
-                });
-            }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
                 query_id,

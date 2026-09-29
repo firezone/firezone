@@ -1,6 +1,5 @@
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::Duration;
 
 use connlib_model::ClientId;
 use dns_types::{DomainName, RecordType};
@@ -11,7 +10,7 @@ use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use super::values::arb_domain_matching_dns_resource;
 use crate::reference::ReferenceState;
-use crate::stub_portal::{CACHED_DEVICE_LISTING_TTL, StubPortal};
+use crate::stub_portal::StubPortal;
 use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
@@ -206,40 +205,6 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
             transport: arb_dns_transport(g),
         },
     )
-}
-
-/// Asks for a device domain listing twice, the second time while the answer to the first
-/// is cached.
-pub(super) fn generate_repeated_listing(
-    g: &mut Generator,
-    state: &ReferenceState,
-    portal: &StubPortal,
-) -> Transition {
-    let servers = state.reachable_dns_servers(portal);
-    let (client_id, dns_server) = servers[g.choose_index(servers.len())].clone();
-    let names = iter::once(dns::DEVICE_DOMAIN.to_owned())
-        .chain(
-            portal
-                .device_pool_labels()
-                .map(|label| format!("{label}.{}", dns::DEVICE_DOMAIN)),
-        )
-        .collect::<Vec<_>>();
-    let domain = names[g.choose_index(names.len())].parse().unwrap();
-    let after = g.count(1, CACHED_DEVICE_LISTING_TTL as usize - 1);
-
-    Transition::RepeatDeviceListingQuery {
-        client_id,
-        query: DnsQuery {
-            domain,
-            r_type: RecordType::PTR,
-            query_id: arb_dns_query_id(g),
-            dns_server,
-            transport: DnsTransport::Udp {
-                local_port: g.u16(),
-            },
-        },
-        after: Duration::from_secs(after as u64),
-    }
 }
 
 fn arb_known_ptr_target(

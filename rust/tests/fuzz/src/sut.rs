@@ -6,7 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::stub_portal::{CACHED_DEVICE_LISTING_TTL, StubPortal};
+use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote};
@@ -459,36 +459,6 @@ impl TunnelTest {
 
                     buffered_transmits.push_from(transmit, client, now);
                 }
-            }
-            Transition::RepeatDeviceListingQuery {
-                client_id,
-                query,
-                after,
-            } => {
-                let repeat_at = now + after;
-                let expired_at = now + Duration::from_secs(CACHED_DEVICE_LISTING_TTL.into());
-
-                for at in [now, repeat_at] {
-                    self.advance_to(ref_state, portal, &mut buffered_transmits, at);
-                    self.flux_capacitor.skip_to(at);
-
-                    let client = self.clients.get_mut(&client_id).unwrap();
-                    let transmit = client.exec_mut(|sim| {
-                        sim.send_dns_query_for(
-                            query.domain.clone(),
-                            query.r_type,
-                            query.query_id,
-                            query.dns_server.clone(),
-                            query.transport,
-                            at,
-                        )
-                    });
-                    buffered_transmits.push_from(transmit, client, at);
-                }
-
-                // Later transitions expect the portal to be asked again.
-                self.advance_to(ref_state, portal, &mut buffered_transmits, expired_at);
-                self.flux_capacitor.skip_to(expired_at);
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,

@@ -21,9 +21,6 @@ use crate::transition::Transition;
 /// transition that asked for them.
 const DEVICE_LISTING_TTL: u32 = 4;
 
-/// The TTL the portal gives listings that are asked for again while connlib caches them.
-pub(crate) const CACHED_DEVICE_LISTING_TTL: u32 = 10;
-
 /// The most names the portal lists for a PTR query in the device domain.
 ///
 /// Test cases have two clients, so a pool that holds both exceeds it.
@@ -72,8 +69,6 @@ pub struct StubPortal {
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
     iceless: bool,
-
-    device_listing_ttl: u32,
 }
 
 /// Which clients a device pool admits.
@@ -208,19 +203,11 @@ impl StubPortal {
             upstream_do53,
             upstream_doh,
             iceless: false,
-            device_listing_ttl: DEVICE_LISTING_TTL,
         }
     }
 
     /// Applies the portal-side effect of `transition`.
     pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
-        self.device_listing_ttl =
-            if matches!(transition, Transition::RepeatDeviceListingQuery { .. }) {
-                CACHED_DEVICE_LISTING_TTL
-            } else {
-                DEVICE_LISTING_TTL
-            };
-
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_policy_authorizations(*id);
@@ -271,7 +258,6 @@ impl StubPortal {
             Transition::ConnectTcp { .. } => {}
             Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
-            Transition::RepeatDeviceListingQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}
             Transition::ReconnectPortal { .. } => {}
@@ -392,7 +378,7 @@ impl StubPortal {
             return Err(FailReason::TooManyNames);
         }
 
-        Ok((names, self.device_listing_ttl))
+        Ok((names, DEVICE_LISTING_TTL))
     }
 
     fn device_domain_names(
