@@ -53,7 +53,8 @@
       self.sessionNotification = sessionNotification
 
       guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
-        let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+        let versionString = UpdateNotification.isDebugUpdateCheck
+          ? "1.0.0" : Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
         let marketingVersion = try? SemanticVersion(versionString)
       else {
         fatalError("Should be able to initialize the UpdateChecker")
@@ -154,10 +155,16 @@
     static let dismissActionIdentifier = "DISMISS_ACTION"
     static let downloadURLKey = "downloadURL"
 
+    /// Set by the `--debug-update-check` launch argument, for testing the notification by hand:
+    /// the running version counts as 1.0.0 and a dismissed version is neither read nor saved.
+    static let isDebugUpdateCheck = CommandLine.arguments.contains("--debug-update-check")
+
     private static let lastDismissedVersionKey = "lastDismissedVersion"
     private static let lastNotifiedVersionKey = "lastNotifiedVersion"
 
     static func setLastDismissedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
+      guard !isDebugUpdateCheck else { return }
+
       version.save(to: userDefaults, forKey: lastDismissedVersionKey)
     }
 
@@ -166,7 +173,9 @@
     }
 
     static func getLastDismissedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
-      SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
+      guard !isDebugUpdateCheck else { return nil }
+
+      return SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
     }
 
     static func getLastNotifiedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
