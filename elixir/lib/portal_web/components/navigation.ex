@@ -540,11 +540,11 @@ defmodule PortalWeb.Components.Navigation do
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}
-          navigate={~p"/#{@account}/settings/dns"}
-          tab_path="settings/dns"
+          navigate={~p"/#{@account}/settings/connectivity"}
+          tab_path="settings/connectivity"
           icon="ri-global-fill"
         >
-          DNS
+          Connectivity
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}

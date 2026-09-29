@@ -370,9 +370,9 @@ defmodule PortalWeb.Router do
           live "/:type/:id/edit", LogSinks, :edit
         end
 
-        scope "/dns" do
-          live "/", DNS
-          live "/edit", DNS, :edit
+        scope "/connectivity" do
+          live "/", Connectivity
+          live "/edit", Connectivity, :edit
         end
 
         scope "/trust_anchors", TrustAnchors do
@@ -383,5 +383,9 @@ defmodule PortalWeb.Router do
         end
       end
     end
+
+    # The Connectivity settings used to be called DNS.
+    get "/settings/dns", SettingsRedirectController, :dns
+    get "/settings/dns/edit", SettingsRedirectController, :dns_edit
   end
 end
