@@ -127,7 +127,9 @@
                 return
               }
 
-              self.sessionNotification.showUpdateNotification(version: latestVersion)
+              UpdateNotification.setLastNotifiedVersion(
+                version: latestVersion, userDefaults: self.userDefaults)
+              self.sessionNotification.showUpdateNotification()
             }
           }
         }

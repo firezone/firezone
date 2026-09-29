@@ -414,7 +414,7 @@
         case signedOut(String?)
         case disconnected(String?)
         case restartRequired
-        case update(version: SemanticVersion)
+        case update
       #endif
     }
 
@@ -447,8 +447,8 @@
         shown.append(.restartRequired)
       }
 
-      func showUpdateNotification(version: SemanticVersion) {
-        shown.append(.update(version: version))
+      func showUpdateNotification() {
+        shown.append(.update)
       }
     #endif
   }

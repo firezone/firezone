@@ -234,9 +234,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       MacOSAlert.showRestartRequiredAlert()
     }
 
-    public func showUpdateNotification(version: SemanticVersion) {
-      UpdateNotification.setLastNotifiedVersion(version: version, userDefaults: userDefaults)
-
+    public func showUpdateNotification() {
       let content = UNMutableNotificationContent()
       content.title = "Update Firezone"
       content.body = "New version available"
