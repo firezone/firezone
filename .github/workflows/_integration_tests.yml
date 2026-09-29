@@ -162,7 +162,7 @@ jobs:
             extra_services: pool-member
             min_client_version: 1.5.9
           - script: browse-device-pools
-            extra_services: client-2
+            extra_services: pool-member
             min_client_version: 1.5.14
           - name: dns-systemd-resolved
             script: systemd/dns-systemd-resolved
