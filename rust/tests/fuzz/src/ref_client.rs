@@ -887,11 +887,15 @@ impl RefClient {
         if self.is_local_dns_resource_query(query)
             && matches!(query.r_type, RecordType::A | RecordType::AAAA)
         {
+            // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
             let record_types = global_dns_records.domain_rtypes(&query.domain);
-            for ((_, domain), records) in &mut self.dns_resource_resolutions {
-                if domain == &query.domain {
-                    *records = record_types.clone();
-                }
+            for resource in self.dns_resources_by_domain(
+                &query.domain,
+                |r| self.connected_dns_resources.contains(&r.id),
+                |_| true,
+            ) {
+                self.dns_resource_resolutions
+                    .insert((resource.id, query.domain.clone()), record_types.clone());
             }
         }
 
