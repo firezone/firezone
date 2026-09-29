@@ -234,12 +234,13 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
       MacOSAlert.showRestartRequiredAlert()
     }
 
-    public func showUpdateNotification() {
+    public func showUpdateNotification(downloadURL: URL) {
       let content = UNMutableNotificationContent()
       content.title = "Update Firezone"
       content.body = "New version available"
       content.sound = .default
       content.categoryIdentifier = UpdateNotification.categoryIdentifier
+      content.userInfo = [UpdateNotification.downloadURLKey: downloadURL.absoluteString]
 
       let request = UNNotificationRequest(
         identifier: UUID().uuidString,
@@ -275,9 +276,15 @@ extension SessionNotification: UNUserNotificationCenterDelegate {
 
     #if os(macOS)
       if categoryId == UpdateNotification.categoryIdentifier {
+        let userInfo = response.notification.request.content.userInfo
+        let downloadURL = (userInfo[UpdateNotification.downloadURLKey] as? String)
+          .flatMap { URL(string: $0) }
+
         Task { @MainActor in
           guard actionId == UpdateNotification.dismissActionIdentifier else {
-            await NSWorkspace.shared.openAsync(UpdateNotification.downloadURL())
+            if let downloadURL {
+              await NSWorkspace.shared.openAsync(downloadURL)
+            }
             return
           }
 

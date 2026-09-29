@@ -15,7 +15,8 @@
   /// canned answer instead.
   @MainActor
   public protocol UpdateCheckerProtocol {
-    var updateAvailable: Bool { get }
+    /// Where to download the newer version, `nil` while the client is up to date.
+    var downloadURL: URL? { get }
   }
 
   @MainActor
@@ -40,7 +41,7 @@
 
     private var cancellables: Set<AnyCancellable> = []
 
-    @Published private(set) var updateAvailable: Bool = false
+    @Published private(set) var downloadURL: URL?
 
     init(
       configuration: Configuration? = nil,
@@ -118,7 +119,7 @@
         if latestVersion > marketingVersion {
           Task {
             await MainActor.run {
-              self.updateAvailable = true
+              self.downloadURL = Self.latestReleaseURL()
 
               if let lastDismissedVersion = UpdateNotification.getLastDismissedVersion(
                 userDefaults: self.userDefaults),
@@ -129,7 +130,8 @@
 
               UpdateNotification.setLastNotifiedVersion(
                 version: latestVersion, userDefaults: self.userDefaults)
-              self.sessionNotification.showUpdateNotification()
+              self.sessionNotification.showUpdateNotification(
+                downloadURL: Self.latestReleaseURL())
             }
           }
         }
@@ -137,18 +139,20 @@
 
       task.resume()
     }
-  }
 
-  /// What the update check, its notification and the menu bar's update item share.
-  enum UpdateNotification {
-    static let categoryIdentifier = "UPDATE_CATEGORY"
-    static let dismissActionIdentifier = "DISMISS_ACTION"
-
-    static func downloadURL() -> URL {
+    private static func latestReleaseURL() -> URL {
       // Static URL literal is guaranteed valid
       // swiftlint:disable:next force_unwrapping
       return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
     }
+  }
+
+  /// The update notification's identifiers, and the versions it and the update check keep in
+  /// `UserDefaults`.
+  enum UpdateNotification {
+    static let categoryIdentifier = "UPDATE_CATEGORY"
+    static let dismissActionIdentifier = "DISMISS_ACTION"
+    static let downloadURLKey = "downloadURL"
 
     private static let lastDismissedVersionKey = "lastDismissedVersion"
     private static let lastNotifiedVersionKey = "lastNotifiedVersion"

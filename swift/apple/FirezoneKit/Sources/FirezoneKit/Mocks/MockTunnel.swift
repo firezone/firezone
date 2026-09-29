@@ -396,7 +396,7 @@
     /// nor a test should be doing.
     @MainActor
     private final class MockUpdateChecker: UpdateCheckerProtocol {
-      let updateAvailable = false
+      let downloadURL: URL? = nil
     }
   #endif
 
@@ -414,7 +414,7 @@
         case signedOut(String?)
         case disconnected(String?)
         case restartRequired
-        case update
+        case update(downloadURL: URL)
       #endif
     }
 
@@ -447,8 +447,8 @@
         shown.append(.restartRequired)
       }
 
-      func showUpdateNotification() {
-        shown.append(.update)
+      func showUpdateNotification(downloadURL: URL) {
+        shown.append(.update(downloadURL: downloadURL))
       }
     #endif
   }

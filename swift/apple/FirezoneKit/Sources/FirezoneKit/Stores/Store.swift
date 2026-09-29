@@ -232,7 +232,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     /// Returns the appropriate menu bar icon name for the current state
     public var menuBarIconName: String {
-      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.updateAvailable)
+      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.downloadURL != nil)
     }
 
     /// Requests the menu bar dropdown to be opened programmatically.
