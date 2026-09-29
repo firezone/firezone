@@ -29,55 +29,39 @@ fun ConnectedDeviceDetailsSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            SectionLabel("Connected Device")
+            SheetTitle(
+                text = device.name,
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Client Name", device.name) },
+            )
 
-            DetailRow(label = "Tunnel IPs:") {
-                Column {
-                    Text(
-                        text = device.tunIpv4,
-                        fontFamily = FontFamily.Monospace,
-                        modifier =
-                            Modifier.clickable {
-                                ClipboardUtils.copyToClipboard(
-                                    context,
-                                    "Tunnel IPv4",
-                                    device.tunIpv4,
-                                )
-                            },
-                    )
-                    Text(
-                        text = device.tunIpv6,
-                        fontFamily = FontFamily.Monospace,
-                        modifier =
-                            Modifier.clickable {
-                                ClipboardUtils.copyToClipboard(
-                                    context,
-                                    "Tunnel IPv6",
-                                    device.tunIpv6,
-                                )
-                            },
-                    )
-                }
+            DetailSection(label = "Tunnel IPs") {
+                Text(
+                    text = device.tunIpv4,
+                    fontFamily = FontFamily.Monospace,
+                    modifier =
+                        Modifier.clickable {
+                            ClipboardUtils.copyToClipboard(context, "Tunnel IPv4", device.tunIpv4)
+                        },
+                )
+                Text(
+                    text = device.tunIpv6,
+                    fontFamily = FontFamily.Monospace,
+                    modifier =
+                        Modifier.clickable {
+                            ClipboardUtils.copyToClipboard(context, "Tunnel IPv6", device.tunIpv6)
+                        },
+                )
             }
 
-            DetailRow(label = "Client Details:") {
-                Column {
-                    Text(
-                        text = device.id,
-                        fontFamily = FontFamily.Monospace,
-                        modifier =
-                            Modifier.clickable {
-                                ClipboardUtils.copyToClipboard(context, "Client ID", device.id)
-                            },
-                    )
-                    Text(
-                        text = device.name,
-                        modifier =
-                            Modifier.clickable {
-                                ClipboardUtils.copyToClipboard(context, "Client Name", device.name)
-                            },
-                    )
-                }
+            DetailSection(label = "Client ID") {
+                Text(
+                    text = device.id,
+                    fontFamily = FontFamily.Monospace,
+                    modifier =
+                        Modifier.clickable {
+                            ClipboardUtils.copyToClipboard(context, "Client ID", device.id)
+                        },
+                )
             }
         }
     }

@@ -51,8 +51,14 @@ fun ResourceDetailsSheet(
     modifier: Modifier = Modifier,
 ) {
     val sheetState = rememberModalBottomSheetState()
+    val context = LocalContext.current
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            SheetTitle(
+                text = resource.name,
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
+            )
             if (resource.isDevicePool()) {
                 DevicePoolDetails(resource, onSelectDevice)
             } else if (resource.isInternetResource()) {
@@ -73,16 +79,14 @@ private fun DevicePoolDetails(
     onSelectDevice: (String) -> Unit,
 ) {
     Column(Modifier.verticalScroll(rememberScrollState())) {
-        SectionLabel("Device Pool")
-        DetailRow(label = "Name:") { Text(resource.name) }
-
-        SectionLabel("Devices")
-        if (resource.devices.isEmpty()) {
-            Text("No connected devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        resource.devices.forEachIndexed { index, device ->
-            if (index > 0) HorizontalDivider()
-            ConnectedDeviceRow(device = device, onClick = { onSelectDevice(device.id) })
+        DetailSection(label = "Connected devices") {
+            if (resource.devices.isEmpty()) {
+                Text("No connected devices", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            resource.devices.forEachIndexed { index, device ->
+                if (index > 0) HorizontalDivider()
+                ConnectedDeviceRow(device = device, onClick = { onSelectDevice(device.id) })
+            }
         }
     }
 }
@@ -93,13 +97,11 @@ private fun InternetResourceDetails(
     onToggleInternet: () -> Unit,
 ) {
     Column {
-        SectionLabel("Resource")
-        DetailRow(label = "Name:") { Text(resource.name) }
-        DetailRow(label = "Description:") { Text("All network traffic") }
+        DetailSection(label = "Description") { Text("All network traffic") }
 
         OutlinedButton(
             onClick = onToggleInternet,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         ) {
             Text(if (resource.state.isEnabled()) "Disable this resource" else "Enable this resource")
         }
@@ -116,20 +118,11 @@ private fun NonInternetResourceDetails(
     Column {
         val context = LocalContext.current
 
-        SectionLabel("Resource")
-
-        DetailRow(label = "Name:") {
-            Text(
-                text = resource.name,
-                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
-            )
-        }
-
         val displayAddress = resource.addressDescription ?: resource.address
         val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
         val isUrl = addressUri?.scheme != null
 
-        DetailRow(label = "Address:") {
+        DetailSection(label = "Address") {
             Text(
                 text = displayAddress.orEmpty(),
                 color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
@@ -147,7 +140,7 @@ private fun NonInternetResourceDetails(
 
         OutlinedButton(
             onClick = if (isFavorite) onRemoveFavorite else onAddFavorite,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         ) {
             Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
         }
@@ -162,8 +155,7 @@ private fun SiteSection(
     Column {
         val context = LocalContext.current
 
-        SectionLabel("Site")
-        DetailRow(label = "Name:") {
+        DetailSection(label = "Site") {
             Text(
                 text = siteName,
                 modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Site name", siteName) },
@@ -183,7 +175,7 @@ private fun SiteSection(
                 StatusEnum.UNKNOWN -> Color.Gray
             }
 
-        DetailRow(label = "Status:") {
+        DetailSection(label = "Status") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).background(dotColor, CircleShape))
                 Spacer(Modifier.width(8.dp))
