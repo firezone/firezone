@@ -732,6 +732,7 @@ impl Eventloop {
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
                     | FailReason::NotADevice
+                    | FailReason::TooManyNames
                     | FailReason::Unknown => {}
                 }
             }
@@ -836,6 +837,7 @@ impl Eventloop {
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
                     | FailReason::NotADevice
+                    | FailReason::TooManyNames
                     | FailReason::Unknown => {}
                 }
             }

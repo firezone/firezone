@@ -287,6 +287,9 @@ fn failure_response(query: &dns_types::Query, reason: &FailReason) -> dns_types:
         FailReason::NotFound => dns_types::Response::nxdomain(query),
         // The name exists but holds no records of the queried type.
         FailReason::NotADevice => dns_types::Response::no_error(query),
+        FailReason::TooManyNames => {
+            dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::REFUSED).build()
+        }
         FailReason::Offline
         | FailReason::VersionMismatch
         | FailReason::Forbidden
@@ -539,6 +542,29 @@ mod tests {
                 .records()
                 .all(|r| r.data() == &expected && r.ttl().as_secs() == 30)
         );
+    }
+
+    #[test]
+    fn refuses_ptr_queries_for_listings_with_too_many_names() {
+        let mut resolver = DeviceStubResolver::default();
+        handle(
+            &mut resolver,
+            "all-devices.firezone.network",
+            dns_types::RecordType::PTR,
+        );
+        drain(&mut resolver);
+
+        resolver.handle_device_domain_browsed(
+            domain("all-devices.firezone.network"),
+            Err(FailReason::TooManyNames),
+        );
+
+        let events = drain(&mut resolver);
+        let [Event::SendResponse { response, .. }] = events.as_slice() else {
+            panic!("unexpected events: {events:?}")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::REFUSED);
+        assert_eq!(response.records().count(), 0);
     }
 
     #[test]

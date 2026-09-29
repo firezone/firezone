@@ -312,6 +312,7 @@ pub enum FailReason {
     MissingAddress,
     InvalidAddress,
     NotADevice,
+    TooManyNames,
     #[serde(other)]
     Unknown,
 }
@@ -1131,6 +1132,23 @@ mod tests {
             panic!("expected DeviceDomainBrowseFailed")
         };
         assert!(matches!(failed.reason, FailReason::NotFound));
+    }
+
+    #[test]
+    fn can_deserialize_too_many_names_reason() {
+        let json = serde_json::json!({
+            "event": "device_domain_browse_failed",
+            "payload": {
+                "domain": "all-devices.firezone.network",
+                "reason": "too_many_names"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowseFailed(failed) = msg else {
+            panic!("expected DeviceDomainBrowseFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::TooManyNames));
     }
 
     #[test]
