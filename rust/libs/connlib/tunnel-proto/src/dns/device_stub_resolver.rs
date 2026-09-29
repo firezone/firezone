@@ -151,8 +151,8 @@ impl DeviceStubResolver {
         });
     }
 
-    /// Answers the PTR queries for `domain` with the names the portal listed, cached
-    /// downstream for `ttl` seconds.
+    /// Answers the PTR queries for `domain` with the names the portal listed and the TTL,
+    /// in seconds, it gave them.
     pub(crate) fn handle_device_domain_browsed(
         &mut self,
         domain: DomainName,
