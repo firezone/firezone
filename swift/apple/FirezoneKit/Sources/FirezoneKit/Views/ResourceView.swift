@@ -24,7 +24,9 @@ import SwiftUI
       let resource = liveResource
 
       return List {
-        if resource.isInternetResource() {
+        if resource.isDevicePool() {
+          ConnectedDevicesSection(devices: resource.devices)
+        } else if resource.isInternetResource() {
           InternetResourceHeader(resource: resource)
         } else {
           NonInternetResourceHeader(resource: resource)

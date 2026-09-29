@@ -37,7 +37,9 @@
 
     var body: some View {
       Group {
-        if resource.isInternetResource() {
+        if resource.isDevicePool() {
+          DevicePoolSubmenu(devices: resource.devices)
+        } else if resource.isInternetResource() {
           Text("All network traffic")
             .foregroundStyle(.secondary)
 

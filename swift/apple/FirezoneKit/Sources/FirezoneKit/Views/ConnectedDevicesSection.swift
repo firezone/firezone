@@ -4,21 +4,23 @@
 //  LICENSE: Apache-2.0
 //
 
-// iOS counterpart of the macOS menu's connected-devices submenu
-// (see ConnectedDevicesMenuSection.swift). Renders as a list section inside SessionView.
+// iOS counterpart of the macOS menu's device pool submenu
+// (see ConnectedDevicesMenuSection.swift). Renders as a list section inside ResourceView.
 
 #if os(iOS)
   import SwiftUI
 
-  /// "Connected Devices (N)" section listing the peer devices this client is connected to.
-  /// Renders nothing when there are no connected peers.
+  /// Section listing the connected devices of a device pool.
   struct ConnectedDevicesSection: View {
-    @EnvironmentObject var store: Store
+    let devices: [ConnectedDevice]
 
     var body: some View {
-      if !store.connectedDevices.isEmpty {
-        Section("Connected Devices (\(store.connectedDevices.count))") {
-          ForEach(store.connectedDevices) { device in
+      Section(header: Text("Devices")) {
+        if devices.isEmpty {
+          Text("No connected devices")
+            .foregroundColor(.secondary)
+        } else {
+          ForEach(devices) { device in
             NavigationLink(value: device) {
               Text(device.name)
             }
@@ -28,7 +30,7 @@
     }
   }
 
-  /// Detail screen for a connected device: tunnel IPs, client details, and pools,
+  /// Detail screen for a connected device: tunnel IPs and client details,
   /// each copyable via a long-press context menu.
   struct ConnectedDeviceView: View {
     let device: ConnectedDevice
@@ -43,14 +45,6 @@
         Section(header: Text("Client Details")) {
           copyableRow(device.id)
           copyableRow(device.name)
-        }
-
-        if !device.pools.isEmpty {
-          Section(header: Text(device.pools.count == 1 ? "Pool" : "Pools")) {
-            ForEach(device.pools, id: \.self) { pool in
-              copyableRow(pool)
-            }
-          }
         }
       }
       .listStyle(GroupedListStyle())

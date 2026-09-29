@@ -13,13 +13,11 @@ public struct ConnectedDevice: Codable, Identifiable, Hashable, Sendable {
   public let name: String
   public let tunIPv4: String
   public let tunIPv6: String
-  public let pools: [String]
 
-  public init(id: String, name: String, tunIPv4: String, tunIPv6: String, pools: [String]) {
+  public init(id: String, name: String, tunIPv4: String, tunIPv6: String) {
     self.id = id
     self.name = name
     self.tunIPv4 = tunIPv4
     self.tunIPv6 = tunIPv6
-    self.pools = pools
   }
 }

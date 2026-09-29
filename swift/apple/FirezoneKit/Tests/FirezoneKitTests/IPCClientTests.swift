@@ -78,7 +78,6 @@ struct IPCClientTests {
     let stateChange = try #require(
       try ConnlibState.makeIfChanged(
         resources: nil,
-        connectedDevices: [],
         isLogStreamingActive: false,
         comparedTo: previousHash
       )

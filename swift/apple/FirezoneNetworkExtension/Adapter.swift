@@ -179,7 +179,6 @@ actor Adapter {
 
   /// Keep track of resources for UI
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
-  private var connectedDevices: [ConnectedDevice] = []
 
   /// The account and actor the portal named in `init`, reported up to the app process.
   private var accountSlug: String?
@@ -393,7 +392,6 @@ actor Adapter {
     do {
       let stateChange = try ConnlibState.makeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
-        connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         isLogStreamingActive: Log.isStreamingActive,
         accountSlug: self.accountSlug,
         actorName: self.actorName,
@@ -543,12 +541,11 @@ actor Adapter {
         accountSlug: accountSlug
       )
 
-    case .resourcesUpdated(let resourceList, let connectedDeviceList):
+    case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
       // Store resource list (actor-isolated, no dispatch needed)
       resources = resourceList
-      connectedDevices = connectedDeviceList
 
       // Update DNS resource addresses to trigger network settings apply when they change
       // This flushes the DNS cache so new DNS resources are immediately resolvable
@@ -753,6 +750,11 @@ actor Adapter {
       FirezoneKit.Resource(
         id: resource.id, name: resource.name, address: nil, addressDescription: nil,
         status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .internet)
+    case .devicePool(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: nil, addressDescription: nil,
+        status: .unknown, sites: [], type: .devicePool,
+        devices: resource.devices.map { .init($0) })
     }
   }
 }
@@ -771,8 +773,7 @@ extension FirezoneKit.ConnectedDevice {
       id: device.id,
       name: device.name,
       tunIPv4: device.tunIpv4,
-      tunIPv6: device.tunIpv6,
-      pools: device.pools
+      tunIPv6: device.tunIpv6
     )
   }
 }
