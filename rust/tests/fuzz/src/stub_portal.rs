@@ -21,11 +21,6 @@ use crate::transition::Transition;
 /// transition that asked for them.
 const DEVICE_LISTING_TTL: u32 = 4;
 
-/// The most names the portal lists for a PTR query in the device domain.
-///
-/// Test cases have two clients, so a pool that holds both exceeds it.
-const DEVICE_LISTING_LIMIT: usize = 1;
-
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub struct StubPortal {
@@ -364,7 +359,8 @@ impl StubPortal {
     ///
     /// The device domain itself lists the labels of those pools, a label the members of
     /// the pools it names. A label that names none of them but a device lists nothing.
-    /// A listing of more than [`DEVICE_LISTING_LIMIT`] names is refused.
+    /// A listing of at least as many names as there are clients, such as the members of a
+    /// pool that holds them all, is refused.
     pub(crate) fn browse_device_domain(
         &self,
         domain: &DomainName,
@@ -374,7 +370,7 @@ impl StubPortal {
             .device_domain_names(domain, held)
             .ok_or(FailReason::NotFound)?;
 
-        if names.len() > DEVICE_LISTING_LIMIT {
+        if names.len() > self.clients.len() - 1 {
             return Err(FailReason::TooManyNames);
         }
 
