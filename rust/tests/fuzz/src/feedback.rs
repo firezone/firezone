@@ -169,6 +169,10 @@ impl Recorder {
                 self.changes
                     .push((Scope::Client(*client_id), Change::PortalReconnected));
             }
+            Transition::SetInternetResourceState { client_id, .. } => {
+                self.changes
+                    .push((Scope::Client(*client_id), Change::InternetResourceToggled));
+            }
             Transition::DeployNewRelays(_) => {
                 self.changes
                     .push((Scope::Everything, Change::RelaysDeployed));
@@ -263,15 +267,17 @@ impl Recorder {
                 self.changes
                     .push((Scope::Everything, Change::DnsRecordsChanged));
             }
+            Transition::UpdateSystemDnsServers { .. }
+            | Transition::UpdateUpstreamDo53Servers(_)
+            | Transition::UpdateUpstreamDoHServers(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::DnsServersChanged));
+            }
             Transition::AddResource(_)
             | Transition::RemoveResource(_)
-            | Transition::SetInternetResourceState { .. }
             | Transition::SendIcmpPacketOnNewFlow { .. }
             | Transition::SendUdpPacketOnNewFlow { .. }
             | Transition::SendDnsResourcePtrQuery { .. }
-            | Transition::UpdateSystemDnsServers { .. }
-            | Transition::UpdateUpstreamDo53Servers(_)
-            | Transition::UpdateUpstreamDoHServers(_)
             | Transition::UpdateUpstreamSearchDomain(_) => {}
         }
     }
@@ -527,6 +533,7 @@ enum Change {
     Roamed,
     Restarted,
     PortalReconnected,
+    InternetResourceToggled,
     RelaysDeployed,
     RelaysPartitioned,
     RelaysRebooted,
@@ -542,9 +549,10 @@ enum Change {
     ResourceTypeEdited,
     Idled,
     DnsRecordsChanged,
+    DnsServersChanged,
 }
 
-const KINDS: u16 = 18;
+const KINDS: u16 = 20;
 
 #[derive(Clone, Copy)]
 enum Scope {
