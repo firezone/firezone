@@ -6,8 +6,8 @@
 
 import Foundation
 
-struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
-  var description: String {
+public struct SemanticVersion: Comparable, CustomStringConvertible, Codable, Sendable {
+  public var description: String {
     return "\(major).\(minor).\(patch)"
   }
 
@@ -45,7 +45,7 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
     self.patch = patch
   }
 
-  static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
+  public static func < (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
     if lhs.major != rhs.major {
       return lhs.major < rhs.major
     }
@@ -57,7 +57,7 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
     return lhs.patch < rhs.patch
   }
 
-  static func == (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
+  public static func == (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
     return lhs.major == rhs.major && lhs.minor == rhs.minor && lhs.patch == rhs.patch
   }
 

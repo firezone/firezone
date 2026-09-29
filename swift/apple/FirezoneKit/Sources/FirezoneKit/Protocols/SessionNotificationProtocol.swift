@@ -34,5 +34,8 @@ public protocol SessionNotificationProtocol: AnyObject {
 
     /// Shows an alert asking the user to restart to finish a system extension update.
     func showRestartRequiredAlertMacOS()
+
+    /// Shows a notification that `version` is available.
+    func showUpdateNotification(version: SemanticVersion)
   #endif
 }

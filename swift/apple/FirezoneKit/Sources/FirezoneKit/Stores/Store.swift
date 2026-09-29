@@ -112,7 +112,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
@@ -121,9 +121,17 @@ public final class Store: ObservableObject {
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
+      let sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
+
       self.configuration = configuration ?? Configuration.shared
       self.updateChecker =
-        updateChecker ?? UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+        updateChecker
+        ?? UpdateChecker(
+          configuration: configuration,
+          userDefaults: userDefaults,
+          sessionNotification: sessionNotification
+        )
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory

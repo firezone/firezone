@@ -7,6 +7,10 @@
 import Foundation
 import UserNotifications
 
+#if os(macOS)
+  import AppKit
+#endif
+
 // SessionNotification helps with showing iOS local notifications
 // when the session ends.
 // In macOS, it helps with showing an alert when the session ends.
@@ -21,44 +25,87 @@ public enum NotificationIndentifier: String {
 @MainActor
 public class SessionNotification: NSObject, SessionNotificationProtocol {
   public var signInHandler: () async -> Void = {}
+  #if os(macOS)
+    private let userDefaults: UserDefaults
+  #endif
   private let notificationCenter = UNUserNotificationCenter.current()
 
-  override public init() {
-    super.init()
+  #if os(macOS)
+    public init(userDefaults: UserDefaults) {
+      self.userDefaults = userDefaults
+      super.init()
+      registerWithNotificationCenter()
 
-    #if os(iOS)
-      notificationCenter.delegate = self
+      notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
+        guard let error = error else { return }
 
-      let signInAction = UNNotificationAction(
-        identifier: NotificationIndentifier.signInNotificationAction.rawValue,
-        title: "Sign In",
-        options: [.authenticationRequired, .foreground])
+        // If the user hasn't enabled notifications for Firezone, we may receive
+        // a notificationsNotAllowed error here. Don't log it.
+        if let unError = error as? UNError,
+          unError.code == .notificationsNotAllowed
+        {
+          return
+        }
 
-      let dismissAction = UNNotificationAction(
-        identifier: NotificationIndentifier.dismissNotificationAction.rawValue,
-        title: "Dismiss",
+        // Log all other errors
+        Log.error(error)
+      }
+    }
+  #else
+    override public init() {
+      super.init()
+      registerWithNotificationCenter()
+    }
+  #endif
+
+  private func registerWithNotificationCenter() {
+    // A process has one delegate and one set of categories, so nothing else may set either.
+    notificationCenter.delegate = self
+
+    let signInAction = UNNotificationAction(
+      identifier: NotificationIndentifier.signInNotificationAction.rawValue,
+      title: "Sign In",
+      options: [.authenticationRequired, .foreground])
+
+    let dismissAction = UNNotificationAction(
+      identifier: NotificationIndentifier.dismissNotificationAction.rawValue,
+      title: "Dismiss",
+      options: [])
+
+    let sessionEndedCategory = UNNotificationCategory(
+      identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
+      actions: [signInAction, dismissAction],
+      intentIdentifiers: [],
+      hiddenPreviewsBodyPlaceholder: "",
+      options: [])
+
+    // Signing in again cannot restore these sessions, so this category only dismisses.
+    let sessionEndedWithoutSignInCategory = UNNotificationCategory(
+      identifier: NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory.rawValue,
+      actions: [dismissAction],
+      intentIdentifiers: [],
+      hiddenPreviewsBodyPlaceholder: "",
+      options: [])
+
+    var categories: Set<UNNotificationCategory> = [
+      sessionEndedCategory, sessionEndedWithoutSignInCategory,
+    ]
+
+    #if os(macOS)
+      let ignoreVersionAction = UNNotificationAction(
+        identifier: UpdateNotification.dismissActionIdentifier,
+        title: "Ignore Version",
         options: [])
 
-      let sessionEndedCategory = UNNotificationCategory(
-        identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
-        actions: [signInAction, dismissAction],
-        intentIdentifiers: [],
-        hiddenPreviewsBodyPlaceholder: "",
-        options: [])
-
-      // Signing in again cannot restore these sessions, so this category only dismisses.
-      let sessionEndedWithoutSignInCategory = UNNotificationCategory(
-        identifier: NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory
-          .rawValue,
-        actions: [dismissAction],
-        intentIdentifiers: [],
-        hiddenPreviewsBodyPlaceholder: "",
-        options: [])
-
-      notificationCenter.setNotificationCategories([
-        sessionEndedCategory, sessionEndedWithoutSignInCategory,
-      ])
+      categories.insert(
+        UNNotificationCategory(
+          identifier: UpdateNotification.categoryIdentifier,
+          actions: [ignoreVersionAction],
+          intentIdentifiers: [],
+          options: []))
     #endif
+
+    notificationCenter.setNotificationCategories(categories)
   }
 
   public func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
@@ -186,29 +233,78 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     public func showRestartRequiredAlertMacOS() {
       MacOSAlert.showRestartRequiredAlert()
     }
+
+    public func showUpdateNotification(version: SemanticVersion) {
+      UpdateNotification.setLastNotifiedVersion(version: version, userDefaults: userDefaults)
+
+      let content = UNMutableNotificationContent()
+      content.title = "Update Firezone"
+      content.body = "New version available"
+      content.sound = .default
+      content.categoryIdentifier = UpdateNotification.categoryIdentifier
+
+      let request = UNNotificationRequest(
+        identifier: UUID().uuidString,
+        content: content,
+        trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+      )
+
+      notificationCenter.add(request) { error in
+        if let error = error {
+          Log.error(error)
+        }
+      }
+    }
   #endif
 }
 
-#if os(iOS)
-  extension SessionNotification: UNUserNotificationCenterDelegate {
-    nonisolated public func userNotificationCenter(
-      _ center: UNUserNotificationCenter,
-      didReceive response: UNNotificationResponse,
-      withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
+extension SessionNotification: UNUserNotificationCenterDelegate {
+  nonisolated public func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    let actionId = response.actionIdentifier
+    let categoryId = response.notification.request.content.categoryIdentifier
+    if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
+      actionId == NotificationIndentifier.signInNotificationAction.rawValue
+    {
       Log.log("\(#function): 'Sign In' clicked in notification")
-      let actionId = response.actionIdentifier
-      let categoryId = response.notification.request.content.categoryIdentifier
-      if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
-        actionId == NotificationIndentifier.signInNotificationAction.rawValue
-      {
-        // User clicked on 'Sign In' in the notification
+      Task { @MainActor in
+        await signInHandler()
+      }
+    }
+
+    #if os(macOS)
+      if categoryId == UpdateNotification.categoryIdentifier {
         Task { @MainActor in
-          await signInHandler()
+          guard actionId == UpdateNotification.dismissActionIdentifier else {
+            await NSWorkspace.shared.openAsync(UpdateNotification.downloadURL())
+            return
+          }
+
+          // Don't notify them again for this version
+          if let version = UpdateNotification.getLastNotifiedVersion(userDefaults: userDefaults) {
+            UpdateNotification.setLastDismissedVersion(version: version, userDefaults: userDefaults)
+          }
         }
       }
+    #endif
 
-      completionHandler()
-    }
+    completionHandler()
   }
-#endif
+
+  #if os(macOS)
+    nonisolated public func userNotificationCenter(
+      _ center: UNUserNotificationCenter,
+      willPresent notification: UNNotification,
+      withCompletionHandler completionHandler:
+        @escaping (
+          UNNotificationPresentationOptions
+        ) -> Void
+    ) {
+      // Show the notification even when the app is in the foreground
+      completionHandler([.badge, .banner, .sound])
+    }
+  #endif
+}

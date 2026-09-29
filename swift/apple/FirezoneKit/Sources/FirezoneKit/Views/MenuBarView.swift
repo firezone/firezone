@@ -226,7 +226,7 @@
     var body: some View {
       Button("Update available…") {
         Task {
-          await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL())
+          await NSWorkspace.shared.openAsync(UpdateNotification.downloadURL())
         }
       }
     }

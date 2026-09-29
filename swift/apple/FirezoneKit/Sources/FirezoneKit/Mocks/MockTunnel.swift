@@ -392,8 +392,8 @@
 
     /// Reports the client as up to date, so the menu bar shows no update item.
     ///
-    /// The real `UpdateChecker` would poll firezone.dev on a timer and register a
-    /// notification category, neither of which a demo or a test should be doing.
+    /// The real `UpdateChecker` would poll firezone.dev on a timer, which neither a demo
+    /// nor a test should be doing.
     @MainActor
     private final class MockUpdateChecker: UpdateCheckerProtocol {
       let updateAvailable = false
@@ -414,6 +414,7 @@
         case signedOut(String?)
         case disconnected(String?)
         case restartRequired
+        case update(version: SemanticVersion)
       #endif
     }
 
@@ -444,6 +445,10 @@
 
       func showRestartRequiredAlertMacOS() {
         shown.append(.restartRequired)
+      }
+
+      func showUpdateNotification(version: SemanticVersion) {
+        shown.append(.update(version: version))
       }
     #endif
   }
