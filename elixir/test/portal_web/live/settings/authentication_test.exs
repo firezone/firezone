@@ -268,6 +268,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "My Google Provider"
     end
 
+    test "renders github provider", %{account: account, actor: actor, conn: conn} do
+      github_provider_fixture(account: account, name: "My GitHub Provider")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      assert html =~ "My GitHub Provider"
+      assert html =~ "ri-github-fill"
+    end
+
     test "renders entra provider", %{account: account, actor: actor, conn: conn} do
       entra_provider_fixture(account: account, name: "My Entra Provider")
 
@@ -467,6 +479,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/google/new']") !=
                []
 
+      assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/github/new']") !=
+               []
+
       assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/entra/new']") !=
                []
 
@@ -615,6 +630,93 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/google/new")
 
       assert html =~ "Verify Now"
+    end
+  end
+
+  # =============================================================================
+  # New GitHub Provider Tests
+  # =============================================================================
+
+  describe "new github provider" do
+    test "renders new github provider form", %{account: account, actor: actor, conn: conn} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      assert html =~ "Add GitHub Provider"
+      assert html =~ "Sign in with your GitHub account to verify the configuration."
+      assert html =~ "Verify Now"
+      refute html =~ "Redirect URI"
+    end
+
+    test "does not verify when the callback has no GitHub issuer", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.GitHub.stub()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      lv |> element("#verify-button") |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      callback_conn = get(build_conn(), ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
+      get(build_conn(), redirected_to(callback_conn))
+
+      refute_received {:github_token_request, _params}
+
+      html = render(lv)
+      assert html =~ "Verify Now"
+      refute html =~ "Verified"
+    end
+
+    test "verifies with GitHub and creates the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.GitHub.stub()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      lv |> element("#verify-button") |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      %URI{host: "github.test", query: query} = URI.parse(url)
+      %{"state" => state, "prompt" => "select_account"} = URI.decode_query(query)
+
+      callback_conn =
+        get(build_conn(), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "c",
+          "iss" => "https://github.com/login/oauth"
+        })
+
+      get(build_conn(), redirected_to(callback_conn))
+
+      html = render(lv)
+      assert html =~ "Verified"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      provider = Portal.Repo.get_by!(Portal.GitHub.AuthProvider, account_id: account.id)
+      assert provider.issuer == "https://github.com/login/oauth"
+      assert provider.name == "GitHub"
+      refute provider.is_default
+
+      parent = Portal.Repo.get_by!(Portal.AuthProvider, id: provider.id)
+      assert parent.type == :github
     end
   end
 

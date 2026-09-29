@@ -35,6 +35,7 @@ defmodule PortalAPI.Scopes do
     PortalAPI.X509AuthProviderController => :auth_providers,
     PortalAPI.OIDCAuthProviderController => :auth_providers,
     PortalAPI.GoogleAuthProviderController => :auth_providers,
+    PortalAPI.GitHubAuthProviderController => :auth_providers,
     PortalAPI.EntraAuthProviderController => :auth_providers,
     PortalAPI.OktaAuthProviderController => :auth_providers,
     PortalAPI.GoogleDirectoryController => :directories,

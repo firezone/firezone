@@ -11962,6 +11962,16 @@
         "title": "GroupUpdateRequest",
         "type": "object"
       },
+      "GitHubAuthProviderResponse": {
+        "description": "Response schema for single GitHub Auth Provider",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GitHubAuthProvider"
+          }
+        },
+        "title": "GitHubAuthProviderResponse",
+        "type": "object"
+      },
       "APIRequestLog": {
         "description": "A single API Request Log entry, recording one authenticated REST API\nrequest.\n",
         "properties": {
@@ -12763,6 +12773,92 @@
         "title": "string list device comparison",
         "type": "object"
       },
+      "GitHubAuthProvider": {
+        "description": "GitHub Auth Provider",
+        "properties": {
+          "account_id": {
+            "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+            "format": "uuid",
+            "type": "string"
+          },
+          "client_session_lifetime_secs": {
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
+            "nullable": true,
+            "type": "integer"
+          },
+          "context": {
+            "description": "Context",
+            "enum": [
+              "clients_and_portal",
+              "clients_only",
+              "portal_only"
+            ],
+            "example": "clients_and_portal",
+            "type": "string"
+          },
+          "id": {
+            "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_default": {
+            "description": "Whether provider is default",
+            "example": true,
+            "type": "boolean"
+          },
+          "is_disabled": {
+            "description": "Whether provider is disabled",
+            "example": false,
+            "type": "boolean"
+          },
+          "issuer": {
+            "description": "Issuer",
+            "example": "https://github.com/login/oauth",
+            "type": "string"
+          },
+          "name": {
+            "description": "Provider name",
+            "example": "GitHub",
+            "type": "string"
+          },
+          "portal_session_lifetime_secs": {
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
+            "nullable": true,
+            "type": "integer"
+          },
+          "updated_at": {
+            "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
+          "id",
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
+        ],
+        "title": "GitHubAuthProvider",
+        "type": "object"
+      },
       "string regex provider comparison": {
         "additionalProperties": false,
         "properties": {
@@ -13474,6 +13570,23 @@
           }
         },
         "title": "OIDCAuthProviderResponse",
+        "type": "object"
+      },
+      "GitHubAuthProviderListResponse": {
+        "description": "Response schema for multiple GitHub Auth Providers",
+        "properties": {
+          "data": {
+            "description": "GitHub Auth Provider details",
+            "items": {
+              "$ref": "#/components/schemas/GitHubAuthProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "GitHubAuthProviderListResponse",
         "type": "object"
       }
     },
@@ -15053,6 +15166,120 @@
         "summary": "List Santa posture providers",
         "tags": [
           "Santa Posture Providers"
+        ]
+      }
+    },
+    "/github_auth_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.GitHubAuthProviderController.show",
+        "parameters": [
+          {
+            "description": "GitHub Auth Provider ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAuthProviderResponse"
+                }
+              }
+            },
+            "description": "GitHub Auth Provider Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show GitHub Auth Provider",
+        "tags": [
+          "GitHub Auth Providers"
         ]
       }
     },
@@ -23423,6 +23650,124 @@
         "summary": "Replace Pool Members",
         "tags": [
           "Pool Members"
+        ]
+      }
+    },
+    "/github_auth_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.GitHubAuthProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit GitHub Auth Providers returned",
+            "example": 10,
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to GitHub Auth Providers with this exact name",
+            "in": "query",
+            "name": "name",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAuthProviderListResponse"
+                }
+              }
+            },
+            "description": "GitHub Auth Provider Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List GitHub Auth Providers",
+        "tags": [
+          "GitHub Auth Providers"
         ]
       }
     },

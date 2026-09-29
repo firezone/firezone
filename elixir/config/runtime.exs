@@ -134,6 +134,10 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
 
+  config :portal, Portal.GitHub.AuthProvider,
+    client_id: env_var_to_config!(:github_oauth_client_id),
+    client_secret: env_var_to_config!(:github_oauth_client_secret)
+
   config :portal, Portal.Google.SyncAuthorization,
     client_id: env_var_to_config!(:google_sync_authz_client_id),
     client_secret: env_var_to_config!(:google_sync_authz_client_secret)

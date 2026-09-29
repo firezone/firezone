@@ -1606,6 +1606,7 @@ defmodule PortalWeb.Actors do
             """
             COALESCE(
               (SELECT name FROM google_auth_providers WHERE id = ?),
+              (SELECT name FROM github_auth_providers WHERE id = ?),
               (SELECT name FROM entra_auth_providers WHERE id = ?),
               (SELECT name FROM okta_auth_providers WHERE id = ?),
               (SELECT name FROM oidc_auth_providers WHERE id = ?),
@@ -1613,6 +1614,7 @@ defmodule PortalWeb.Actors do
               (SELECT name FROM email_otp_auth_providers WHERE id = ?)
             )
             """,
+            ap.id,
             ap.id,
             ap.id,
             ap.id,
