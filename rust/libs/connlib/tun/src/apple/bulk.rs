@@ -14,7 +14,7 @@ use std::ffi::c_void;
 use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
 use std::pin::pin;
-use tokio::io::{Interest, unix::AsyncFd};
+use tokio::io::Interest;
 
 use super::sys;
 use crate::{MAX_BATCH_SIZE, PacketBatch};
@@ -33,7 +33,7 @@ pub async fn send(
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
 
-    let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
+    let fd = crate::unix::dup_async_fd(fd, Interest::WRITABLE)?;
 
     while let Some(packets) = outbound_rx.recv().await {
         let mut offset = 0;
@@ -92,7 +92,7 @@ pub async fn recv(
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
-    let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
+    let fd = crate::unix::dup_async_fd(fd, Interest::READABLE)?;
 
     let mut bufs: Vec<IpPacketBuf> = (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
     let mut lens = [0usize; MAX_BATCH_SIZE];

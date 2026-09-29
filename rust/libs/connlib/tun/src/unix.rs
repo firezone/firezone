@@ -4,11 +4,25 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use opentelemetry::KeyValue;
 use std::io;
 use std::mem;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd as _, OwnedFd, RawFd};
 use std::pin::pin;
-use tokio::io::unix::AsyncFd;
+use tokio::io::{Interest, unix::AsyncFd};
 
 use crate::PacketBatch;
+
+/// Registers a duplicate of `fd` with the current runtime's IO driver.
+///
+/// Both TUN directions may run on the same runtime and epoll refuses to register one
+/// descriptor twice, so each direction registers a duplicate of its own.
+pub(crate) fn dup_async_fd(fd: RawFd, interest: Interest) -> io::Result<AsyncFd<OwnedFd>> {
+    // Safety: `dup` returns a fresh descriptor that nothing else owns.
+    let dup = match unsafe { libc::dup(fd) } {
+        -1 => return Err(io::Error::last_os_error()),
+        fd => unsafe { OwnedFd::from_raw_fd(fd) },
+    };
+
+    AsyncFd::with_interest(dup, interest)
+}
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -30,7 +44,7 @@ where
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+    let fd = dup_async_fd(fd.as_raw_fd(), Interest::WRITABLE)?;
 
     while let Some(mut batch) = outbound_rx.recv().await {
         for packet in batch.drain() {
@@ -41,9 +55,7 @@ where
 
             loop {
                 match fd
-                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                        write(fd.as_raw_fd(), &packet)
-                    })
+                    .async_io(Interest::WRITABLE, |fd| write(fd.as_raw_fd(), &packet))
                     .await
                 {
                     Ok(_) => {
@@ -154,7 +166,7 @@ pub async fn tun_recv<T>(
 where
     T: AsRawFd + Clone,
 {
-    let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
+    let fd = dup_async_fd(fd.as_raw_fd(), Interest::READABLE)?;
     let mut batch = PacketBatch::default();
 
     loop {

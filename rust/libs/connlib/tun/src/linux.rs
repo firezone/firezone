@@ -60,7 +60,7 @@ where
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
+    let fd = crate::unix::dup_async_fd(tun_fd.fd.as_raw_fd(), Interest::WRITABLE)?;
 
     let mut ready = Vec::new();
     // `None` when the kernel does not support GSO writes or rejected one at
@@ -179,7 +179,7 @@ where
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
 
-    let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
+    let fd = crate::unix::dup_async_fd(tun_fd.fd.as_raw_fd(), Interest::READABLE)?;
     let mut buf = vec![0u8; READ_BUFFER_SIZE];
     let mut batch = PacketBatch::default();
     let mut overflow = VecDeque::new();
