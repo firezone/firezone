@@ -77,7 +77,8 @@ pub fn prepare_runtime() {
 
     // AFL++ 4.40c resets the negotiated map size after sanitizer coverage
     // initializes, but leaves this flag set. Rearm the expansion before
-    // the deferred forkserver reports its map size.
+    // the deferred forkserver reports its map size. See the corresponding
+    // runtime code at https://github.com/AFLplusplus/AFLplusplus/blob/e5a8ba39ecf97d05e286fdd4e01da96554dbf64f/instrumentation/afl-compiler-rt.o.c#L2312-L2340.
     unsafe { __afl_ijon_map_increased = 0 };
 }
 
