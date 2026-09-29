@@ -145,7 +145,7 @@ public final class Store: ObservableObject {
   #else
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
@@ -153,7 +153,8 @@ public final class Store: ObservableObject {
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.sessionNotification = sessionNotification
+      self.sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
       self.tunnelManagerFactory = tunnelManagerFactory
       self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory

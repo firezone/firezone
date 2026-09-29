@@ -25,40 +25,13 @@ public enum NotificationIndentifier: String {
 @MainActor
 public class SessionNotification: NSObject, SessionNotificationProtocol {
   public var signInHandler: () async -> Void = {}
-  #if os(macOS)
-    private let userDefaults: UserDefaults
-  #endif
+  private let userDefaults: UserDefaults
   private let notificationCenter = UNUserNotificationCenter.current()
 
-  #if os(macOS)
-    public init(userDefaults: UserDefaults) {
-      self.userDefaults = userDefaults
-      super.init()
-      registerWithNotificationCenter()
+  public init(userDefaults: UserDefaults) {
+    self.userDefaults = userDefaults
+    super.init()
 
-      notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
-        guard let error = error else { return }
-
-        // If the user hasn't enabled notifications for Firezone, we may receive
-        // a notificationsNotAllowed error here. Don't log it.
-        if let unError = error as? UNError,
-          unError.code == .notificationsNotAllowed
-        {
-          return
-        }
-
-        // Log all other errors
-        Log.error(error)
-      }
-    }
-  #else
-    override public init() {
-      super.init()
-      registerWithNotificationCenter()
-    }
-  #endif
-
-  private func registerWithNotificationCenter() {
     // A process has one delegate and one set of categories, so nothing else may set either.
     notificationCenter.delegate = self
 
@@ -106,6 +79,23 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
     #endif
 
     notificationCenter.setNotificationCategories(categories)
+
+    #if os(macOS)
+      notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
+        guard let error = error else { return }
+
+        // If the user hasn't enabled notifications for Firezone, we may receive
+        // a notificationsNotAllowed error here. Don't log it.
+        if let unError = error as? UNError,
+          unError.code == .notificationsNotAllowed
+        {
+          return
+        }
+
+        // Log all other errors
+        Log.error(error)
+      }
+    #endif
   }
 
   public func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
