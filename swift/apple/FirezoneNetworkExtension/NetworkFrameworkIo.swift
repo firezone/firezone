@@ -15,14 +15,15 @@ final class NetworkFrameworkIo: @unchecked Sendable {
   private var started = false
   private var timer: DispatchSourceTimer?
   private var listeners: [NWListener] = []
-  private var connections: [String: NWConnection] = [:]
+  private var connections: [String: NetworkConnection] = [:]
   private var generation: UInt64 = 0
   private var running = false
-  private var receivedNetwork: [NetworkInput] = []
+  private var receivedNetwork: [NetworkInput?] = []
+  private var networkOffset = 0
+  private var pumpScheduled = false
   private var receivedTun: [Data] = []
   private var tunOffset = 0
   private var tunReadPending = false
-  private var networkReads: Set<ObjectIdentifier> = []
 
   init(flow: NEPacketTunnelFlow, onError: @escaping @Sendable (Error) -> Void) {
     self.flow = flow
@@ -45,9 +46,9 @@ final class NetworkFrameworkIo: @unchecked Sendable {
           return
         }
         let timer = DispatchSource.makeTimerSource(queue: self.queue)
-        // Packet callbacks pump immediately; this timer services Rust portal and DNS timers.
+        // Packet callbacks schedule a pump; this timer services Rust portal and DNS timers.
         timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(1))
-        timer.setEventHandler { [weak self] in self?.pump() }
+        timer.setEventHandler { [weak self] in self?.requestPump() }
         self.timer = timer
         timer.resume()
         self.readTun()
@@ -65,9 +66,20 @@ final class NetworkFrameworkIo: @unchecked Sendable {
     }
   }
 
+  private func requestPump() {
+    guard running, !pumpScheduled else { return }
+    pumpScheduled = true
+    queue.async { [weak self] in
+      guard let self else { return }
+      self.pumpScheduled = false
+      self.pump()
+    }
+  }
+
   private func pump() {
     guard running, let session else { return }
     drainInputs(session)
+    guard self.session == session else { return }
     let status = fz_completion_poll(session)
     if status < 0 {
       fail(driverError())
@@ -78,20 +90,47 @@ final class NetworkFrameworkIo: @unchecked Sendable {
       submit(operation)
       guard self.session == session else { return }
     }
-    if status == 2 { destroy() }
+    if status == 2 {
+      destroy()
+      return
+    }
+    // Rust may have freed input capacity during this poll. Yield between batches,
+    // and wait for completions when its queues remain full.
+    if networkOffset < receivedNetwork.count, fz_completion_receive_ready(session, true) == 0 {
+      requestPump()
+    } else if tunOffset < receivedTun.count, fz_completion_receive_ready(session, false) == 0 {
+      requestPump()
+    }
   }
 
   private func drainInputs(_ session: OpaquePointer) {
-    while !receivedNetwork.isEmpty, fz_completion_receive_ready(session, true) == 0 {
-      let input = receivedNetwork.removeFirst()
-      let owner = InputBuffer(input.data)
+    var refill: [ObjectIdentifier: NetworkConnection] = [:]
+    while networkOffset < receivedNetwork.count, fz_completion_receive_ready(session, true) == 0 {
+      let input = receivedNetwork[networkOffset]
+      receivedNetwork[networkOffset] = nil
+      networkOffset += 1
+      guard let input else { continue }
+      input.connection.receives -= 1
+      refill[ObjectIdentifier(input.connection)] = input.connection
+      let owner = InputBuffer(input.packet.data)
       let retained = Unmanaged.passRetained(owner).toOpaque()
-      _ = fz_completion_receive_network(
+      let status = fz_completion_receive_network(
         session, generation,
         owner.data.bytes.assumingMemoryBound(to: UInt8.self), owner.data.length,
-        input.local, input.remote, input.ecn, retained, releaseInputBuffer)
-      if running, input.rearm { receive(input.connection, generation: generation) }
+        input.packet.local, input.packet.remote, input.packet.ecn, retained, releaseInputBuffer)
+      if status < 0 {
+        fail(driverError())
+        return
+      }
     }
+    if networkOffset == receivedNetwork.count {
+      receivedNetwork.removeAll(keepingCapacity: true)
+      networkOffset = 0
+    } else if networkOffset >= 256, networkOffset >= receivedNetwork.count / 2 {
+      receivedNetwork.removeFirst(networkOffset)
+      networkOffset = 0
+    }
+    for connection in refill.values { receive(connection) }
     #if os(iOS)
       let capacity = 32
     #else
@@ -104,10 +143,14 @@ final class NetworkFrameworkIo: @unchecked Sendable {
       let slices = owners.map {
         FzByteSlice(data: $0.bytes.assumingMemoryBound(to: UInt8.self), len: $0.length)
       }
-      slices.withUnsafeBufferPointer {
-        _ = fz_completion_receive_tun(session, generation, $0.baseAddress, $0.count)
+      let status = slices.withUnsafeBufferPointer {
+        fz_completion_receive_tun(session, generation, $0.baseAddress, $0.count)
       }
       withExtendedLifetime(owners) {}
+      if status < 0 {
+        fail(driverError())
+        return
+      }
       tunOffset = end
     }
     if tunOffset == receivedTun.count {
@@ -144,13 +187,14 @@ final class NetworkFrameworkIo: @unchecked Sendable {
                   UInt(bitPattern: current) == driver
                 {
                   _ = fz_completion_complete(current, completion.id, completion.failed ? -1 : 0)
-                  self.pump()
+                  self.requestPump()
                 }
               })
           }
         }
       } catch {
         _ = fz_completion_complete(session, operation.id, -1)
+        requestPump()
       }
     case 2:
       let packets = (0..<operation.packets).compactMap { owner.packet($0) }
@@ -161,9 +205,11 @@ final class NetworkFrameworkIo: @unchecked Sendable {
       let accepted =
         packets.count == operation.packets && flow.writePackets(packets, withProtocols: families)
       _ = fz_completion_complete(session, operation.id, accepted ? 0 : -1)
+      requestPump()
     case 3:
       generation = operation.generation
       receivedNetwork.removeAll()
+      networkOffset = 0
       receivedTun.removeAll()
       tunOffset = 0
       cancelConnections()
@@ -216,7 +262,7 @@ final class NetworkFrameworkIo: @unchecked Sendable {
         host: NWEndpoint.Host(operation.remote.family == 4 ? "0.0.0.0" : "::"), port: 52625)
       : try endpoint(operation.local)
     let key = "\(local)>\(remote)"
-    if let connection = connections[key] { return connection }
+    if let connection = connections[key] { return connection.connection }
     guard connections.count < 256 else { throw CompletionError("UDP connection capacity exceeded") }
     let parameters = NWParameters.udp
     parameters.allowLocalEndpointReuse = true
@@ -227,61 +273,91 @@ final class NetworkFrameworkIo: @unchecked Sendable {
   }
 
   private func install(_ connection: NWConnection, key: String) {
-    connections[key] = connection
-    let currentGeneration = generation
-    connection.stateUpdateHandler = { [weak self, weak connection] state in
-      guard let self, let connection, self.generation == currentGeneration else { return }
-      switch state {
+    let state = NetworkConnection(
+      connection: connection, key: key, generation: generation, remote: address(connection.endpoint)
+    )
+    connections[key] = state
+    connection.pathUpdateHandler = { [weak self, weak state] path in
+      guard let self, let state, self.running, self.generation == state.generation,
+        !state.cancelled
+      else { return }
+      self.updatePath(path, for: state)
+      self.receive(state)
+    }
+    connection.stateUpdateHandler = { [weak self, weak state] update in
+      guard let self, let state, self.running, self.generation == state.generation,
+        !state.cancelled
+      else { return }
+      switch update {
       case .ready:
-        if key.hasPrefix("incoming:"), let local = connection.currentPath?.localEndpoint {
-          let canonical = "\(local)>\(connection.endpoint)"
-          if let existing = self.connections[canonical], existing !== connection {
-            connection.cancel()
-            self.connections.removeValue(forKey: key)
-            return
-          }
-          self.connections.removeValue(forKey: key)
-          self.connections[canonical] = connection
-        }
-        self.receive(connection, generation: currentGeneration)
-      case .failed:
-        connection.cancel()
-        for key in self.connections.keys.filter({ self.connections[$0] === connection }) {
-          self.connections.removeValue(forKey: key)
-        }
+        self.updatePath(state.connection.currentPath, for: state)
+        state.ready = true
+        self.receive(state)
+      case .failed, .cancelled:
+        self.cancel(state)
+      case .waiting, .preparing:
+        state.ready = false
       default: break
       }
     }
     connection.start(queue: queue)
   }
 
-  private func receive(_ connection: NWConnection, generation: UInt64) {
-    let identity = ObjectIdentifier(connection)
-    guard networkReads.insert(identity).inserted else { return }
-    connection.receiveMessage { [weak self, weak connection] data, context, _, error in
-      guard let self, let connection, self.running, generation == self.generation,
-        self.session != nil
-      else { return }
-      self.networkReads.remove(identity)
-      if let data, !data.isEmpty,
-        let local = connection.currentPath?.localEndpoint,
-        let localAddress = self.address(local),
-        let remoteAddress = self.address(connection.endpoint)
-      {
-        let ecn =
-          (context?.protocolMetadata(definition: NWProtocolIP.definition) as? NWProtocolIP.Metadata)
-          .map { self.ecnBits($0.ecn) } ?? 0
-        self.receivedNetwork.append(
-          NetworkInput(
-            data: data, local: localAddress, remote: remoteAddress,
-            ecn: ecn, connection: connection, rearm: error == nil))
-        self.pump()
-        return
-      }
-      if error == nil {
-        self.receive(connection, generation: generation)
-      } else {
-        connection.cancel()
+  private func updatePath(_ path: NWPath?, for state: NetworkConnection) {
+    let local = path?.localEndpoint
+    state.local = local.flatMap { address($0) }
+    guard state.incoming, let local else { return }
+    let canonical = "\(local)>\(state.connection.endpoint)"
+    if let existing = connections[canonical], existing !== state {
+      cancel(state)
+      return
+    }
+    connections.removeValue(forKey: state.key)
+    state.key = canonical
+    connections[canonical] = state
+  }
+
+  private func cancel(_ state: NetworkConnection) {
+    state.cancelled = true
+    state.connection.cancel()
+    if connections[state.key] === state { connections.removeValue(forKey: state.key) }
+  }
+
+  private func receive(_ state: NetworkConnection) {
+    guard running, state.ready, !state.cancelled, generation == state.generation,
+      state.local != nil, state.remote != nil, state.receives < NetworkConnection.receiveDepth
+    else { return }
+    // Credits cover outstanding callbacks and completed packets until Rust owns
+    // their storage, keeping the receive window bounded under backpressure.
+    state.connection.batch {
+      while state.receives < NetworkConnection.receiveDepth {
+        let sequence = state.nextReceive
+        state.nextReceive &+= 1
+        state.receives += 1
+        state.connection.receiveMessage { [weak self, state] data, context, _, error in
+          guard let self, self.running, self.generation == state.generation, self.session != nil
+          else { return }
+          var packet: NetworkPacket?
+          if let data, !data.isEmpty, let local = state.local, let remote = state.remote {
+            let ecn =
+              (context?.protocolMetadata(definition: NWProtocolIP.definition)
+              as? NWProtocolIP.Metadata)
+              .map { self.ecnBits($0.ecn) } ?? 0
+            packet = NetworkPacket(data: data, local: local, remote: remote, ecn: ecn)
+          }
+          if error != nil { self.cancel(state) }
+          state.completed[sequence] = NetworkReceive(packet: packet)
+          while let completed = state.completed.removeValue(forKey: state.nextDelivery) {
+            state.nextDelivery &+= 1
+            if let packet = completed.packet {
+              self.receivedNetwork.append(NetworkInput(packet: packet, connection: state))
+            } else {
+              state.receives -= 1
+            }
+          }
+          self.receive(state)
+          self.requestPump()
+        }
       }
     }
   }
@@ -302,7 +378,7 @@ final class NetworkFrameworkIo: @unchecked Sendable {
         // PacketTunnelFlow owns receive storage and does not accept supplied
         // buffers. Rust copies each plaintext packet once into its mutable pool.
         self.receivedTun = packets
-        self.pump()
+        self.requestPump()
       }
     }
   }
@@ -360,13 +436,14 @@ final class NetworkFrameworkIo: @unchecked Sendable {
     onError(error)
   }
   private func cancelConnections() {
-    networkReads.removeAll()
     for listener in listeners {
       listener.cancel()
     }
     listeners.removeAll()
-    for connection in connections.values {
-      connection.cancel()
+    for state in connections.values {
+      state.cancelled = true
+      state.completed.removeAll()
+      state.connection.cancel()
     }
     connections.removeAll()
   }
@@ -376,19 +453,52 @@ final class NetworkFrameworkIo: @unchecked Sendable {
     timer = nil
     cancelConnections()
     receivedNetwork.removeAll()
+    networkOffset = 0
     receivedTun.removeAll()
     if let session { fz_completion_free(session) }
     session = nil
   }
 }
 
+/// Mutated only on the packet I/O queue, including Network.framework callbacks.
+private final class NetworkConnection: @unchecked Sendable {
+  static let receiveDepth = 16
+  let connection: NWConnection
+  let generation: UInt64
+  let incoming: Bool
+  let remote: FzEndpoint?
+  var key: String
+  var local: FzEndpoint?
+  var ready = false
+  var cancelled = false
+  var receives = 0
+  var nextReceive: UInt64 = 0
+  var nextDelivery: UInt64 = 0
+  var completed: [UInt64: NetworkReceive] = [:]
+
+  init(connection: NWConnection, key: String, generation: UInt64, remote: FzEndpoint?) {
+    self.connection = connection
+    self.key = key
+    self.incoming = key.hasPrefix("incoming:")
+    self.generation = generation
+    self.remote = remote
+  }
+}
+
+private struct NetworkReceive {
+  let packet: NetworkPacket?
+}
+
 private struct NetworkInput {
+  let packet: NetworkPacket
+  let connection: NetworkConnection
+}
+
+private struct NetworkPacket {
   let data: Data
   let local: FzEndpoint
   let remote: FzEndpoint
   let ecn: UInt8
-  let connection: NWConnection
-  let rearm: Bool
 }
 
 private struct CompletionError: Error, LocalizedError {
