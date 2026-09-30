@@ -29,7 +29,7 @@ final class NetworkFrameworkIo: @unchecked Sendable {
     self.onError = onError
   }
 
-  func start(driver: UInt64) async throws {
+  func start(driver: PacketDriver) async throws {
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       queue.async {
         guard !self.started else {

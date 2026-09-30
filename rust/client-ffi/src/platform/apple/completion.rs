@@ -1,4 +1,4 @@
-//! C packet I/O ABI for a serial host event loop.
+//! C packet I/O ABI for Apple's serial Network.framework event loop.
 //!
 //! Session calls require exclusive access and valid pointers. Input leases are
 //! consumed even on errors. Output storage is released independently of send
@@ -20,6 +20,11 @@ pub struct CompletionSession {
     host: Host,
     error: CString,
 }
+
+/// The handle to a packet driver owned by the Apple event loop.
+pub struct PacketDriver(u64);
+
+uniffi::custom_newtype!(PacketDriver, u64);
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -78,13 +83,12 @@ struct Host {
 }
 
 impl CompletionSession {
-    #[cfg(target_vendor = "apple")]
     pub(crate) fn create_driver(
         runtime: tokio::runtime::Runtime,
         events: DrivenEvents,
         port: CompletionPort,
     ) -> (
-        u64,
+        PacketDriver,
         tokio::sync::mpsc::UnboundedReceiver<client_shared::Event>,
     ) {
         let (output, receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -98,7 +102,10 @@ impl CompletionSession {
             },
             error: CString::default(),
         });
-        (Box::into_raw(driver) as usize as u64, receiver)
+        (
+            PacketDriver(Box::into_raw(driver) as usize as u64),
+            receiver,
+        )
     }
 }
 

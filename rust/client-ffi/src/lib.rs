@@ -63,7 +63,8 @@ enum Events {
 pub struct Connection {
     pub session: Arc<Session>,
     pub events: Arc<EventStream>,
-    pub packet_driver: Option<u64>,
+    #[cfg(target_vendor = "apple")]
+    pub packet_driver: platform::PacketDriver,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -670,11 +671,11 @@ fn connect(
     drop(_guard);
     #[cfg(target_vendor = "apple")]
     let (packet_driver, events, runtime) = {
-        let (driver, events) = completion::CompletionSession::create_driver(runtime, events, port);
-        (Some(driver), Events::Driven(events), None)
+        let (driver, events) = platform::CompletionSession::create_driver(runtime, events, port);
+        (driver, Events::Driven(events), None)
     };
     #[cfg(not(target_vendor = "apple"))]
-    let (packet_driver, events, runtime) = (None, Events::Native(events), Some(runtime));
+    let (events, runtime) = (Events::Native(events), Some(runtime));
 
     analytics::new_session(device_id, api_url);
 
@@ -685,6 +686,7 @@ fn connect(
             uploader,
         }),
         events: Arc::new(EventStream(Mutex::new(events))),
+        #[cfg(target_vendor = "apple")]
         packet_driver,
     })
 }
@@ -1026,5 +1028,3 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
         Self::Failed(format!("Callback failed: {}", value.reason))
     }
 }
-
-mod completion;

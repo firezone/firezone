@@ -276,10 +276,7 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
-      guard let driver = connection.packetDriver else {
-        throw AdapterError.connlibConnectError("Missing packet driver")
-      }
-      try await packetIO.start(driver: driver)
+      try await packetIO.start(driver: connection.packetDriver)
       events = connection.events
       handoff = SessionHandoff(connection.session)
     } catch {
