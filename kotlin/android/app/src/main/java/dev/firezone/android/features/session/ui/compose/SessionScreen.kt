@@ -92,20 +92,22 @@ fun SessionScreen(
     val profileName = actorName ?: stringResource(R.string.signed_in)
 
     when {
-        selectedPool != null && selectedDevice != null ->
+        selectedPool != null && selectedDevice != null -> {
             ConnectedDeviceScreen(
                 device = selectedDevice,
                 onBack = { selection = Selection.Pool(selectedPool.id) },
                 modifier = modifier,
             )
+        }
 
-        selectedPool != null ->
+        selectedPool != null -> {
             DevicePoolScreen(
                 pool = selectedPool,
                 onSelectDevice = { id -> selection = Selection.Device(selectedPool.id, id) },
                 onBack = { selection = null },
                 modifier = modifier,
             )
+        }
 
         else -> {
             Scaffold(
