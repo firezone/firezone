@@ -55,11 +55,8 @@ impl Io {
     /// # Safety
     ///
     /// The descriptor must remain open until this IO and its workers have stopped.
-    pub unsafe fn new(
-        name: String,
-        fd: RawFd,
-        runtime: &tokio::runtime::Handle,
-    ) -> io::Result<Self> {
+    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+        let name = name(fd)?;
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
@@ -85,6 +82,28 @@ impl tun::Tun for Io {
     fn name(&self) -> &str {
         self.name.as_str()
     }
+}
+
+fn name(fd: RawFd) -> io::Result<String> {
+    use libc::{IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, getsockopt, socklen_t};
+
+    let mut tunnel_name = [0u8; IF_NAMESIZE];
+    let mut tunnel_name_len = tunnel_name.len() as socklen_t;
+    if unsafe {
+        getsockopt(
+            fd,
+            SYSPROTO_CONTROL,
+            UTUN_OPT_IFNAME,
+            tunnel_name.as_mut_ptr() as _,
+            &mut tunnel_name_len,
+        )
+    } < 0
+        || tunnel_name_len == 0
+    {
+        return Err(get_last_error());
+    }
+
+    Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
 }
 
 /// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.

@@ -1,62 +1,12 @@
 use std::{io, os::fd::RawFd};
 
-pub struct Tun(tun_apple::Io);
+pub use tun_apple::Io as Tun;
 
 /// Finds the descriptor opened by NetworkExtension.
 pub fn search_fd() -> io::Result<RawFd> {
-    search_for_tun_fd()
-}
+    let fd = search_for_tun_fd()?;
 
-impl Tun {
-    /// Starts IO on the descriptor owned by NetworkExtension.
-    ///
-    /// # Safety
-    ///
-    /// The descriptor must remain open until the TUN IO and its workers have stopped.
-    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let io = unsafe { tun_apple::Io::new(name(fd)?, fd, runtime)? };
-
-        Ok(Self(io))
-    }
-}
-
-impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.0.sender()
-    }
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.0.receiver()
-    }
-    fn name(&self) -> &str {
-        self.0.name()
-    }
-}
-
-fn get_last_error() -> io::Error {
-    io::Error::last_os_error()
-}
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-fn name(fd: RawFd) -> io::Result<String> {
-    use libc::{IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, getsockopt, socklen_t};
-
-    let mut tunnel_name = [0u8; IF_NAMESIZE];
-    let mut tunnel_name_len = tunnel_name.len() as socklen_t;
-    if unsafe {
-        getsockopt(
-            fd,
-            SYSPROTO_CONTROL,
-            UTUN_OPT_IFNAME,
-            tunnel_name.as_mut_ptr() as _,
-            &mut tunnel_name_len,
-        )
-    } < 0
-        || tunnel_name_len == 0
-    {
-        return Err(get_last_error());
-    }
-
-    Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
+    Ok(fd)
 }
 
 /// How many descriptors [`search_for_tun_fd`] may scan.
@@ -151,14 +101,4 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         io::ErrorKind::NotFound,
         "No utun file descriptor found",
     ))
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-fn search_for_tun_fd() -> io::Result<RawFd> {
-    unimplemented!("Stub")
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-fn name(_: RawFd) -> io::Result<String> {
-    unimplemented!("Stub")
 }
