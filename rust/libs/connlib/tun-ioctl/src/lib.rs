@@ -1,3 +1,5 @@
+#![cfg(any(target_os = "linux", target_os = "android"))]
+
 use std::{io, os::fd::RawFd};
 
 /// Executes the `ioctl` syscall on the given file descriptor with the provided request.

@@ -37,7 +37,7 @@ use std::{
 };
 use std::{net::IpAddr, time::Duration};
 use tokio::time::Instant;
-use tun_linux::ioctl;
+use tun_ioctl as ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;

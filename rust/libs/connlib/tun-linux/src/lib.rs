@@ -1,3 +1,6 @@
+#![cfg(target_os = "linux")]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 //! Linux-specific TUN I/O using segmentation offloads (`IFF_VNET_HDR` + `TUNSETOFFLOAD`).
 //!
 //! With offloads enabled, the kernel exchanges "super packets" of up to 64 KiB with us:
@@ -37,7 +40,7 @@ const READ_BUFFER_SIZE: usize = VNET_HDR_LEN + u16::MAX as usize;
 
 pub struct Io {
     name: String,
-    workers: crate::workers::TunWorkers,
+    workers: tun::Workers,
 }
 
 impl Io {
@@ -45,17 +48,35 @@ impl Io {
         name: impl Into<String>,
         fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
     ) -> Result<Self> {
-        let workers = crate::workers::TunWorkers::spawn(
+        let (outbound_tx, outbound_rx) = tun::outbound_channel();
+        let (inbound_tx, inbound_rx) = tun::inbound_channel();
+        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_receive(),
+            ],
+        ));
+        let workers = tun::Workers::spawn(
+            outbound_tx,
+            inbound_rx,
             {
                 let fd = fd.clone();
-                move |outbound_rx| {
+                move || {
                     logging::unwrap_or_warn!(
                         tun_send(fd, outbound_rx),
                         "Failed to send to TUN device: {}"
                     )
                 }
             },
-            move |inbound_tx| {
+            move || {
                 logging::unwrap_or_warn!(
                     tun_recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"

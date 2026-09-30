@@ -19,22 +19,6 @@ use anyhow::Result;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
 
-/// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.
-fn send(fd: RawFd, outbound_rx: tun::OutboundRx) -> Result<()> {
-    match sys::batch_syscalls() {
-        Some(syscalls) => bulk::send(fd, syscalls, outbound_rx),
-        None => crate::per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
-    }
-}
-
-/// Receives packets from the TUN `fd` into `inbound_tx` until the fd or the channel closes.
-fn recv(fd: RawFd, inbound_tx: tun::InboundTx) -> Result<()> {
-    match sys::batch_syscalls() {
-        Some(syscalls) => bulk::recv(fd, syscalls, inbound_tx),
-        None => crate::per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
-    }
-}
-
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
 ///
 /// The kernel default (`ctl_recvsize`) is 512 KiB, only a few hundred MTU-sized
@@ -62,8 +46,7 @@ const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
 
 pub struct Io {
     name: String,
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
+    workers: tun::Workers,
 }
 
 impl Io {
@@ -98,44 +81,54 @@ impl Io {
             ],
         ));
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
+        let workers = tun::Workers::spawn(
+            outbound_tx,
+            inbound_rx,
+            move || {
                 logging::unwrap_or_warn!(
                     crate::send(fd, outbound_rx),
                     "Failed to send to TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
+            },
+            move || {
                 logging::unwrap_or_warn!(
                     crate::recv(fd, inbound_tx),
                     "Failed to recv from TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
+            },
+        )?;
 
-        Ok(Self {
-            name,
-            outbound_tx,
-            inbound_rx,
-        })
+        Ok(Self { name, workers })
     }
 }
 
 impl tun::Tun for Io {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+}
+
+/// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.
+fn send(fd: RawFd, outbound_rx: tun::OutboundRx) -> Result<()> {
+    match sys::batch_syscalls() {
+        Some(syscalls) => bulk::send(fd, syscalls, outbound_rx),
+        None => crate::per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
+    }
+}
+
+/// Receives packets from the TUN `fd` into `inbound_tx` until the fd or the channel closes.
+fn recv(fd: RawFd, inbound_tx: tun::InboundTx) -> Result<()> {
+    match sys::batch_syscalls() {
+        Some(syscalls) => bulk::recv(fd, syscalls, inbound_tx),
+        None => crate::per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
     }
 }
 

@@ -789,6 +789,7 @@ dependencies = [
  "tower",
  "tracing",
  "tun",
+ "tun-ioctl",
  "tun-linux",
  "tun-windows",
  "uuid",
@@ -1348,8 +1349,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+ "tun-android",
  "tun-apple",
- "tun-linux",
  "tunnel-bypass-resolver",
  "uniffi",
  "x509-claims-ffi",
@@ -8723,6 +8724,25 @@ dependencies = [
  "bufferpool",
  "ip-packet",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tun-android"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "ip-packet",
+ "libc",
+ "logging",
+ "opentelemetry",
+ "otel-attributes",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+ "tun",
+ "tun-ioctl",
 ]
 
 [[package]]
@@ -8740,6 +8760,13 @@ dependencies = [
  "tokio",
  "tracing",
  "tun",
+]
+
+[[package]]
+name = "tun-ioctl"
+version = "0.1.0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
