@@ -119,7 +119,6 @@ embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
 fastrand = "2.3.0"
-fd-lock = "4.0.4"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
