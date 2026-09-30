@@ -27,7 +27,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{LocalBuffer as Buffer, LocalBufferPool as BufferPool};
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -38,10 +38,10 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-use std::sync::LazyLock;
 
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
+thread_local! {
+    static BUFFER_POOL: BufferPool<Vec<u8>> = BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet");
+}
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -138,7 +138,7 @@ pub struct IpPacketBuf {
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: BUFFER_POOL.pull(),
+            inner: BUFFER_POOL.with(BufferPool::pull),
         }
     }
 }
@@ -262,9 +262,9 @@ impl IpPacket {
     /// don't re-validate.
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
-        anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
+        anyhow::ensure!(len <= buf.as_ref().len(), "Length exceeds buffer size");
 
-        let packet = &buf.inner[..len];
+        let packet = &buf.as_ref()[..len];
 
         let (version, ip_header_length, protocol) = match packet.first().map(|b| b >> 4) {
             Some(4) => {

@@ -1,26 +1,30 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
 
 use bytes::BytesMut;
-use crossbeam_queue::SegQueue;
 use opentelemetry::{
     KeyValue,
     metrics::{Meter, UpDownCounter},
 };
 
-/// A lock-free pool of buffers that are all equal in size.
+mod storage;
+
+pub use storage::{Local, Shared, Storage};
+
+/// A pool whose buffers stay on the owning thread.
+pub type LocalBufferPool<B> = BufferPool<B, Local>;
+/// A buffer with non-atomic ownership of its local pool.
+pub type LocalBuffer<B> = Buffer<B, Local>;
+
+/// A pool of equally sized buffers, shared across threads by default.
 ///
-/// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
-/// This minimizes contention even under high load where buffers are constantly needed and returned.
-pub struct BufferPool<B> {
-    inner: Arc<PoolInner<B>>,
+/// [`LocalBufferPool`] uses a local queue and non-atomic reference counts.
+pub struct BufferPool<B, S: Storage = Shared> {
+    inner: S::Handle<PoolInner<B, S>>,
 }
 
-impl<B> Clone for BufferPool<B> {
+impl<B, S: Storage> Clone for BufferPool<B, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -31,9 +35,9 @@ impl<B> Clone for BufferPool<B> {
 /// The state shared between a pool and all of its buffers.
 ///
 /// Everything that is constant per pool lives here (rather than in each buffer),
-/// keeping a [`Buffer`] handle at the size of the buffer itself plus one `Arc`.
-struct PoolInner<B> {
-    queue: SegQueue<B>,
+/// keeping a [`Buffer`] handle at the size of the buffer itself plus one pool handle.
+struct PoolInner<B, S: Storage> {
+    queue: S::Queue<B>,
 
     /// Creates (and counts) a new buffer for when the queue is empty.
     new_buffer_fn: Box<dyn Fn() -> B + Send + Sync>,
@@ -59,11 +63,11 @@ struct PoolInner<B> {
     counter: UpDownCounter<i64>,
 }
 
-impl<B> Drop for PoolInner<B> {
+impl<B, S: Storage> Drop for PoolInner<B, S> {
     fn drop(&mut self) {
         let mut num_buffers = 0;
 
-        while self.queue.pop().is_some() {
+        while S::pop(&self.queue).is_some() {
             num_buffers += 1;
         }
 
@@ -71,7 +75,7 @@ impl<B> Drop for PoolInner<B> {
     }
 }
 
-impl<B> BufferPool<B>
+impl<B, S: Storage> BufferPool<B, S>
 where
     B: Buf,
 {
@@ -95,8 +99,8 @@ where
         ];
 
         Self {
-            inner: Arc::new(PoolInner {
-                queue: SegQueue::new(),
+            inner: S::handle(PoolInner {
+                queue: S::queue(),
 
                 // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
                 // This however means that getting a buffer can fail which would require us to implement back-pressure.
@@ -120,24 +124,19 @@ where
         }
     }
 
-    pub fn pull(&self) -> Buffer<B> {
+    pub fn pull(&self) -> Buffer<B, S> {
         Buffer {
-            inner: Some(
-                self.inner
-                    .queue
-                    .pop()
-                    .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
-            ),
+            inner: Some(S::pop(&self.inner.queue).unwrap_or_else(|| (self.inner.new_buffer_fn)())),
             pool: self.inner.clone(),
         }
     }
 }
 
-impl<B> BufferPool<B>
+impl<B, S: Storage> BufferPool<B, S>
 where
     B: ResizeBuf + DerefMut<Target = [u8]>,
 {
-    pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B> {
+    pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B, S> {
         let mut buffer = self.pull();
         let len = data.len();
 
@@ -148,13 +147,13 @@ where
     }
 }
 
-pub struct Buffer<B> {
+pub struct Buffer<B, S: Storage = Shared> {
     inner: Option<B>,
 
-    pool: Arc<PoolInner<B>>,
+    pool: S::Handle<PoolInner<B, S>>,
 }
 
-impl Buffer<Vec<u8>> {
+impl<S: Storage> Buffer<Vec<u8>, S> {
     /// Shifts the start of the buffer to the right by N bytes, returning the bytes removed from the front of the buffer.
     pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
         let num_to_end = self.split_off(num);
@@ -173,7 +172,7 @@ impl Buffer<Vec<u8>> {
     }
 }
 
-impl<B> Buffer<B> {
+impl<B, S: Storage> Buffer<B, S> {
     fn storage(&self) -> &B {
         self.inner
             .as_ref()
@@ -187,16 +186,12 @@ impl<B> Buffer<B> {
     }
 }
 
-impl<B> Clone for Buffer<B>
+impl<B, S: Storage> Clone for Buffer<B, S>
 where
     B: Buf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self
-            .pool
-            .queue
-            .pop()
-            .unwrap_or_else(|| (self.pool.new_buffer_fn)());
+        let mut copy = S::pop(&self.pool.queue).unwrap_or_else(|| (self.pool.new_buffer_fn)());
 
         self.storage().clone(&mut copy);
 
@@ -207,7 +202,7 @@ where
     }
 }
 
-impl<B> PartialEq for Buffer<B>
+impl<B, S: Storage> PartialEq for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -216,9 +211,9 @@ where
     }
 }
 
-impl<B> Eq for Buffer<B> where B: Deref<Target = [u8]> {}
+impl<B, S: Storage> Eq for Buffer<B, S> where B: Deref<Target = [u8]> {}
 
-impl<B> PartialOrd for Buffer<B>
+impl<B, S: Storage> PartialOrd for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -227,7 +222,7 @@ where
     }
 }
 
-impl<B> Ord for Buffer<B>
+impl<B, S: Storage> Ord for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -236,13 +231,13 @@ where
     }
 }
 
-impl<B> std::fmt::Debug for Buffer<B> {
+impl<B, S: Storage> std::fmt::Debug for Buffer<B, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Buffer").finish()
     }
 }
 
-impl<B> Deref for Buffer<B> {
+impl<B, S: Storage> Deref for Buffer<B, S> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
@@ -250,13 +245,13 @@ impl<B> Deref for Buffer<B> {
     }
 }
 
-impl<B> DerefMut for Buffer<B> {
+impl<B, S: Storage> DerefMut for Buffer<B, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage_mut()
     }
 }
 
-impl<B> Drop for Buffer<B> {
+impl<B, S: Storage> Drop for Buffer<B, S> {
     fn drop(&mut self) {
         let mut buffer = self.inner.take().expect("should have storage in `Drop`");
 
@@ -277,7 +272,7 @@ impl<B> Drop for Buffer<B> {
             return;
         }
 
-        self.pool.queue.push(buffer);
+        S::push(&self.pool.queue, buffer);
     }
 }
 
@@ -428,6 +423,22 @@ mod tests {
         drop(buffer);
 
         assert_eq!(&buffer2[..11], b"hello world");
+    }
+
+    #[test]
+    fn local_buffers_recycle_without_aliasing_and_outlive_the_pool() {
+        let pool = LocalBufferPool::<Vec<u8>>::new(8, "test-local");
+        let original = pool.pull_initialised(b"hello");
+        let address = original.as_ptr();
+        let copy = original.clone();
+        drop(original);
+
+        let recycled = pool.pull_initialised(b"world");
+        assert_eq!(recycled.as_ptr(), address);
+        drop(pool);
+
+        assert_eq!(&*copy, b"hello");
+        assert_eq!(&*recycled, b"world");
     }
 
     #[test]

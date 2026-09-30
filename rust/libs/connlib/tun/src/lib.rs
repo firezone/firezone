@@ -1,8 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{LocalBuffer as Buffer, LocalBufferPool as BufferPool, VecBuf};
 use ip_packet::IpPacket;
-use std::sync::LazyLock;
 
 #[cfg(target_vendor = "apple")]
 pub mod apple;
@@ -23,8 +22,9 @@ pub const MAX_BATCH_SIZE: usize = cfg_select! {
     _ => { 100 }
 };
 
-static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
-    LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
+thread_local! {
+    static BATCH_POOL: BufferPool<VecBuf<IpPacket>> = BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch");
+}
 
 /// A batch of packets processed in one state transition.
 ///
@@ -42,7 +42,7 @@ pub struct PacketBatch {
 impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: BATCH_POOL.pull(),
+            inner: BATCH_POOL.with(BufferPool::pull),
         }
     }
 }
