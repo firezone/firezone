@@ -276,7 +276,9 @@ fn relay_preference(args: &Args) -> Option<crate::portal::IpFamily> {
 /// Run TURN test from resolved config.
 pub async fn run_with_config(config: TestConfig, seed: u64) -> Result<()> {
     let max_loss_percent = config.max_loss_percent;
-    let summary = run(config, seed).await?;
+    let summary = tokio::task::LocalSet::new()
+        .run_until(run(config, seed))
+        .await?;
 
     print_summary(&summary);
     let loss_percent = summary.loss_percent;
@@ -375,9 +377,9 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
         .into_iter()
         .map(|flow| {
             let counters = Arc::clone(&counters);
-            tokio::spawn(
-                async move { receive(flow.peer, payload_size, recv_deadline, counters).await },
-            )
+            tokio::task::spawn_local(async move {
+                receive(flow.peer, payload_size, recv_deadline, counters).await
+            })
         })
         .collect::<Vec<_>>();
 
