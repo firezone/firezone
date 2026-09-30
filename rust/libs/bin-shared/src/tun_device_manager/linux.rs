@@ -802,15 +802,14 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    io: tun_linux::Io,
+    fd: tun_linux::TunFd<Arc<OwnedFd>>,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
-        let io = tun_linux::Io::new(TunDeviceManager::IFACE_NAME, open_tun()?)?;
-
-        Ok(Self { io })
+        let fd = open_tun()?;
+        Ok(Self { fd })
     }
 }
 
@@ -868,16 +867,12 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.io.sender()
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.io.receiver()
-    }
-
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
+    }
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
+        let io = tun::linux::into_io(self.fd)?;
+        Ok(io)
     }
 }
 

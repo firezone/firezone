@@ -7,7 +7,7 @@ use std::ffi::c_void;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
@@ -16,23 +16,17 @@ const LOCAL: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 1);
 const PEER: Ipv4Addr = Ipv4Addr::new(169, 254, 33, 2);
 
 /// Datagrams sent to [`PEER`] route out the utun and must come back through `recv`.
-#[test]
+#[tokio::test]
 #[ignore = "Needs root to create a utun device"]
-fn recv_reads_packets_routed_through_the_interface() {
-    let syscalls = super::sys::batch_syscalls().expect("recvmsg_x/sendmsg_x to resolve on macOS");
+async fn recv_reads_packets_routed_through_the_interface() {
+    super::sys::batch_syscalls().expect("recvmsg_x/sendmsg_x to resolve on macOS");
 
     let (fd, name) = create_utun();
     set_nonblocking(fd);
     raise_max_pending_packets(fd, 64);
     configure(&name);
 
-    let (tx, mut rx) = tun::inbound_channel();
-    std::thread::Builder::new()
-        .name("test TUN recv".to_owned())
-        .spawn(move || {
-            let _ = super::bulk::recv(fd, syscalls, tx);
-        })
-        .expect("spawn recv thread");
+    let mut tun = unsafe { super::Io::new(fd) }.expect("create local TUN IO");
 
     // The kernel routes datagrams addressed to the point-to-point peer out the utun,
     // where they queue (we raised the pending limit) for `recv` to read as a batch.
@@ -47,21 +41,19 @@ fn recv_reads_packets_routed_through_the_interface() {
     // Count only our datagrams; a freshly-created interface also emits other traffic
     // (e.g. IPv6 link-local setup) that we must ignore.
     let mut matched = 0;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while matched < COUNT && Instant::now() < deadline {
-        match rx.try_recv() {
-            Ok(batch) => {
-                matched += batch
-                    .iter()
-                    .filter(|p| p.destination() == IpAddr::V4(PEER) && p.as_udp().is_some())
-                    .count();
-            }
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while matched < COUNT {
+            let batch = std::future::poll_fn(|cx| tun.poll_read(cx))
+                .await
+                .expect("read batch");
+            matched += batch
+                .iter()
+                .filter(|p| p.destination() == IpAddr::V4(PEER) && p.as_udp().is_some())
+                .count();
         }
-    }
+    })
+    .await
+    .expect("receive timed out");
 
     assert_eq!(
         matched, COUNT,

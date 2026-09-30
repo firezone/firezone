@@ -1,7 +1,7 @@
-use crate::ioctl;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::{io, os::fd::RawFd};
+use crate::ioctl;
 
 pub struct Io {
     name: String,
@@ -11,6 +11,15 @@ pub struct Io {
 }
 
 impl tun::Tun for Io {
+    fn name(&self) -> &str {
+        tun::ChannelTun::name(self)
+    }
+    fn into_io(self: Box<Self>) -> anyhow::Result<Box<dyn tun::TunIo>> {
+        Ok(self)
+    }
+}
+
+impl tun::ChannelTun for Io {
     fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }

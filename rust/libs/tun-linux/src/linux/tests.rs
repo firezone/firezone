@@ -14,6 +14,45 @@ use super::virtio::*;
 const SRC: [u8; 4] = [10, 0, 0, 1];
 const DST: [u8; 4] = [10, 0, 0, 2];
 
+#[tokio::test]
+async fn local_io_preserves_gso_segments_across_batch_boundaries() {
+    use std::os::unix::net::UnixDatagram;
+    let (device, kernel) = UnixDatagram::pair().unwrap();
+    device.set_nonblocking(true).unwrap();
+    let mut io = super::into_io(super::TunFd::new(device, true)).unwrap();
+    let packets = (0..128)
+        .map(|i| udp4_id(i, &[i as u8; 500]))
+        .collect::<Vec<_>>();
+    let mut coalescer = PacketCoalescer::new([Protocol::Udp], ChecksumMode::Offloaded);
+    for packet in packets.clone() {
+        coalescer.enqueue(packet);
+    }
+    for packet in coalescer.drain() {
+        kernel.send(&tun_write(&packet)).unwrap();
+    }
+
+    let first = std::future::poll_fn(|cx| io.poll_read(cx)).await.unwrap();
+    assert_eq!(first.len(), crate::MAX_BATCH_SIZE);
+    let second = std::future::poll_fn(|cx| io.poll_read(cx)).await.unwrap();
+    assert_eq!(second.len(), packets.len() - crate::MAX_BATCH_SIZE);
+    for (actual, expected) in first.iter().chain(second.iter()).zip(&packets) {
+        assert_eq!(actual.packet(), expected.packet());
+    }
+
+    let mut outbound = crate::PacketBatch::default();
+    for packet in packets.iter().take(3).cloned() {
+        outbound.try_push(packet).unwrap();
+    }
+    io.send(outbound).await.unwrap();
+    let mut buffer = vec![0; super::READ_BUFFER_SIZE];
+    let len = kernel.recv(&mut buffer).unwrap();
+    let written = split(&buffer[..len]).unwrap();
+    assert_eq!(written.len(), 3);
+    for (actual, expected) in written.iter().zip(&packets) {
+        assert_eq!(actual.packet(), expected.packet());
+    }
+}
+
 #[test]
 fn coalesced_tcp_packet_roundtrips_through_virtio_gso() {
     let mut coalescer =

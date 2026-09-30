@@ -34,13 +34,33 @@ use std::{
     collections::{BTreeMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
     task::{Context, Poll, Waker},
     time::{Duration, Instant},
 };
 
 use anyhow::Result;
-use parking_lot::{Mutex, MutexGuard};
+#[cfg(target_os = "ios")]
+use parking_lot::{Mutex as StateCell, MutexGuard as StateGuard};
+#[cfg(target_os = "ios")]
+use std::sync::Arc as Shared;
+#[cfg(target_os = "macos")]
+use std::{
+    cell::{RefCell, RefMut as StateGuard},
+    rc::Rc as Shared,
+};
+
+#[cfg(target_os = "macos")]
+struct StateCell<T>(RefCell<T>);
+
+#[cfg(target_os = "macos")]
+impl<T> StateCell<T> {
+    fn new(value: T) -> Self {
+        Self(RefCell::new(value))
+    }
+    fn lock(&self) -> StateGuard<'_, T> {
+        self.0.borrow_mut()
+    }
+}
 use quinn_udp::UdpSockRef;
 
 use crate::{DatagramBatch, RecvBuffers};
@@ -81,10 +101,10 @@ type Key = (Option<IpAddr>, SocketAddr);
 pub(crate) struct SocketPool {
     /// Unconnected socket bound to the wildcard address; receives from any peer and is the
     /// fallback for sends when connecting fails.
-    wildcard: Arc<OwnedSocket>,
+    wildcard: Shared<OwnedSocket>,
     /// The local address flow sockets bind to; they share the wildcard socket's port.
     local: SocketAddr,
-    inner: Mutex<Inner>,
+    inner: StateCell<Inner>,
     evictions: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -112,7 +132,7 @@ struct Inner {
 
 /// A connected flow socket plus the metadata the cache needs to evict it.
 struct Flow {
-    socket: Arc<OwnedSocket>,
+    socket: Shared<OwnedSocket>,
     created_at: Instant,
     /// When we last read a datagram off this socket.
     ///
@@ -120,7 +140,7 @@ struct Flow {
     /// sends are self-generated and keep flowing to dead destinations too.
     ///
     /// Interior-mutable so the receive path can update it while iterating the cache.
-    last_received: Mutex<Option<Instant>>,
+    last_received: StateCell<Option<Instant>>,
 }
 
 impl SocketPool {
@@ -130,9 +150,9 @@ impl SocketPool {
             .expect("a bound socket to have a local address");
 
         Self {
-            wildcard: Arc::new(wildcard),
+            wildcard: Shared::new(wildcard),
             local,
-            inner: Mutex::new(Inner {
+            inner: StateCell::new(Inner {
                 flows: BTreeMap::new(),
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
@@ -155,7 +175,7 @@ impl SocketPool {
         dst: SocketAddr,
         datagrams: usize,
         recv_buffers: &RecvBuffers,
-    ) -> Arc<OwnedSocket> {
+    ) -> Shared<OwnedSocket> {
         self.get_or_connect(src, dst, datagrams, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
@@ -231,7 +251,7 @@ impl SocketPool {
         dst: SocketAddr,
         datagrams: usize,
         recv_buffers: &RecvBuffers,
-    ) -> Option<Arc<OwnedSocket>> {
+    ) -> Option<Shared<OwnedSocket>> {
         let key = (src, dst);
         let mut inner = self.lock();
 
@@ -257,13 +277,13 @@ impl SocketPool {
 
                 inner.rates.forget(&key);
 
-                let socket = Arc::new(socket);
+                let socket = Shared::new(socket);
                 inner.flows.insert(
                     key,
                     Flow {
                         socket: socket.clone(),
                         created_at: Instant::now(),
-                        last_received: Mutex::new(None),
+                        last_received: StateCell::new(None),
                     },
                 );
 
@@ -284,7 +304,7 @@ impl SocketPool {
         }
     }
 
-    fn lock(&self) -> MutexGuard<'_, Inner> {
+    fn lock(&self) -> StateGuard<'_, Inner> {
         self.inner.lock()
     }
 

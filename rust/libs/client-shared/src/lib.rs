@@ -90,10 +90,10 @@ impl Session {
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
-            |resource_list_sender,
-             tun_config_sender,
-             connected_as_sender,
-             user_notification_sender| {
+            move |resource_list_sender,
+                  tun_config_sender,
+                  connected_as_sender,
+                  user_notification_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -241,11 +241,13 @@ impl EventStream {
             watch::Sender<Option<TunConfig>>,
             watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
-        ) -> E,
+        ) -> E
+        + Send
+        + 'static,
         handle: tokio::runtime::Handle,
     ) -> Self
     where
-        E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
+        E: Future<Output = Result<(), DisconnectError>> + 'static,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) =
@@ -253,14 +255,43 @@ impl EventStream {
         let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
-        let event_loop = make_event_loop(
-            resource_list_sender,
-            tun_config_sender,
-            connected_as_sender,
-            user_notification_sender,
-        );
-
-        let eventloop = handle.spawn(event_loop);
+        let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+        std::thread::Builder::new()
+            .name("connlib data plane".to_owned())
+            .spawn(move || {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(|error| DisconnectError::from(anyhow::Error::new(error)))?;
+                    runtime.block_on(async move {
+                        make_event_loop(
+                            resource_list_sender,
+                            tun_config_sender,
+                            connected_as_sender,
+                            user_notification_sender,
+                        )
+                        .await
+                    })
+                }))
+                .unwrap_or_else(|panic| {
+                    let message = panic
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| panic.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown panic");
+                    Err(DisconnectError::from(anyhow::anyhow!(
+                        "connlib crashed: {message}"
+                    )))
+                });
+                let _ = finished_tx.send(result);
+            })
+            .expect("Failed to spawn connlib data-plane thread");
+        let eventloop = handle.spawn(async move {
+            finished_rx
+                .await
+                .map_err(|error| DisconnectError::from(anyhow::Error::new(error)))?
+        });
 
         Self {
             eventloop: eventloop.fuse(),

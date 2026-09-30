@@ -410,11 +410,13 @@ impl DatagramOut {
 impl PerfUdpSocket {
     /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
-        std::future::poll_fn(|cx| {
-            self.pool
-                .poll_recv(cx, |socket| self.try_recv_batch(socket))
-        })
-        .await
+        let batch = std::future::poll_fn(|cx| self.poll_recv_from(cx)).await?;
+        Ok(batch)
+    }
+
+    pub fn poll_recv_from(&self, cx: &mut Context<'_>) -> Poll<Result<DatagramBatch>> {
+        self.pool
+            .poll_recv(cx, |socket| self.try_recv_batch(socket))
     }
 
     /// Attempts to receive a batch of datagrams from the given socket without blocking.
@@ -959,8 +961,7 @@ impl RecvBuffers {
     }
 }
 
-/// A batch of datagrams, received from the socket in a single syscall and exchanged
-/// over the socket channels as a single item.
+/// A batch of datagrams received from the socket in a single syscall.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only

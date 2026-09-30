@@ -48,6 +48,15 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
+    fn name(&self) -> &str {
+        tun::ChannelTun::name(self)
+    }
+    fn into_io(self: Box<Self>) -> anyhow::Result<Box<dyn tun::TunIo>> {
+        Ok(self)
+    }
+}
+
+impl tun::ChannelTun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
         todo!()
     }

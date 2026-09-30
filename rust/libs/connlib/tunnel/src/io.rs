@@ -5,8 +5,8 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
-pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub use device::{Device, TunIoError};
+pub(crate) use udp_gso_queue::UdpGsoQueue;
 
 use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -709,7 +709,7 @@ mod tests {
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
             );
-            io.set_tun(Box::new(DummyTun::new()));
+            io.tun.set_io(Box::new(DummyTun::new()));
 
             io
         }
@@ -738,7 +738,7 @@ mod tests {
         }
     }
 
-    impl Tun for DummyTun {
+    impl tun::ChannelTun for DummyTun {
         fn sender(&self) -> &tun::OutboundTx {
             &self.tx
         }

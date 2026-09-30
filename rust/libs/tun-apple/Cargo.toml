@@ -9,8 +9,6 @@ anyhow = { workspace = true }
 futures = { workspace = true }
 ip-packet = { workspace = true }
 libc = { workspace = true }
-logging = { workspace = true }
-otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 tracing = { workspace = true }
 tun = { workspace = true }
@@ -19,3 +17,6 @@ tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "time"] }

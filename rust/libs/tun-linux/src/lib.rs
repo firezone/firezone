@@ -6,8 +6,6 @@ pub mod ioctl;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-mod workers;
-#[cfg(target_os = "linux")]
 pub use linux::{Io, TunFd};
 
 #[cfg(target_os = "android")]

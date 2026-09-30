@@ -1,6 +1,6 @@
 use std::{io, os::fd::RawFd};
 
-pub struct Tun(tun_apple::Io);
+pub struct Tun(tun_apple::Tun);
 
 /// Finds the descriptor opened by NetworkExtension.
 pub fn search_fd() -> io::Result<RawFd> {
@@ -13,22 +13,20 @@ impl Tun {
     /// # Safety
     ///
     /// The descriptor must remain open until the TUN IO and its workers have stopped.
-    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let io = unsafe { tun_apple::Io::new(name(fd)?, fd, runtime)? };
+    pub unsafe fn from_fd(fd: RawFd, _runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+        let io = unsafe { tun_apple::Tun::new(name(fd)?, fd)? };
 
         Ok(Self(io))
     }
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.0.sender()
-    }
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.0.receiver()
-    }
-    fn name(&self) -> &str {
-        self.0.name()
+    fn name(&self) -> &str { self.0.name() }
+
+    fn into_io(self: Box<Self>) -> anyhow::Result<Box<dyn tun::TunIo>> {
+        let io = Box::new(self.0).into_io()?;
+
+        Ok(io)
     }
 }
 

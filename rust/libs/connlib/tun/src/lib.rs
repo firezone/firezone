@@ -2,6 +2,7 @@
 
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::IpPacket;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
@@ -39,8 +40,24 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
     LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+thread_local! {
+    static BATCH_POOL: BufferPool<VecBuf<IpPacket>> = BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch");
+}
+
+fn batch_pool_pull() -> bufferpool::Buffer<VecBuf<IpPacket>> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        BATCH_POOL.with(|pool| pool.pull())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        BATCH_POOL.pull()
+    }
+}
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
@@ -70,7 +87,7 @@ pub struct PacketBatch {
 impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: BATCH_POOL.pull(),
+            inner: batch_pool_pull(),
         }
     }
 }
@@ -109,7 +126,25 @@ impl std::ops::Deref for PacketBatch {
     }
 }
 
+/// A transferable TUN descriptor whose packet I/O state is created on the event-loop thread.
 pub trait Tun: Send + Sync + 'static {
+    fn name(&self) -> &str;
+    fn into_io(self: Box<Self>) -> anyhow::Result<Box<dyn TunIo>>;
+}
+
+/// TUN packet I/O owned and polled by the crypto event-loop.
+pub trait TunIo: 'static {
+    fn poll_read(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<anyhow::Result<PacketBatch>>;
+    fn send(
+        &self,
+        batch: PacketBatch,
+    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<()>>;
+}
+
+pub trait ChannelTun: 'static {
     /// Get a reference to the sender for outbound packets.
     fn sender(&self) -> &OutboundTx;
 
@@ -118,6 +153,34 @@ pub trait Tun: Send + Sync + 'static {
 
     /// The name of the TUN device.
     fn name(&self) -> &str;
+}
+
+impl<T: ChannelTun> TunIo for T {
+    fn poll_read(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<anyhow::Result<PacketBatch>> {
+        let batch = std::task::ready!(self.receiver().poll_recv(cx));
+        std::task::Poll::Ready(
+            batch.ok_or_else(|| anyhow::anyhow!("Channel to TUN device thread is closed")),
+        )
+    }
+
+    fn send(
+        &self,
+        batch: PacketBatch,
+    ) -> futures::future::LocalBoxFuture<'static, anyhow::Result<()>> {
+        use futures::FutureExt as _;
+        let sender = self.sender().clone();
+        async move {
+            sender
+                .send(batch)
+                .await
+                .map_err(|_| anyhow::anyhow!("Channel to TUN device thread is closed"))?;
+            Ok(())
+        }
+        .boxed_local()
+    }
 }
 
 /// Creates the channel connecting the main thread to the thread writing to the TUN device.

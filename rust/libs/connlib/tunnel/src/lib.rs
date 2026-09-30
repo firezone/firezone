@@ -14,7 +14,7 @@
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
-use futures::{FutureExt, future::BoxFuture};
+use futures::{FutureExt, future::LocalBoxFuture};
 use io::Io;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -34,8 +34,7 @@ mod utils;
 
 pub use tunnel_proto::*;
 
-pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
+pub use io::TunIoError;
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -193,7 +192,7 @@ impl ClientTunnel {
     }
 
     /// Shut down the Client tunnel.
-    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> LocalBoxFuture<'static, Result<()>> {
         // Initiate shutdown.
         self.role_state.shut_down(now);
 
@@ -214,7 +213,7 @@ impl ClientTunnel {
 
             Ok(())
         }
-        .boxed()
+        .boxed_local()
     }
 
     pub fn poll_next_event(
@@ -383,7 +382,7 @@ impl GatewayTunnel {
     }
 
     /// Shut down the Gateway tunnel.
-    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> LocalBoxFuture<'static, Result<()>> {
         // Initiate shutdown.
         self.role_state.shut_down(now);
 
@@ -404,7 +403,7 @@ impl GatewayTunnel {
 
             Ok(())
         }
-        .boxed()
+        .boxed_local()
     }
 
     pub fn poll_next_event(

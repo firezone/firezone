@@ -1,23 +1,44 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
 
 use bytes::BytesMut;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 use crossbeam_queue::SegQueue;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+use std::sync::Arc as Shared;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::{cell::RefCell, collections::VecDeque, rc::Rc as Shared};
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+struct Queue<B>(RefCell<VecDeque<B>>);
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+impl<B> Queue<B> {
+    fn new() -> Self {
+        Self(RefCell::new(VecDeque::new()))
+    }
+    fn pop(&self) -> Option<B> {
+        self.0.borrow_mut().pop_front()
+    }
+    fn push(&self, buffer: B) {
+        self.0.borrow_mut().push_back(buffer);
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+type Queue<B> = SegQueue<B>;
 use opentelemetry::{
     KeyValue,
     metrics::{Meter, UpDownCounter},
 };
 
-/// A lock-free pool of buffers that are all equal in size.
+/// A pool of equally sized buffers.
 ///
-/// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
-/// This minimizes contention even under high load where buffers are constantly needed and returned.
+/// Linux and macOS pools belong to the packet-processing thread. Other platforms
+/// share their pools with dedicated TUN workers.
 pub struct BufferPool<B> {
-    inner: Arc<PoolInner<B>>,
+    inner: Shared<PoolInner<B>>,
 }
 
 impl<B> Clone for BufferPool<B> {
@@ -31,9 +52,9 @@ impl<B> Clone for BufferPool<B> {
 /// The state shared between a pool and all of its buffers.
 ///
 /// Everything that is constant per pool lives here (rather than in each buffer),
-/// keeping a [`Buffer`] handle at the size of the buffer itself plus one `Arc`.
+/// keeping a [`Buffer`] handle at the size of the buffer itself plus one pool reference.
 struct PoolInner<B> {
-    queue: SegQueue<B>,
+    queue: Queue<B>,
 
     /// Creates (and counts) a new buffer for when the queue is empty.
     new_buffer_fn: Box<dyn Fn() -> B + Send + Sync>,
@@ -95,8 +116,8 @@ where
         ];
 
         Self {
-            inner: Arc::new(PoolInner {
-                queue: SegQueue::new(),
+            inner: Shared::new(PoolInner {
+                queue: Queue::new(),
 
                 // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
                 // This however means that getting a buffer can fail which would require us to implement back-pressure.
@@ -151,7 +172,7 @@ where
 pub struct Buffer<B> {
     inner: Option<B>,
 
-    pool: Arc<PoolInner<B>>,
+    pool: Shared<PoolInner<B>>,
 }
 
 impl Buffer<Vec<u8>> {
@@ -474,7 +495,7 @@ mod tests {
     }
 
     /// The whole point of pooling is passing buffers around cheaply: a handle is
-    /// the buffer itself plus one `Arc`; everything else lives in the pool.
+    /// the buffer itself plus one pool reference; everything else lives in the pool.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn handles_are_slim() {

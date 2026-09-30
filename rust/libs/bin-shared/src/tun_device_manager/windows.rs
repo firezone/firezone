@@ -230,13 +230,13 @@ impl Tun {
     }
 }
 
-impl tun::Tun for Tun {
+impl tun::ChannelTun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        self.io.sender()
+        tun::ChannelTun::sender(&self.io)
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.io.receiver()
+        tun::ChannelTun::receiver(&mut self.io)
     }
 
     fn name(&self) -> &str {
@@ -432,4 +432,9 @@ fn wintun_bytes() -> DllBytes {
             "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80"
         ),
     }
+}
+
+impl tun::Tun for Tun {
+    fn name(&self) -> &str { tun::ChannelTun::name(self) }
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> { Ok(self) }
 }

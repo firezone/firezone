@@ -2,8 +2,8 @@
 //!
 //! Used when Apple's batched syscalls (`recvmsg_x` / `sendmsg_x`, see [`super::sys`])
 //! are unavailable. Each datagram on the `utun` socket is prefixed with a 4-byte
-//! address-family header; these plug into [`crate::per_packet_io::tun_send`] /
-//! [`crate::per_packet_io::tun_recv`] as the per-packet `read` / `write` closures.
+//! address-family header; these plug into [`crate::unix::tun_send`] /
+//! [`crate::unix::tun_recv`] as the per-packet `read` / `write` closures.
 
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec, msghdr, recvmsg, sendmsg};

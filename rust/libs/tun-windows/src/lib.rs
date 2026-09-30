@@ -62,7 +62,7 @@ impl Drop for Io {
     }
 }
 
-impl tun::Tun for Io {
+impl tun::ChannelTun for Io {
     fn sender(&self) -> &tun::OutboundTx {
         self.workers.sender()
     }
@@ -467,4 +467,9 @@ mod tests {
         assert!(parse_ring_capacity("65536").is_err()); // Below `wintun::MIN_RING_CAPACITY`.
         assert!(parse_ring_capacity("134217728").is_err()); // Above `wintun::MAX_RING_CAPACITY`.
     }
+}
+
+impl tun::Tun for Io {
+    fn name(&self) -> &str { tun::ChannelTun::name(self) }
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> { Ok(self) }
 }

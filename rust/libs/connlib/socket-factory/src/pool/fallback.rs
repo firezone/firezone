@@ -6,24 +6,27 @@
 use std::{
     io,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
     task::{Context, Poll},
 };
 
 use anyhow::Result;
+#[cfg(target_os = "linux")]
+use std::rc::Rc as Shared;
+#[cfg(not(target_os = "linux"))]
+use std::sync::Arc as Shared;
 
 use crate::DatagramBatch;
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
 pub(crate) struct SocketPool {
-    wildcard: Arc<OwnedSocket>,
+    wildcard: Shared<OwnedSocket>,
 }
 
 impl SocketPool {
     pub(crate) fn new(wildcard: OwnedSocket) -> Self {
         Self {
-            wildcard: Arc::new(wildcard),
+            wildcard: Shared::new(wildcard),
         }
     }
 
@@ -33,7 +36,7 @@ impl SocketPool {
         _dst: SocketAddr,
         _datagrams: usize,
         _recv_buffers: &crate::RecvBuffers,
-    ) -> Arc<OwnedSocket> {
+    ) -> Shared<OwnedSocket> {
         self.wildcard.clone()
     }
 
