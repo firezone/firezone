@@ -1256,7 +1256,7 @@ defmodule PortalWeb.Resources.Components do
                         {device.ipv6}
                       </Core.copy>
                     </div>
-                    <div :if={device.slug}>
+                    <div>
                       <p class="text-subtle font-medium mb-1">Tunnel DNS Name</p>
                       <Core.copy
                         id={"pool-member-#{device.id}-detail-dns-name"}
