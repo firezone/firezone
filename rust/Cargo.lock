@@ -9001,6 +9001,7 @@ dependencies = [
  "libc",
  "packet-coalescer",
  "smallvec",
+ "tokio",
  "tracing",
  "wintun",
 ]

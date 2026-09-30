@@ -1,4 +1,4 @@
-//! A local packet transport whose operations are completed by a host event loop.
+//! Local packet queues shared by the state machine and platform driver.
 
 use super::*;
 use std::{
@@ -17,7 +17,6 @@ pub struct CompletionPort(Rc<RefCell<Queues>>);
 
 pub struct Operation {
     pub id: u64,
-    pub generation: u64,
     pub payload: Payload,
 }
 
@@ -28,7 +27,7 @@ pub enum Payload {
 }
 
 struct Queues {
-    network: VecDeque<ReceivedDatagram>,
+    network: VecDeque<NetworkBatch>,
     tun: VecDeque<PacketBatch>,
     output: VecDeque<Payload>,
     current_tun: PacketBatch,
@@ -85,7 +84,23 @@ impl CompletionPort {
         Poll::Pending
     }
 
+    #[cfg(not(target_vendor = "apple"))]
     pub fn receive_network(&self, generation: u64, batch: ReceivedDatagram) -> Result<()> {
+        self.enqueue_network(generation, NetworkBatch::Datagram(batch))?;
+        Ok(())
+    }
+
+    #[cfg(target_vendor = "apple")]
+    pub(crate) fn receive_network_batch(
+        &self,
+        generation: u64,
+        batch: socket_factory::DatagramBatch,
+    ) -> Result<()> {
+        self.enqueue_network(generation, NetworkBatch::Batch(batch))?;
+        Ok(())
+    }
+
+    fn enqueue_network(&self, generation: u64, batch: NetworkBatch) -> Result<()> {
         let mut queues = self.0.borrow_mut();
         if generation != queues.generation {
             return Ok(());
@@ -128,7 +143,6 @@ impl CompletionPort {
         queues.in_flight.insert(id, generation);
         Poll::Ready(Some(Operation {
             id,
-            generation: queues.generation,
             payload,
         }))
     }
@@ -149,7 +163,6 @@ impl CompletionPort {
         Ok(())
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
     pub(crate) fn report_error(&self, error: anyhow::Error) {
         let mut queues = self.0.borrow_mut();
         queues.errors.push_back(error);
@@ -272,7 +285,8 @@ impl Queues {
     }
 }
 
-/// Owns a datagram's storage, including immutable buffers retained by an FFI host.
+/// Owns a datagram's storage until the state machine consumes its segments.
+#[cfg(not(target_vendor = "apple"))]
 pub struct ReceivedDatagram {
     pub storage: Box<dyn AsRef<[u8]>>,
     pub local: std::net::SocketAddr,
@@ -281,28 +295,46 @@ pub struct ReceivedDatagram {
     pub ecn: ip_packet::Ecn,
 }
 
-pub struct ReceivedNetwork(VecDeque<ReceivedDatagram>);
+enum NetworkBatch {
+    #[cfg(not(target_vendor = "apple"))]
+    Datagram(ReceivedDatagram),
+    #[cfg(target_vendor = "apple")]
+    Batch(socket_factory::DatagramBatch),
+}
+
+pub struct ReceivedNetwork(VecDeque<NetworkBatch>);
 
 impl super::NetworkInput for ReceivedNetwork {
     fn for_each(&mut self, mut callback: impl FnMut(socket_factory::DatagramIn<'_>)) {
         for received in self.0.drain(..) {
-            let bytes = received.storage.as_ref().as_ref();
-            if received.stride == 0 {
-                continue;
-            }
-            for packet in bytes.chunks(received.stride) {
-                callback(socket_factory::DatagramIn {
-                    local: received.local,
-                    from: received.from,
-                    packet,
-                    ecn: received.ecn,
-                });
+            match received {
+                #[cfg(not(target_vendor = "apple"))]
+                NetworkBatch::Datagram(received) => {
+                    let bytes = received.storage.as_ref().as_ref();
+                    if received.stride == 0 {
+                        continue;
+                    }
+                    for packet in bytes.chunks(received.stride) {
+                        callback(socket_factory::DatagramIn {
+                            local: received.local,
+                            from: received.from,
+                            packet,
+                            ecn: received.ecn,
+                        });
+                    }
+                }
+                #[cfg(target_vendor = "apple")]
+                NetworkBatch::Batch(mut batch) => {
+                    for datagram in batch.drain() {
+                        callback(datagram);
+                    }
+                }
             }
         }
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_vendor = "apple")))]
 mod tests {
     use super::*;
     use std::{cell::Cell, net::Ipv4Addr};
@@ -395,7 +427,7 @@ mod tests {
             panic!("Expected rebind");
         };
         assert!(matches!(rebind.payload, Payload::Rebind));
-        assert_eq!(rebind.generation, 1);
+        assert_eq!(port.generation(), 1);
         port.complete(rebind.id, Ok(())).unwrap();
     }
 

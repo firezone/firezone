@@ -140,9 +140,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
       Channel.create()
 
-    let packetIO = NetworkFrameworkIo(flow: packetFlow) { error in
-      commandSender.send(.cancelWithError(SendableError(error.localizedDescription)))
-    }
     let adapter = Adapter(
       apiURL: apiURL,
       token: token,
@@ -150,8 +147,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled,
       identityReference: identityReference,
-      providerCommandSender: commandSender,
-      packetIO: packetIO
+      providerCommandSender: commandSender
     )
 
     // Store adapter reference so it's accessible to wake() and stopTunnel()

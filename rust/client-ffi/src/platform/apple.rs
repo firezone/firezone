@@ -1,8 +1,8 @@
 use std::time::Duration;
 use telemetry::Dsn;
 
-mod completion;
 mod make_writer;
+mod tun;
 
 // mark:next-apple-version
 pub const RELEASE: &str = "connlib-apple@1.5.22";
@@ -24,5 +24,5 @@ pub const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 
 pub const DSN: Dsn = telemetry::APPLE_DSN;
 
-pub(crate) use completion::{CompletionSession, PacketDriver};
 pub(crate) use make_writer::MakeWriter;
+pub(crate) use tun::{Tun, search_fd};

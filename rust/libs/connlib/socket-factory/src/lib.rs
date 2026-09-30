@@ -456,10 +456,9 @@ impl PerfUdpSocket {
                 .map(|b| b.as_slice())
                 .zip(batch.metas.iter_mut())
                 .take(len),
-        ) {
-            if let Err(e) = self.state.set_gro(UdpSockRef::from(&self.socket), false) {
-                tracing::warn!("Failed to disable URO: {e}");
-            }
+        ) && let Err(e) = self.state.set_gro(UdpSockRef::from(&self.socket), false)
+        {
+            tracing::warn!("Failed to disable URO: {e}");
         }
 
         let batch = DatagramBatch::new(batch.buffers, batch.metas, self.port, len);

@@ -49,22 +49,13 @@ pub struct Session {
 
 /// The events emitted by a [`Session`], which ends once the [`Session`] has been dropped.
 #[derive(uniffi::Object)]
-pub struct EventStream(Mutex<Events>);
-
-enum Events {
-    #[cfg(not(target_vendor = "apple"))]
-    Native(client_shared::EventStream),
-    #[cfg(target_vendor = "apple")]
-    Driven(tokio::sync::mpsc::UnboundedReceiver<client_shared::Event>),
-}
+pub struct EventStream(Mutex<client_shared::EventStream>);
 
 /// A new [`Session`] together with its [`EventStream`], which is handed out only once.
 #[derive(uniffi::Record)]
 pub struct Connection {
     pub session: Arc<Session>,
     pub events: Arc<EventStream>,
-    #[cfg(target_vendor = "apple")]
-    pub packet_driver: platform::PacketDriver,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -335,6 +326,10 @@ pub fn connect_apple(
     let tcp_socket_factory = Arc::new(socket_factory::tcp);
     let udp_socket_factory = Arc::new(socket_factory::udp);
 
+    let tun_fd = find_tun_fd()?;
+    // SAFETY: The NetworkExtension owns the descriptor throughout connect_apple.
+    let tun = unsafe { platform::Tun::from_fd(tun_fd).context("Failed to create new Tun")? };
+
     let connection = connect(
         api_url,
         token,
@@ -346,6 +341,8 @@ pub fn connect_apple(
         tcp_socket_factory,
         udp_socket_factory,
     )?;
+
+    connection.session.inner.set_tun(Box::new(tun));
 
     Ok(connection)
 }
@@ -377,6 +374,41 @@ pub fn connect_dummy(
         tcp_socket_factory,
         udp_socket_factory,
     )
+}
+
+/// Find the TUN device with retry logic.
+///
+/// Retries a few times with a small delay, as the NetworkExtension
+/// might still be setting up the TUN interface.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn find_tun_fd() -> Result<RawFd, ConnlibError> {
+    const MAX_TUN_SETUP_ATTEMPTS: u32 = 5;
+    const TUN_SETUP_RETRY_DELAY_MS: u64 = 100;
+
+    let mut last_error = None;
+    for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
+        tracing::debug!(attempt, "Attempting to find TUN device");
+        match platform::search_fd() {
+            Ok(fd) => {
+                tracing::debug!("Successfully found TUN device");
+                return Ok(fd);
+            }
+            Err(e) => {
+                tracing::debug!(attempt, error = %e, "Failed to find TUN device");
+                last_error = Some(e);
+                if attempt < MAX_TUN_SETUP_ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_millis(TUN_SETUP_RETRY_DELAY_MS));
+                }
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Failed to find TUN device after {} attempts: {}",
+        MAX_TUN_SETUP_ATTEMPTS,
+        last_error.map_or_else(|| "unknown error".to_string(), |e| e.to_string())
+    )
+    .into())
 }
 
 #[uniffi::export]
@@ -435,12 +467,7 @@ impl Session {
 impl EventStream {
     /// Returns the next event, or `None` once the [`Session`] has shut down.
     pub async fn next(&self) -> Option<Event> {
-        let event = match &mut *self.0.lock().await {
-            #[cfg(not(target_vendor = "apple"))]
-            Events::Native(events) => events.next().await?,
-            #[cfg(target_vendor = "apple")]
-            Events::Driven(events) => events.recv().await?,
-        };
+        let event = self.0.lock().await.next().await?;
         Some(event.into())
     }
 }
@@ -574,14 +601,8 @@ fn connect(
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
-    #[cfg(target_vendor = "apple")]
-    let mut builder = tokio::runtime::Builder::new_current_thread();
-    #[cfg(not(target_vendor = "apple"))]
-    let mut builder = {
-        let mut builder = tokio::runtime::Builder::new_multi_thread();
-        builder.worker_threads(1);
-        builder
-    };
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.worker_threads(1);
     let runtime = builder
         .thread_name("connlib")
         .enable_all()
@@ -646,7 +667,6 @@ fn connect(
         uploader
     });
 
-    #[cfg(not(target_vendor = "apple"))]
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
@@ -658,36 +678,17 @@ fn connect(
         runtime.handle().clone(),
     );
 
-    #[cfg(target_vendor = "apple")]
-    let (session, events, port) = client_shared::completion::connect(
-        tcp_socket_factory,
-        udp_socket_factory,
-        portal,
-        is_internet_resource_active,
-        Vec::default(),
-        flow_logs_dir,
-        false,
-    );
     drop(_guard);
-    #[cfg(target_vendor = "apple")]
-    let (packet_driver, events, runtime) = {
-        let (driver, events) = platform::CompletionSession::create_driver(runtime, events, port);
-        (driver, Events::Driven(events), None)
-    };
-    #[cfg(not(target_vendor = "apple"))]
-    let (events, runtime) = (Events::Native(events), Some(runtime));
 
     analytics::new_session(device_id, api_url);
 
     Ok(Connection {
         session: Arc::new(Session {
             inner: session,
-            runtime,
+            runtime: Some(runtime),
             uploader,
         }),
         events: Arc::new(EventStream(Mutex::new(events))),
-        #[cfg(target_vendor = "apple")]
-        packet_driver,
     })
 }
 

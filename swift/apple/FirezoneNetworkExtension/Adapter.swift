@@ -118,7 +118,6 @@ actor Adapter {
 
   /// Command sender for communicating with PacketTunnelProvider.
   private let providerCommandSender: Sender<ProviderCommand>
-  private let packetIO: NetworkFrameworkIo
 
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
@@ -205,8 +204,7 @@ actor Adapter {
     logFilter: String,
     internetResourceEnabled: Bool,
     identityReference: Data?,
-    providerCommandSender: Sender<ProviderCommand>,
-    packetIO: NetworkFrameworkIo
+    providerCommandSender: Sender<ProviderCommand>
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -215,7 +213,6 @@ actor Adapter {
     self.internetResourceEnabled = internetResourceEnabled
     self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
-    self.packetIO = packetIO
     self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
@@ -276,7 +273,6 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
-      try await packetIO.start(driver: connection.packetDriver)
       events = connection.events
       handoff = SessionHandoff(connection.session)
     } catch {
@@ -378,7 +374,6 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
-    await packetIO.stop()
 
     // Closing the command channel drops the session, so only do it once connlib has shut down.
     commandSender = nil

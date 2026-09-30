@@ -1,10 +1,17 @@
-//! Owned Compio operations on the same thread as the client state machine.
+//! Platform I/O on the same thread as the client state machine.
 
+#[cfg(not(target_vendor = "apple"))]
 mod ancillary;
 #[cfg(any(target_os = "android", all(test, target_os = "linux")))]
 mod android_tun;
+#[cfg(not(target_vendor = "apple"))]
 mod buffer;
 mod local_queue;
+#[cfg(not(target_vendor = "apple"))]
+mod udp;
+#[cfg(target_vendor = "apple")]
+#[path = "native/apple_udp.rs"]
+mod udp;
 #[cfg(target_os = "android")]
 use android_tun::AndroidTun;
 #[cfg(windows)]
@@ -18,30 +25,25 @@ pub use linux_tun::OffloadedTun;
 
 use super::{
     PacketIo,
-    completion::{
-        CompletionIo, CompletionPort, Operation, Payload, ReceivedDatagram, ReceivedNetwork,
-    },
+    completion::{CompletionIo, CompletionPort, Operation, Payload, ReceivedNetwork},
 };
-use anyhow::{Context as _, Result};
-use buffer::UdpBuffer;
-use bufferpool::BufferPool;
-use compio::{
-    BufResult,
-    buf::{IntoInner, IoBuf},
-    compat::{RuntimeCompat, TokioAdapter},
-    net::UdpSocket,
-};
+#[cfg(not(target_vendor = "apple"))]
+use anyhow::Context as _;
+use anyhow::Result;
+#[cfg(not(target_vendor = "apple"))]
+use compio::compat::{RuntimeCompat, TokioAdapter};
 use futures::{FutureExt as _, future::LocalBoxFuture};
 use local_queue::LocalQueue;
 use socket_factory::DatagramOut;
-use socket_factory::{SocketFactory, SourceIpResolver};
-use std::{cell::Cell, future::Future, net::SocketAddr, rc::Rc};
+use socket_factory::SocketFactory;
 use std::{
     cell::RefCell,
     sync::Arc,
     task::{Context, Poll, Waker},
 };
+use std::{future::Future, rc::Rc};
 use tun::PacketBatch;
+use udp::UdpSocket;
 
 /// Owns packet state, device buffers, and completion operations on one thread.
 pub struct Native {
@@ -176,6 +178,8 @@ impl PacketDevice for DeviceSlot {
     async fn read(&self) -> Result<PacketBatch> {
         let device = self.get().await;
         let batch = match &device.device {
+            #[cfg(target_vendor = "apple")]
+            Device::Apple(tun) => tun.read().await?,
             #[cfg(target_os = "android")]
             Device::Android(tun) => tun.read().await?,
             #[cfg(target_os = "linux")]
@@ -193,6 +197,8 @@ impl PacketDevice for DeviceSlot {
     async fn write(&self, batch: PacketBatch) -> Result<()> {
         let device = self.get().await;
         match &device.device {
+            #[cfg(target_vendor = "apple")]
+            Device::Apple(tun) => tun.write(batch).await?,
             #[cfg(target_os = "android")]
             Device::Android(tun) => tun.write(batch).await?,
             #[cfg(target_os = "linux")]
@@ -208,6 +214,8 @@ struct InstalledDevice {
     inspectors: Vec<fn(&ip_packet::IpPacket)>,
 }
 enum Device {
+    #[cfg(target_vendor = "apple")]
+    Apple(tun::apple::Tun),
     #[cfg(target_os = "android")]
     Android(AndroidTun),
     #[cfg(target_os = "linux")]
@@ -227,6 +235,8 @@ impl InstalledDevice {
             io = *inner;
         }
         let device = match io {
+            #[cfg(target_vendor = "apple")]
+            tun::TunIo::Apple(fd) => Device::Apple(tun::apple::Tun::from_fd(fd)?),
             #[cfg(target_os = "android")]
             tun::TunIo::Android(fd) => Device::Android(AndroidTun::from_fd(fd)?),
             #[cfg(target_os = "linux")]
@@ -258,19 +268,21 @@ pub fn run<F: Future>(future: F, core: Option<usize>) -> Result<F::Output> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let result = runtime.block_on(async {
-        let completion = compio::runtime::Runtime::new()?;
-        let completion = RuntimeCompat::<TokioAdapter>::new(completion)?;
-        // Arm the driver's wake notification before Tokio can wake the externally polled future.
-        completion.poll_with(Some(std::time::Duration::ZERO));
-        anyhow::Ok(completion.execute(future).await)
-    })?;
-    Ok(result)
-}
-
-struct BoundSocket {
-    socket: std::net::UdpSocket,
-    resolve: Option<SourceIpResolver>,
+    #[cfg(target_vendor = "apple")]
+    {
+        Ok(runtime.block_on(future))
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        let result = runtime.block_on(async {
+            let completion = compio::runtime::Runtime::new()?;
+            let completion = RuntimeCompat::<TokioAdapter>::new(completion)?;
+            // Arm the driver's wake notification before Tokio can wake the externally polled future.
+            completion.poll_with(Some(std::time::Duration::ZERO));
+            anyhow::Ok(completion.execute(future).await)
+        })?;
+        Ok(result)
+    }
 }
 
 async fn drive_with_factory<D: PacketDevice>(
@@ -279,10 +291,7 @@ async fn drive_with_factory<D: PacketDevice>(
     factory: Rc<RefCell<Arc<dyn SocketFactory<socket_factory::UdpSocket>>>>,
 ) -> Result<()> {
     loop {
-        let bind = |address| -> Result<BoundSocket> {
-            let (socket, resolve) = factory.borrow().bind(address)?.into_completion()?;
-            Ok(BoundSocket { socket, resolve })
-        };
+        let bind = |address| UdpSocket::bind(&factory.borrow(), address).map(Rc::new);
         let v4 = bind("0.0.0.0:52625".parse()?)
             .map_err(|error| port.report_error(error))
             .ok();
@@ -298,43 +307,33 @@ async fn drive_with_factory<D: PacketDevice>(
 async fn drive_generation<D: PacketDevice>(
     port: &CompletionPort,
     device: &D,
-    mut v4: Option<BoundSocket>,
-    mut v6: Option<BoundSocket>,
+    v4: Option<Rc<UdpSocket>>,
+    v6: Option<Rc<UdpSocket>>,
 ) -> Result<bool> {
-    let resolve_v4 = v4.as_mut().and_then(|socket| socket.resolve.take());
-    let resolve_v6 = v6.as_mut().and_then(|socket| socket.resolve.take());
-    let v4 = v4
-        .map(|socket| UdpSocket::from_std(socket.socket))
-        .transpose()?
-        .map(Rc::new);
-    let v6 = v6
-        .map(|socket| UdpSocket::from_std(socket.socket))
-        .transpose()?
-        .map(Rc::new);
     let send_v4 = LocalQueue::new();
     let send_v6 = LocalQueue::new();
     let send_tun = LocalQueue::new();
     let receive_v4 = async {
         match &v4 {
-            Some(socket) => receive_network(port, socket).await,
+            Some(socket) => socket.receive(port).await,
             None => std::future::pending().await,
         }
     };
     let write_v4 = async {
         match &v4 {
-            Some(socket) => send_network(port, socket, &send_v4, resolve_v4.as_ref()).await,
+            Some(socket) => socket.send(port, &send_v4).await,
             None => std::future::pending().await,
         }
     };
     let receive_v6 = async {
         match &v6 {
-            Some(socket) => receive_network(port, socket).await,
+            Some(socket) => socket.receive(port).await,
             None => std::future::pending().await,
         }
     };
     let write_v6 = async {
         match &v6 {
-            Some(socket) => send_network(port, socket, &send_v6, resolve_v6.as_ref()).await,
+            Some(socket) => socket.send(port, &send_v6).await,
             None => std::future::pending().await,
         }
     };
@@ -413,7 +412,7 @@ async fn drive_generation<D: PacketDevice>(
 
 /// Configures metadata reception and segmentation before transferring the socket to Compio.
 #[cfg(all(test, target_os = "linux"))]
-fn bind_udp(address: SocketAddr) -> Result<std::net::UdpSocket> {
+fn bind_udp(address: std::net::SocketAddr) -> Result<std::net::UdpSocket> {
     let domain = if address.is_ipv4() {
         socket2::Domain::IPV4
     } else {
@@ -430,41 +429,6 @@ fn bind_udp(address: SocketAddr) -> Result<std::net::UdpSocket> {
     Ok(socket)
 }
 
-async fn receive_network(port: &CompletionPort, socket: &UdpSocket) -> Result<()> {
-    let pool = BufferPool::<Vec<u8>>::new(ip_packet::MAX_FZ_PAYLOAD * 64, "completion-udp-receive");
-    let local_port = socket.local_addr()?.port();
-    let generation = port.generation();
-    loop {
-        std::future::poll_fn(|cx| port.poll_receive_ready(cx, true)).await;
-        let mut inner = pool.pull();
-        inner.resize(ip_packet::MAX_FZ_PAYLOAD * 64, 0);
-        let BufResult(result, (buffer, control)) = socket
-            .recv_msg(UdpBuffer { inner, len: 0 }, ancillary::Control::new())
-            .await;
-        let (len, _, from, flags) = result?;
-        if len == 0
-            || flags.intersects(
-                compio::io::ancillary::ReturnFlags::TRUNC
-                    | compio::io::ancillary::ReturnFlags::CTRUNC,
-            )
-        {
-            continue;
-        }
-        let (local, stride, ecn) = ancillary::decode(control.as_init(), local_port, len)?;
-        port.receive_network(
-            generation,
-            ReceivedDatagram {
-                storage: Box::new(buffer),
-                local,
-                from,
-                stride,
-                ecn,
-            },
-        )?;
-        tokio::task::yield_now().await;
-    }
-}
-
 async fn receive_tun<D: PacketDevice>(port: &CompletionPort, device: &D) -> Result<()> {
     let generation = port.generation();
     loop {
@@ -472,80 +436,6 @@ async fn receive_tun<D: PacketDevice>(port: &CompletionPort, device: &D) -> Resu
         port.receive_tun(generation, device.read().await?)?;
         tokio::task::yield_now().await;
     }
-}
-
-async fn send_network(
-    _port: &CompletionPort,
-    socket: &UdpSocket,
-    queue: &LocalQueue<TrackedOperation>,
-    resolve: Option<&SourceIpResolver>,
-) -> Result<()> {
-    let gso = Cell::new(true);
-    loop {
-        let TrackedOperation { operation, guard } = queue.pop().await;
-        let Payload::Network(mut datagram) = operation.payload else {
-            unreachable!()
-        };
-        if datagram.src.is_none()
-            && let Some(resolve) = resolve
-        {
-            match resolve(datagram.dst.ip()) {
-                Ok(ip) => datagram.src = Some(SocketAddr::new(ip, socket.local_addr()?.port())),
-                Err(error) => {
-                    guard.complete(Err(error.into()))?;
-                    continue;
-                }
-            }
-        }
-        let result = send_datagram(socket, datagram, &gso).await;
-        guard.complete(result)?;
-    }
-}
-
-async fn send_datagram(socket: &UdpSocket, datagram: DatagramOut, gso: &Cell<bool>) -> Result<()> {
-    let DatagramOut {
-        src,
-        dst,
-        packet,
-        segment_size,
-        ecn,
-    } = datagram;
-    if let Some(src) = src {
-        anyhow::ensure!(
-            src.port() == socket.local_addr()?.port(),
-            "Requested UDP source port is not bound"
-        );
-    }
-    let len = packet.len();
-    let buffer = UdpBuffer { inner: packet, len };
-    let buffer = if gso.get() && len > segment_size {
-        let control = ancillary::encode(src, dst, ecn, Some(segment_size))?;
-        let BufResult(result, (buffer, _)) = socket.send_msg(buffer, control, dst).await;
-        match result {
-            Ok(sent) => {
-                anyhow::ensure!(sent == len, "Short UDP GSO send");
-                return Ok(());
-            }
-            Err(error) if offload_unsupported(&error) => {
-                gso.set(false);
-                buffer
-            }
-            Err(error) => return Err(error.into()),
-        }
-    } else {
-        buffer
-    };
-    let mut buffer = buffer;
-    for offset in (0..len).step_by(segment_size) {
-        let end = (offset + segment_size).min(len);
-        let control = ancillary::encode(src, dst, ecn, None)?;
-        let BufResult(result, (slice, _)) = socket
-            .send_msg(buffer.slice(offset..end), control, dst)
-            .await;
-        buffer = slice.into_inner();
-        anyhow::ensure!(result? == end - offset, "Short UDP send");
-    }
-    Ok(())
 }
 
 async fn write_tun<D: PacketDevice>(
@@ -560,16 +450,6 @@ async fn write_tun<D: PacketDevice>(
         };
         guard.complete(device.write(batch).await)?;
     }
-}
-
-#[cfg(unix)]
-fn offload_unsupported(error: &std::io::Error) -> bool {
-    [libc::EINVAL, libc::EIO, libc::ENOPROTOOPT].contains(&error.raw_os_error().unwrap_or_default())
-}
-#[cfg(windows)]
-fn offload_unsupported(error: &std::io::Error) -> bool {
-    use windows_sys::Win32::Networking::WinSock::{WSAEINVAL, WSAENOPROTOOPT, WSAEOPNOTSUPP};
-    [WSAEINVAL, WSAENOPROTOOPT, WSAEOPNOTSUPP].contains(&error.raw_os_error().unwrap_or_default())
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -597,6 +477,11 @@ fn pin_thread(core: usize) -> Result<()> {
         return Err(std::io::Error::last_os_error()).context("Failed to pin completion thread");
     }
     Ok(())
+}
+
+#[cfg(target_vendor = "apple")]
+fn pin_thread(_core: usize) -> Result<()> {
+    anyhow::bail!("Pinning to a CPU core is unsupported on Apple platforms")
 }
 
 struct TrackedOperation {
@@ -629,7 +514,14 @@ impl Drop for CompletionGuard {
 mod tests {
     use super::*;
     #[cfg(target_os = "linux")]
-    use ip_packet::Ecn;
+    use {
+        buffer::UdpBuffer,
+        bufferpool::BufferPool,
+        compio::{BufResult, buf::IoBuf, net::UdpSocket},
+        ip_packet::Ecn,
+        std::{cell::Cell, net::SocketAddr},
+        udp::send_datagram,
+    };
 
     #[test]
     fn completion_runtime_keeps_servicing_tokio_channels() {

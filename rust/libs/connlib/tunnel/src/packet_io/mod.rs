@@ -9,26 +9,12 @@ use std::{
 };
 use tun::{PacketBatch, Tun};
 
-pub mod completion;
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
+pub(crate) mod completion;
 pub mod native;
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
 pub type PlatformIo = native::Native;
-#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "android")))]
-pub type PlatformIo = completion::CompletionIo;
 
 pub fn platform(factory: Arc<dyn SocketFactory<UdpSocket>>) -> PlatformIo {
-    #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
-    {
-        native::Native::new(factory)
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "android")))]
-    {
-        let _ = factory;
-        let (packets, port) = completion::CompletionIo::new();
-        port.close();
-        packets
-    }
+    native::Native::new(factory)
 }
 
 #[derive(Debug, thiserror::Error)]

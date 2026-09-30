@@ -4,6 +4,9 @@ use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::IpPacket;
 use std::sync::LazyLock;
 
+#[cfg(target_vendor = "apple")]
+pub mod apple;
+
 #[cfg(target_family = "unix")]
 pub mod ioctl;
 #[cfg(target_os = "linux")]
@@ -11,7 +14,7 @@ pub mod linux;
 
 /// How many packets a single TUN batch may at most hold.
 ///
-/// Apple batches bound the buffers retained from `NEPacketTunnelFlow`. Linux
+/// Apple batches amortize utun syscalls. Linux
 /// batches feed TUN and UDP segmentation offloads without crossing packet channels.
 pub const MAX_BATCH_SIZE: usize = cfg_select! {
     target_os = "ios" => { 32 }
@@ -85,6 +88,8 @@ pub trait Tun: Send + Sync + 'static {
 
 /// Owns the platform device and the state needed for its lifetime.
 pub enum TunIo {
+    #[cfg(target_vendor = "apple")]
+    Apple(std::os::fd::OwnedFd),
     #[cfg(target_os = "android")]
     Android(std::os::fd::OwnedFd),
     #[cfg(target_os = "linux")]

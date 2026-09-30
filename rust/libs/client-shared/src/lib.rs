@@ -10,7 +10,6 @@ pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceList};
 use eventloop::Command;
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
 use eventloop::Eventloop;
 use futures::future::{Fuse, FusedFuture as _};
 use futures::{FutureExt, StreamExt};
@@ -30,7 +29,6 @@ use tun::Tun;
 
 use crate::eventloop::UserNotification;
 
-pub mod completion;
 mod eventloop;
 pub mod portal;
 
@@ -92,61 +90,28 @@ impl Session {
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
-        let spawn = EventStream::new_native;
-        #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "android")))]
-        let spawn = EventStream::new;
-        let event_stream = spawn(
+        let event_stream = EventStream::new_native(
             move |resource_list_sender,
                   tun_config_sender,
                   connected_as_sender,
                   user_notification_sender| {
-                #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
-                {
-                    let packets = tunnel::packet_io::platform(udp_socket_factory.clone());
-                    Eventloop::with_packets(
-                        tcp_socket_factory,
-                        udp_socket_factory,
-                        is_internet_resource_active,
-                        dns_servers,
-                        flow_logs_dir,
-                        local_flow_logs,
-                        portal,
-                        cmd_rx,
-                        resource_list_sender,
-                        tun_config_sender,
-                        connected_as_sender,
-                        user_notification_sender,
-                        packets,
-                    )
-                    .run()
-                }
-                #[cfg(not(any(
-                    target_os = "linux",
-                    target_os = "windows",
-                    target_os = "android"
-                )))]
-                {
-                    drop((
-                        tcp_socket_factory,
-                        udp_socket_factory,
-                        portal,
-                        is_internet_resource_active,
-                        dns_servers,
-                        flow_logs_dir,
-                        local_flow_logs,
-                        cmd_rx,
-                        resource_list_sender,
-                        tun_config_sender,
-                        connected_as_sender,
-                        user_notification_sender,
-                    ));
-                    async {
-                        Err(DisconnectError::from(anyhow::anyhow!(
-                            "This platform requires a host-driven packet transport"
-                        )))
-                    }
-                }
+                let packets = tunnel::packet_io::platform(udp_socket_factory.clone());
+                Eventloop::with_packets(
+                    tcp_socket_factory,
+                    udp_socket_factory,
+                    is_internet_resource_active,
+                    dns_servers,
+                    flow_logs_dir,
+                    local_flow_logs,
+                    portal,
+                    cmd_rx,
+                    resource_list_sender,
+                    tun_config_sender,
+                    connected_as_sender,
+                    user_notification_sender,
+                    packets,
+                )
+                .run()
             },
             handle,
         );
@@ -275,10 +240,7 @@ impl Drop for Session {
     }
 }
 
-#[cfg(any(
-    test,
-    not(any(target_os = "linux", target_os = "windows", target_os = "android"))
-))]
+#[cfg(test)]
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
@@ -318,7 +280,6 @@ impl EventStream {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
 impl EventStream {
     fn new_native<E>(
         make_event_loop: impl FnOnce(
@@ -354,53 +315,6 @@ impl EventStream {
             )
             .map_err(DisconnectError::from)?
         });
-        Self {
-            eventloop: eventloop.fuse(),
-            resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
-            tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
-            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
-            user_notification_receiver,
-            seen_notifications: Default::default(),
-        }
-    }
-}
-
-impl
-    EventStream<
-        futures::future::LocalBoxFuture<
-            'static,
-            Result<Result<(), DisconnectError>, tokio::task::JoinError>,
-        >,
-    >
-{
-    pub(crate) fn new_driven<E>(
-        make_event_loop: impl FnOnce(
-            watch::Sender<ResourceList>,
-            watch::Sender<Option<TunConfig>>,
-            watch::Sender<Option<ConnectedAs>>,
-            mpsc::Sender<UserNotification>,
-        ) -> E,
-    ) -> Self
-    where
-        E: Future<Output = Result<(), DisconnectError>> + 'static,
-    {
-        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) =
-            watch::channel(ResourceList::default());
-        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
-        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
-
-        let event_loop = make_event_loop(
-            resource_list_sender,
-            tun_config_sender,
-            connected_as_sender,
-            user_notification_sender,
-        );
-
-        let eventloop = event_loop
-            .map(Ok::<_, tokio::task::JoinError>)
-            .boxed_local();
-
         Self {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),

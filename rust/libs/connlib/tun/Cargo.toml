@@ -21,6 +21,9 @@ packet-coalescer = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 wintun = "0.5.1"
 
+[target.'cfg(target_vendor = "apple")'.dependencies]
+tokio = { workspace = true, features = ["net", "rt", "time"] }
+
 [dev-dependencies]
 ingot = { workspace = true }
 
