@@ -300,6 +300,17 @@ config :portal, Portal.Google.AuthProvider,
     plug: {Req.Test, PortalWeb.OIDC}
   ]
 
+config :portal, Portal.GitHub.AuthProvider,
+  client_id: "test_github_client_id",
+  client_secret: "test_github_client_secret",
+  authorize_endpoint: "https://github.test/login/oauth/authorize",
+  token_endpoint: "https://github.test/login/oauth/access_token",
+  api_endpoint: "https://api.github.test",
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.GitHub}
+  ]
+
 config :portal, Portal.Google.SyncAuthorization,
   client_id: "test_google_sync_authz_client_id",
   client_secret: "test_google_sync_authz_client_secret",

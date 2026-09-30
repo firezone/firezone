@@ -29,6 +29,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "external_identities" => Portal.ExternalIdentity,
     "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
+    "github_auth_providers" => Portal.GitHub.AuthProvider,
     "google_directories" => Portal.Google.Directory,
     "groups" => Portal.Group,
     "memberships" => Portal.Membership,

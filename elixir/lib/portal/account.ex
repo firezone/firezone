@@ -68,6 +68,7 @@ defmodule Portal.Account do
 
     has_many :google_directories, Portal.Google.Directory
     has_many :google_auth_providers, Portal.Google.AuthProvider
+    has_many :github_auth_providers, Portal.GitHub.AuthProvider
     has_many :okta_directories, Portal.Okta.Directory
     has_many :okta_auth_providers, Portal.Okta.AuthProvider
     has_many :entra_directories, Portal.Entra.Directory

@@ -81,6 +81,7 @@ defmodule PortalWeb.Router do
       live "/sign_up", SignUp, :choose
       live "/sign_up/email", SignUp, :fill_form
       live "/sign_up/google", SignUp, :google
+      live "/sign_up/github", SignUp, :github
       live "/verify_sign_up", SignUp, :verify
       live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
