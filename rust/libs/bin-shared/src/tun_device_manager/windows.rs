@@ -215,6 +215,7 @@ impl Tun {
             TUNNEL_NAME,
             &adapter,
             telemetry::feature_flags::wintun_tcp_coalescing,
+            &tokio::runtime::Handle::current(),
         )?;
 
         Ok(Self {

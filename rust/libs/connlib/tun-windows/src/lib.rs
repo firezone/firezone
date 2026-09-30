@@ -21,6 +21,7 @@ impl Io {
         name: impl Into<String>,
         adapter: &Arc<wintun::Adapter>,
         should_coalesce_tcp: fn() -> bool,
+        runtime: &tokio::runtime::Handle,
     ) -> Result<Self> {
         let capacity = ring_capacity_override()
             .inspect_err(|e| {
@@ -40,7 +41,7 @@ impl Io {
         let recv_session = Arc::downgrade(&session);
 
         let workers = tun::Workers::spawn(
-            &tokio::runtime::Handle::current(),
+            runtime,
             move |outbound_rx| {
                 send_worker(outbound_rx, send_session, should_coalesce_tcp);
 

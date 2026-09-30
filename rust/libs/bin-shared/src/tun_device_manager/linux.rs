@@ -808,7 +808,11 @@ pub struct Tun {
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
-        let io = tun_linux::Io::new(TunDeviceManager::IFACE_NAME, open_tun()?)?;
+        let io = tun_linux::Io::new(
+            TunDeviceManager::IFACE_NAME,
+            open_tun()?,
+            &tokio::runtime::Handle::current(),
+        )?;
 
         Ok(Self { io })
     }

@@ -47,10 +47,11 @@ impl Io {
     pub fn new(
         name: impl Into<String>,
         fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
+        runtime: &tokio::runtime::Handle,
     ) -> Result<Self> {
         let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
-            &tokio::runtime::Handle::current(),
+            runtime,
             move |outbound_rx| tun_send(send_fd, outbound_rx),
             move |inbound_tx| tun_recv(fd, inbound_tx),
         )?;
