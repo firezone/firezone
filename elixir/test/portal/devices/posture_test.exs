@@ -106,6 +106,61 @@ defmodule Portal.Devices.PostureTest do
       assert row.sophos_id == enabled.sophos_id
     end
 
+    test "matches only the most recently seen record of a serial for every provider", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      old = DateTime.add(now, -30, :day)
+
+      intune = intune_posture_provider_fixture(account: account)
+      intune_device_fixture(provider: intune, serial_number: "SER-1", last_sync_at: old)
+      intune_current = intune_device_fixture(provider: intune, serial_number: "SER-1", last_sync_at: now)
+
+      iru = iru_posture_provider_fixture(account: account)
+      iru_device_fixture(provider: iru, serial_number: "SER-1", last_check_in_at: old)
+      iru_current = iru_device_fixture(provider: iru, serial_number: "SER-1", last_check_in_at: now)
+
+      santa = santa_posture_provider_fixture(account: account)
+      santa_device_fixture(provider: santa, serial_number: "SER-1", last_sync_at: old)
+      santa_current = santa_device_fixture(provider: santa, serial_number: "SER-1", last_sync_at: now)
+
+      sentinelone = sentinelone_posture_provider_fixture(account: account)
+      sentinelone_device_fixture(provider: sentinelone, serial_number: "SER-1") |> touch(last_active_at: old)
+      sentinelone_current = sentinelone_device_fixture(provider: sentinelone, serial_number: "SER-1") |> touch(last_active_at: now)
+
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert client |> Posture.match() |> Enum.map(&Ecto.primary_key(elem(&1, 1))) |> Enum.sort() ==
+               Enum.sort(Enum.map([intune_current, iru_current, santa_current, sentinelone_current], &Ecto.primary_key/1))
+    end
+
+    test "keeps the record whose device id the certificate attested over a newer one with its serial", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      provider = intune_posture_provider_fixture(account: account)
+      attested = intune_device_fixture(provider: provider, intune_id: "mdm-1", serial_number: "SER-1", last_sync_at: DateTime.add(now, -1, :day))
+      intune_device_fixture(provider: provider, serial_number: "SER-1", last_sync_at: now)
+
+      client = client_fixture(account: account, actor: actor, last_attested_mdm_device_id: "mdm-1", last_attested_device_serial: "SER-1")
+
+      assert [{:intune, row, :mdm_device_id, nil}] = Posture.match(client)
+      assert row.intune_id == attested.intune_id
+    end
+
+    test "reaches the Defender machine Defender did not merge away, then the most recently seen", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account), serial_number: "SER-1", entra_device_id: "entra-1")
+      defender = defender_posture_provider_fixture(account: account)
+
+      defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: now)
+      |> touch(merged_into_machine_id: "survivor")
+
+      survivor = defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: DateTime.add(now, -2, :day))
+      defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: DateTime.add(now, -9, :day))
+
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert %{defender: [row]} = Posture.rows_by_type(client)
+      assert row.defender_id == survivor.defender_id
+    end
+
     test "matches Iru on its device id", %{account: account, actor: actor} do
       iru_device_fixture(provider: iru_posture_provider_fixture(account: account), iru_id: "iru-1")
       client = client_fixture(account: account, actor: actor, last_attested_mdm_device_id: "iru-1")
@@ -187,6 +242,8 @@ defmodule Portal.Devices.PostureTest do
       assert is_list(Posture.rung_fields(type, :attested_serial))
     end
   end
+
+  defp touch(row, changes), do: row |> Ecto.Changeset.change(changes) |> Repo.update!()
 end
 
 defmodule Portal.Devices.PostureKeysTest do

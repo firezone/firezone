@@ -85,7 +85,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             Device posture
           </h4>
           <Core.new_badge data-postures-new-badge />
-          <span class="text-[10px] text-muted">
+          <span class="text-[10px] text-subtle">
             (optional)
           </span>
         </div>
