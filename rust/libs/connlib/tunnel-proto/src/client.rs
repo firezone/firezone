@@ -54,7 +54,7 @@ use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use secrecy::ExposeSecret as _;
-use snownet::{NoTurnServers, Node, RelaySocket};
+use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -1041,7 +1041,7 @@ impl ClientState {
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> anyhow::Result<Result<(), NoTurnServers>> {
+    ) -> Result<()> {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -1056,10 +1056,10 @@ impl ClientState {
         if pending_authorizations.is_empty() {
             tracing::debug!("No pending authorization");
 
-            return Ok(Ok(()));
+            return Ok(());
         }
 
-        match self.node.upsert_connection(
+        self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
@@ -1070,10 +1070,7 @@ impl ClientState {
             snownet::IceConfig::client_idle(),
             use_iceless,
             now,
-        ) {
-            Ok(()) => {}
-            Err(e) => return Ok(Err(e)),
-        };
+        )?;
         self.outbound_authorizations
             .authorize_gateway(rid, gid, flow_logs_ingest_token);
         self.gateways_by_site
@@ -1145,7 +1142,7 @@ impl ClientState {
             );
         }
 
-        Ok(Ok(()))
+        Ok(())
     }
 
     pub fn handle_client_device_access_authorized(
@@ -1163,7 +1160,7 @@ impl ClientState {
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> Result<(), NoTurnServers> {
+    ) -> Result<()> {
         tracing::debug!(%cid, "New device access authorized");
 
         let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {

@@ -12,6 +12,7 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
+use anyhow::ErrorExt as _;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
@@ -981,8 +982,14 @@ impl TunnelTest {
             });
 
             if let Some((client_id, event)) = client_event {
-                if let Err(e) = self.on_client_event(client_id, event, ref_state, portal) {
-                    tracing::debug!("Failed to handle ClientEvent: {e}");
+                match self.on_client_event(client_id, event, ref_state, portal) {
+                    Ok(()) => {}
+                    Err(e) if e.any_is::<NoTurnServers>() => {
+                        tracing::debug!("Failed to handle ClientEvent: {e:#}");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to handle ClientEvent: {e:#}");
+                    }
                 }
                 continue;
             }
@@ -1300,7 +1307,7 @@ impl TunnelTest {
         event: ClientEvent,
         ref_state: &ReferenceState,
         portal: &mut StubPortal,
-    ) -> Result<(), NoTurnServers> {
+    ) -> anyhow::Result<()> {
         let now = self.flux_capacitor.now();
 
         self.clients
@@ -1423,7 +1430,7 @@ impl TunnelTest {
                         [client_tun.v4.into(), client_tun.v6.into()],
                     );
 
-                    Ok(())
+                    anyhow::Ok(())
                 })?;
 
                 // The gateway's candidates and the portal's `flow_created` reply travel
@@ -1442,27 +1449,21 @@ impl TunnelTest {
                 }
 
                 let client = self.clients.get_mut(&src).unwrap();
-                client
-                    .exec_mut(|c| {
-                        c.sut.handle_resource_access_authorized(
-                            resource_id,
-                            gateway_id,
-                            gateway_key,
-                            gateway.inner().sut.tunnel_ip_config().unwrap(),
-                            site_id,
-                            preshared_key,
-                            client_ice,
-                            gateway_ice,
-                            use_iceless,
-                            test_ingest_token(),
-                            now,
-                        )
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::error!("{e:#}");
-
-                        Ok(())
-                    })?;
+                client.exec_mut(|c| {
+                    c.sut.handle_resource_access_authorized(
+                        resource_id,
+                        gateway_id,
+                        gateway_key,
+                        gateway.inner().sut.tunnel_ip_config().unwrap(),
+                        site_id,
+                        preshared_key,
+                        client_ice,
+                        gateway_ice,
+                        use_iceless,
+                        test_ingest_token(),
+                        now,
+                    )
+                })?;
 
                 Ok(())
             }
@@ -1540,7 +1541,7 @@ impl TunnelTest {
                         now,
                     )?;
 
-                    Ok(())
+                    anyhow::Ok(())
                 })?;
 
                 let local_client = self.clients.get_mut(&src).expect("unknown source client");
@@ -1562,7 +1563,7 @@ impl TunnelTest {
                         now,
                     )?;
 
-                    Ok(())
+                    anyhow::Ok(())
                 })?;
 
                 Ok(())

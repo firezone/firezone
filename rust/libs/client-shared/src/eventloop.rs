@@ -683,9 +683,9 @@ impl Eventloop {
                     flow_logs_ingest_token,
                     now,
                 ) {
-                    Ok(Ok(())) => {}
-                    Ok(Err(e @ snownet::NoTurnServers {})) => {
-                        tracing::debug!("Failed to handle authorization created: {e}");
+                    Ok(()) => {}
+                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
+                        tracing::debug!("Failed to handle authorization created: {e:#}");
                     }
                     Err(e) => {
                         tracing::warn!("Failed to handle authorization created: {e:#}");
@@ -769,16 +769,15 @@ impl Eventloop {
                     now,
                 ) {
                     Ok(()) => {}
-                    Err(e @ snownet::NoTurnServers {}) => {
-                        tracing::debug!("Failed to handle client device access authorization: {e}");
-
-                        // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
-                        self.portal_cmd_tx
-                            .send(PortalCommand::Connect(PublicKeyParam(
-                                tunnel.public_key().to_bytes(),
-                            )))
-                            .await
-                            .context("Failed to connect phoenix-channel")?;
+                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
+                        tracing::debug!(
+                            "Failed to handle client device access authorization: {e:#}"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to handle client device access authorization: {e:#}"
+                        );
                     }
                 };
             }
