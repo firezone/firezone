@@ -55,7 +55,8 @@ defmodule Portal.Policies.Postures.FieldsTest do
 
     for {provider, fields} <- Fields.registry(), {field, _type} <- fields do
       platforms = Fields.platforms(provider, field)
-      assert platforms != [] and platforms -- Fields.platforms() == [], "#{provider}.#{field}"
+      refute Enum.empty?(platforms), "#{provider}.#{field}"
+      assert platforms -- Fields.platforms() == [], "#{provider}.#{field}"
     end
   end
 

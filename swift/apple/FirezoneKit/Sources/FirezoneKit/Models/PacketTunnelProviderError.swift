@@ -6,22 +6,16 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
-  case providerConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case credentialNotConfigured
+public enum PacketTunnelProviderError: Int, Error, CustomNSError, LocalizedError {
+  case providerConfigurationIsInvalid = 0
+  case firezoneIdIsInvalid = 1
+  case credentialNotConfigured = 2
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
   }
 
-  public var errorCode: Int {
-    switch self {
-    case .providerConfigurationIsInvalid: 0
-    case .firezoneIdIsInvalid: 1
-    case .credentialNotConfigured: 2
-    }
-  }
+  public var errorCode: Int { rawValue }
 
   public var errorDescription: String? { message }
 

@@ -438,7 +438,7 @@ impl ReferenceState {
                 self.exhausted_relays.remove(relay);
                 self.recovering_relays.insert(*relay, now);
             }
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return

@@ -206,6 +206,10 @@ where
         Ok(connection)
     }
 
+    pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
+        self.established.get(id)
+    }
+
     pub(crate) fn get_established_mut_session_index(
         &mut self,
         index: Index,

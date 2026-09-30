@@ -20,4 +20,7 @@ end
 
 Ecto.Adapters.SQL.Sandbox.checkin(Portal.Repo)
 
+# Before any test opens a sandbox transaction, see the module doc.
+{:ok, _pid} = Portal.Test.LogicalSlots.start()
+
 ExUnit.start(formatters: [ExUnit.CLIFormatter, JUnitFormatter])

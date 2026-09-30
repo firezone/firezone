@@ -102,7 +102,9 @@ pub enum Transition {
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
-    Idle,
+    Idle {
+        duration: Duration,
+    },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
     /// while its existing allocations keep working.
@@ -160,7 +162,7 @@ impl Transition {
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
+            Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::ExhaustRelayPorts(_) => false,
             Transition::FreeRelayPorts(_) => false,
@@ -227,7 +229,7 @@ impl Transition {
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => true,
+            Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::ExhaustRelayPorts(_) => true,
             Transition::FreeRelayPorts(_) => true,

@@ -112,7 +112,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
@@ -121,9 +121,17 @@ public final class Store: ObservableObject {
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
+      let sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
+
       self.configuration = configuration ?? Configuration.shared
       self.updateChecker =
-        updateChecker ?? UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+        updateChecker
+        ?? UpdateChecker(
+          configuration: configuration,
+          userDefaults: userDefaults,
+          sessionNotification: sessionNotification
+        )
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
@@ -137,7 +145,7 @@ public final class Store: ObservableObject {
   #else
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
       x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
@@ -145,7 +153,8 @@ public final class Store: ObservableObject {
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.sessionNotification = sessionNotification
+      self.sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
       self.tunnelManagerFactory = tunnelManagerFactory
       self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
@@ -224,7 +233,7 @@ public final class Store: ObservableObject {
   #if os(macOS)
     /// Returns the appropriate menu bar icon name for the current state
     public var menuBarIconName: String {
-      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.updateAvailable)
+      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.downloadURL != nil)
     }
 
     /// Requests the menu bar dropdown to be opened programmatically.
@@ -327,50 +336,33 @@ public final class Store: ObservableObject {
           try manager().session()?.fetchLastDisconnectError { error in
             guard let error else { return }
 
-            let nsError = error as NSError
+            switch DisconnectError(error) {
+            case .connlib(let code, let reason, let id):
+              // Every `ConnlibError` is worded for the user, so it is product copy rather than
+              // a diagnostic and must not be reported as telemetry.
+              Log.info(reason)
 
-            guard nsError.domain == ConnlibError.errorDomain,
-              let code = ConnlibError.Code(rawValue: nsError.code),
-              let reason = nsError.userInfo["reason"] as? String,
-              let id = nsError.userInfo["id"] as? String
-            else {
-              // Every early return in the provider's `startTunnel` reports a
-              // `PacketTunnelProviderError`, which carries neither a reason nor an id and
-              // would otherwise be dropped silently.
-              if PacketTunnelProviderError.isCredentialNotConfigured(error) {
-                // The system started the tunnel while signed out.
-                Log.info(error.localizedDescription)
-              } else {
-                Log.error(error)
-              }
-
-              // Deduplicated on the error itself, since only connlib mints an id.
-              let id = "\(nsError.domain):\(nsError.code)"
-              let message = error.localizedDescription
-
+              // Only show the notification if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                await self.sessionNotification.showDisconnectedAlertMacOS(message)
+                switch code {
+                case .sessionExpired:
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: true)
+                case .disconnected:
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: false)
+                }
                 self.markAlertAsShown(id)
               }
-
-              return
-            }
-
-            // Every `ConnlibError` is worded for the user, so it is product copy rather than
-            // a diagnostic and must not be reported as telemetry.
-            Log.info(reason)
-
-            // Only show the alert if we haven't shown this specific error before
-            Task { @MainActor in
-              guard !self.shownAlertIds.contains(id) else { return }
-              switch code {
-              case .sessionExpired:
-                await self.sessionNotification.showSignedOutAlertMacOS(reason)
-              case .disconnected:
-                await self.sessionNotification.showDisconnectedAlertMacOS(reason)
-              }
-              self.markAlertAsShown(id)
+            case .packetTunnelProvider(.credentialNotConfigured):
+              // The system started the tunnel while signed out.
+              Log.info(error.localizedDescription)
+            case .packetTunnelProvider(.providerConfigurationIsInvalid),
+              .packetTunnelProvider(.firezoneIdIsInvalid),
+              .unknown:
+              // Not worded for the user, so only reported, which is how we learn about new ones.
+              Log.error(error)
             }
           }
         } catch {

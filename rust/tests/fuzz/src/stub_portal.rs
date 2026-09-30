@@ -257,7 +257,7 @@ impl StubPortal {
             }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::RebootRelaysWhilePartitioned(_) => {}
             Transition::ExhaustRelayPorts(_) => {}
             Transition::FreeRelayPorts(_) => {}

@@ -4,7 +4,7 @@ set -euox pipefail
 
 source "./scripts/tests/lib.sh"
 
-docker compose exec --env RUST_LOG=info -it client-1 /bin/sh -c "iperf3 \
+docker compose exec --env RUST_LOG=info -it primary-client /bin/sh -c "iperf3 \
   --time 30 \
   --reverse \
   --udp \
@@ -17,4 +17,4 @@ jq --arg name "${TEST_NAME}" \
     "${TEST_NAME}.json" >"${TEST_NAME}.bmf.json"
 
 assert_process_state "gateway" "S"
-assert_process_state "client-1" "S"
+assert_process_state "primary-client" "S"
