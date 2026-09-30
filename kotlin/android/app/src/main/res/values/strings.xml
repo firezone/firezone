@@ -70,6 +70,9 @@
 	<string name="profile">Profile</string>
 	<string name="signed_in">Signed in</string>
 
+	<!-- Navigation -->
+	<string name="back">Back</string>
+
 	<!-- Auth -->
 	<string name="launching_auth_flow">Launching Browser to sign in…</string>
 

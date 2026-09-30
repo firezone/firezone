@@ -107,6 +107,8 @@ class TunnelE2eTest {
         awaitText("Lab hardware")
         clickTextOnScreen("Lab hardware")
         awaitText("bench-controller-01.firezone.network")
+        clickTextOnScreen("bench-controller-01.firezone.network")
+        awaitText("100.64.3.18")
     }
 
     @Test

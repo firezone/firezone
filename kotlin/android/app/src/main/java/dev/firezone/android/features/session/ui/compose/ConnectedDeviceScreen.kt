@@ -1,14 +1,15 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.session.ui.compose
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -17,22 +18,35 @@ import androidx.compose.ui.unit.dp
 import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.tunnel.model.ConnectedDevice
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectedDeviceDetailsSheet(
+fun ConnectedDeviceScreen(
     device: ConnectedDevice,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    BackHandler(onBack = onBack)
     val context = LocalContext.current
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            SheetTitle(
-                text = deviceLabel(device),
-                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Device Domain", device.domain) },
-            )
+    Scaffold(
+        modifier = modifier,
+        topBar = { BackTopBar(title = device.slug, onBack = onBack) },
+    ) { innerPadding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 16.dp),
+        ) {
+            DetailSection(label = "Domain") {
+                Text(
+                    text = deviceLabel(device),
+                    modifier =
+                        Modifier.clickable {
+                            ClipboardUtils.copyToClipboard(context, "Device Domain", device.domain)
+                        },
+                )
+            }
 
             DetailSection(label = "Name") {
                 Text(

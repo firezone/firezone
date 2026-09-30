@@ -45,8 +45,8 @@ import org.robolectric.annotation.GraphicsMode
     qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class ScreenshotTest {
-    // Only the captures that have to drive the UI compose through this rule: the sheets and the
-    // scrolled list.
+    // Only the captures that have to drive the UI compose through this rule: the sheets, the device
+    // pool screens and the scrolled list.
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -90,16 +90,16 @@ class ScreenshotTest {
     }
 
     @Test
-    fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
+    fun resourceDetailsInternet() = captureAfterTapping("resource-details-internet", rowText = "Internet Resource")
 
     @Test
-    fun resourceDetails() = captureSheet("resource-details", rowText = "Engineering wiki")
+    fun resourceDetails() = captureAfterTapping("resource-details", rowText = "Engineering wiki")
 
     @Test
-    fun devicePoolDetails() = captureSheet("device-pool-details", rowText = "Lab hardware")
+    fun devicePoolDetails() = captureAfterTapping("device-pool-details", rowText = "Lab hardware")
 
     @Test
-    fun deviceDetails() = captureSheet("device-details", rowText = "Lab hardware", sheetRowText = "bench-controller-01.firezone.network")
+    fun deviceDetails() = captureAfterTapping("device-details", rowText = "Lab hardware", thenText = "bench-controller-01.firezone.network")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
@@ -113,10 +113,10 @@ class ScreenshotTest {
     // above misses; photographing the whole screen composites the list, the scrim and the
     // sheet the way the live app draws them.
     @OptIn(ExperimentalRoborazziApi::class)
-    private fun captureSheet(
+    private fun captureAfterTapping(
         name: String,
         rowText: String,
-        sheetRowText: String? = null,
+        thenText: String? = null,
     ) {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
         composeRule
@@ -124,7 +124,7 @@ class ScreenshotTest {
             .performScrollToNode(hasText(rowText, substring = true))
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
-        sheetRowText?.let {
+        thenText?.let {
             composeRule.onNodeWithText(it).performClick()
             composeRule.waitForIdle()
         }

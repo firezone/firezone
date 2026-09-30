@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -14,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 
@@ -45,5 +48,34 @@ fun FirezoneTopBar(
             )
         },
         actions = actions,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BackTopBar(
+    title: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TopAppBar(
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.background,
+            ),
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        modifier = modifier,
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+            }
+        },
     )
 }
