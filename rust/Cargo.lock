@@ -775,10 +775,6 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
- "opentelemetry",
- "otel-attributes",
- "otel-instruments",
- "packet-coalescer",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -787,7 +783,6 @@ dependencies = [
  "sha2 0.11.0",
  "smbios-lib",
  "socket-factory",
- "telemetry",
  "tempfile",
  "tokio",
  "tower",
@@ -2301,6 +2296,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tun",
+ "tunnel",
 ]
 
 [[package]]

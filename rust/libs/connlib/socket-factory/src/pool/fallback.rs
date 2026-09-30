@@ -48,9 +48,4 @@ impl SocketPool {
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
         self.wildcard.apply_buffer_sizes(send, recv, port);
     }
-
-    /// Returns zero because this transport owns only the catch-all socket.
-    pub(crate) fn flow_socket_count(&self) -> usize {
-        0
-    }
 }

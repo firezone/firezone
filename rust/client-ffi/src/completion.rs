@@ -79,7 +79,7 @@ struct Host {
 
 impl CompletionSession {
     #[cfg(target_vendor = "apple")]
-    pub(crate) fn new(
+    pub(crate) fn create_driver(
         runtime: tokio::runtime::Runtime,
         events: DrivenEvents,
         port: CompletionPort,

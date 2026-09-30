@@ -247,6 +247,8 @@ services:
       args:
         PACKAGE: firezone-gateway
     image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    security_opt:
+      - seccomp=unconfined # The development and test gateway needs io_uring, which Docker's default filter blocks.
     cap_add:
       - NET_ADMIN
     sysctls:

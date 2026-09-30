@@ -482,15 +482,6 @@ impl PerfUdpSocket {
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
 
-    /// The number of connected per-destination "flow" sockets currently cached.
-    ///
-    /// Exposed for integration tests. Always `0` on non-Apple platforms, where all
-    /// traffic uses the single catch-all socket.
-    #[doc(hidden)]
-    pub fn flow_socket_count(&self) -> usize {
-        self.pool.flow_socket_count()
-    }
-
     pub fn set_buffer_sizes(
         &mut self,
         requested_send_buffer_size: usize,

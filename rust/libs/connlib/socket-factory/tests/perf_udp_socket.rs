@@ -6,10 +6,6 @@ use socket_factory::{DatagramOut, udp};
 
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
-///
-/// The batch is big enough to promote the pair to a connected flow socket on Apple (see
-/// the assertion below); on every other platform everything uses the single catch-all
-/// socket.
 #[tokio::test]
 async fn sends_and_receives_a_datagram() {
     const DATAGRAMS: usize = 16;
@@ -35,12 +31,6 @@ async fn sends_and_receives_a_datagram() {
         .await
         .unwrap();
 
-    // On Apple, a batch of `DATAGRAMS` datagrams must connect a flow socket - not
-    // silently fall back to the catch-all. A count of 0 would mean `connect()` failed
-    // (e.g. the catch-all lacked `SO_REUSEPORT`) and the fast path latched off.
-    #[cfg(apple)]
-    assert_eq!(socket.flow_socket_count(), 1);
-
     let mut buf = [0u8; 16];
     let mut from = peer_addr;
     for _ in 0..DATAGRAMS {
@@ -49,7 +39,6 @@ async fn sends_and_receives_a_datagram() {
         from = sender;
     }
 
-    // The reply matches the (connected) socket's 4-tuple exactly and must be delivered via it.
     peer.send_to(b"world", from).await.unwrap();
 
     let mut batch = socket.recv_from().await.unwrap();

@@ -71,16 +71,17 @@ impl PacketDevice for Wintun {
         }
     }
     async fn write(&self, mut batch: PacketBatch) -> Result<()> {
-        let mut coalescer = if telemetry::feature_flags::wintun_tcp_coalescing() {
-            self.tcp.borrow_mut()
-        } else {
-            self.passthrough.borrow_mut()
+        let packets = {
+            let mut coalescer = if telemetry::feature_flags::wintun_tcp_coalescing() {
+                self.tcp.borrow_mut()
+            } else {
+                self.passthrough.borrow_mut()
+            };
+            for packet in batch.drain() {
+                coalescer.enqueue(packet);
+            }
+            coalescer.drain().collect::<Vec<_>>()
         };
-        for packet in batch.drain() {
-            coalescer.enqueue(packet);
-        }
-        let packets = coalescer.drain().collect::<Vec<_>>();
-        drop(coalescer);
         for packet in packets {
             let bytes = packet.packet();
             for attempt in 0..=24 {

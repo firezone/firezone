@@ -206,7 +206,7 @@ actor Adapter {
     internetResourceEnabled: Bool,
     identityReference: Data?,
     providerCommandSender: Sender<ProviderCommand>,
-    packetFlow: NEPacketTunnelFlow
+    packetIO: NetworkFrameworkIo
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -215,9 +215,7 @@ actor Adapter {
     self.internetResourceEnabled = internetResourceEnabled
     self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
-    self.packetIO = NetworkFrameworkIo(flow: packetFlow) { error in
-      providerCommandSender.send(.cancelWithError(SendableError(error.localizedDescription)))
-    }
+    self.packetIO = packetIO
     self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)

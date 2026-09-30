@@ -673,7 +673,7 @@ fn connect(
     drop(_guard);
     #[cfg(target_vendor = "apple")]
     let (packet_driver, events, runtime) = {
-        let (driver, events) = completion::CompletionSession::new(runtime, events, port);
+        let (driver, events) = completion::CompletionSession::create_driver(runtime, events, port);
         (Some(driver), Events::Driven(events), None)
     };
     #[cfg(not(target_vendor = "apple"))]

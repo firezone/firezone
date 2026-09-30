@@ -80,7 +80,17 @@ fn main() -> ExitCode {
     telemetry::configure(Arc::new(tcp_socket_factory));
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    let result = tunnel::packet_io::native::run(try_main(cli), None).and_then(|result| result);
+    let result = match tunnel::packet_io::native::run(try_main(cli), None) {
+        Ok(result) => result,
+        #[expect(
+            clippy::print_stderr,
+            reason = "The runtime failed before the logger was set up"
+        )]
+        Err(e) => {
+            eprintln!("Failed to start packet I/O: {e:#}");
+            return ExitCode::FAILURE;
+        }
+    };
     #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     let result = tokio::runtime::Builder::new_current_thread()
         .enable_all()

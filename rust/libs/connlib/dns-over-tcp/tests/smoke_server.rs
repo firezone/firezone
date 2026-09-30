@@ -1,11 +1,10 @@
 #![allow(clippy::unwrap_used)]
-#![cfg(not(any(target_os = "macos", target_os = "windows")))] // The DNS-over-TCP server is sans-IO so it doesn't matter where the IP packets come from. Testing it only on Linux is therefore fine.
+#![cfg(target_os = "linux")] // The DNS-over-TCP server is sans-IO so it doesn't matter where the IP packets come from. Testing it only on Linux is therefore fine.
 
 use std::{
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     process::Stdio,
-    task::{Context, Poll, ready},
     time::Instant,
 };
 
@@ -14,13 +13,18 @@ use bin_shared::TunDeviceManager;
 use dns_types::{ResponseBuilder, ResponseCode};
 use ip_network::Ipv4Network;
 use tokio::task::JoinSet;
-use tun::Tun;
+use tun::TunIo;
+use tunnel::packet_io::native::{OffloadedTun, PacketDevice, run};
 
 const CLIENT_CONCURRENCY: usize = 3;
 
-#[tokio::test]
+#[test]
 #[ignore = "Requires root & IP forwarding"]
-async fn smoke() {
+fn smoke() {
+    run(smoke_test(), None).unwrap();
+}
+
+async fn smoke_test() {
     let _guard = logging::test("netlink_proto=off,wire::dns=trace,debug");
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
@@ -41,13 +45,21 @@ async fn smoke() {
     let listen_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());
     dns_server.set_listen_addresses::<CLIENT_CONCURRENCY>(BTreeSet::from([listen_addr]));
-    let mut eventloop = Eventloop::new(tun, dns_server);
-
-    tokio::spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
-
-    // Running the queries multiple times ensures we can reuse sockets.
-    run_queries(listen_addr.ip()).await;
-    run_queries(listen_addr.ip()).await;
+    let TunIo::Linux(fd) = tun.into_io() else {
+        panic!("Expected a Linux TUN descriptor");
+    };
+    let eventloop = Eventloop {
+        tun: OffloadedTun::from_fd(fd).unwrap(),
+        dns_server,
+    };
+    tokio::select! {
+        result = eventloop.run() => result.unwrap(),
+        () = async {
+            // Running the queries multiple times ensures we can reuse sockets.
+            run_queries(listen_addr.ip()).await;
+            run_queries(listen_addr.ip()).await;
+        } => {},
+    }
 }
 
 async fn run_queries(dns_server: IpAddr) {
@@ -92,53 +104,52 @@ async fn dig(dns_server: IpAddr) -> Result<i32> {
 }
 
 struct Eventloop {
-    tun: Box<dyn Tun>,
+    tun: OffloadedTun,
     dns_server: dns_over_tcp::Server,
 }
 
 impl Eventloop {
-    fn new(tun: Box<dyn Tun>, dns_server: dns_over_tcp::Server) -> Self {
-        Self { tun, dns_server }
-    }
-
-    fn poll(&mut self, cx: &mut Context) -> Poll<()> {
+    async fn run(mut self) -> Result<()> {
         loop {
+            self.dns_server.handle_timeout(Instant::now());
+            while let Some(query) = self.dns_server.poll_queries() {
+                self.dns_server.send_message(
+                    query.local,
+                    query.remote,
+                    ResponseBuilder::for_query(&query.message, ResponseCode::NXDOMAIN).build(),
+                )?;
+            }
+            self.dns_server.handle_timeout(Instant::now());
+
             // Send all outbound DNS packets as one batch.
             let mut batch = tun::PacketBatch::default();
 
             while let Some(packet) = self.dns_server.poll_outbound() {
                 if let Err(packet) = batch.try_push(packet) {
                     self.tun
-                        .sender()
-                        .try_send(std::mem::replace(&mut batch, tun::PacketBatch::new(packet)))
-                        .expect("channels should be able to buffer all batches in this test");
+                        .write(std::mem::replace(&mut batch, tun::PacketBatch::new(packet)))
+                        .await?;
                 }
             }
 
             if !batch.is_empty() {
-                self.tun
-                    .sender()
-                    .try_send(batch)
-                    .expect("channels should be able to buffer all batches in this test");
+                self.tun.write(batch).await?;
             }
 
-            // Handle DNS queries and generate responses
-            while let Some(query) = self.dns_server.poll_queries() {
-                self.dns_server
-                    .send_message(
-                        query.local,
-                        query.remote,
-                        ResponseBuilder::for_query(&query.message, ResponseCode::NXDOMAIN).build(),
-                    )
-                    .unwrap();
-            }
-
-            let mut packets = ready!(self.tun.receiver().poll_recv(cx)).unwrap();
+            let deadline = self.dns_server.poll_timeout();
+            let mut packets = tokio::select! {
+                packets = self.tun.read() => packets?,
+                () = async {
+                    match deadline {
+                        Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+                        None => std::future::pending().await,
+                    }
+                } => continue,
+            };
 
             for ip_packet in packets.drain() {
                 if self.dns_server.accepts(&ip_packet) {
                     self.dns_server.handle_inbound(ip_packet);
-                    self.dns_server.handle_timeout(Instant::now());
                 }
             }
         }

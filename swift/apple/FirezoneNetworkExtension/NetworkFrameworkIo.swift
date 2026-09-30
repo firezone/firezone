@@ -359,9 +359,13 @@ final class NetworkFrameworkIo: @unchecked Sendable {
   }
   private func cancelConnections() {
     networkReads.removeAll()
-    listeners.forEach { $0.cancel() }
+    for listener in listeners {
+      listener.cancel()
+    }
     listeners.removeAll()
-    connections.values.forEach { $0.cancel() }
+    for connection in connections.values {
+      connection.cancel()
+    }
     connections.removeAll()
   }
   private func destroy() {

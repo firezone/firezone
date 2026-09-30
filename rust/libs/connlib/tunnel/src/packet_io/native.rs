@@ -219,6 +219,10 @@ enum Device {
     Windows { tun: Wintun },
 }
 impl InstalledDevice {
+    #[cfg_attr(
+        windows,
+        expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")
+    )]
     fn new(mut io: tun::TunIo) -> Result<Self> {
         let mut inspectors = Vec::new();
         while let tun::TunIo::Inspect { inner, inspect } = io {
@@ -262,6 +266,8 @@ pub fn run<F: Future>(future: F, core: Option<usize>) -> Result<F::Output> {
     let result = runtime.block_on(async {
         let completion = compio::runtime::Runtime::new()?;
         let completion = RuntimeCompat::<TokioAdapter>::new(completion)?;
+        // Arm the driver's wake notification before Tokio can wake the externally polled future.
+        completion.poll_with(Some(std::time::Duration::ZERO));
         anyhow::Ok(completion.execute(future).await)
     })?;
     Ok(result)
@@ -624,11 +630,111 @@ impl Drop for CompletionGuard {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
     use ip_packet::Ecn;
 
+    #[test]
+    fn completion_runtime_keeps_servicing_tokio_channels() {
+        run(
+            async {
+                let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+                let sending = tokio::spawn(async move {
+                    for value in 0..1024 {
+                        sender.send(value).await.unwrap();
+                    }
+                });
+                for expected in 0..1024 {
+                    let value =
+                        tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+                            .await
+                            .unwrap();
+                    assert_eq!(value, Some(expected));
+                }
+                sending.await.unwrap();
+            },
+            None,
+        )
+        .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_driver_rebinds_and_drains_before_shutdown() {
+        use crate::packet_io::NetworkInput as _;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        run(
+            async {
+                tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                    let bindings = Arc::new(AtomicUsize::new(0));
+                    let factory = Arc::new({
+                        let bindings = bindings.clone();
+                        move |address: SocketAddr| {
+                            if address.is_ipv6() {
+                                return Err(std::io::ErrorKind::Unsupported.into());
+                            }
+                            bindings.fetch_add(1, Ordering::Relaxed);
+                            socket_factory::udp("127.0.0.1:0".parse().unwrap())
+                        }
+                    });
+                    let peer =
+                        UdpSocket::from_std(bind_udp("127.0.0.1:0".parse().unwrap()).unwrap())
+                            .unwrap();
+                    let destination = peer.local_addr().unwrap();
+                    let pool = BufferPool::<Vec<u8>>::new(64, "test-native-lifecycle");
+                    let mut packets = Native::new(factory.clone());
+                    for sequence in 0..2 {
+                        if sequence > 0 {
+                            packets.reset(factory.clone());
+                        }
+                        let mut packet = pool.pull();
+                        packet.clear();
+                        packet.extend_from_slice(&[sequence; 8]);
+                        packets
+                            .send(DatagramOut {
+                                src: None,
+                                dst: destination,
+                                packet,
+                                segment_size: 8,
+                                ecn: Ecn::NonEct,
+                            })
+                            .unwrap();
+                        let echo = async {
+                            let BufResult(result, bytes) =
+                                peer.recv_from(Vec::with_capacity(64)).await;
+                            let (_, from) = result.unwrap();
+                            let BufResult(result, _) = peer.send_to(bytes, from).await;
+                            result.unwrap();
+                        };
+                        let (_, mut received) = futures::join!(
+                            echo,
+                            std::future::poll_fn(|cx| packets.poll_network(cx))
+                        );
+                        let mut count = 0;
+                        received.for_each(|datagram| {
+                            assert_eq!(datagram.packet, &[sequence; 8]);
+                            assert_eq!(datagram.from, destination);
+                            count += 1;
+                        });
+                        assert_eq!(count, 1);
+                    }
+                    std::future::poll_fn(|cx| packets.poll_shutdown(cx))
+                        .await
+                        .unwrap();
+                    assert_eq!(bindings.load(Ordering::Relaxed), 2);
+                })
+                .await
+                .unwrap();
+            },
+            None,
+        )
+        .unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn io_uring_retains_gso_gro_metadata_and_fallback_ordering() {
         run(
