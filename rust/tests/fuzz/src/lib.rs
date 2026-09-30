@@ -8,6 +8,7 @@ mod buffered_transmits;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
+pub mod feedback;
 mod flux_capacitor;
 mod icmp_error_hosts;
 mod os;
