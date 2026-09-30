@@ -13,6 +13,7 @@ use std::{cell::Cell, net::SocketAddr, sync::Arc};
 
 pub(super) struct UdpSocket {
     inner: CompioUdpSocket,
+    state: quinn_udp::UdpSocketState,
     resolve: Option<SourceIpResolver>,
 }
 
@@ -21,15 +22,16 @@ impl UdpSocket {
         factory: &Arc<dyn SocketFactory<socket_factory::UdpSocket>>,
         address: SocketAddr,
     ) -> Result<Self> {
-        let (socket, resolve) = factory.bind(address)?.into_completion()?;
+        let (socket, state, resolve) = factory.bind(address)?.into_completion()?;
         Ok(Self {
             inner: CompioUdpSocket::from_std(socket)?,
+            state,
             resolve,
         })
     }
 
     pub(super) async fn receive(&self, port: &CompletionPort) -> Result<()> {
-        receive_network(port, &self.inner).await?;
+        receive_network(port, &self.inner, &self.state).await?;
         Ok(())
     }
 
@@ -38,7 +40,7 @@ impl UdpSocket {
         port: &CompletionPort,
         queue: &LocalQueue<TrackedOperation>,
     ) -> Result<()> {
-        send_network(port, &self.inner, queue, self.resolve.as_ref()).await?;
+        send_network(port, &self.inner, queue, self.resolve.as_ref(), &self.state).await?;
         Ok(())
     }
 
@@ -48,14 +50,19 @@ impl UdpSocket {
     }
 }
 
-async fn receive_network(port: &CompletionPort, socket: &CompioUdpSocket) -> Result<()> {
-    let pool = BufferPool::<Vec<u8>>::new(ip_packet::MAX_FZ_PAYLOAD * 64, "completion-udp-receive");
+async fn receive_network(
+    port: &CompletionPort,
+    socket: &CompioUdpSocket,
+    state: &quinn_udp::UdpSocketState,
+) -> Result<()> {
+    let buffer_size = ip_packet::MAX_FZ_PAYLOAD * state.gro_segments();
+    let pool = BufferPool::<Vec<u8>>::new(buffer_size, "completion-udp-receive");
     let local_port = socket.local_addr()?.port();
     let generation = port.generation();
     loop {
         std::future::poll_fn(|cx| port.poll_receive_ready(cx, true)).await;
         let mut inner = pool.pull();
-        inner.resize(ip_packet::MAX_FZ_PAYLOAD * 64, 0);
+        inner.resize(buffer_size, 0);
         let BufResult(result, (buffer, control)) = socket
             .recv_msg(UdpBuffer { inner, len: 0 }, ancillary::Control::new())
             .await;
@@ -69,6 +76,23 @@ async fn receive_network(port: &CompletionPort, socket: &CompioUdpSocket) -> Res
             continue;
         }
         let (local, stride, ecn) = ancillary::decode(control.as_init(), local_port, len)?;
+        #[cfg(windows)]
+        let stride = {
+            let mut meta = quinn_udp::RecvMeta {
+                len,
+                stride,
+                ..Default::default()
+            };
+            socket_factory::repair_coalescing(
+                state,
+                quinn_udp::UdpSockRef::from(socket),
+                std::iter::once((buffer.as_init(), &mut meta)),
+            );
+            if meta.stride == 0 || meta.stride > ip_packet::MAX_FZ_PAYLOAD || meta.stride > len {
+                continue;
+            }
+            meta.stride
+        };
         port.receive_network(
             generation,
             ReceivedDatagram {
@@ -88,8 +112,9 @@ async fn send_network(
     socket: &CompioUdpSocket,
     queue: &LocalQueue<TrackedOperation>,
     resolve: Option<&SourceIpResolver>,
+    state: &quinn_udp::UdpSocketState,
 ) -> Result<()> {
-    let gso = Cell::new(true);
+    let gso = Cell::new(state.max_gso_segments() > 1);
     loop {
         let TrackedOperation { operation, guard } = queue.pop().await;
         let Payload::Network(mut datagram) = operation.payload else {

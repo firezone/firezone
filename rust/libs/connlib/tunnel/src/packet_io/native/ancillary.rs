@@ -179,7 +179,6 @@ pub fn decode(control: &[u8], port: u16, len: usize) -> Result<(SocketAddr, usiz
         }
     }
     let local = local.ok_or_else(|| anyhow::anyhow!("UDP receive missing destination address"))?;
-    anyhow::ensure!(stride > 0 && stride <= len, "Invalid URO stride");
     Ok((local, stride, ecn(bits)))
 }
 

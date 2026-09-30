@@ -80,10 +80,10 @@ features = [
 [dev-dependencies]
 bufferpool = { workspace = true }
 http = { workspace = true }
+ip-packet = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
 tower = { workspace = true, features = ["util"] }
-ip-packet = { workspace = true }
 
 [target.'cfg(windows)'.dev-dependencies]
 tokio = { workspace = true, features = ["net", "time"] }

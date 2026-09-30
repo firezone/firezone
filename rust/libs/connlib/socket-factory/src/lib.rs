@@ -17,10 +17,13 @@ use std::pin::Pin;
 use tokio::io::Interest;
 
 mod buffer_sizes;
+mod pool;
 #[cfg(any(windows, test))]
 mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
+
+use pool::{OwnedSocket, Socket, SocketPool};
 
 pub trait SocketFactory<S>: Send + Sync + 'static {
     fn bind(&self, local: SocketAddr) -> io::Result<S>;
@@ -105,6 +108,17 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
     }
 
     socket.set_nonblocking(true)?;
+
+    // On Apple, connected flow sockets share the catch-all socket's local port (see `pool::apple`).
+    // Darwin only lets sockets share a port if every one of them - including the one bound first -
+    // opts into `SO_REUSEPORT`, so set it (and `SO_REUSEADDR`, to match the flow sockets) before
+    // binding. Without this the first flow `bind()` fails with `EADDRINUSE` and the fast path
+    // latches off.
+    #[cfg(apple)]
+    {
+        socket.set_reuse_address(true)?;
+        socket.set_reuse_port(true)?;
+    }
 
     // Darwin attaches the destination-address control message when it enqueues a datagram,
     // not when we read it, so the option must be on before the socket can receive anything.
@@ -259,8 +273,8 @@ pub struct UdpSocket {
 
 /// A UDP socket with performance optimisations for fast send & receive.
 pub struct PerfUdpSocket {
-    socket: tokio::net::UdpSocket,
-    state: quinn_udp::UdpSocketState,
+    /// The socket(s) we send and receive on; see [`SocketPool`].
+    pool: SocketPool,
 
     /// The pools backing batched receives; see [`RecvBuffers`].
     recv_buffers: RecvBuffers,
@@ -274,9 +288,42 @@ pub struct PerfUdpSocket {
 
 pub type SourceIpResolver = Box<dyn Fn(IpAddr) -> io::Result<IpAddr> + Send + Sync>;
 
+#[cfg(windows)]
+fn enable_receive_offload(state: &quinn_udp::UdpSocketState, socket: UdpSockRef<'_>) {
+    if !uro::is_broken() {
+        match state.set_gro(socket, true) {
+            Ok(()) => tracing::debug!("Enabled URO"),
+            Err(error) => tracing::debug!(%error, "Failed to enable URO"),
+        }
+    }
+}
+
+/// Repairs coalesced datagram boundaries and disables broken Windows URO.
+#[cfg(windows)]
+pub fn repair_coalescing<'a>(
+    state: &quinn_udp::UdpSocketState,
+    socket: UdpSockRef<'_>,
+    receives: impl Iterator<Item = (&'a [u8], &'a mut quinn_udp::RecvMeta)>,
+) {
+    if uro::detect_broken_coalescing(receives)
+        && let Err(error) = state.set_gro(socket, false)
+    {
+        tracing::warn!(%error, "Failed to disable URO");
+    }
+}
+
 impl UdpSocket {
     /// Transfers the configured socket and route-aware source selection to completion I/O.
-    pub fn into_completion(self) -> io::Result<(std::net::UdpSocket, Option<SourceIpResolver>)> {
+    pub fn into_completion(
+        self,
+    ) -> io::Result<(
+        std::net::UdpSocket,
+        quinn_udp::UdpSocketState,
+        Option<SourceIpResolver>,
+    )> {
+        #[cfg(windows)]
+        enable_receive_offload(&self.state, UdpSockRef::from(&self.inner));
+
         let socket = self.inner.into_std()?;
         let options = socket2::SockRef::from(&socket);
         for (name, fallback, send) in [
@@ -297,7 +344,7 @@ impl UdpSocket {
                 tracing::debug!(name, size, %error, "Failed to configure UDP buffer size");
             }
         }
-        Ok((socket, self.source_ip_resolver))
+        Ok((socket, self.state, self.source_ip_resolver))
     }
     fn new(inner: tokio::net::UdpSocket, state: quinn_udp::UdpSocketState) -> io::Result<Self> {
         let socket_addr = inner.local_addr()?;
@@ -316,6 +363,12 @@ impl UdpSocket {
         let socket_addr = self.inner.local_addr()?;
         let quinn_state = self.state;
 
+        #[cfg(apple)]
+        // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+        unsafe {
+            quinn_state.set_apple_fast_path();
+        }
+
         // A single `recv` may receive several datagrams coalesced into one buffer via
         // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
         // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
@@ -323,17 +376,10 @@ impl UdpSocket {
         // sizing the buffer to a single datagram.
         let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
 
-        #[cfg(windows)]
-        if !uro::is_broken() {
-            match quinn_state.set_gro(UdpSockRef::from(&self.inner), true) {
-                Ok(()) => tracing::debug!("Enabled URO"),
-                Err(e) => tracing::debug!("Failed to enable URO: {e}"),
-            }
-        }
+        let wildcard = OwnedSocket::new(self.inner, quinn_state, false);
 
         Ok(PerfUdpSocket {
-            socket: self.inner,
-            state: quinn_state,
+            pool: SocketPool::new(wildcard),
             recv_buffers: RecvBuffers::new(
                 recv_buf_size,
                 match socket_addr.ip() {
@@ -421,31 +467,39 @@ impl DatagramOut {
 }
 
 impl PerfUdpSocket {
-    /// Receives a batch of datagrams from the socket.
+    /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
-        loop {
-            self.socket
-                .readable()
-                .await
-                .context("Failed to wait for socket to become readable")?;
-            match self.try_recv_batch() {
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
-                result => return result.context("Failed to read from socket"),
-            }
-        }
+        std::future::poll_fn(|cx| {
+            self.pool
+                .poll_recv(cx, |socket| self.try_recv_batch(socket))
+        })
+        .await
     }
 
-    /// Attempts to receive a batch of datagrams without blocking.
+    /// Attempts to receive a batch of datagrams from the given socket without blocking.
     ///
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
-    fn try_recv_batch(&self) -> io::Result<DatagramBatch> {
+    fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
         let mut batch = self.recv_buffers.pull_batch();
 
-        let len = self.socket.try_io(Interest::READABLE, || {
-            let (mut io_bufs, metas) = batch.recv_slices();
-            self.state
-                .recv(UdpSockRef::from(&self.socket), &mut io_bufs, metas)
+        let len = socket.inner.try_io(Interest::READABLE, || {
+            // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
+            // ICMP errors on receive that we skip past; hence the `never_loop` allow elsewhere.
+            #[cfg_attr(not(apple), allow(clippy::never_loop))]
+            loop {
+                let (mut io_bufs, metas) = batch.recv_slices();
+
+                match socket.recv(&mut io_bufs, metas) {
+                    // Connected sockets surface (one-shot) ICMP errors on receive; they are not fatal.
+                    #[cfg(apple)]
+                    Err(e) if socket.connected && is_icmp_unreachable(&e) => {
+                        tracing::trace!("Ignoring ICMP error on connected UDP socket: {e}");
+                        continue;
+                    }
+                    result => break result,
+                }
+            }
         })?;
 
         #[cfg(windows)]
@@ -456,9 +510,8 @@ impl PerfUdpSocket {
                 .map(|b| b.as_slice())
                 .zip(batch.metas.iter_mut())
                 .take(len),
-        ) && let Err(e) = self.state.set_gro(UdpSockRef::from(&self.socket), false)
-        {
-            tracing::warn!("Failed to disable URO: {e}");
+        ) {
+            socket.disable_gro();
         }
 
         let batch = DatagramBatch::new(batch.buffers, batch.metas, self.port, len);
@@ -485,7 +538,21 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        self.send_transmit(&transmit).await
+        let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
+        let pooled =
+            self.pool
+                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, &self.recv_buffers);
+
+        self.send_transmit(pooled.as_socket(), &transmit).await
+    }
+
+    /// The number of connected per-destination "flow" sockets currently cached.
+    ///
+    /// Exposed for integration tests. Always `0` on non-Apple platforms, where all
+    /// traffic uses the single catch-all socket.
+    #[doc(hidden)]
+    pub fn flow_socket_count(&self) -> usize {
+        self.pool.flow_socket_count()
     }
 
     pub fn set_buffer_sizes(
@@ -493,39 +560,29 @@ impl PerfUdpSocket {
         requested_send_buffer_size: usize,
         requested_recv_buffer_size: usize,
     ) {
-        let socket = socket2::SockRef::from(&self.socket);
-        for (requested, send) in [
-            (requested_send_buffer_size, true),
-            (requested_recv_buffer_size, false),
-        ] {
-            if let Err(e) = apply_buffer_size(requested, |size| {
-                if send {
-                    socket.set_send_buffer_size(size)
-                } else {
-                    socket.set_recv_buffer_size(size)
-                }
-            }) {
-                tracing::warn!(requested, send, "Failed to set UDP buffer size: {e}");
-            }
-        }
-        let send_buffer_size = socket.send_buffer_size().unwrap_or_default();
-        let recv_buffer_size = socket.recv_buffer_size().unwrap_or_default();
-        tracing::debug!(
+        self.pool.set_buffer_sizes(
             requested_send_buffer_size,
-            send_buffer_size,
             requested_recv_buffer_size,
-            recv_buffer_size,
-            port = self.port,
-            "UDP socket buffer sizes"
+            self.port,
         );
     }
 
-    /// Sends a [`Transmit`] over the socket, chunked to honor GSO limits.
-    async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
+    /// Sends a [`Transmit`] over the given socket, chunked to honor GSO limits.
+    ///
+    /// Connected sockets participate in Darwin's flow advisories: under congestion the kernel
+    /// drops the datagram, returns `ENOBUFS` and fails all further sends instantly until the
+    /// interface queue drains, which it signals via write-readiness. For those, we park until
+    /// that signal instead of spinning.
+    async fn send_transmit(&self, socket: Socket<'_>, transmit: &Transmit<'_>) -> Result<()> {
         let segment_size = transmit
             .segment_size
             .expect("`segment_size` must always be set");
-        let src = transmit.src_ip;
+        // On a connected socket the source is pinned by the binding, so we drop the cmsg.
+        let src = if socket.connected {
+            None
+        } else {
+            transmit.src_ip
+        };
         let dst = transmit.destination;
 
         let total = transmit.contents.len();
@@ -539,7 +596,7 @@ impl PerfUdpSocket {
         while offset < total {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
             // the remaining data needs to be re-split into smaller batches.
-            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
+            let chunk_size = self.calculate_chunk_size(socket.state, segment_size, dst)?;
 
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
@@ -553,14 +610,24 @@ impl PerfUdpSocket {
             };
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size);
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
-            let result = self
-                .socket
-                .async_io(Interest::WRITABLE, || {
-                    self.state.try_send(UdpSockRef::from(&self.socket), &chunk)
-                })
-                .await;
+            let result = if socket.connected {
+                // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
+                // directly instead of going through tokio's (always-set) write-readiness.
+                socket
+                    .state
+                    .try_send(UdpSockRef::from(socket.inner), &chunk)
+            } else {
+                socket
+                    .inner
+                    .async_io(Interest::WRITABLE, || {
+                        socket
+                            .state
+                            .try_send(UdpSockRef::from(socket.inner), &chunk)
+                    })
+                    .await
+            };
 
             match result {
                 Ok(sent) => {
@@ -577,9 +644,28 @@ impl PerfUdpSocket {
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
+                // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
+                // once the interface queue drains, so we park until then.
+                #[cfg(apple)]
+                Err(e) if socket.connected && should_retry(&e, attempt) => {
+                    wait_for_send_capacity(socket.inner).await;
+                    attempt += 1;
+                }
+                // The unconnected catch-all gets no such signal; spin, since the `ENOBUFS`
+                // clears off-thread (driver / NIC) within microseconds.
                 Err(e) if should_retry(&e, attempt) => {
                     spin_and_yield(attempt).await;
                     attempt += 1;
+                }
+                #[cfg(apple)]
+                Err(e) if socket.connected && is_icmp_unreachable(&e) => {
+                    self.record_send_retries(attempt);
+
+                    // The kernel received an ICMP error for this path; the error is one-shot.
+                    // Drop the packet: either the path recovers or connlib migrates / times out.
+                    tracing::debug!(%dst, "Dropping packet for unreachable destination: {e}");
+
+                    return Ok(());
                 }
                 Err(e) => {
                     self.record_send_retries(attempt);
@@ -632,9 +718,14 @@ impl PerfUdpSocket {
     /// `max_gso_segments` to 1.
     ///
     /// Fails if `segment_size` exceeds the maximum UDP payload, in which case not even a single segment fits.
-    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> Result<usize> {
+    fn calculate_chunk_size(
+        &self,
+        state: &quinn_udp::UdpSocketState,
+        segment_size: usize,
+        dst: SocketAddr,
+    ) -> Result<usize> {
         let chunk_size = std::cmp::min(
-            segment_size * self.state.max_gso_segments(),
+            segment_size * state.max_gso_segments(),
             DatagramOut::max_len(dst, segment_size),
         );
 
@@ -789,6 +880,21 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
     }
 }
 
+/// Whether the error originates from an ICMP message for a connected socket's path.
+#[cfg(apple)]
+fn is_icmp_unreachable(e: &io::Error) -> bool {
+    matches!(
+        e.raw_os_error(),
+        Some(
+            libc::ECONNREFUSED
+                | libc::EHOSTUNREACH
+                | libc::ENETUNREACH
+                | libc::EHOSTDOWN
+                | libc::ENETDOWN
+        )
+    )
+}
+
 /// Whether a failed send should be retried for the given attempt.
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     let Some(raw_os_error) = e.raw_os_error() else {
@@ -832,8 +938,32 @@ async fn spin_and_yield(attempt: u32) {
     tokio::task::yield_now().await;
 }
 
+/// Parks until the kernel signals send capacity on the given (connected) socket, bounded by a timeout.
+///
+/// After a flow-advisory `ENOBUFS`, the kernel marks the socket not-writable and fires
+/// `EVFILT_WRITE` once the interface queue drains. tokio's cached write-readiness is stale
+/// at that point (UDP sends never return `EWOULDBLOCK` on Darwin, so it is never cleared),
+/// which is why we clear it explicitly before parking.
+///
+/// The timeout is a liveness backstop: `ENOBUFS` without a flow advisory (e.g. from mbuf
+/// exhaustion) never produces a wakeup. An early timeout merely costs one failed send
+/// before we park again.
+#[cfg(apple)]
+async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
+    let _ = socket.try_io(Interest::WRITABLE, || {
+        Err::<(), io::Error>(io::ErrorKind::WouldBlock.into())
+    });
+
+    let timeout = std::time::Duration::from_millis(10);
+    let _ = tokio::time::timeout(timeout, socket.writable()).await;
+}
+
 /// The pools backing a batched receive: scratch space for the datagrams themselves
 /// plus containers for the buffers and metas that make up one batch.
+///
+/// The buffers and metas live in pooled, heap-allocated `Vec`s rather than inline in
+/// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
+/// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
     bytes: BufferPool<Vec<u8>>,
     buffers: BufferPool<VecBuf<Buffer<Vec<u8>>>>,
@@ -888,7 +1018,8 @@ impl RecvBuffers {
     }
 }
 
-/// A batch of datagrams received from the socket in a single syscall.
+/// A batch of datagrams, received from the socket in a single syscall and exchanged
+/// over the socket channels as a single item.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
@@ -1113,6 +1244,16 @@ mod tests {
         fn clone(&self) -> Self {
             Self(self.0.clone())
         }
+    }
+
+    /// The batch is the item of the channel to the main thread; keeping it small is
+    /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
+    /// allocates channel slots in blocks, so a large item would cross musl's mmap
+    /// threshold and thrash the allocator (see the pooling that produced this type).
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn batch_is_a_small_channel_item() {
+        assert_eq!(size_of::<DatagramBatch>(), 88);
     }
 
     #[test]

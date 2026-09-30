@@ -53,8 +53,8 @@ impl UdpSocket {
         }
     }
 
-    pub(super) async fn close(self) -> Result<()> {
+    pub(super) fn close(self) -> std::future::Ready<Result<()>> {
         drop(self);
-        Ok(())
+        std::future::ready(Ok(()))
     }
 }

@@ -141,10 +141,7 @@ impl CompletionPort {
             .expect("Operation IDs exhausted");
         let generation = queues.generation;
         queues.in_flight.insert(id, generation);
-        Poll::Ready(Some(Operation {
-            id,
-            payload,
-        }))
+        Poll::Ready(Some(Operation { id, payload }))
     }
 
     /// Acknowledges processing separately from releasing the operation's storage.
