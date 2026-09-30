@@ -70,6 +70,10 @@ defmodule Portal.LoggerFilters do
 
   defp expected_reason?(%Bandit.TransportError{error: error}), do: error in @client_socket_errors
 
+  # The client sent a malformed HTTP/2 request, e.g. a header value with invalid characters.
+  defp expected_reason?(%Bandit.HTTP2.Errors.StreamError{error_code: error_code}),
+    do: Bandit.HTTP2.Errors.to_reason(error_code) == :protocol_error
+
   defp expected_reason?(reason), do: reason in @client_socket_errors
 
   defp client_error_status?(status) do

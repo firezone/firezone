@@ -8,6 +8,7 @@ defmodule Portal.AuthProvider do
 
   @provider_types %{
     "google" => Portal.Google.AuthProvider,
+    "github" => Portal.GitHub.AuthProvider,
     "okta" => Portal.Okta.AuthProvider,
     "entra" => Portal.Entra.AuthProvider,
     "oidc" => Portal.OIDC.AuthProvider,
@@ -19,7 +20,7 @@ defmodule Portal.AuthProvider do
   schema "auth_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[google okta entra oidc email_otp userpass x509]a
+    field :type, Ecto.Enum, values: ~w[google github okta entra oidc email_otp userpass x509]a
 
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider,
       references: :id,
@@ -35,6 +36,11 @@ defmodule Portal.AuthProvider do
       references: :id,
       foreign_key: :id,
       where: [type: :google]
+
+    has_one :github_auth_provider, Portal.GitHub.AuthProvider,
+      references: :id,
+      foreign_key: :id,
+      where: [type: :github]
 
     has_one :okta_auth_provider, Portal.Okta.AuthProvider,
       references: :id,

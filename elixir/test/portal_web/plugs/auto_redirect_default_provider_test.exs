@@ -55,6 +55,24 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProviderTest do
         assert location =~ "/sign_in/google/#{provider.id}"
       end
 
+      test "redirects to default GitHub provider when as=#{as_value}", %{
+        conn: conn,
+        account: account
+      } do
+        as_value = unquote(as_value)
+        provider = github_provider_fixture(account: account, is_default: true)
+
+        conn =
+          conn
+          |> Map.put(:params, %{"as" => as_value, "account_id_or_slug" => account.slug})
+          |> Map.put(:path_info, [account.slug, "sign_in"])
+          |> AutoRedirectDefaultProvider.call([])
+
+        assert conn.halted
+        location = redirected_to(conn)
+        assert location =~ "/sign_in/github/#{provider.id}"
+      end
+
       test "redirects to default Entra provider when as=#{as_value}", %{
         conn: conn,
         account: account

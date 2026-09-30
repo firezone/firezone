@@ -767,11 +767,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
-  ## Google / Entra / Okta authentication
+  ## Google / GitHub / Entra / Okta authentication
   ##############################################
 
   defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  defconfig(:github_oauth_client_id, :string, default: nil)
+  defconfig(:github_oauth_client_secret, :string, default: nil, sensitive: true)
 
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
   defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)

@@ -6,10 +6,10 @@ defmodule PortalWeb.SignUp do
 
   @sign_up_token_salt "sign_up_email_v1"
   @sign_up_token_max_age 86_400
-  @google_sign_up_session_key "google_sign_up"
-  @google_sign_up_max_age 900
+  @idp_sign_up_session_key "idp_sign_up"
+  @idp_sign_up_max_age 900
+  @idp_sign_up_providers ~w[google github]
   @email_domain_error "This email domain is not allowed at this time."
-  @google_session_error "Your Google sign-up session is invalid or has expired. Please try again."
 
   # ── Full registration schema ──────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ defmodule PortalWeb.SignUp do
            step: :verifying,
            account: nil,
            provider: nil,
-           google_provider: nil,
+           idp_provider: nil,
            actor: nil,
            error_message: nil,
            website_attribution: website_attribution,
@@ -115,10 +115,10 @@ defmodule PortalWeb.SignUp do
             form: registration_form(%{}),
             account: nil,
             provider: nil,
-            google_provider: nil,
+            idp_provider: nil,
             actor: nil,
             error_message: nil,
-            google_identity: identity_from_session(session),
+            idp_identity: identity_from_session(session),
             existing_accounts: [],
             website_attribution: website_attribution,
             user_agent: user_agent,
@@ -141,13 +141,20 @@ defmodule PortalWeb.SignUp do
     {:noreply, push_navigate(socket, to: ~p"/sign_up")}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :google}} = socket) do
-    identity = socket.assigns.google_identity
+  def handle_params(_params, _uri, %{assigns: %{live_action: action}} = socket)
+      when action in [:google, :github] do
+    provider = Atom.to_string(action)
 
-    if is_nil(identity) or identity_expired?(identity) do
-      {:noreply, sign_up_error(socket, @google_session_error)}
-    else
-      {:noreply, start_google_sign_up(socket, identity)}
+    case socket.assigns.idp_identity do
+      %{provider: ^provider} = identity ->
+        if identity_expired?(identity) do
+          {:noreply, sign_up_error(socket, idp_session_error(provider))}
+        else
+          {:noreply, start_idp_sign_up(socket, identity)}
+        end
+
+      _ ->
+        {:noreply, sign_up_error(socket, idp_session_error(provider))}
     end
   end
 
@@ -157,36 +164,41 @@ defmodule PortalWeb.SignUp do
 
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, step: :choose)}
 
-  # ── Google identity session ──────────────────────────────────────────────────
+  # ── Identity provider session ────────────────────────────────────────────────
 
-  def session_key, do: @google_sign_up_session_key
+  @spec session_key() :: String.t()
+  def session_key, do: @idp_sign_up_session_key
 
   # Only what registration needs; the picture URL alone can be 2 KB and the
-  # first Google sign-in fills the rest in through the identity upsert.
-  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t()) :: map()
-  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile) do
+  # first provider sign-in fills the rest in through the identity upsert.
+  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t()) :: map()
+  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile, provider)
+      when provider in @idp_sign_up_providers do
     %{
+      "provider" => provider,
       "email" => profile.email,
       "issuer" => profile.issuer,
       "idp_id" => profile.idp_id,
       "name" => profile.profile_attrs["name"],
       "given_name" => profile.profile_attrs["given_name"],
       "family_name" => profile.profile_attrs["family_name"],
-      "expires_at" => System.os_time(:second) + @google_sign_up_max_age
+      "expires_at" => System.os_time(:second) + @idp_sign_up_max_age
     }
   end
 
   defp identity_from_session(session) do
-    case Map.get(session, @google_sign_up_session_key) do
+    case Map.get(session, @idp_sign_up_session_key) do
       %{
+        "provider" => provider,
         "email" => email,
         "issuer" => issuer,
         "idp_id" => idp_id,
         "expires_at" => expires_at
       } = identity
-      when is_binary(email) and is_binary(issuer) and is_binary(idp_id) and
-             is_integer(expires_at) ->
+      when provider in @idp_sign_up_providers and is_binary(email) and is_binary(issuer) and
+             is_binary(idp_id) and is_integer(expires_at) ->
         identity = %{
+          provider: provider,
           email: email,
           issuer: issuer,
           idp_id: idp_id,
@@ -215,7 +227,7 @@ defmodule PortalWeb.SignUp do
       :if={@step == :account_created}
       account={@account}
       provider={@provider}
-      google_provider={@google_provider}
+      idp_provider={@idp_provider}
       actor={@actor}
     />
     """
@@ -228,19 +240,24 @@ defmodule PortalWeb.SignUp do
 
     <.method_chooser :if={@step == :choose} />
     <.sign_up_form :if={@step == :fill_form} form={@form} />
-    <.google_sign_up_form
-      :if={@step == :google_form}
+    <.idp_sign_up_form
+      :if={@step == :idp_form}
       form={@form}
-      email={@google_identity.email}
+      email={@idp_identity.email}
+      provider={@idp_identity.provider}
     />
-    <.existing_accounts :if={@step == :existing_accounts} accounts={@existing_accounts} />
+    <.existing_accounts
+      :if={@step == :existing_accounts}
+      accounts={@existing_accounts}
+      provider={@idp_identity && @idp_identity.provider}
+    />
     <.email_sent :if={@step == :email_sent} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
     <.welcome
       :if={@step == :account_created}
       account={@account}
       provider={@provider}
-      google_provider={@google_provider}
+      idp_provider={@idp_provider}
       actor={@actor}
     />
     """
@@ -318,8 +335,8 @@ defmodule PortalWeb.SignUp do
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
-        Prefer to use Google?
-        <Navigation.link patch={~p"/sign_up"}>Sign up with Google.</Navigation.link>
+        Prefer to use Google or GitHub?
+        <Navigation.link patch={~p"/sign_up"}>Sign up with your account.</Navigation.link>
       </p>
       <.sign_in_links />
     </.footer>
@@ -337,6 +354,14 @@ defmodule PortalWeb.SignUp do
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
+          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+        </button>
+      </.form>
+
+      <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
+        <button type="submit" class={method_button_style()}>
+          <Core.provider_icon provider="github" size="md" />
+          <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
           <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
         </button>
       </.form>
@@ -360,17 +385,18 @@ defmodule PortalWeb.SignUp do
 
   attr :form, :any, required: true
   attr :email, :string, required: true
+  attr :provider, :string, required: true, values: @idp_sign_up_providers
 
-  defp google_sign_up_form(assigns) do
+  defp idp_sign_up_form(assigns) do
     ~H"""
     <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
-      <:icon><Core.provider_icon provider="google" size="md" /></:icon>
+      <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
     </.step_header>
 
     <.form
-      id="google-sign-up-form"
+      id={"#{@provider}-sign-up-form"}
       for={@form}
-      phx-submit="submit_google"
+      phx-submit="submit_identity"
       phx-change="validate"
       class="flex flex-col gap-3"
     >
@@ -379,7 +405,9 @@ defmodule PortalWeb.SignUp do
         <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
           <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
           <span class="truncate">{@email}</span>
-          <span class="ml-auto text-xs text-subtle shrink-0">Verified by Google</span>
+          <span class="ml-auto text-xs text-subtle shrink-0">
+            Verified by {provider_name(@provider)}
+          </span>
         </div>
       </div>
 
@@ -423,7 +451,7 @@ defmodule PortalWeb.SignUp do
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
-        Wrong Google account?
+        Wrong {provider_name(@provider)} account?
         <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
     </.footer>
@@ -592,10 +620,14 @@ defmodule PortalWeb.SignUp do
   end
 
   attr :accounts, :list, required: true
+  attr :provider, :string, default: nil
 
   defp existing_accounts(assigns) do
     ~H"""
-    <.step_header title="You already have an account" subtitle="Your Google email is the owner of the organizations below. Sign in to continue.">
+    <.step_header
+      title="You already have an account"
+      subtitle={"Your #{provider_name(@provider)} email is the owner of the organizations below. Sign in to continue."}
+    >
       <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
@@ -795,15 +827,15 @@ defmodule PortalWeb.SignUp do
     </div>
 
     <Navigation.link
-      :if={@google_provider}
-      href={~p"/#{@account}/sign_in/google/#{@google_provider.id}"}
+      :if={@idp_provider}
+      href={~p"/#{@account}/sign_in/#{idp_provider_type(@idp_provider)}/#{@idp_provider.id}"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
-      Sign In with Google
+      Sign In with {provider_name(idp_provider_type(@idp_provider))}
     </Navigation.link>
 
     <.form
-      :if={is_nil(@google_provider)}
+      :if={is_nil(@idp_provider)}
       for={%{}}
       id="sign-in-form"
       as={:email}
@@ -924,16 +956,16 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  # Only the Google step may create an account without an email round trip, and
-  # the email must come from the verified identity. A connected LiveView outlives
-  # the session entry, so the proof expiry is checked again here.
+  # Only the identity provider step may create an account without an email round
+  # trip, and the email must come from the verified identity. A connected
+  # LiveView outlives the session entry, so the proof expiry is checked again here.
   def handle_event(
-        "submit_google",
+        "submit_identity",
         %{"registration" => attrs},
-        %{assigns: %{step: :google_form, google_identity: %{} = identity}} = socket
+        %{assigns: %{step: :idp_form, idp_identity: %{} = identity}} = socket
       ) do
     if identity_expired?(identity) do
-      {:noreply, sign_up_error(socket, @google_session_error)}
+      {:noreply, sign_up_error(socket, idp_session_error(identity.provider))}
     else
       changeset =
         attrs
@@ -941,15 +973,16 @@ defmodule PortalWeb.SignUp do
         |> registration_changeset()
         |> Map.put(:action, :insert)
 
-      {:noreply, apply_google_registration(socket, changeset)}
+      {:noreply, apply_idp_registration(socket, changeset)}
     end
   end
 
-  def handle_event("submit_google", _params, socket) do
-    {:noreply, sign_up_error(socket, @google_session_error)}
+  def handle_event("submit_identity", _params, socket) do
+    provider = socket.assigns[:idp_identity][:provider]
+    {:noreply, sign_up_error(socket, idp_session_error(provider))}
   end
 
-  defp apply_google_registration(socket, %{valid?: true} = changeset) do
+  defp apply_idp_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
 
     case Database.find_accounts_by_owner_email(registration.email) do
@@ -958,7 +991,7 @@ defmodule PortalWeb.SignUp do
           email: registration.email,
           account: %{name: registration.account.name},
           actor: %{name: registration.actor.name},
-          identity: socket.assigns.google_identity,
+          identity: socket.assigns.idp_identity,
           marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"]),
           sign_up_survey: survey_attrs(registration.sign_up_survey)
         }
@@ -974,11 +1007,11 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  defp apply_google_registration(socket, changeset) do
+  defp apply_idp_registration(socket, changeset) do
     assign(socket, form: to_form(changeset, as: :registration))
   end
 
-  defp start_google_sign_up(socket, identity) do
+  defp start_idp_sign_up(socket, identity) do
     changeset =
       registration_changeset(%{
         "email" => identity.email,
@@ -989,7 +1022,7 @@ defmodule PortalWeb.SignUp do
       sign_up_error(socket, @email_domain_error)
     else
       case Database.find_accounts_by_owner_email(identity.email) do
-        [] -> assign(socket, step: :google_form, form: to_form(changeset, as: :registration))
+        [] -> assign(socket, step: :idp_form, form: to_form(changeset, as: :registration))
         accounts -> existing_accounts_step(socket, accounts)
       end
     end
@@ -997,12 +1030,23 @@ defmodule PortalWeb.SignUp do
 
   defp identity_expired?(%{expires_at: expires_at}), do: expires_at <= System.os_time(:second)
 
+  defp idp_session_error(provider) do
+    "Your #{provider_name(provider)} sign-up session is invalid or has expired. Please try again."
+  end
+
+  defp provider_name("google"), do: "Google"
+  defp provider_name("github"), do: "GitHub"
+  defp provider_name(_provider), do: "identity provider"
+
+  defp idp_provider_type(%module{}), do: Portal.AuthProvider.type!(module)
+
   defp existing_accounts_step(socket, accounts) do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
   end
 
-  # Validation on the Google form uses the verified email so domain errors show early.
-  defp registration_changeset(%{assigns: %{step: :google_form, google_identity: identity}}, attrs) do
+  # Validation on the identity provider form uses the verified email so domain
+  # errors show early.
+  defp registration_changeset(%{assigns: %{step: :idp_form, idp_identity: identity}}, attrs) do
     attrs
     |> Map.put("email", identity.email)
     |> registration_changeset()
@@ -1297,7 +1341,7 @@ defmodule PortalWeb.SignUp do
       step: :account_created,
       account: account,
       provider: provider,
-      google_provider: result.google_provider,
+      idp_provider: result.idp_provider,
       actor: actor
     )
   end
@@ -1398,6 +1442,7 @@ defmodule PortalWeb.SignUp do
       AuthProvider,
       EmailOTP,
       ExternalIdentity,
+      GitHub,
       Google,
       Safe,
       X509
@@ -1481,8 +1526,8 @@ defmodule PortalWeb.SignUp do
       |> Ecto.Multi.run(:x509_provider, fn _repo, %{account: account} ->
         create_x509_provider(account)
       end)
-      |> Ecto.Multi.run(:google_provider, fn _repo, %{account: account} ->
-        create_google_provider(account, registration[:identity])
+      |> Ecto.Multi.run(:idp_provider, fn _repo, %{account: account} ->
+        create_idp_provider(account, registration[:identity])
       end)
       |> Ecto.Multi.run(:actor, fn _repo, %{account: account} ->
         create_admin(account, registration.email, registration.actor.name)
@@ -1554,12 +1599,22 @@ defmodule PortalWeb.SignUp do
       })
     end
 
-    @spec create_google_provider(Portal.Account.t(), map() | nil) ::
+    # The provider the admin signed up with becomes the default, so Firezone
+    # Clients go straight to it.
+    @spec create_idp_provider(Portal.Account.t(), map() | nil) ::
             {:ok, map() | nil} | {:error, Ecto.Changeset.t()}
-    def create_google_provider(_account, nil), do: {:ok, nil}
+    def create_idp_provider(_account, nil), do: {:ok, nil}
 
-    def create_google_provider(account, identity) do
+    def create_idp_provider(account, %{provider: "google"} = identity) do
       create_provider(account, :google, Google.AuthProvider, %{
+        issuer: identity.issuer,
+        is_verified: true,
+        is_default: true
+      })
+    end
+
+    def create_idp_provider(account, %{provider: "github"} = identity) do
+      create_provider(account, :github, GitHub.AuthProvider, %{
         issuer: identity.issuer,
         is_verified: true,
         is_default: true

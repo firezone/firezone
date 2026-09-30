@@ -6,7 +6,7 @@ settings:
 
 overrides:
   '@humanfs/node': 0.16.8
-  brace-expansion@<=5.0.7: 5.0.9
+  brace-expansion@<5.0.12: 5.0.12
   js-yaml@>=4.0.0 <4.3.2: 4.3.2
   nanoid@<3.3.17: 3.3.18
 
@@ -820,10 +820,6 @@ packages:
 
   brace-expansion@5.0.12:
     resolution: {integrity: sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==}
-    engines: {node: 20 || >=22}
-
-  brace-expansion@5.0.9:
-    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
 
   braces@3.0.3:
@@ -2648,10 +2644,6 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
-  brace-expansion@5.0.9:
-    dependencies:
-      balanced-match: 4.0.4
-
   braces@3.0.3:
     dependencies:
       fill-range: 7.1.1
@@ -3361,7 +3353,7 @@ snapshots:
 
   minimatch@3.1.5(patch_hash=c9ae23fc720caf9f9e9be1c7d3665dfdf4351b52a3d400cc54262149a274d93a):
     dependencies:
-      brace-expansion: 5.0.9
+      brace-expansion: 5.0.12
 
   mri@1.2.0: {}
 

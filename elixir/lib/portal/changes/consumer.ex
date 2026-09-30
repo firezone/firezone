@@ -29,6 +29,7 @@ defmodule Portal.Changes.Consumer do
     "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
+    "github_auth_providers" => Hooks.AuthProviders,
     "okta_auth_providers" => Hooks.AuthProviders,
     "entra_auth_providers" => Hooks.AuthProviders,
     "oidc_auth_providers" => Hooks.AuthProviders,

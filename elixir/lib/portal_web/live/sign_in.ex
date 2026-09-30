@@ -4,6 +4,7 @@ defmodule PortalWeb.SignIn do
   alias Portal.{
     Safe,
     Google,
+    GitHub,
     EmailOTP,
     Entra,
     Okta,
@@ -43,6 +44,7 @@ defmodule PortalWeb.SignIn do
         params: PortalWeb.Authentication.take_sign_in_params(params),
         connecting_client: connecting_client,
         google_auth_providers: auth_providers(account, Google.AuthProvider),
+        github_auth_providers: auth_providers(account, GitHub.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
         entra_auth_providers: auth_providers(account, Entra.AuthProvider),
         oidc_auth_providers: auth_providers(account, OIDC.AuthProvider),
@@ -99,6 +101,7 @@ defmodule PortalWeb.SignIn do
       <:item :if={
         Enum.any?(
           @google_auth_providers ++
+            @github_auth_providers ++
             @okta_auth_providers ++ @entra_auth_providers ++ @oidc_auth_providers
         )
       }>
@@ -112,6 +115,18 @@ defmodule PortalWeb.SignIn do
           >
             <:icon>
               <Core.provider_icon provider="google" size="md" />
+            </:icon>
+          </.auth_button>
+
+          <.auth_button
+            :for={provider <- @github_auth_providers}
+            account={@account}
+            params={@params}
+            provider={provider}
+            type="github"
+          >
+            <:icon>
+              <Core.provider_icon provider="github" size="md" />
             </:icon>
           </.auth_button>
 
