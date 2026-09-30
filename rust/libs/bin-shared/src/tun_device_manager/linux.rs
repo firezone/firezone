@@ -151,7 +151,12 @@ impl TunDeviceManager {
     }
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
-        let tun = Box::new(Tun::new()?);
+        create_tun_device()?;
+        let tun = Box::new(tun_linux::Io::new(
+            Self::IFACE_NAME,
+            open_tun()?,
+            &tokio::runtime::Handle::current(),
+        )?);
 
         // Do this in a separate task because:
         // a) We want it to be infallible.
@@ -801,23 +806,6 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
     link_state
 }
 
-pub struct Tun {
-    io: tun_linux::Io,
-}
-
-impl Tun {
-    pub fn new() -> Result<Self> {
-        create_tun_device()?;
-        let io = tun_linux::Io::new(
-            TunDeviceManager::IFACE_NAME,
-            open_tun()?,
-            &tokio::runtime::Handle::current(),
-        )?;
-
-        Ok(Self { io })
-    }
-}
-
 fn open_tun() -> Result<tun_linux::TunFd<Arc<OwnedFd>>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
@@ -869,20 +857,6 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
     // Safety: The file descriptor is valid.
     unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) >= 0 }
-}
-
-impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.io.sender()
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.io.receiver()
-    }
-
-    fn name(&self) -> &str {
-        TunDeviceManager::IFACE_NAME
-    }
 }
 
 fn get_last_error() -> io::Error {
