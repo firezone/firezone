@@ -63,3 +63,13 @@ pub fn datapath_userspace() -> KeyValue {
 pub fn datapath_xdp() -> KeyValue {
     KeyValue::new("relay.datapath", "xdp")
 }
+
+/// Counter of relayed packets by incoming IP version and ECN codepoint.
+/// Includes Not-ECT packets to measure the proportion of ECN-capable traffic.
+pub fn packet_ecn() -> Counter<u64> {
+    opentelemetry::global::meter("relay")
+        .u64_counter("relay.packet.ecn")
+        .with_description("Relayed packets by incoming IP version and ECN codepoint")
+        .with_unit("{packet}")
+        .build()
+}

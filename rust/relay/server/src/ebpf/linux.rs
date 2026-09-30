@@ -86,6 +86,7 @@ impl Program {
         let packet_size = crate::metrics::packet_size();
 
         let processing_duration = crate::metrics::xdp_processing_duration();
+        let packet_ecn = crate::metrics::packet_ecn();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
@@ -101,6 +102,7 @@ impl Program {
             tokio::task::spawn({
                 let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
+                let packet_ecn = packet_ecn.clone();
 
                 async move {
                     loop {
@@ -128,6 +130,30 @@ impl Program {
                                             packet_size.record(
                                                 stats.relayed_data(),
                                                 &[crate::metrics::datapath_xdp()],
+                                            );
+                                            packet_ecn.add(
+                                                1,
+                                                &[
+                                                    crate::metrics::datapath_xdp(),
+                                                    opentelemetry::KeyValue::new(
+                                                        "network.protocol.version",
+                                                        match stats.ip_version() {
+                                                            4 => "4",
+                                                            6 => "6",
+                                                            _ => "unknown",
+                                                        },
+                                                    ),
+                                                    opentelemetry::KeyValue::new(
+                                                        "relay.packet.ecn",
+                                                        match stats.ecn() {
+                                                            0 => "not_ect",
+                                                            1 => "ect1",
+                                                            2 => "ect0",
+                                                            3 => "ce",
+                                                            _ => "unknown",
+                                                        },
+                                                    ),
+                                                ],
                                             );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,

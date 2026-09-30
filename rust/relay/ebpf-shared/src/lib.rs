@@ -245,18 +245,37 @@ impl PortAndPeerV6 {
 pub struct StatsEvent {
     relayed_data: u64,
     processing_duration_ns: u64,
+    ip_version: u64,
+    ecn: u64,
 }
 
 impl StatsEvent {
-    pub fn new(relayed_data: u64, processing_duration: core::time::Duration) -> Self {
+    pub fn new(
+        relayed_data: u64,
+        processing_duration: core::time::Duration,
+        ip_version: u8,
+        ecn: u8,
+    ) -> Self {
         Self {
             relayed_data,
             processing_duration_ns: duration_as_nanos_u64(processing_duration),
+            ip_version: u64::from(ip_version),
+            ecn: u64::from(ecn),
         }
     }
 
     pub fn relayed_data(&self) -> u64 {
         self.relayed_data
+    }
+
+    /// Incoming IP version, before address-family translation.
+    pub fn ip_version(&self) -> u64 {
+        self.ip_version
+    }
+
+    /// Incoming ECN codepoint: Not-ECT (0), ECT(1) (1), ECT(0) (2), or CE (3).
+    pub fn ecn(&self) -> u64 {
+        self.ecn
     }
 
     /// Time the XDP program spent processing this packet.
@@ -267,11 +286,15 @@ impl StatsEvent {
     #[cfg(feature = "std")]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (relayed_chunk, rest) = bytes.split_first_chunk::<8>()?;
-        let (duration_chunk, _) = rest.split_first_chunk::<8>()?;
+        let (duration_chunk, rest) = rest.split_first_chunk::<8>()?;
+        let (ip_version_chunk, rest) = rest.split_first_chunk::<8>()?;
+        let (ecn_chunk, _) = rest.split_first_chunk::<8>()?;
 
         Some(Self {
             relayed_data: u64::from_ne_bytes(*relayed_chunk),
             processing_duration_ns: u64::from_ne_bytes(*duration_chunk),
+            ip_version: u64::from_ne_bytes(*ip_version_chunk),
+            ecn: u64::from_ne_bytes(*ecn_chunk),
         })
     }
 
@@ -317,16 +340,20 @@ mod stats_event_tests {
         let original = StatsEvent {
             relayed_data: 4242,
             processing_duration_ns: 9999,
+            ip_version: 6,
+            ecn: 3,
         };
 
         // The kernel writes the struct's bytes verbatim into the perf buffer; lock in that the
         // wire format matches the `#[repr(C)]` in-memory layout.
         // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
-        // of its size is a valid `[u8; 16]` and vice versa.
-        let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
+        // of its size is a valid `[u8; 32]` and vice versa.
+        let bytes: [u8; 32] = unsafe { core::mem::transmute(original) };
 
         let parsed = StatsEvent::from_bytes(&bytes).expect("size-matching slice parses");
 
+        assert_eq!(parsed.ip_version(), original.ip_version());
+        assert_eq!(parsed.ecn(), original.ecn());
         assert_eq!(parsed.relayed_data, original.relayed_data);
         assert_eq!(
             parsed.processing_duration_ns,
@@ -339,21 +366,25 @@ mod stats_event_tests {
         let original = StatsEvent {
             relayed_data: 4242,
             processing_duration_ns: 9999,
+            ip_version: 6,
+            ecn: 3,
         };
 
         // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
-        // of its size is a valid `[u8; 16]` and vice versa.
-        let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
+        // of its size is a valid `[u8; 32]` and vice versa.
+        let bytes: [u8; 32] = unsafe { core::mem::transmute(original) };
 
         // The kernel pads samples to 8-byte alignment; emulate a padded record.
-        let mut padded = [0_u8; 24];
-        padded[..16].copy_from_slice(&bytes);
+        let mut padded = [0_u8; 40];
+        padded[..32].copy_from_slice(&bytes);
 
         for split in 0..=padded.len() {
             let (head, tail) = padded.split_at(split);
 
             let parsed = StatsEvent::from_chunks(head, tail).expect("chunks cover the sample");
 
+            assert_eq!(parsed.ip_version(), original.ip_version());
+            assert_eq!(parsed.ecn(), original.ecn());
             assert_eq!(parsed.relayed_data, original.relayed_data);
             assert_eq!(
                 parsed.processing_duration_ns,
@@ -364,7 +395,28 @@ mod stats_event_tests {
 
     #[test]
     fn from_chunks_rejects_a_truncated_sample() {
-        assert!(StatsEvent::from_chunks(&[0; 10], &[0; 5]).is_none());
+        let bytes = [0; core::mem::size_of::<StatsEvent>()];
+        for len in 0..bytes.len() {
+            assert!(StatsEvent::from_bytes(&bytes[..len]).is_none());
+            for split in 0..=len {
+                assert!(StatsEvent::from_chunks(&bytes[..split], &bytes[split..len]).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn preserves_each_ip_version_and_ecn_codepoint() {
+        for ip_version in [4, 6] {
+            for ecn in 0..=3 {
+                let original =
+                    StatsEvent::new(42, core::time::Duration::from_nanos(99), ip_version, ecn);
+                // SAFETY: StatsEvent contains only u64 fields and has no padding.
+                let bytes: [u8; 32] = unsafe { core::mem::transmute(original) };
+                let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+                assert_eq!(parsed.ip_version(), u64::from(ip_version));
+                assert_eq!(parsed.ecn(), u64::from(ecn));
+            }
+        }
     }
 }
 
