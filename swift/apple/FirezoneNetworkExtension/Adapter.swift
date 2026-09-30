@@ -38,7 +38,7 @@ enum AdapterError: Error, CustomStringConvertible, LocalizedError {
 ///
 /// FirezoneKit cannot see the UniFFI types, so the translation between its
 /// `X509SignatureScheme` and connlib's `TlsSignatureScheme` happens here.
-final class AppleClientTlsIdentity: ClientTlsIdentity, @unchecked Sendable {
+private final class AppleClientTlsIdentity: ClientTlsIdentity, @unchecked Sendable {
   private let identity: X509ClientIdentity
 
   init(_ identity: X509ClientIdentity) {
