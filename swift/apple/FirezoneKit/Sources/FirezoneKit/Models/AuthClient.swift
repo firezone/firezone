@@ -7,12 +7,12 @@
 import AuthenticationServices
 import Foundation
 
-enum AuthClientError: Error {
+enum AuthClientError: LocalizedError {
   case invalidCallbackURL
   case randomNumberGenerationFailure(errorStatus: Int32)
   case invalidAuthURL
 
-  var description: String {
+  var errorDescription: String? {
     switch self {
     case .invalidCallbackURL:
       return """

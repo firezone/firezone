@@ -149,11 +149,11 @@ public final class Log {
     writeToStderr(.error, message)
   }
 
-  public static func error(_ err: Error) {
-    error(err.localizedDescription)
+  public static func error(_ err: Error, fileID: String = #fileID, function: String = #function) {
+    error(Telemetry.fallbackDescription(of: err) ?? err.localizedDescription)
 
     if shouldCaptureError(err) {
-      Telemetry.capture(err)
+      Telemetry.capture(err, fileID: fileID, function: function)
     }
   }
 
@@ -229,13 +229,13 @@ public final class Log {
 }
 
 extension FileManager {
-  enum FileManagerError: Error {
+  enum FileManagerError: LocalizedError {
     case invalidURL(URL, Error)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
-      case .invalidURL(let url, let error):
-        return "Unable to get resource value for '\(url)': \(error)"
+      case .invalidURL(_, let error):
+        return "Unable to get resource value: \(error.localizedDescription)"
       }
     }
   }

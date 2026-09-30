@@ -257,7 +257,7 @@ impl StubPortal {
             }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::RebootRelaysWhilePartitioned(_) => {}
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 self.revoke_policy_authorizations(*resource);

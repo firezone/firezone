@@ -19,6 +19,21 @@ if [ "${#inputs[@]}" -eq 0 ]; then
 fi
 build_afl
 
+ijon_offset=""
+if [ "$target" = tunnel-proto ]; then
+    map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")" || true
+    [[ "$map_size" =~ ^[0-9]+$ ]] || {
+        echo "Could not determine AFL++ coverage map size" >&2
+        exit 1
+    }
+    # AFL++ appends a 64 KiB IJON set map and a 4 KiB IJON max map to edge coverage.
+    ijon_offset="$((map_size - 65536 - 4096))"
+    [ "$ijon_offset" -gt 0 ] || {
+        echo "AFL++ did not reserve space for IJON feedback" >&2
+        exit 1
+    }
+fi
+
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 mkdir "$temporary/inputs"
@@ -41,8 +56,14 @@ done
 for run in 1 2; do
     # -Z leaves an empty map for any crash or timeout, including an earlier
     # failure that showmap's final-input exit status would otherwise miss.
-    cargo afl showmap -Z -i "$temporary/inputs" \
+    AFL_QUIET=1 cargo afl showmap -Z -i "$temporary/inputs" \
         -o "$temporary/maps-$run" -t 10000 -m none -- "$afl_binary" "$target"
+    if [ "$run" -eq 1 ] && [ -n "$ijon_offset" ] &&
+        ! awk -F: -v offset="$ijon_offset" '$1 >= offset { found = 1 } END { exit !found }' \
+            "$temporary/maps-$run"/*; then
+        echo "The tunnel-proto corpus produced no IJON feedback" >&2
+        exit 1
+    fi
     for input in "$temporary/inputs"/*; do
         name="${input##*/}"
         index="${name%-*}"

@@ -415,7 +415,7 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 self.reboot_relays_while_partitioned(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return

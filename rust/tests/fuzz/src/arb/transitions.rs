@@ -208,7 +208,9 @@ pub(super) fn generate(
                 .collect::<BTreeMap<_, _>>();
             Transition::RebootRelaysWhilePartitioned(relays)
         }
-        K::Idle => Transition::Idle,
+        K::Idle => Transition::Idle {
+            duration: Duration::from_secs(5 * g.count(1, 72) as u64),
+        },
         K::AddResource => {
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)
