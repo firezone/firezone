@@ -281,8 +281,8 @@ where
     /// Returns the public key of the remote on the connection to `cid`.
     pub fn remote_public_key(&self, cid: &TId) -> Option<PublicKey> {
         self.connections
-            .iter_established()
-            .find_map(|(id, c)| (id == *cid).then_some(c.remote_pub_key))
+            .get_established(cid)
+            .map(|c| c.remote_pub_key)
     }
 
     /// Returns the network path currently selected for `cid`.
