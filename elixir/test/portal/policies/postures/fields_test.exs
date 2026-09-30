@@ -55,12 +55,13 @@ defmodule Portal.Policies.Postures.FieldsTest do
 
     for {provider, fields} <- Fields.registry(), {field, _type} <- fields do
       platforms = Fields.platforms(provider, field)
-      assert platforms != [] and platforms -- Fields.platforms() == [], "#{provider}.#{field}"
+      refute Enum.empty?(platforms), "#{provider}.#{field}"
+      assert platforms -- Fields.platforms() == [], "#{provider}.#{field}"
     end
   end
 
   test "providers/0 lists firezone and every mirror" do
-    assert Fields.providers() == [:firezone, :intune, :iru, :defender, :santa, :sentinelone]
+    assert Fields.providers() == [:firezone, :intune, :iru, :defender, :santa, :sentinelone, :sophos]
   end
 
   test "types/0 lists every semantic type and each has operators" do

@@ -418,6 +418,27 @@ defmodule Portal.LogTableMigrationTest do
     assert :cutover = LogTableMigration.cutover("session_logs")
   end
 
+  test "publication dependencies prevent swapping an apparently ready table", ctx do
+    publication = "log_cutover_pub_#{System.unique_integer([:positive])}"
+    repo = Repo.get_dynamic_repo()
+
+    on_exit(fn ->
+      Repo.put_dynamic_repo(repo)
+      Repo.query!("DROP PUBLICATION IF EXISTS #{publication}")
+    end)
+
+    ready("session_logs")
+
+    for target <- ["TABLE session_logs", "TABLES IN SCHEMA #{ctx.schema}"] do
+      Repo.query!("CREATE PUBLICATION #{publication} FOR #{target}")
+      assert_raise RuntimeError, ~r/dependencies/, fn -> LogTableMigration.cutover("session_logs") end
+      assert status("session_logs")["phase"] == "ready"
+      Repo.query!("DROP PUBLICATION #{publication}")
+    end
+
+    assert :cutover = LogTableMigration.cutover("session_logs")
+  end
+
   test "a concurrent update cannot be skipped or overwritten by backfill" do
     with_locked_transaction("UPDATE session_logs SET subject = '{\"stage\":\"updated\"}'", fn ->
       assert_raise Postgrex.Error, ~r/lock timeout/, fn ->

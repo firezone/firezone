@@ -368,7 +368,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.latest_probe_for(protocol) {
-                            self.record_received_response(id, packet);
+                            self.record_received_response(id, packet, now);
                         } else if dst != 53 {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
                         }
@@ -387,7 +387,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.latest_probe_for(protocol) {
-                            self.record_received_response(id, packet);
+                            self.record_received_response(id, packet, now);
                         } else {
                             tracing::error!(
                                 ?protocol,
@@ -436,7 +436,7 @@ impl SimClient {
             };
 
             if self.sent_probes.iter().any(|(sent, _)| *sent == id) {
-                self.record_received_response(id, packet);
+                self.record_received_response(id, packet, now);
                 return None;
             }
 
@@ -492,7 +492,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_received_response(id, packet);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -504,7 +504,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_received_response(id, packet);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -626,10 +626,11 @@ impl SimClient {
             }));
     }
 
-    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket) {
+    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
             .push(ProbeObservation::ResponseReceived(ReceivedResponse {
                 id,
+                at,
                 client: self.id,
                 packet,
             }));

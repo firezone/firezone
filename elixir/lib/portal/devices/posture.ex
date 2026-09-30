@@ -17,11 +17,17 @@ defmodule Portal.Devices.Posture do
   reached through the Intune row already matched to this device: both carry
   the same Entra device id. A row reached that way is only as well matched as
   the Intune row that led to it.
+
+  A Sophos endpoint that reports no serial, which is common on Linux, matches
+  no client device.
+
+  A reinstall or re-enrollment leaves the old record in the provider, so only
+  the most recently seen record of each provider counts for a serial.
   """
 
   import Ecto.Query
 
-  alias Portal.{Defender, Device, Intune, Iru, Santa, SentinelOne}
+  alias Portal.{Defender, Device, Intune, Iru, Santa, SentinelOne, Sophos}
   alias __MODULE__.Database
 
   @type rung :: :mdm_device_id | :attested_serial | :device_serial
@@ -61,8 +67,12 @@ defmodule Portal.Devices.Posture do
       device_ids ->
         account_id = devices |> hd() |> Map.fetch!(:account_id)
 
+        keys = keys_by_id |> Map.values() |> List.flatten()
+        mdm_ids = for {:mdm_device_id, id} <- keys, uniq: true, do: id
+        serials = for {rung, serial} <- keys, rung != :mdm_device_id, uniq: true, do: serial
+
         account_id
-        |> Database.list_matches(device_ids, providers)
+        |> Database.list_matches(device_ids, mdm_ids, serials, providers)
         |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
         |> Map.new(fn {device_id, rows} -> {device_id, matches(rows, Map.fetch!(keys_by_id, device_id))} end)
     end
@@ -89,8 +99,9 @@ defmodule Portal.Devices.Posture do
   def schema(:defender), do: Defender.Device
   def schema(:santa), do: Santa.Device
   def schema(:sentinelone), do: SentinelOne.Device
+  def schema(:sophos), do: Sophos.Device
 
-  @types ~w[intune iru defender santa sentinelone]a
+  @types ~w[intune iru defender santa sentinelone sophos]a
 
   @spec types() :: [atom()]
   def types, do: @types
@@ -106,6 +117,7 @@ defmodule Portal.Devices.Posture do
   def type(Defender.Device), do: :defender
   def type(Santa.Device), do: :santa
   def type(SentinelOne.Device), do: :sentinelone
+  def type(Sophos.Device), do: :sophos
 
   @doc """
   The identifiers a provider row can be matched on, which are the keys its
@@ -147,7 +159,7 @@ defmodule Portal.Devices.Posture do
   # Which columns of a provider's row each rung is compared against. Both the
   # query and the credit given to a row it returns are built from this, so they
   # can never disagree. Only an MDM issues a device id a certificate attests, so
-  # neither EDR answers that rung. Defender answers none: its machine entity
+  # no EDR answers that rung. Defender answers none: its machine entity
   # carries no hardware serial either, which is why it is reached through Intune.
   @spec rung_fields(atom(), rung()) :: [atom()]
   def rung_fields(:intune, :mdm_device_id), do: [:intune_id]
@@ -159,6 +171,8 @@ defmodule Portal.Devices.Posture do
   def rung_fields(:santa, _serial_rung), do: [:serial_number]
   def rung_fields(:sentinelone, :mdm_device_id), do: []
   def rung_fields(:sentinelone, _serial_rung), do: [:serial_number]
+  def rung_fields(:sophos, :mdm_device_id), do: []
+  def rung_fields(:sophos, _serial_rung), do: [:serial_number]
 
   defp match_keys(%Device{} = device) do
     Enum.reject(
@@ -172,30 +186,59 @@ defmodule Portal.Devices.Posture do
   end
 
   # One joined result row per combination of matched provider rows; the
-  # struct of a provider that matched nothing is nil. Defender rides on the
-  # Intune row it was joined through and inherits that row's rung.
+  # struct of a provider that matched nothing is nil. Defender rides on a
+  # kept Intune row it was joined through and inherits that row's rung.
   defp matches(rows, keys) do
     provider_matches =
-      for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3],
-          row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
-          rung = matched_rung(type, keys, row),
-          not is_nil(rung),
-          do: {type, row, rung, nil}
+      latest(
+        for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3, sophos: 4],
+            row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
+            rung = matched_rung(type, keys, row),
+            not is_nil(rung),
+            do: {type, row, rung, nil}
+      )
+
+    kept_intune = MapSet.new(for {:intune, row, _rung, _via} <- provider_matches, do: Ecto.primary_key(row))
 
     defender_matches =
-      for {intune, _iru, _santa, _sentinelone, defender} <- rows,
+      for {intune, _iru, _santa, _sentinelone, _sophos, defender} <- rows,
           not is_nil(intune) and not is_nil(defender),
+          MapSet.member?(kept_intune, Ecto.primary_key(intune)),
           rung = matched_rung(:intune, keys, intune),
           not is_nil(rung),
           do: {:defender, defender, rung, :intune}
 
-    defender_matches =
-      defender_matches
-      |> Enum.sort_by(fn {_type, _row, rung, _via} -> rung_rank(rung) end)
-      |> Enum.uniq_by(fn {_type, row, _rung, _via} -> Ecto.primary_key(row) end)
-
-    provider_matches ++ defender_matches
+    provider_matches ++ latest(defender_matches)
   end
+
+  # A reinstall or re-enrollment leaves the old record in the provider under
+  # the same serial, so each provider keeps one match per serial: the record
+  # the certificate attested by id, else the most recently seen one. Defender
+  # marks its own duplicates as merged, and those lose first.
+  defp latest(matches) do
+    matches
+    |> Enum.group_by(fn {type, row, _rung, _via} -> {type, row.posture_provider_id, duplicate_key(type, row)} end)
+    |> Enum.map(fn {_key, group} -> Enum.min_by(group, &freshness/1) end)
+  end
+
+  defp duplicate_key(:defender, row), do: row.entra_device_id
+  defp duplicate_key(_type, row), do: row.serial_number
+
+  defp freshness({type, row, rung, _via}) do
+    merged = if type == :defender and not is_nil(row.merged_into_machine_id), do: 1, else: 0
+    {rung_rank(rung), merged, age(Map.fetch!(row, seen_field(type))), age(row.synced_at)}
+  end
+
+  defp seen_field(:intune), do: :last_sync_at
+  defp seen_field(:iru), do: :last_check_in_at
+  defp seen_field(:defender), do: :last_seen_at
+  defp seen_field(:santa), do: :last_sync_at
+  defp seen_field(:sentinelone), do: :last_active_at
+  defp seen_field(:sophos), do: :last_seen_at
+
+  # Newest first, and a record that never reported sorts after every dated one.
+  defp age(nil), do: :never
+  defp age(%DateTime{} = datetime), do: -DateTime.to_unix(datetime, :microsecond)
 
   defp matched_rung(type, keys, row) do
     Enum.find_value(keys, fn {rung, value} ->
@@ -214,28 +257,44 @@ defmodule Portal.Devices.Posture do
   end
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne}
+    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     # Runs unscoped: a policy check must see the rows whatever the connecting
     # actor may read, and the account filter keeps them in bounds. The join
     # conditions are the matching ladder; `rung_fields/2` names the same
     # columns so the credit given to a returned row can never disagree.
-    def list_matches(account_id, device_ids, providers) do
+    #
+    # Each provider table is first narrowed to the batch's identifiers, passed
+    # as plain lists so the lookups use the id and serial indexes. Joining on
+    # the device columns directly made Postgres scan the whole table instead.
+    # The narrowed sets are materialized so each is built once per statement,
+    # not once per device.
+    def list_matches(account_id, device_ids, mdm_ids, serials, providers) do
       all? = providers == :all
+      batch = %{all?: all?, account_id: account_id, mdm_ids: mdm_ids, serials: serials}
 
       from(d in Device, as: :device, where: d.account_id == ^account_id and d.id in ^device_ids)
-      |> join_intune(all?)
-      |> join_iru(all?)
-      |> join_santa(all?)
-      |> join_sentinelone(all?)
+      |> with_cte("intune_candidates", as: ^candidates(Intune.Device, Intune.PostureProvider, :intune_id, batch), materialized: true)
+      |> join_intune()
+      |> with_cte("iru_candidates", as: ^candidates(Iru.Device, Iru.PostureProvider, :iru_id, batch), materialized: true)
+      |> join_iru()
+      |> with_cte("santa_candidates", as: ^candidates(Santa.Device, Santa.PostureProvider, nil, batch), materialized: true)
+      |> join_santa()
+      |> with_cte("sentinelone_candidates", as: ^candidates(SentinelOne.Device, SentinelOne.PostureProvider, nil, batch), materialized: true)
+      |> join_sentinelone()
+      |> with_cte("sophos_candidates", as: ^candidates(Sophos.Device, Sophos.PostureProvider, nil, batch), materialized: true)
+      |> join_sophos()
       |> join_defender(all?)
-      |> select([device: d, intune: i, iru: r, santa: s, sentinelone: o, defender: f], {d.id, i, r, s, o, f})
+      |> select(
+        [device: d, intune: i, iru: r, santa: s, sentinelone: o, sophos: x, defender: f],
+        {d.id, i, r, s, o, x, f}
+      )
       |> Safe.unscoped()
       |> Safe.all()
     end
 
-    defp join_intune(query, all?) do
-      join(query, :left, [device: d], i in subquery(rows(Intune.Device, Intune.PostureProvider, all?)),
+    defp join_intune(query) do
+      join(query, :left, [device: d], i in {"intune_candidates", Intune.Device},
         as: :intune,
         on:
           i.account_id == d.account_id and
@@ -245,8 +304,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_iru(query, all?) do
-      join(query, :left, [device: d], r in subquery(rows(Iru.Device, Iru.PostureProvider, all?)),
+    defp join_iru(query) do
+      join(query, :left, [device: d], r in {"iru_candidates", Iru.Device},
         as: :iru,
         on:
           r.account_id == d.account_id and
@@ -256,8 +315,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_santa(query, all?) do
-      join(query, :left, [device: d], s in subquery(rows(Santa.Device, Santa.PostureProvider, all?)),
+    defp join_santa(query) do
+      join(query, :left, [device: d], s in {"santa_candidates", Santa.Device},
         as: :santa,
         on:
           s.account_id == d.account_id and
@@ -265,12 +324,21 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_sentinelone(query, all?) do
-      join(query, :left, [device: d], o in subquery(rows(SentinelOne.Device, SentinelOne.PostureProvider, all?)),
+    defp join_sentinelone(query) do
+      join(query, :left, [device: d], o in {"sentinelone_candidates", SentinelOne.Device},
         as: :sentinelone,
         on:
           o.account_id == d.account_id and
             (o.serial_number == d.last_attested_device_serial or o.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_sophos(query) do
+      join(query, :left, [device: d], x in {"sophos_candidates", Sophos.Device},
+        as: :sophos,
+        on:
+          x.account_id == d.account_id and
+            (x.serial_number == d.last_attested_device_serial or x.serial_number == d.device_serial)
       )
     end
 
@@ -280,6 +348,22 @@ defmodule Portal.Devices.Posture do
         on:
           f.account_id == d.account_id and
             f.entra_device_id == i.entra_device_id
+      )
+    end
+
+    defp candidates(device_schema, provider_schema, nil, batch) do
+      device_schema
+      |> rows(provider_schema, batch.all?)
+      |> where([r], r.account_id == ^batch.account_id and r.serial_number in ^batch.serials)
+    end
+
+    defp candidates(device_schema, provider_schema, mdm_id, batch) do
+      device_schema
+      |> rows(provider_schema, batch.all?)
+      |> where(
+        [r],
+        r.account_id == ^batch.account_id and
+          (field(r, ^mdm_id) in ^batch.mdm_ids or r.serial_number in ^batch.serials)
       )
     end
 

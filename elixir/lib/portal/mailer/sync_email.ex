@@ -79,6 +79,9 @@ defmodule Portal.Mailer.SyncEmail do
   defp provider_details_rows(%Portal.SentinelOne.PostureProvider{} = provider),
     do: [{"Management URL", provider.management_url}]
 
+  defp provider_details_rows(%Portal.Sophos.PostureProvider{} = provider),
+    do: [{"Tenant ID", provider.tenant_id}]
+
   defp provider_remediation(%Portal.Intune.PostureProvider{}),
     do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
 
@@ -93,4 +96,7 @@ defmodule Portal.Mailer.SyncEmail do
 
   defp provider_remediation(%Portal.SentinelOne.PostureProvider{}),
     do: "Please verify the SentinelOne API token is still valid and can view endpoints."
+
+  defp provider_remediation(%Portal.Sophos.PostureProvider{}),
+    do: "Please verify the Sophos API credentials are still valid and can read endpoints."
 end

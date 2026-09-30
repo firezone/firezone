@@ -251,7 +251,9 @@ defmodule PortalWeb.Policies.Postures do
   defp pad(indent), do: String.duplicate("  ", indent)
 
   defp check_name(wire) do
-    Enum.find_value(Checks.all(), fn check -> check.expansion == wire and check.name end)
+    Enum.find_value(Checks.all(), fn check ->
+      (check.expansion == wire or wire in check.previous) and check.name
+    end)
   end
 
   defp wire_for([]), do: nil
@@ -265,14 +267,15 @@ defmodule PortalWeb.Policies.Postures do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne}
+    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     @providers %{
       "intune" => {Intune.PostureProvider, :intune},
       "iru" => {Iru.PostureProvider, :iru},
       "defender" => {Defender.PostureProvider, :defender},
       "santa" => {Santa.PostureProvider, :santa},
-      "sentinelone" => {SentinelOne.PostureProvider, :sentinelone}
+      "sentinelone" => {SentinelOne.PostureProvider, :sentinelone},
+      "sophos" => {Sophos.PostureProvider, :sophos}
     }
 
     # A `limit` on any branch would apply to the whole union, so the branches

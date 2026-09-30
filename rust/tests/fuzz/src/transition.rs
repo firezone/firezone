@@ -102,7 +102,9 @@ pub enum Transition {
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
-    Idle,
+    Idle {
+        duration: Duration,
+    },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
@@ -155,7 +157,7 @@ impl Transition {
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
+            Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
@@ -220,7 +222,7 @@ impl Transition {
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => true,
+            Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,

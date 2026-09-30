@@ -30,7 +30,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     Portal.Iru.PostureProvider,
     Portal.Defender.PostureProvider,
     Portal.Santa.PostureProvider,
-    Portal.SentinelOne.PostureProvider
+    Portal.SentinelOne.PostureProvider,
+    Portal.Sophos.PostureProvider
   ]
 
   # The interval at which the inbound policy_authorizations cache is pruned.
@@ -450,7 +451,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The target already resolved `use_iceless` (reading the flag once, with both
   # peers' capabilities), so we apply it as-is rather than reading the flag a
   # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_iceless, client_name}, socket) do
+  def handle_info({:device_access_acked, ref, use_iceless, client_name, client_slug}, socket) do
     case Map.pop(socket.assigns.pending_authorizations, ref) do
       {nil, _} ->
         {:noreply, socket}
@@ -462,6 +463,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           initiator_payload
           |> Map.put(:use_iceless, use_iceless)
           |> Map.put(:client_name, client_name)
+          |> Map.put(:client_slug, client_slug)
 
         push(socket, "client_device_access_authorized", initiator_payload)
         {:noreply, assign(socket, :pending_authorizations, remaining)}
@@ -512,7 +514,11 @@ defmodule PortalAPI.Client.Channel.Shared do
     # overtake the authorization at the target's data plane. We send the
     # resolved `use_iceless` (not our capability) so the initiator applies the
     # same decision without reading the flag again.
-    send(ack_to, {:device_access_acked, ref, use_iceless, socket.assigns.client.name})
+    send(
+      ack_to,
+      {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
+       socket.assigns.client.slug}
+    )
 
     socket =
       socket
@@ -1923,7 +1929,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # `ref` correlates the target channel's ack back to this request. The
     # initiator is NOT released on `Queue.enqueue/3` returning `:ok` — it is
     # released only once the target's channel acks that it has pushed the
-    # authorization onto the target's websocket (`{:device_access_acked, ref, _, _}`).
+    # authorization onto the target's websocket (`{:device_access_acked, ref, _, _, _}`).
     # Until then the initiator must not start ICE, because its candidates
     # travel the same socket as the authorization and would otherwise race
     # ahead of it at the target's data plane.
@@ -2052,6 +2058,7 @@ defmodule PortalAPI.Client.Channel.Shared do
        %{
          client_id: client.id,
          client_name: client.name,
+         client_slug: client.slug,
          client_public_key: client_public_key,
          client_ipv4: client.ipv4,
          client_ipv6: client.ipv6,

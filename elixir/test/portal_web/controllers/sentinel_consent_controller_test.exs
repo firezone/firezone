@@ -51,6 +51,20 @@ defmodule PortalWeb.SentinelConsentControllerTest do
       refute html =~ "Admin Consent Granted"
     end
 
+    test "continues to the tenant proof when the service principal already exists", %{
+      conn: conn
+    } do
+      conn =
+        grant_admin_consent(conn, %{
+          "error" => "server_error",
+          "error_description" =>
+            "AADSTS650051: Consent action failed due to following error: The service principal name is already present for the tenant #{@tenant_id} paramName: ServicePrincipalName"
+        })
+
+      assert redirect_uri(conn).path == "/#{@tenant_id}/oauth2/v2.0/authorize"
+      assert redirect_params(conn)["prompt"] == "none"
+    end
+
     test "declines a consent response with no tenant", %{conn: conn} do
       conn =
         get(conn, ~p"/auth/sentinel/consent", %{
