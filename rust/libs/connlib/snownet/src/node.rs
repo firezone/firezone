@@ -103,8 +103,6 @@ pub struct Node<TId, RId> {
     inflight_stun_requests: InflightStunRequests<TId>,
 
     pending_events: VecDeque<Event<TId, RId>>,
-    /// Whether we asked for relays since we last got a new one.
-    requested_relays: bool,
     /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
     /// returns it while transmits or events are queued so the driver drains
     /// them without delay.
@@ -208,7 +206,6 @@ where
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: TransmitBuffer::default(),
             pending_events: VecDeque::default(),
-            requested_relays: false,
             last_now: now,
             allocations,
             inflight_stun_requests: Default::default(),
@@ -238,7 +235,6 @@ where
         self.allocations.restart(now);
         self.buffered_transmits.clear();
         self.pending_events.clear();
-        self.requested_relays = false;
         self.inflight_stun_requests.clear();
         self.buffered_candidates.clear();
 
@@ -724,7 +720,9 @@ where
         if gc.removed_last || gc.unblocked_without_allocations {
             tracing::info!("No relays left; requesting a new set");
 
-            self.request_relays(now);
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
         }
 
         self.connections.migrate_relays(
@@ -797,8 +795,6 @@ where
                 .upsert(*rid, *server, username, password.clone(), realm, now)
             {
                 allocations::UpsertResult::Added => {
-                    self.requested_relays = false;
-
                     tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
                 allocations::UpsertResult::Skipped => {
@@ -808,8 +804,6 @@ where
                     tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }
                 allocations::UpsertResult::Replaced(previous) => {
-                    self.requested_relays = false;
-
                     invalidate_allocation_candidates(
                         &mut self.connections,
                         &previous,
@@ -1172,9 +1166,9 @@ where
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self, now: Instant) -> Result<RId, NoTurnServers> {
         let Some(rid) = self.allocations.sample() else {
-            if !self.requested_relays {
-                self.request_relays(now);
-            }
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
 
             return Err(NoTurnServers {});
         };
@@ -1182,13 +1176,6 @@ where
         tracing::debug!(%rid, "Sampled relay");
 
         Ok(rid)
-    }
-
-    fn request_relays(&mut self, now: Instant) {
-        self.requested_relays = true;
-        self.pending_events.push_back(Event::NoRelays {
-            blocked: self.allocations.blocked(now).collect(),
-        });
     }
 }
 
