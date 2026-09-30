@@ -278,6 +278,13 @@ where
         self.connections.is_connected(cid)
     }
 
+    /// Returns the public key of the remote on the connection to `cid`.
+    pub fn remote_public_key(&self, cid: &TId) -> Option<PublicKey> {
+        self.connections
+            .get_established(cid)
+            .map(|c| c.remote_pub_key)
+    }
+
     /// Returns the network path currently selected for `cid`.
     pub fn connection_path(&self, cid: &TId) -> Option<ConnectionPath> {
         self.connections
