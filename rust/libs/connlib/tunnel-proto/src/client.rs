@@ -255,6 +255,11 @@ impl ClientState {
         })
     }
 
+    /// Returns the network path currently selected for `peer`.
+    pub fn connection_path(&self, peer: ClientOrGatewayId) -> Option<snownet::ConnectionPath> {
+        self.node.connection_path(&peer)
+    }
+
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
@@ -1166,6 +1171,16 @@ impl ClientState {
 
             return Ok(());
         };
+
+        if self
+            .node
+            .remote_public_key(&ClientOrGatewayId::Client(cid))
+            .is_some_and(|key| key != client_key)
+        {
+            tracing::debug!(%cid, "Peer reconnected with a new key; forgetting its previous session");
+
+            self.cleanup_connected_client(&cid);
+        }
 
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),

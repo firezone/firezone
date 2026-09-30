@@ -415,7 +415,7 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 self.reboot_relays_while_partitioned(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
@@ -966,6 +966,15 @@ impl ReferenceState {
             } => self
                 .can_drop_during_rekey(origin, Remote::Gateway(gateway), sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
+            } if self.clients[&client]
+                .inner()
+                .has_reset_connections_within_ice_timeout(sent_at) =>
+            {
+                Some(KnownLoss::ConnectionReset)
+            }
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Client(client),
                 ..

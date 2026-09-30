@@ -117,6 +117,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    sophos_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -175,11 +176,13 @@ config :portal, Portal.Changes.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    sophos_posture_providers
     intune_devices
     iru_devices
     defender_devices
     santa_devices
     sentinelone_devices
+    sophos_devices
     relay_tokens
     portal_sessions
   ],
@@ -286,6 +289,13 @@ config :portal, Portal.Santa.APIClient,
   ]
 
 config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Sophos.APIClient,
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,

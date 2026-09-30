@@ -5691,8 +5691,10 @@ defmodule PortalAPI.Client.ChannelTest do
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
       target_client_name = target_client.name
+      target_client_slug = target_client.slug
       initiating_client_id = client.id
       initiating_client_name = client.name
+      initiating_client_slug = client.slug
 
       push(initiating_socket, "create_flow", %{
         "resource_id" => pool_resource.id,
@@ -5703,6 +5705,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     client_id: ^target_client_id,
                     client_name: ^target_client_name,
+                    client_slug: ^target_client_slug,
                     ice_role: :controlling
                   } = source_payload
 
@@ -5719,6 +5722,7 @@ defmodule PortalAPI.Client.ChannelTest do
                   %{
                     client_id: ^initiating_client_id,
                     client_name: ^initiating_client_name,
+                    client_slug: ^initiating_client_slug,
                     ice_role: :controlled,
                     expires_at: target_expires_at
                   } = target_payload
@@ -6169,6 +6173,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
       target_client_id = target_client.id
       target_client_name = target_client.name
+      target_client_slug = target_client.slug
       pool_id = pool_resource.id
 
       push(initiating_socket, "request_access", %{
@@ -6179,6 +6184,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
         client_name: ^target_client_name,
+        client_slug: ^target_client_slug,
         resource_id: ^pool_id,
         ice_role: :controlling
       }
@@ -6702,12 +6708,14 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "client_device_access_authorized", _, 200
 
       target_client_name = target_client.name
+      target_client_slug = target_client.slug
 
-      send(ack_to, {:device_access_acked, ref, false, target_client_name})
+      send(ack_to, {:device_access_acked, ref, false, target_client_name, target_client_slug})
 
       assert_push "client_device_access_authorized", %{
         client_id: ^target_client_id,
         client_name: ^target_client_name,
+        client_slug: ^target_client_slug,
         ice_role: :controlling
       }
     end

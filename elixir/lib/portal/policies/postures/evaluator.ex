@@ -41,7 +41,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   @spec platform(Device.t()) :: atom() | nil
   def platform(%Device{} = device) do
     row_platform =
-      Enum.find_value(~w[intune iru defender santa sentinelone]a, fn provider ->
+      Enum.find_value(~w[intune iru defender santa sentinelone sophos]a, fn provider ->
         device.posture |> Map.get(provider, []) |> Enum.find_value(&row_platform/1)
       end)
 
@@ -78,6 +78,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp row_platform(%Portal.Iru.Device{os_name: os}), do: os_name_platform(os)
   defp row_platform(%Portal.Defender.Device{os_platform: os}), do: os_name_platform(os)
   defp row_platform(%Portal.SentinelOne.Device{os_type: os}), do: os_name_platform(os)
+  defp row_platform(%Portal.Sophos.Device{os_platform: os}), do: os_name_platform(os)
   defp row_platform(%Portal.Santa.Device{}), do: :macos
   defp row_platform(_row), do: nil
 

@@ -28,6 +28,7 @@ fn main() -> anyhow::Result<()> {
     if cli.replay.is_empty() {
         cfg_select! {
             fuzzing => {
+                fuzz::feedback::prepare_runtime();
                 afl::fuzz(true, target);
 
                 return Ok(());

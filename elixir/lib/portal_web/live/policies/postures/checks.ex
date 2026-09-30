@@ -14,7 +14,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
           description: String.t(),
           providers: [atom()],
           platforms: [atom()],
-          expansion: map()
+          expansion: map(),
+          previous: [map()]
         }
 
   @within_a_week "P7D"
@@ -41,6 +42,25 @@ defmodule PortalWeb.Policies.Postures.Checks do
     defp leaves(%{"or" => nodes}), do: Enum.flat_map(nodes, &leaves/1)
   end
 
+  defmodule Previous do
+    @moduledoc false
+
+    # Saved policies keep the tree they were written with, so a check stays
+    # recognisable after Sophos joined its top-level `or`.
+    def of(%{"or" => nodes}, provider) do
+      case Enum.reject(nodes, &leaf_of?(&1, provider)) do
+        ^nodes -> []
+        [node] -> [node]
+        rest -> [%{"or" => rest}]
+      end
+    end
+
+    def of(_expansion, _provider), do: []
+
+    defp leaf_of?(%{"field" => field}, provider), do: String.starts_with?(field, "#{provider}.")
+    defp leaf_of?(_node, _provider), do: false
+  end
+
   @checks [
     %{
       name: :compliant,
@@ -53,12 +73,13 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :disk_encryption,
       label: "Disk encryption",
       description: "FileVault, BitLocker or the mobile OS encryption is on.",
-      providers: [:intune, :iru],
+      providers: [:intune, :iru, :sophos],
       expansion: %{
         "or" => [
           %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
           %{"field" => "intune.attestation_bit_locker_enabled", "op" => "is", "value" => true},
-          %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true}
+          %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true},
+          %{"field" => "sophos.encryption_overall_status", "op" => "is", "value" => "encrypted"}
         ]
       }
     },
@@ -66,7 +87,7 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :endpoint_protection,
       label: "Endpoint protection active",
       description: "An EDR agent is onboarded and reporting.",
-      providers: [:defender, :sentinelone, :intune],
+      providers: [:defender, :sentinelone, :sophos, :intune],
       expansion: %{
         "or" => [
           %{
@@ -81,6 +102,7 @@ defmodule PortalWeb.Policies.Postures.Checks do
               %{"field" => "sentinelone.is_decommissioned", "op" => "is", "value" => false}
             ]
           },
+          %{"field" => "sophos.health_services_status", "op" => "is", "value" => "good"},
           %{"field" => "intune.partner_reported_threat_state", "op" => "is_in", "value" => ["secured", "lowSeverity"]}
         ]
       }
@@ -89,10 +111,11 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :no_active_threats,
       label: "No active threats",
       description: "The EDR reports no infection and no high risk.",
-      providers: [:sentinelone, :defender],
+      providers: [:sentinelone, :sophos, :defender],
       expansion: %{
         "or" => [
           %{"field" => "sentinelone.infected", "op" => "is", "value" => false},
+          %{"field" => "sophos.health_threats_status", "op" => "is", "value" => "good"},
           %{
             "and" => [
               %{"field" => "defender.risk_score", "op" => "is_not", "value" => "High"},
@@ -125,14 +148,15 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :recently_seen,
       label: "Recently seen",
       description: "A provider has heard from the device within the last week.",
-      providers: [:intune, :iru, :defender, :santa, :sentinelone],
+      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
       expansion: %{
         "or" => [
           %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => @within_a_week},
           %{"field" => "iru.last_check_in_at", "op" => "within_last", "value" => @within_a_week},
           %{"field" => "defender.last_seen_at", "op" => "within_last", "value" => @within_a_week},
           %{"field" => "santa.last_sync_at", "op" => "within_last", "value" => @within_a_week},
-          %{"field" => "sentinelone.last_active_at", "op" => "within_last", "value" => @within_a_week}
+          %{"field" => "sentinelone.last_active_at", "op" => "within_last", "value" => @within_a_week},
+          %{"field" => "sophos.last_seen_at", "op" => "within_last", "value" => @within_a_week}
         ]
       }
     },
@@ -193,14 +217,15 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :os_up_to_date,
       label: "OS up to date",
       description: "The OS runs the newest release of its line, or Android carries the latest security patch level.",
-      providers: [:intune, :iru, :defender, :santa, :sentinelone],
+      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
       expansion: %{
         "or" => [
           %{"field" => "intune.os_up_to_date", "op" => "is", "value" => true},
           %{"field" => "iru.os_up_to_date", "op" => "is", "value" => true},
           %{"field" => "defender.os_up_to_date", "op" => "is", "value" => true},
           %{"field" => "santa.os_up_to_date", "op" => "is", "value" => true},
-          %{"field" => "sentinelone.os_up_to_date", "op" => "is", "value" => true}
+          %{"field" => "sentinelone.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "sophos.os_up_to_date", "op" => "is", "value" => true}
         ]
       }
     },
@@ -227,6 +252,7 @@ defmodule PortalWeb.Policies.Postures.Checks do
 
   @checks @checks
           |> Enum.map(&Map.put(&1, :platforms, Platforms.of(&1.expansion)))
+          |> Enum.map(&Map.put(&1, :previous, Previous.of(&1.expansion, :sophos)))
           |> Enum.sort_by(&String.downcase(&1.label))
 
   @by_name Map.new(@checks, &{&1.name, &1})

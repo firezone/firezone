@@ -5,6 +5,7 @@ mod connections;
 mod inflight_stun_requests;
 mod timeout_cache;
 
+pub use connection_state::ConnectionPath;
 pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
@@ -275,6 +276,22 @@ where
     /// Whether the connection to `cid` has completed setup and is available for traffic.
     pub fn is_connected(&self, cid: &TId) -> bool {
         self.connections.is_connected(cid)
+    }
+
+    /// Returns the public key of the remote on the connection to `cid`.
+    pub fn remote_public_key(&self, cid: &TId) -> Option<PublicKey> {
+        self.connections
+            .get_established(cid)
+            .map(|c| c.remote_pub_key)
+    }
+
+    /// Returns the network path currently selected for `cid`.
+    pub fn connection_path(&self, cid: &TId) -> Option<ConnectionPath> {
+        self.connections
+            .get_established(cid)?
+            .state
+            .peer_socket()
+            .map(ConnectionPath::from)
     }
 
     /// Upserts a connection to the given remote.
@@ -673,7 +690,7 @@ where
 
         self.allocations_drain_events(now);
 
-        let mut connections_by_path = [0u64; PeerSocket::KINDS.len()];
+        let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(
@@ -693,7 +710,7 @@ where
         // Report the current number of connections per network path. Every bucket is
         // emitted (including `0`) so that a path draining to zero is not stuck at its
         // last non-zero value.
-        for (kind, count) in PeerSocket::KINDS.into_iter().zip(connections_by_path) {
+        for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
             self.connection_count
                 .record(count, &[otel_attributes::connection_socket(kind)]);
         }

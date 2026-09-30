@@ -67,11 +67,11 @@ public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory 
 
 // MARK: - VPNConfigurationManager
 
-enum VPNConfigurationManagerError: Error {
+enum VPNConfigurationManagerError: LocalizedError {
   case managerNotInitialized
   case savedProtocolConfigurationIsInvalid
 
-  var localizedDescription: String {
+  var errorDescription: String? {
     switch self {
     case .managerNotInitialized:
       return "NETunnelProviderManager is not yet initialized. Race condition?"

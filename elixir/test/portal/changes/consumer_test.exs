@@ -286,7 +286,8 @@ defmodule Portal.Changes.ConsumerTest do
         "iru_devices" => Portal.Changes.Hooks.IruDevices,
         "defender_devices" => Portal.Changes.Hooks.DefenderDevices,
         "santa_devices" => Portal.Changes.Hooks.SantaDevices,
-        "sentinelone_devices" => Portal.Changes.Hooks.SentinelOneDevices
+        "sentinelone_devices" => Portal.Changes.Hooks.SentinelOneDevices,
+        "sophos_devices" => Portal.Changes.Hooks.SophosDevices
       }
 
       # Verify the mapping includes all expected tables
@@ -304,7 +305,8 @@ defmodule Portal.Changes.ConsumerTest do
                  "iru_devices",
                  "defender_devices",
                  "santa_devices",
-                 "sentinelone_devices"
+                 "sentinelone_devices",
+                 "sophos_devices"
                ]
                |> Enum.sort()
     end
