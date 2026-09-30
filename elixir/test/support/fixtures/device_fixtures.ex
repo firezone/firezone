@@ -205,6 +205,35 @@ defmodule Portal.DeviceFixtures do
     |> Portal.Repo.update!()
   end
 
+  @doc """
+  Inserts `count` client devices of one new actor in a single statement, for tests that
+  need many devices. Their addresses start at 100.80.0.0 and fd00:2021:1111::18:0,
+  clear of those the other device fixtures assign.
+  """
+  def bulk_clients_fixture(%Portal.Account{} = account, count) do
+    actor = actor_fixture(account: account)
+    now = DateTime.utc_now()
+
+    rows =
+      for n <- 1..count do
+        %{
+          account_id: account.id,
+          actor_id: actor.id,
+          type: :client,
+          name: "Bulk device #{n}",
+          firezone_id: "bulk-device-#{n}",
+          slug: "bulk-device-#{n}",
+          ipv4: {100, 80, div(n, 256), rem(n, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18, n},
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    {^count, devices} = Portal.Repo.insert_all(Portal.Device, rows, returning: [:id, :slug])
+    devices
+  end
+
   ##############################################################################
   # Gateway devices
   ##############################################################################

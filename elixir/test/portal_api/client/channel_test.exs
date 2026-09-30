@@ -7123,6 +7123,258 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "device_domain_resolution_failed", %{reason: :not_found}
     end
+
+    test "fails with :not_a_device for the label of a pool the client may use", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      own_pool = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      policy_fixture(account: account, group: group, resource: own_pool)
+      device_pool_resource_fixture(account: account, name: "Hidden Pool")
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "resolve_device_domain", %{"domain" => "your-devices.firezone.network"})
+
+      assert_push "device_domain_resolution_failed", %{
+        domain: "your-devices.firezone.network",
+        reason: :not_a_device
+      }
+
+      push(socket, "resolve_device_domain", %{"domain" => "hidden-pool.firezone.network"})
+
+      assert_push "device_domain_resolution_failed", %{
+        domain: "hidden-pool.firezone.network",
+        reason: :not_found
+      }
+    end
+  end
+
+  describe "handle_in/3 browse_device_domain" do
+    setup %{account: account, actor: actor, group: group, subject: subject} do
+      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
+
+      target_client =
+        client_fixture(account: account, actor: actor, name: "Device 42")
+        |> fetch_device!()
+
+      stranger =
+        client_fixture(account: account, actor: actor_fixture(account: account), name: "Stranger")
+        |> fetch_device!()
+
+      own_pool = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      policy_fixture(account: account, group: group, resource: own_pool)
+
+      %{subject: subject, target_client: target_client, stranger: stranger}
+    end
+
+    test "lists the labels of the pools the client may use at the device domain", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      for name <- ["Field Workstations", "Your Devices!", "!!!"] do
+        pool = all_devices_pool_resource_fixture(account: account, name: name)
+        policy_fixture(account: account, group: group, resource: pool)
+      end
+
+      device_pool_resource_fixture(account: account, name: "Hidden Pool")
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "firezone.network"})
+
+      assert_push "device_domain_browsed", payload = %{domain: "firezone.network"}
+
+      assert JSON.decode!(JSON.encode!(payload)) == %{
+               "domain" => "firezone.network",
+               "names" => [
+                 "field-workstations.firezone.network",
+                 "your-devices.firezone.network"
+               ],
+               "ttl" => 30
+             }
+    end
+
+    test "lists only the asking actor's devices in a pool of their own devices", %{
+      client: client,
+      subject: subject,
+      target_client: target_client
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "your-devices.firezone.network"})
+
+      names = Enum.sort([Portal.Device.fqdn(client), Portal.Device.fqdn(target_client)])
+      assert_push "device_domain_browsed", %{names: ^names, ttl: 30}
+    end
+
+    test "lists the devices of every pool whose name gives the label", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      stranger: stranger
+    } do
+      pool = device_pool_resource_fixture(account: account, name: "Your Devices!", devices: [stranger])
+      policy_fixture(account: account, group: group, resource: pool)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "your-devices.firezone.network"})
+
+      names =
+        Enum.sort([
+          Portal.Device.fqdn(client),
+          Portal.Device.fqdn(target_client),
+          Portal.Device.fqdn(stranger)
+        ])
+
+      assert_push "device_domain_browsed", %{names: ^names}
+    end
+
+    test "leaves out devices no pool the client may use holds", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      stranger: stranger
+    } do
+      pool =
+        device_pool_resource_fixture(
+          account: account,
+          name: "Field Workstations",
+          devices: [target_client]
+        )
+
+      policy_fixture(account: account, group: group, resource: pool)
+      device_pool_resource_fixture(account: account, name: "Hidden Pool", devices: [stranger])
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "field-workstations.firezone.network"})
+
+      names = [Portal.Device.fqdn(target_client)]
+      assert_push "device_domain_browsed", %{names: ^names}
+
+      push(socket, "browse_device_domain", %{"domain" => "hidden-pool.firezone.network"})
+
+      assert_push "device_domain_browse_failed", %{
+        domain: "hidden-pool.firezone.network",
+        reason: :not_found
+      }
+    end
+
+    test "lists only names that resolve for the client", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      pool = all_devices_pool_resource_fixture(account: account, name: "Field Workstations")
+      policy_fixture(account: account, group: group, resource: pool)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      for label <- ["field-workstations", "your-devices"] do
+        push(socket, "browse_device_domain", %{"domain" => "#{label}.firezone.network"})
+        assert_push "device_domain_browsed", %{names: names}
+        assert names != []
+
+        for name <- names do
+          push(socket, "resolve_device_domain", %{"domain" => name})
+          assert_push "device_domain_resolved", %{domain: ^name}
+        end
+      end
+    end
+
+    test "lists nothing at the label of a device the client may reach", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      stranger: stranger
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      domain = Portal.Device.fqdn(target_client)
+      push(socket, "browse_device_domain", %{"domain" => domain})
+
+      assert_push "device_domain_browsed", %{domain: ^domain, names: [], ttl: 30}
+
+      stranger_domain = Portal.Device.fqdn(stranger)
+      push(socket, "browse_device_domain", %{"domain" => stranger_domain})
+
+      assert_push "device_domain_browse_failed", %{domain: ^stranger_domain, reason: :not_found}
+    end
+
+    test "lists up to 1000 names and refuses a longer listing", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      [extra | devices] = bulk_clients_fixture(account, 1_001)
+
+      full_pool = device_pool_resource_fixture(account: account, name: "Full Pool", devices: devices)
+      policy_fixture(account: account, group: group, resource: full_pool)
+
+      crowded_pool =
+        device_pool_resource_fixture(
+          account: account,
+          name: "Crowded Pool",
+          devices: [extra | devices]
+        )
+
+      policy_fixture(account: account, group: group, resource: crowded_pool)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "browse_device_domain", %{"domain" => "full-pool.firezone.network"})
+
+      names = devices |> Enum.map(&Portal.Device.fqdn/1) |> Enum.sort()
+      assert_push "device_domain_browsed", %{names: ^names}
+
+      push(socket, "browse_device_domain", %{"domain" => "crowded-pool.firezone.network"})
+
+      assert_push "device_domain_browse_failed", %{
+        domain: "crowded-pool.firezone.network",
+        reason: :too_many_names
+      }
+    end
+
+    test "answers a name that lists nothing for the client no faster than an unknown one", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      device_pool_resource_fixture(account: account, name: "Hidden Pool")
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      listed = time_browse(socket, "your-devices.firezone.network", "device_domain_browsed")
+      hidden = time_browse(socket, "hidden-pool.firezone.network", "device_domain_browse_failed")
+      unknown = time_browse(socket, "ghost.firezone.network", "device_domain_browse_failed")
+      nested = time_browse(socket, "a.your-devices.firezone.network", "device_domain_browse_failed")
+
+      assert listed < 400
+      assert hidden >= 450
+      assert unknown >= 450
+      assert nested >= 450
+    end
   end
 
   describe "handle_in/3 no_relays" do
@@ -8810,6 +9062,14 @@ defmodule PortalAPI.Client.ChannelTest do
   defp time_push(socket, domain, event) do
     started_at = System.monotonic_time(:millisecond)
     push(socket, "resolve_device_domain", %{"domain" => domain})
+    assert_push ^event, %{domain: ^domain}
+    System.monotonic_time(:millisecond) - started_at
+  end
+
+  # Milliseconds between asking what a name lists and the answer landing.
+  defp time_browse(socket, domain, event) do
+    started_at = System.monotonic_time(:millisecond)
+    push(socket, "browse_device_domain", %{"domain" => domain})
     assert_push ^event, %{domain: ^domain}
     System.monotonic_time(:millisecond) - started_at
   end
