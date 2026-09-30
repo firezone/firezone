@@ -47,6 +47,9 @@ members = [
     "libs/logging",
     "libs/otel-attributes",
     "libs/telemetry",
+    "libs/tun-apple",
+    "libs/tun-linux",
+    "libs/tun-windows",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
     "libs/x509-claims",
@@ -255,6 +258,9 @@ tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" 
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
+tun-apple = { path = "libs/tun-apple" }
+tun-linux = { path = "libs/tun-linux" }
+tun-windows = { path = "libs/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }

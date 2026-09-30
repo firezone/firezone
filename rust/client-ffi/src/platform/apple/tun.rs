@@ -1,229 +1,39 @@
-use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
 
-/// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
-///
-/// The kernel default (`ctl_recvsize`) is 512 KiB, only a few hundred MTU-sized
-/// packets, after which inbound packets are backpressured. A larger buffer lets the kernel
-/// queue more while we drain it. 8 MiB matches the default `kern.ipc.maxsockbuf`
-/// ceiling — the most the kernel grants without raising that system-wide limit.
-const RECV_BUFFER_SIZE: libc::c_int = if cfg!(target_os = "ios") {
-    2 * 1024 * 1024
-} else {
-    8 * 1024 * 1024
-};
+pub struct Tun(tun_apple::Io);
 
-/// How many packets the kernel may park in the socket receive buffer before it pauses
-/// the interface's output queue until we read them.
-///
-/// XNU defaults this to 1, so every packet costs a full read + flow-control roundtrip
-/// before the kernel hands us the next one. We size it to [`RECV_BUFFER_SIZE`] at the
-/// TUN MTU ([`ip_packet::MAX_IP_SIZE`]), rounded up to a power of two, leaving the byte
-/// buffer as the limit that actually governs how much is queued.
-const MAX_PENDING_PACKETS: u32 =
-    (RECV_BUFFER_SIZE as u32 / ip_packet::MAX_IP_SIZE as u32).next_power_of_two();
-
-/// From XNU's `bsd/net/if_utun.h`.
-const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
-
-pub struct Tun {
-    name: String,
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-}
-
-/// Finds the `utun` descriptor the NetworkExtension opened for this process.
-///
-/// Separate from [`Tun::from_fd`] so a caller can establish that the descriptor
-/// exists before committing any resources to the session that will own it. Leaves
-/// the descriptor untouched: it belongs to the NetworkExtension, and a caller that
-/// gets this far may still give up before there is a [`Tun`] to own it.
+/// Finds the descriptor opened by NetworkExtension.
 pub fn search_fd() -> io::Result<RawFd> {
     search_for_tun_fd()
 }
 
 impl Tun {
-    /// Create a new [`Tun`] from a raw file descriptor.
+    /// Starts IO on the descriptor owned by NetworkExtension.
     ///
     /// # Safety
     ///
-    /// - The file descriptor must be open.
-    /// - The file descriptor must not get closed by anyone else.
-    /// - On iOS/macOS, the NetworkExtension owns the fd, so we don't take ownership.
+    /// The descriptor must remain open until the TUN IO and its workers have stopped.
     pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        set_non_blocking(fd)?;
-        Self::from_fd_inner(fd, runtime)
-    }
+        let io = unsafe { tun_apple::Io::new(name(fd)?, fd, runtime)? };
 
-    fn from_fd_inner(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let name = name(fd)?;
-
-        raise_recv_buffer(fd);
-        raise_max_pending_packets(fd);
-
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::apple::send(fd, outbound_rx),
-                    "Failed to send to TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    tun::apple::recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-
-        Ok(Tun {
-            name,
-            outbound_tx,
-            inbound_rx,
-        })
+        Ok(Self(io))
     }
 }
 
 impl tun::Tun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        self.0.sender()
     }
-
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        self.0.receiver()
     }
-
     fn name(&self) -> &str {
-        self.name.as_str()
+        self.0.name()
     }
 }
 
 fn get_last_error() -> io::Error {
     io::Error::last_os_error()
-}
-
-fn set_non_blocking(fd: RawFd) -> io::Result<()> {
-    match unsafe { fcntl(fd, F_GETFL) } {
-        -1 => Err(get_last_error()),
-        flags => match unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } {
-            -1 => Err(get_last_error()),
-            _ => Ok(()),
-        },
-    }
-}
-
-/// Raises the limit of packets the kernel buffers on the utun socket so it can run
-/// ahead of our reads instead of in lock-step.
-fn raise_max_pending_packets(fd: RawFd) {
-    let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
-    {
-        Ok(current) => current,
-        Err(e) => {
-            tracing::warn!(error = %e, "Failed to get `UTUN_OPT_MAX_PENDING_PACKETS`");
-            return;
-        }
-    };
-
-    tracing::debug!(current, "Queried `UTUN_OPT_MAX_PENDING_PACKETS`");
-
-    if current >= MAX_PENDING_PACKETS {
-        return;
-    }
-
-    if let Err(e) = set_sockopt(
-        fd,
-        libc::SYSPROTO_CONTROL,
-        UTUN_OPT_MAX_PENDING_PACKETS,
-        &MAX_PENDING_PACKETS,
-    ) {
-        tracing::warn!(error = %e, "Failed to set `UTUN_OPT_MAX_PENDING_PACKETS`");
-        return;
-    }
-
-    tracing::debug!(
-        previous = current,
-        new = MAX_PENDING_PACKETS,
-        "Raised `UTUN_OPT_MAX_PENDING_PACKETS`"
-    );
-}
-
-/// Raises the utun socket's receive buffer so the kernel can queue more inbound
-/// packets between our reads.
-fn raise_recv_buffer(fd: RawFd) {
-    if let Err(e) = set_sockopt(fd, libc::SOL_SOCKET, libc::SO_RCVBUF, &RECV_BUFFER_SIZE) {
-        tracing::warn!(error = %e, "Failed to set TUN socket receive buffer");
-        return;
-    }
-
-    // The kernel clamps to `kern.ipc.maxsockbuf`; read back what it actually applied.
-    match get_sockopt::<libc::c_int>(fd, libc::SOL_SOCKET, libc::SO_RCVBUF) {
-        Ok(actual) => {
-            tracing::debug!(
-                requested = RECV_BUFFER_SIZE,
-                actual,
-                "Set TUN socket receive buffer"
-            )
-        }
-        Err(e) => tracing::warn!(error = %e, "Failed to read back TUN socket receive buffer"),
-    }
-}
-
-/// Sets an integer-valued socket option.
-fn set_sockopt<T>(fd: RawFd, level: libc::c_int, name: libc::c_int, value: &T) -> io::Result<()> {
-    // Safety: `value` points to a `T`, matching the `size_of::<T>()` length we pass.
-    let ret = unsafe {
-        libc::setsockopt(
-            fd,
-            level,
-            name,
-            (value as *const T).cast(),
-            size_of::<T>() as libc::socklen_t,
-        )
-    };
-
-    if ret < 0 {
-        return Err(get_last_error());
-    }
-
-    Ok(())
-}
-
-/// Reads an integer-valued socket option.
-fn get_sockopt<T>(fd: RawFd, level: libc::c_int, name: libc::c_int) -> io::Result<T> {
-    let mut value = std::mem::MaybeUninit::<T>::uninit();
-    let mut len = size_of::<T>() as libc::socklen_t;
-
-    // Safety: `value` has room for the `size_of::<T>()` length we pass.
-    let ret = unsafe { libc::getsockopt(fd, level, name, value.as_mut_ptr().cast(), &mut len) };
-
-    if ret < 0 {
-        return Err(get_last_error());
-    }
-
-    // Safety: `getsockopt` succeeded; these integer options return a fully-initialized `T`.
-    Ok(unsafe { value.assume_init() })
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]

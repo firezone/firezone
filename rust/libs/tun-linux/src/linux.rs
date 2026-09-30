@@ -28,12 +28,59 @@ use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
-use crate::{InboundTx, OutboundRx, PacketBatch};
 use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
+use tun::{InboundTx, OutboundRx, PacketBatch};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
 const READ_BUFFER_SIZE: usize = VNET_HDR_LEN + u16::MAX as usize;
+
+pub struct Io {
+    name: String,
+    workers: crate::workers::TunWorkers,
+}
+
+impl Io {
+    pub fn new(
+        name: impl Into<String>,
+        fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
+    ) -> Result<Self> {
+        let workers = crate::workers::TunWorkers::spawn(
+            {
+                let fd = fd.clone();
+                move |outbound_rx| {
+                    logging::unwrap_or_warn!(
+                        tun_send(fd, outbound_rx),
+                        "Failed to send to TUN device: {}"
+                    )
+                }
+            },
+            move |inbound_tx| {
+                logging::unwrap_or_warn!(
+                    tun_recv(fd, inbound_tx),
+                    "Failed to recv from TUN device: {}"
+                )
+            },
+        )?;
+
+        Ok(Self {
+            name: name.into(),
+            workers,
+        })
+    }
+}
+
+impl tun::Tun for Io {
+    fn sender(&self) -> &tun::OutboundTx {
+        self.workers.sender()
+    }
+    fn receiver(&mut self) -> &mut tun::InboundRx {
+        self.workers.receiver()
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
 
 /// A TUN device file descriptor together with whether segmentation offloads are enabled on it.
 ///
@@ -53,7 +100,7 @@ impl<T> TunFd<T> {
 }
 
 /// Sends packets from `outbound_rx` to the TUN device, coalescing where possible.
-pub fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
+fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
 where
     T: AsRawFd,
 {
@@ -181,7 +228,7 @@ where
 }
 
 /// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`](ip_packet::IpPacket)s.
-pub fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
+fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
 where
     T: AsRawFd,
 {

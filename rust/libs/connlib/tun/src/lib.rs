@@ -5,16 +5,6 @@ use ip_packet::IpPacket;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
-#[cfg(target_family = "unix")]
-pub mod ioctl;
-#[cfg(target_os = "linux")]
-pub mod linux;
-#[cfg(target_family = "unix")]
-pub mod unix;
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod apple;
-
 /// How many packets a single item on the TUN channels may at most hold.
 ///
 /// The channels exchange whole batches of packets, so the cost of a channel

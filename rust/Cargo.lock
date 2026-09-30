@@ -775,10 +775,6 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
- "opentelemetry",
- "otel-attributes",
- "otel-instruments",
- "packet-coalescer",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -793,6 +789,8 @@ dependencies = [
  "tower",
  "tracing",
  "tun",
+ "tun-linux",
+ "tun-windows",
  "uuid",
  "windows",
  "windows-core",
@@ -1332,7 +1330,6 @@ dependencies = [
  "connlib-model",
  "flow-log-upload",
  "flow-log-writer",
- "ip-packet",
  "ip_network",
  "itertools 0.15.0",
  "libc",
@@ -1340,8 +1337,6 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
- "otel-attributes",
- "otel-instruments",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1353,6 +1348,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tun",
+ "tun-apple",
+ "tun-linux",
  "tunnel-bypass-resolver",
  "uniffi",
  "x509-claims-ffi",
@@ -8723,18 +8720,62 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "tun"
 version = "0.1.0"
 dependencies = [
- "anyhow-ext",
  "bufferpool",
+ "ip-packet",
+ "tokio",
+]
+
+[[package]]
+name = "tun-apple"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "ip-packet",
+ "libc",
+ "logging",
+ "opentelemetry",
+ "otel-attributes",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+ "tun",
+]
+
+[[package]]
+name = "tun-linux"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
  "futures",
  "ingot",
  "ip-packet",
  "libc",
+ "logging",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "packet-coalescer",
  "smallvec",
  "tokio",
  "tracing",
+ "tun",
+]
+
+[[package]]
+name = "tun-windows"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "ip-packet",
+ "opentelemetry",
+ "otel-attributes",
+ "otel-instruments",
+ "packet-coalescer",
+ "tokio",
+ "tracing",
+ "tun",
+ "wintun",
 ]
 
 [[package]]
