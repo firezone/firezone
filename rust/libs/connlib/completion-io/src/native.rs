@@ -11,6 +11,10 @@ pub use windows_tun::Wintun;
 mod unix_tun;
 #[cfg(unix)]
 pub use unix_tun::RawTun;
+#[cfg(target_os = "linux")]
+mod linux_tun;
+#[cfg(target_os = "linux")]
+pub use linux_tun::OffloadedTun;
 
 use crate::{CompletionPort, Operation, Payload, ReceivedDatagram};
 use anyhow::{Context as _, Result};
@@ -102,22 +106,22 @@ async fn drive_generation<D: PacketDevice>(
     let send_tun = LocalQueue::new();
     let receive_v6 = async {
         match &v6 {
-            Some(socket) => receive_network(&port, socket).await,
+            Some(socket) => receive_network(port, socket).await,
             None => std::future::pending().await,
         }
     };
     let write_v6 = async {
         match &v6 {
-            Some(socket) => send_network(&port, socket, &send_v6).await,
+            Some(socket) => send_network(port, socket, &send_v6).await,
             None => std::future::pending().await,
         }
     };
     let tasks = async {
         futures::try_join!(
-            receive_network(&port, &v4),
+            receive_network(port, &v4),
             receive_v6,
             receive_tun(port, device),
-            send_network(&port, &v4, &send_v4),
+            send_network(port, &v4, &send_v4),
             write_v6,
             write_tun(port, device, &send_tun),
         )?;
@@ -377,5 +381,105 @@ impl Drop for CompletionGuard {
                 .port
                 .complete(id, Err(anyhow::anyhow!("Native operation cancelled")));
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use ip_packet::Ecn;
+
+    #[test]
+    fn io_uring_retains_gso_gro_metadata_and_fallback_ordering() {
+        run(
+            async {
+                assert!(
+                    compio::runtime::Runtime::current()
+                        .driver_type()
+                        .is_iouring()
+                );
+                let receiver =
+                    UdpSocket::from_std(bind_udp("127.0.0.1:0".parse().unwrap()).unwrap()).unwrap();
+                let sender =
+                    UdpSocket::from_std(bind_udp("127.0.0.1:0".parse().unwrap()).unwrap()).unwrap();
+                let source = sender.local_addr().unwrap();
+                let destination = receiver.local_addr().unwrap();
+                let pool = BufferPool::<Vec<u8>>::new(u16::MAX as usize, "test-gso");
+                let mut payload = pool.pull();
+                payload.clear();
+                for sequence in 0..16 {
+                    payload.extend(std::iter::repeat_n(sequence, 1200));
+                }
+                let original = payload.as_ptr();
+                let gso = Cell::new(true);
+
+                send_datagram(
+                    &sender,
+                    DatagramOut {
+                        src: Some(source),
+                        dst: destination,
+                        packet: payload,
+                        segment_size: 1200,
+                        ecn: Ecn::Ect0,
+                    },
+                    &gso,
+                )
+                .await
+                .unwrap();
+                let mut incoming = pool.pull();
+                incoming.resize(u16::MAX as usize, 0);
+                assert_eq!(incoming.as_ptr(), original);
+                let BufResult(result, (buffer, control)) = receiver
+                    .recv_msg(
+                        UdpBuffer {
+                            inner: incoming,
+                            len: 0,
+                        },
+                        ancillary::Control::new(),
+                    )
+                    .await;
+                let (len, _, from, _) = result.unwrap();
+                let (local, stride, ecn) =
+                    ancillary::decode(control.as_init(), destination.port(), len).unwrap();
+
+                assert!(
+                    gso.get(),
+                    "Kernel must support UDP segmentation for this test"
+                );
+                assert_eq!(len, 16 * 1200);
+                assert_eq!(stride, 1200);
+                assert_eq!(local, destination);
+                assert_eq!(from, source);
+                assert_eq!(ecn, Ecn::Ect0);
+                for (sequence, segment) in buffer.as_init().chunks(stride).enumerate() {
+                    assert!(segment.iter().all(|byte| *byte == sequence as u8));
+                }
+
+                let mut payload = pool.pull();
+                payload.clear();
+                payload.extend([1, 1, 2, 2, 3]);
+                send_datagram(
+                    &sender,
+                    DatagramOut {
+                        src: Some(source),
+                        dst: destination,
+                        packet: payload,
+                        segment_size: 2,
+                        ecn: Ecn::NonEct,
+                    },
+                    &Cell::new(false),
+                )
+                .await
+                .unwrap();
+                for expected in [&[1, 1][..], &[2, 2][..], &[3][..]] {
+                    let BufResult(result, bytes) =
+                        receiver.recv_from(Vec::with_capacity(128)).await;
+                    assert_eq!(result.unwrap().1, source);
+                    assert_eq!(&bytes, expected);
+                }
+            },
+            None,
+        )
+        .unwrap();
     }
 }

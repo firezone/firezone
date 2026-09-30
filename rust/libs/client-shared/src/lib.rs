@@ -287,7 +287,7 @@ impl
         >,
     >
 {
-    pub(crate) fn new_local<E>(
+    pub(crate) fn new_driven<E>(
         make_event_loop: impl FnOnce(
             watch::Sender<ResourceList>,
             watch::Sender<Option<TunConfig>>,

@@ -1621,12 +1621,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "backoff",
+ "bin-shared",
  "bufferpool",
+ "clap",
  "client-shared",
  "compio",
  "futures",
  "ip-packet",
  "libc",
+ "packet-coalescer",
  "phoenix-channel",
  "quinn-udp",
  "rustls",
@@ -1642,6 +1645,7 @@ dependencies = [
  "tunnel-bypass-resolver",
  "windows-sys 0.61.2",
  "wintun",
+ "x509-credential",
 ]
 
 [[package]]

@@ -29,7 +29,7 @@ pub struct Host {
     pub session: Session,
     events: crate::DrivenEvents,
     pub port: CompletionPort,
-    pending_events: VecDeque<serde_json::Value>,
+    pending_events: VecDeque<Event>,
     pub closed: bool,
     runtime: tokio::runtime::Runtime,
 }
@@ -40,6 +40,7 @@ impl Host {
             config,
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
+            None,
         )
     }
 
@@ -47,12 +48,14 @@ impl Host {
         config: Config,
         tcp: Arc<dyn socket_factory::SocketFactory<socket_factory::TcpSocket>>,
         udp: Arc<dyn socket_factory::SocketFactory<socket_factory::UdpSocket>>,
+        certificate: Option<x509_credential::ClientCertificate>,
     ) -> Result<Self> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        let (session, events, port) = runtime.block_on(async { config.connect(tcp, udp) })?;
+        let (session, events, port) =
+            runtime.block_on(async { config.connect_with_certificate(tcp, udp, certificate) })?;
         Ok(Self {
             session,
             events,
@@ -64,9 +67,9 @@ impl Host {
     }
 
     /// Polls packet inputs, portal updates, DNS work, and due timers without waiting for I/O.
-    pub fn poll(&mut self) -> Result<()> {
+    pub fn poll(&mut self) {
         if self.closed {
-            return Ok(());
+            return;
         }
         let events = &mut self.events;
         let pending = &mut self.pending_events;
@@ -76,7 +79,7 @@ impl Host {
             std::future::poll_fn(|cx| {
                 for _ in 0..128 {
                     match events.poll_next(cx) {
-                        Poll::Ready(Some(event)) => pending.push_back(event_json(event)),
+                        Poll::Ready(Some(event)) => pending.push_back(event),
                         Poll::Ready(None) => {
                             *closed = true;
                             break;
@@ -89,10 +92,9 @@ impl Host {
             .await;
             tokio::task::yield_now().await;
         });
-        Ok(())
     }
 
-    pub fn next_event(&mut self) -> Option<serde_json::Value> {
+    pub fn next_event(&mut self) -> Option<Event> {
         self.pending_events.pop_front()
     }
 }
@@ -128,6 +130,16 @@ impl Config {
         tcp: Arc<dyn socket_factory::SocketFactory<socket_factory::TcpSocket>>,
         udp: Arc<dyn socket_factory::SocketFactory<socket_factory::UdpSocket>>,
     ) -> Result<(Session, crate::DrivenEvents, CompletionPort)> {
+        let result = self.connect_with_certificate(tcp, udp, None)?;
+        Ok(result)
+    }
+
+    pub fn connect_with_certificate(
+        self,
+        tcp: Arc<dyn socket_factory::SocketFactory<socket_factory::TcpSocket>>,
+        udp: Arc<dyn socket_factory::SocketFactory<socket_factory::UdpSocket>>,
+        certificate: Option<x509_credential::ClientCertificate>,
+    ) -> Result<(Session, crate::DrivenEvents, CompletionPort)> {
         let _ = rustls::crypto::ring::default_provider().install_default();
         tunnel_bypass_resolver::configure(tcp.clone(), udp.clone());
         let url = LoginUrl::client(
@@ -135,7 +147,7 @@ impl Config {
             self.device_id,
             self.device_name,
             phoenix_channel::DeviceInfo::default(),
-            None,
+            certificate,
         )?;
         let portal = PhoenixChannel::disconnected(
             url,

@@ -704,17 +704,18 @@ mod tests {
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
-            let mut io = Io::new(
+            let mut io = Io::with_packets(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
+                Threaded::new(Arc::new(socket_factory::udp)),
             );
             io.set_tun(Box::new(DummyTun::new()));
 
             io
         }
 
-        async fn next(&mut self) -> Input {
+        async fn next(&mut self) -> Input<<Threaded as PacketIo>::Network> {
             poll_fn(|cx| self.poll(cx)).await
         }
     }

@@ -309,22 +309,37 @@ mod tests {
             let mut packet = pool.pull();
             packet.clear();
             packet.push(value as u8);
-            io.send(DatagramOut { src: None, dst: "127.0.0.1:1234".parse().unwrap(), packet, segment_size: 1, ecn: ip_packet::Ecn::NonEct }).unwrap();
+            io.send(DatagramOut {
+                src: None,
+                dst: "127.0.0.1:1234".parse().unwrap(),
+                packet,
+                segment_size: 1,
+                ecn: ip_packet::Ecn::NonEct,
+            })
+            .unwrap();
         }
         assert!(io.poll_send_ready(&mut cx).is_pending());
-        let Poll::Ready(Some(first)) = port.poll_operation(&mut cx) else { panic!("Expected operation"); };
+        let Poll::Ready(Some(first)) = port.poll_operation(&mut cx) else {
+            panic!("Expected operation");
+        };
         assert!(io.poll_send_ready(&mut cx).is_pending());
         assert!(io.poll_shutdown(&mut cx).is_pending());
 
         port.complete(first.id, Ok(())).unwrap();
         assert!(io.poll_send_ready(&mut cx).is_ready());
-        let Payload::Network(datagram) = first.payload else { panic!("Expected datagram"); };
+        let Payload::Network(datagram) = first.payload else {
+            panic!("Expected datagram");
+        };
         assert_eq!(&*datagram.packet, &[0]);
         assert!(port.complete(first.id, Ok(())).is_err());
 
         for value in 1..CAPACITY {
-            let Poll::Ready(Some(operation)) = port.poll_operation(&mut cx) else { panic!("Expected operation"); };
-            let Payload::Network(datagram) = operation.payload else { panic!("Expected datagram"); };
+            let Poll::Ready(Some(operation)) = port.poll_operation(&mut cx) else {
+                panic!("Expected operation");
+            };
+            let Payload::Network(datagram) = operation.payload else {
+                panic!("Expected datagram");
+            };
             assert_eq!(&*datagram.packet, &[value as u8]);
             port.complete(operation.id, Ok(())).unwrap();
         }
@@ -336,28 +351,55 @@ mod tests {
     fn reset_discards_stale_receives_and_completions_without_invalidating_leases() {
         let (mut io, port) = CompletionIo::new();
         let mut cx = Context::from_waker(futures::task::noop_waker_ref());
-        let packet = ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1, 2, &[42]).unwrap();
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1, 2, &[42])
+                .unwrap();
         io.queue_tun(packet.clone());
         io.flush_tun_batch();
-        let Poll::Ready(Some(operation)) = port.poll_operation(&mut cx) else { panic!("Expected operation"); };
+        let Poll::Ready(Some(operation)) = port.poll_operation(&mut cx) else {
+            panic!("Expected operation");
+        };
 
         io.reset(Arc::new(socket_factory::udp));
         let released = Rc::new(Cell::new(false));
-        port.receive_network(0, ReceivedDatagram { storage: Box::new(TrackedBytes(released.clone())), local: "127.0.0.1:1".parse().unwrap(), from: "127.0.0.1:2".parse().unwrap(), stride: 1, ecn: ip_packet::Ecn::NonEct }).unwrap();
-        port.complete(operation.id, Err(anyhow::anyhow!("cancelled old socket"))).unwrap();
+        port.receive_network(
+            0,
+            ReceivedDatagram {
+                storage: Box::new(TrackedBytes(released.clone())),
+                local: "127.0.0.1:1".parse().unwrap(),
+                from: "127.0.0.1:2".parse().unwrap(),
+                stride: 1,
+                ecn: ip_packet::Ecn::NonEct,
+            },
+        )
+        .unwrap();
+        port.complete(operation.id, Err(anyhow::anyhow!("cancelled old socket")))
+            .unwrap();
 
         assert!(released.get());
         assert!(io.poll_network(&mut cx).is_pending());
         assert!(io.poll_error(&mut cx).is_pending());
-        let Payload::Tun(batch) = operation.payload else { panic!("Expected TUN batch"); };
+        let Payload::Tun(batch) = operation.payload else {
+            panic!("Expected TUN batch");
+        };
         assert_eq!(batch[0], packet);
-        let Poll::Ready(Some(rebind)) = port.poll_operation(&mut cx) else { panic!("Expected rebind"); };
+        let Poll::Ready(Some(rebind)) = port.poll_operation(&mut cx) else {
+            panic!("Expected rebind");
+        };
         assert!(matches!(rebind.payload, Payload::Rebind));
         assert_eq!(rebind.generation, 1);
         port.complete(rebind.id, Ok(())).unwrap();
     }
 
     struct TrackedBytes(Rc<Cell<bool>>);
-    impl AsRef<[u8]> for TrackedBytes { fn as_ref(&self) -> &[u8] { &[1] } }
-    impl Drop for TrackedBytes { fn drop(&mut self) { self.0.set(true); } }
+    impl AsRef<[u8]> for TrackedBytes {
+        fn as_ref(&self) -> &[u8] {
+            &[1]
+        }
+    }
+    impl Drop for TrackedBytes {
+        fn drop(&mut self) {
+            self.0.set(true);
+        }
+    }
 }

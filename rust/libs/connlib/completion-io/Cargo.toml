@@ -4,7 +4,15 @@ version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
+[features]
+native-client = ["dep:bin-shared"]
+
+[[example]]
+name = "client"
+required-features = ["native-client"]
+
 [dependencies]
+x509-credential = { workspace = true }
 anyhow = { workspace = true }
 backoff = { workspace = true }
 phoenix-channel = { workspace = true }
@@ -26,13 +34,19 @@ tokio = { workspace = true, features = ["rt", "time", "sync"] }
 tunnel = { workspace = true }
 tracing = { workspace = true }
 
+[dev-dependencies]
+clap = { workspace = true }
+
 [target.'cfg(target_os = "linux")'.dependencies]
+bin-shared = { workspace = true, optional = true }
 compio = { workspace = true, features = ["io-uring"] }
+packet-coalescer = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 compio = { workspace = true, features = ["polling"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+bin-shared = { workspace = true, optional = true }
 compio = { workspace = true, features = ["iocp-wait-packet"] }
 wintun = "0.5.1"
 windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_System_Threading", "Win32_System_IO"] }

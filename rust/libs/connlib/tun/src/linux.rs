@@ -10,8 +10,8 @@
 //! Each item on the outbound channel is one batch of packets that arrived together
 //! upstream; coalescing extends across exactly that batch.
 
-mod split;
-mod virtio;
+pub mod split;
+pub mod virtio;
 
 #[cfg(test)]
 mod tests;
@@ -49,6 +49,14 @@ pub struct TunFd<T> {
 impl<T> TunFd<T> {
     pub fn new(fd: T, offloads: bool) -> Self {
         Self { fd, offloads }
+    }
+
+    pub fn into_parts(self) -> (T, bool) {
+        (self.fd, self.offloads)
+    }
+
+    pub fn map<U>(self, map: impl FnOnce(T) -> U) -> TunFd<U> {
+        TunFd::new(map(self.fd), self.offloads)
     }
 }
 

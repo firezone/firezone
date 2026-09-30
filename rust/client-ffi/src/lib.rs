@@ -465,7 +465,13 @@ impl Session {
 impl EventStream {
     /// Returns the next event, or `None` once the [`Session`] has shut down.
     pub async fn next(&self) -> Option<Event> {
-        match self.0.lock().await.next().await? {
+        Some(self.0.lock().await.next().await?.into())
+    }
+}
+
+impl From<client_shared::Event> for Event {
+    fn from(event: client_shared::Event) -> Self {
+        match event {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
@@ -489,14 +495,14 @@ impl EventStream {
                             }),
                         });
 
-                Some(Event::TunInterfaceUpdated {
+                Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),
                     ipv6: config.ip.v6.to_string(),
                     dns,
                     search_domain: config.search_domain.map(|d| d.to_string()),
                     ipv4_routes,
                     ipv6_routes,
-                })
+                }
             }
             client_shared::Event::ResourcesUpdated(resource_list) => {
                 let resources = resource_list
@@ -510,10 +516,10 @@ impl EventStream {
                     .map(Into::into)
                     .collect();
 
-                Some(Event::ResourcesUpdated {
+                Event::ResourcesUpdated {
                     resources,
                     connected_devices,
-                })
+                }
             }
             client_shared::Event::ConnectedToPortal(connected) => {
                 telemetry::set_account_slug(connected.account_slug.clone());
@@ -525,24 +531,22 @@ impl EventStream {
                     None,
                 );
 
-                Some(Event::ConnectedToPortal {
+                Event::ConnectedToPortal {
                     account_slug: connected.account_slug,
                     actor_name: connected.actor_name,
-                })
+                }
             }
-            client_shared::Event::AllGatewaysOffline { resource_id } => {
-                Some(Event::AllGatewaysOffline {
-                    resource_id: resource_id.to_string(),
-                })
-            }
+            client_shared::Event::AllGatewaysOffline { resource_id } => Event::AllGatewaysOffline {
+                resource_id: resource_id.to_string(),
+            },
             client_shared::Event::GatewayVersionMismatch { resource_id } => {
-                Some(Event::GatewayVersionMismatch {
+                Event::GatewayVersionMismatch {
                     resource_id: resource_id.to_string(),
-                })
+                }
             }
-            client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
+            client_shared::Event::Disconnected(error) => Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
-            }),
+            },
         }
     }
 }

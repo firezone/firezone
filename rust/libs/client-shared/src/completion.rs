@@ -36,7 +36,7 @@ pub fn connect(
     let (packets, port) = CompletionIo::new();
     let (channel, cmd_rx) = mpsc::unbounded_channel();
     let event_stream =
-        EventStream::new_local(move |resources, tun_config, connected_as, notifications| {
+        EventStream::new_driven(move |resources, tun_config, connected_as, notifications| {
             Eventloop::with_packets(
                 tcp_socket_factory,
                 udp_socket_factory,

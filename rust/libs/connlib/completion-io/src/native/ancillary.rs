@@ -31,7 +31,7 @@ pub fn encode(
                     ipi6_addr: libc::in6_addr {
                         s6_addr: src.ip().octets(),
                     },
-                    ipi6_ifindex: src.scope_id(),
+                    ipi6_ifindex: src.scope_id() as _,
                 };
                 builder.push(libc::IPPROTO_IPV6, libc::IPV6_PKTINFO, &info)?;
             }
@@ -69,7 +69,7 @@ pub fn decode(control: &[u8], port: u16, len: usize) -> Result<(SocketAddr, usiz
                     Ipv6Addr::from(info.ipi6_addr.s6_addr),
                     port,
                     0,
-                    info.ipi6_ifindex,
+                    scope_index(info.ipi6_ifindex)?,
                 )));
             }
             (libc::IPPROTO_IP, libc::IP_TOS) => bits = message.data::<u8>()?,
@@ -81,6 +81,20 @@ pub fn decode(control: &[u8], port: u16, len: usize) -> Result<(SocketAddr, usiz
     let local = local.ok_or_else(|| anyhow::anyhow!("UDP receive missing destination address"))?;
     anyhow::ensure!(stride > 0 && stride <= len, "Invalid GRO stride");
     Ok((local, stride, ecn(bits)))
+}
+
+#[cfg(target_os = "linux")]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "Android has a signed interface index"
+)]
+fn scope_index(index: u32) -> Result<u32> {
+    Ok(index)
+}
+#[cfg(target_os = "android")]
+fn scope_index(index: i32) -> Result<u32> {
+    let index = u32::try_from(index)?;
+    Ok(index)
 }
 
 #[cfg(windows)]

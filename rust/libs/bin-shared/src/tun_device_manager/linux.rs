@@ -172,6 +172,13 @@ impl TunDeviceManager {
         Ok(tun)
     }
 
+    /// Opens the managed device without creating packet worker threads.
+    pub fn make_tun_fd(&mut self) -> Result<tun::linux::TunFd<OwnedFd>> {
+        create_tun_device()?;
+        let fd = open_tun()?;
+        Ok(fd)
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let mtu = self.mtu;
@@ -812,7 +819,7 @@ impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let fd = open_tun()?;
+        let fd = open_tun()?.map(Arc::new);
 
         let workers = TunWorkers::spawn(
             {
@@ -837,7 +844,7 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
+fn open_tun() -> Result<tun::linux::TunFd<OwnedFd>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
             let file = TUN_FILE.to_str()?;
@@ -874,7 +881,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
 
     set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
 
-    Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
+    Ok(tun::linux::TunFd::new(fd, offloads))
 }
 
 /// Enables checksum and segmentation offloads on the TUN device, returning whether the kernel

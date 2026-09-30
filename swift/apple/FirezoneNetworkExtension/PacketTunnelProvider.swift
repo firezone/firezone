@@ -139,14 +139,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     if providerConfiguration["completion_io"] == "true" {
       do {
-        let config = try JSONSerialization.data(withJSONObject: [
-          "api_url": apiURL, "token": token.description, "device_id": firezoneId.uuid,
-          "internet_resource_active": internetResourceEnabled,
-          "dns_servers": ScopedResolvers.getDefaultDNSServers(interfaceName: nil),
-        ])
+        let config = CompletionConfig(
+          apiUrl: apiURL, token: token.description, deviceId: firezoneId.uuid,
+          deviceName: nil, internetResourceActive: internetResourceEnabled,
+          dnsServers: ScopedResolvers.getDefaultDNSServers(interfaceName: nil))
+        let identity = try identityReference.flatMap {
+          try X509Identity.load(persistentReference: $0)
+        }
         let adapter = CompletionAdapter(provider: self)
         completionAdapter = adapter
-        adapter.start(config: config, completion: completionHandler)
+        adapter.start(config: config, tlsIdentity: identity.map(AppleClientTlsIdentity.init)) {
+          error in
+          if error == nil, let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
+          completionHandler(error)
+        }
       } catch { completionHandler(error) }
       return
     }
@@ -225,7 +231,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func wake() {
     Log.log("wake")
 
-    if let completionAdapter { completionAdapter.reset(); return }
+    if let completionAdapter {
+      completionAdapter.reset()
+      return
+    }
 
     guard let adapter else {
       Log.warning("Adapter is nil")

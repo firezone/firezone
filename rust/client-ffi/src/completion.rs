@@ -11,7 +11,6 @@ use completion_io::{
 };
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use std::{
-    collections::VecDeque,
     ffi::{CStr, CString, c_char, c_void},
     net::{SocketAddr, SocketAddrV6},
     panic::{AssertUnwindSafe, catch_unwind},
@@ -21,7 +20,7 @@ use std::{
 pub struct CompletionSession {
     host: Host,
     error: CString,
-    events: VecDeque<CString>,
+    control: std::sync::Arc<CompletionControl>,
 }
 
 #[repr(C)]
@@ -72,41 +71,104 @@ impl Drop for BorrowedPacket {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_new(
-    config: *const c_char,
-    error: *mut *mut c_char,
-) -> *mut CompletionSession {
-    let result = catch_unwind(AssertUnwindSafe(|| {
-        anyhow::ensure!(!config.is_null(), "Missing configuration");
-        let config =
-            serde_json::from_slice::<Config>(unsafe { CStr::from_ptr(config) }.to_bytes())?;
-        let host = Host::new(config)?;
-        anyhow::Ok(Box::into_raw(Box::new(CompletionSession {
-            host,
-            error: CString::default(),
-            events: VecDeque::new(),
-        })))
-    }));
-    match result {
-        Ok(Ok(session)) => session,
-        Ok(Err(failure)) => {
-            if !error.is_null() {
-                unsafe { *error = cstring(failure.to_string()).into_raw() };
-            }
-            ptr::null_mut()
-        }
-        Err(_) => {
-            if !error.is_null() {
-                unsafe { *error = cstring("Rust driver panicked".into()).into_raw() };
-            }
-            ptr::null_mut()
-        }
+/// Configuration for a client whose host completes packet I/O.
+#[derive(uniffi::Record)]
+pub struct CompletionConfig {
+    pub api_url: String,
+    pub token: String,
+    pub device_id: String,
+    pub device_name: Option<String>,
+    pub internet_resource_active: bool,
+    pub dns_servers: Vec<String>,
+}
+
+/// Thread-safe commands and typed events; packet state stays on the host's serial queue.
+#[derive(uniffi::Object)]
+pub struct CompletionControl {
+    session: client_shared::Session,
+    events: parking_lot::Mutex<Vec<crate::Event>>,
+}
+
+/// Transfers a serial packet driver to the host together with its control interface.
+///
+/// The handle is borrowed by C packet calls and freed exactly once on the host's
+/// serial queue. It is not a UniFFI object because its future and local queues are
+/// neither Send nor Sync. The host must not call it concurrently.
+#[derive(uniffi::Record)]
+pub struct CompletionConnection {
+    pub control: std::sync::Arc<CompletionControl>,
+    pub driver_handle: u64,
+}
+
+#[uniffi::export]
+pub fn connect_completion(
+    config: CompletionConfig,
+    tls_identity: Option<std::sync::Arc<dyn crate::ClientTlsIdentity>>,
+) -> Result<CompletionConnection, crate::ConnlibError> {
+    let certificate = tls_identity
+        .map(crate::client_identity::certificate)
+        .transpose()?;
+    let dns_servers = config
+        .dns_servers
+        .into_iter()
+        .map(|ip| ip.parse())
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(anyhow::Error::new)?;
+    let host = Host::with_factories(
+        Config {
+            api_url: config.api_url,
+            token: config.token,
+            device_id: config.device_id,
+            device_name: config.device_name,
+            internet_resource_active: config.internet_resource_active,
+            dns_servers,
+        },
+        std::sync::Arc::new(socket_factory::tcp),
+        std::sync::Arc::new(socket_factory::udp),
+        certificate,
+    )?;
+    let control = std::sync::Arc::new(CompletionControl {
+        session: host.session.clone(),
+        events: parking_lot::Mutex::new(Vec::new()),
+    });
+    let driver = Box::new(CompletionSession {
+        host,
+        error: CString::default(),
+        control: control.clone(),
+    });
+    Ok(CompletionConnection {
+        control,
+        driver_handle: Box::into_raw(driver) as usize as u64,
+    })
+}
+
+#[uniffi::export]
+impl CompletionControl {
+    pub fn drain_events(&self) -> Vec<crate::Event> {
+        std::mem::take(&mut *self.events.lock())
+    }
+    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), crate::ConnlibError> {
+        let addresses = dns_servers
+            .into_iter()
+            .map(|ip| ip.parse())
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(anyhow::Error::new)?;
+        self.session.set_dns(addresses);
+        Ok(())
+    }
+    pub fn reset(&self, reason: String) {
+        self.session.reset(reason);
+    }
+    pub fn stop(&self) {
+        self.session.stop();
+    }
+    pub fn set_internet_resource_state(&self, active: bool) {
+        self.session.set_internet_resource_state(active);
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_free(session: *mut CompletionSession) {
+pub(crate) unsafe extern "C" fn fz_completion_free(session: *mut CompletionSession) {
     if session.is_null() {
         return;
     }
@@ -116,12 +178,12 @@ pub unsafe extern "C" fn fz_completion_free(session: *mut CompletionSession) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_poll(session: *mut CompletionSession) -> i32 {
+pub(crate) unsafe extern "C" fn fz_completion_poll(session: *mut CompletionSession) -> i32 {
     unsafe {
         call(session, |session| {
-            session.host.poll()?;
+            session.host.poll();
             while let Some(event) = session.host.next_event() {
-                session.events.push_back(cstring(event.to_string()));
+                session.control.events.lock().push(event.into());
             }
             Ok(if session.host.closed { 2 } else { 0 })
         })
@@ -129,19 +191,9 @@ pub unsafe extern "C" fn fz_completion_poll(session: *mut CompletionSession) -> 
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_next_event(session: *mut CompletionSession) -> *mut c_char {
-    if session.is_null() {
-        return ptr::null_mut();
-    }
-    unsafe { &mut *session }
-        .events
-        .pop_front()
-        .map(CString::into_raw)
-        .unwrap_or(ptr::null_mut())
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_error(session: *const CompletionSession) -> *const c_char {
+pub(crate) unsafe extern "C" fn fz_completion_error(
+    session: *const CompletionSession,
+) -> *const c_char {
     if session.is_null() {
         return ptr::null();
     }
@@ -149,16 +201,31 @@ pub unsafe extern "C" fn fz_completion_error(session: *const CompletionSession) 
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_string_free(string: *mut c_char) {
-    if !string.is_null() {
-        unsafe {
-            drop(CString::from_raw(string));
-        }
+pub(crate) unsafe extern "C" fn fz_completion_receive_ready(
+    session: *mut CompletionSession,
+    network: bool,
+) -> i32 {
+    unsafe {
+        call(session, |session| {
+            let mut cx = std::task::Context::from_waker(futures::task::noop_waker_ref());
+            Ok(
+                if session
+                    .host
+                    .port
+                    .poll_receive_ready(&mut cx, network)
+                    .is_ready()
+                {
+                    0
+                } else {
+                    1
+                },
+            )
+        })
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_receive_network(
+pub(crate) unsafe extern "C" fn fz_completion_receive_network(
     session: *mut CompletionSession,
     generation: u64,
     bytes: *const u8,
@@ -197,7 +264,7 @@ pub unsafe extern "C" fn fz_completion_receive_network(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_receive_tun(
+pub(crate) unsafe extern "C" fn fz_completion_receive_tun(
     session: *mut CompletionSession,
     generation: u64,
     packets: *const ByteSlice,
@@ -211,7 +278,7 @@ pub unsafe extern "C" fn fz_completion_receive_tun(
                 return Ok(0);
             }
             let mut batch = tun::PacketBatch::default();
-            for packet in unsafe { std::slice::from_raw_parts(packets, count) } {
+            for packet in std::slice::from_raw_parts(packets, count) {
                 if packet.data.is_null() || packet.len == 0 {
                     continue;
                 }
@@ -219,7 +286,7 @@ pub unsafe extern "C" fn fz_completion_receive_tun(
                 if packet.len > buffer.buf().len() {
                     continue;
                 }
-                let bytes = unsafe { std::slice::from_raw_parts(packet.data, packet.len) };
+                let bytes = std::slice::from_raw_parts(packet.data, packet.len);
                 buffer.buf()[..bytes.len()].copy_from_slice(bytes);
                 let Ok(packet) = IpPacket::new(buffer, bytes.len()) else {
                     continue;
@@ -237,7 +304,7 @@ pub unsafe extern "C" fn fz_completion_receive_tun(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_next_operation(
+pub(crate) unsafe extern "C" fn fz_completion_next_operation(
     session: *mut CompletionSession,
     output: *mut PacketOperation,
 ) -> i32 {
@@ -273,26 +340,24 @@ pub unsafe extern "C" fn fz_completion_next_operation(
                 Payload::Rebind => (3, 0, 0, Endpoint::default(), Endpoint::default(), 0),
             };
             let buffer = Box::into_raw(Box::new(BufferLease(payload)));
-            unsafe {
-                *output = PacketOperation {
-                    id,
-                    generation,
-                    kind,
-                    buffer,
-                    packets,
-                    segment_size,
-                    local,
-                    remote,
-                    ecn,
-                };
-            }
+            *output = PacketOperation {
+                id,
+                generation,
+                kind,
+                buffer,
+                packets,
+                segment_size,
+                local,
+                remote,
+                ecn,
+            };
             Ok(0)
         })
     }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_packet(
+pub(crate) unsafe extern "C" fn fz_completion_packet(
     buffer: *const BufferLease,
     index: usize,
     output: *mut ByteSlice,
@@ -328,7 +393,7 @@ pub unsafe extern "C" fn fz_completion_packet(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_buffer_free(buffer: *mut BufferLease) {
+pub(crate) unsafe extern "C" fn fz_completion_buffer_free(buffer: *mut BufferLease) {
     if !buffer.is_null() {
         unsafe {
             drop(Box::from_raw(buffer));
@@ -337,7 +402,7 @@ pub unsafe extern "C" fn fz_completion_buffer_free(buffer: *mut BufferLease) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_complete(
+pub(crate) unsafe extern "C" fn fz_completion_complete(
     session: *mut CompletionSession,
     id: u64,
     status: i32,
@@ -356,56 +421,7 @@ pub unsafe extern "C" fn fz_completion_complete(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_set_dns(
-    session: *mut CompletionSession,
-    json: *const c_char,
-) -> i32 {
-    unsafe {
-        call(session, |session| {
-            anyhow::ensure!(!json.is_null(), "Missing resolvers");
-            session.host.session.set_dns(serde_json::from_slice(
-                unsafe { CStr::from_ptr(json) }.to_bytes(),
-            )?);
-            Ok(0)
-        })
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_reset(session: *mut CompletionSession) -> i32 {
-    unsafe {
-        call(session, |session| {
-            session.host.session.reset("host network changed".into());
-            Ok(0)
-        })
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_stop(session: *mut CompletionSession) -> i32 {
-    unsafe {
-        call(session, |session| {
-            session.host.session.stop();
-            Ok(0)
-        })
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_set_internet_resource(
-    session: *mut CompletionSession,
-    active: bool,
-) -> i32 {
-    unsafe {
-        call(session, |session| {
-            session.host.session.set_internet_resource_state(active);
-            Ok(0)
-        })
-    }
-}
-
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fz_completion_endpoint_parse(
+pub(crate) unsafe extern "C" fn fz_completion_endpoint_parse(
     address: *const c_char,
     port: u16,
     output: *mut Endpoint,
@@ -416,12 +432,40 @@ pub unsafe extern "C" fn fz_completion_endpoint_parse(
     let Ok(address) = unsafe { CStr::from_ptr(address) }.to_str() else {
         return -1;
     };
-    let Ok(ip) = address.parse() else {
+    let (ip, scope) = address.split_once('%').unwrap_or((address, ""));
+    let Ok(ip) = ip.parse::<std::net::IpAddr>() else {
         return -1;
     };
+    let scope = if scope.is_empty() {
+        0
+    } else if let Ok(index) = scope.parse::<u32>() {
+        index
+    } else {
+        #[cfg(unix)]
+        {
+            let Ok(name) = CString::new(scope) else {
+                return -1;
+            };
+            let index = unsafe { libc::if_nametoindex(name.as_ptr()) };
+            if index == 0 {
+                return -1;
+            }
+            index
+        }
+        #[cfg(not(unix))]
+        {
+            return -1;
+        }
+    };
+    let socket = match ip {
+        std::net::IpAddr::V4(ip) if scope == 0 => SocketAddr::new(ip.into(), port),
+        std::net::IpAddr::V4(_) => return -1,
+        std::net::IpAddr::V6(ip) => SocketAddr::V6(SocketAddrV6::new(ip, port, 0, scope)),
+    };
     unsafe {
-        *output = Endpoint::from(SocketAddr::new(ip, port));
+        *output = Endpoint::from(socket);
     }
+
     0
 }
 

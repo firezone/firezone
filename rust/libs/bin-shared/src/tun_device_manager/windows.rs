@@ -102,6 +102,14 @@ impl TunDeviceManager {
         Ok(Box::new(tun))
     }
 
+    /// Opens the managed Wintun rings without creating packet worker threads.
+    pub fn make_completion_tun(&mut self) -> Result<CompletionTun> {
+        let tun = open_session(self.mtu)?;
+        self.iface_idx = Some(tun.iface_idx);
+        self.luid = Some(tun.luid);
+        Ok(tun)
+    }
+
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<TunIpStack> {
         let luid = self
@@ -241,42 +249,65 @@ impl Drop for Tun {
     }
 }
 
+/// Owns a managed Wintun ring without packet worker threads.
+pub struct CompletionTun {
+    pub session: Arc<wintun::Session>,
+    iface_idx: u32,
+    luid: wintun::NET_LUID_LH,
+    _interface_index_guard: TunnelInterfaceIndexGuard,
+}
+
+fn open_session(mtu: u32) -> Result<CompletionTun> {
+    let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
+    // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
+    let wintun = unsafe { wintun::load_from_path(path.clone()) }
+        .with_context(|| format!("Failed to load `wintun.dll` from {}", path.display()))?;
+
+    // Create wintun adapter
+    let adapter = Adapter::create(
+        &wintun,
+        TUNNEL_NAME,
+        TUNNEL_NAME,
+        Some(TUNNEL_UUID.as_u128()),
+    )?;
+    let iface_idx = adapter
+        .get_adapter_index()
+        .context("Failed to get adapter index")?;
+    let interface_index_guard = TunnelInterfaceIndexGuard::new(iface_idx);
+    let luid = adapter.get_luid();
+
+    set_iface_config(luid, mtu).context("Failed to set interface config")?;
+
+    let capacity = ring_capacity_override()
+        .inspect_err(|e| {
+            tracing::warn!("Ignoring `{RING_CAPACITY_ENV_VAR}`: {e:#}");
+        })
+        .unwrap_or_default()
+        .unwrap_or(RING_BUFFER_SIZE);
+
+    tracing::debug!(%capacity, "Wintun ring buffer capacity");
+
+    let session = Arc::new(
+        adapter
+            .start_session(capacity)
+            .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
+    );
+    Ok(CompletionTun {
+        session,
+        iface_idx,
+        luid,
+        _interface_index_guard: interface_index_guard,
+    })
+}
+
 impl Tun {
     fn new(mtu: u32) -> Result<Self> {
-        let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
-        // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
-        let wintun = unsafe { wintun::load_from_path(path.clone()) }
-            .with_context(|| format!("Failed to load `wintun.dll` from {}", path.display()))?;
-
-        // Create wintun adapter
-        let adapter = Adapter::create(
-            &wintun,
-            TUNNEL_NAME,
-            TUNNEL_NAME,
-            Some(TUNNEL_UUID.as_u128()),
-        )?;
-        let iface_idx = adapter
-            .get_adapter_index()
-            .context("Failed to get adapter index")?;
-        let interface_index_guard = TunnelInterfaceIndexGuard::new(iface_idx);
-        let luid = adapter.get_luid();
-
-        set_iface_config(luid, mtu).context("Failed to set interface config")?;
-
-        let capacity = ring_capacity_override()
-            .inspect_err(|e| {
-                tracing::warn!("Ignoring `{RING_CAPACITY_ENV_VAR}`: {e:#}");
-            })
-            .unwrap_or_default()
-            .unwrap_or(RING_BUFFER_SIZE);
-
-        tracing::debug!(%capacity, "Wintun ring buffer capacity");
-
-        let session = Arc::new(
-            adapter
-                .start_session(capacity)
-                .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
-        );
+        let CompletionTun {
+            session,
+            iface_idx,
+            luid,
+            _interface_index_guard: interface_index_guard,
+        } = open_session(mtu)?;
         let send_session = Arc::downgrade(&session);
         let recv_session = Arc::downgrade(&session);
 

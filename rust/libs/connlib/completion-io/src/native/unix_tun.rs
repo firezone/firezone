@@ -24,11 +24,15 @@ impl RawTun {
 
 impl PacketDevice for RawTun {
     async fn read(&self) -> Result<PacketBatch> {
-        let BufResult(result, buffer) = (&self.0).read(TunBuffer::new()).await;
-        let len = result?;
-        anyhow::ensure!(len > 0, "TUN descriptor closed");
-        let packet = IpPacket::new(buffer.inner, len)?;
-        Ok(PacketBatch::new(packet))
+        loop {
+            let BufResult(result, buffer) = (&self.0).read(TunBuffer::new()).await;
+            let len = result?;
+            anyhow::ensure!(len > 0, "TUN descriptor closed");
+            let Ok(packet) = IpPacket::new(buffer.inner, len) else {
+                continue;
+            };
+            return Ok(PacketBatch::new(packet));
+        }
     }
     async fn write(&self, mut batch: PacketBatch) -> Result<()> {
         for packet in batch.drain() {
