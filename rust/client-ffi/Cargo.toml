@@ -38,17 +38,17 @@ x509-claims-ffi = { workspace = true }
 x509-credential = { workspace = true }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
-tun-apple = { workspace = true }
 oslog = { version = "0.2.0", default-features = false }
+tun-apple = { workspace = true }
 
 # Everywhere except iOS, where the Network Extension memory cap makes mimalloc's retained pages risky.
 [target.'cfg(not(target_os = "ios"))'.dependencies]
 mimalloc = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
-tun-linux = { workspace = true }
 android_log-sys = "0.3.2"
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android `cdylib` is `dlopen`-ed, so it needs the dynamic TLS model.
+tun-android = { workspace = true }
 
 [lints]
 workspace = true

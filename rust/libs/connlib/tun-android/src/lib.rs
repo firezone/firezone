@@ -1,13 +1,16 @@
-use crate::ioctl;
+#![cfg(target_os = "android")]
+
+mod plain_ip;
+
 use ip_packet::{IpPacket, IpPacketBuf};
-use std::os::fd::{FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd as _, FromRawFd, OwnedFd};
+use std::sync::Arc;
 use std::{io, os::fd::RawFd};
+use tun_ioctl as ioctl;
 
 pub struct Io {
     name: String,
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-    _fd: OwnedFd,
+    workers: tun::Workers,
 }
 
 impl tun::Tun for Io {
@@ -21,11 +24,11 @@ impl tun::Tun for Io {
 
 impl tun::ChannelTun for Io {
     fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+        self.workers.sender()
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
+        self.workers.receiver()
     }
 
     fn name(&self) -> &str {
@@ -41,7 +44,8 @@ impl Io {
     /// - The file descriptor must be open.
     /// - The file descriptor must not get closed by anyone else.
     pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let name = unsafe { interface_name(fd)? };
+        let fd = Arc::new(unsafe { OwnedFd::from_raw_fd(fd) });
+        let name = unsafe { interface_name(fd.as_raw_fd())? };
 
         let (inbound_tx, inbound_rx) = tun::inbound_channel();
         let (outbound_tx, outbound_rx) = tun::outbound_channel();
@@ -61,31 +65,27 @@ impl Io {
             ],
         ));
 
-        std::thread::Builder::new()
-            .name("TUN send".to_owned())
-            .spawn(move || {
-                logging::unwrap_or_warn!(
-                    crate::plain_ip::tun_send(fd, outbound_rx, write),
-                    "Failed to send to TUN device: {}"
-                )
-            })
-            .map_err(io::Error::other)?;
-        std::thread::Builder::new()
-            .name("TUN recv".to_owned())
-            .spawn(move || {
+        let workers = tun::Workers::spawn(
+            outbound_tx,
+            inbound_rx,
+            {
+                let fd = fd.clone();
+                move || {
+                    logging::unwrap_or_warn!(
+                        crate::plain_ip::tun_send(fd, outbound_rx, write),
+                        "Failed to send to TUN device: {}"
+                    )
+                }
+            },
+            move || {
                 logging::unwrap_or_warn!(
                     crate::plain_ip::tun_recv(fd, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
                 )
-            })
-            .map_err(io::Error::other)?;
+            },
+        )?;
 
-        Ok(Io {
-            name,
-            outbound_tx,
-            inbound_rx,
-            _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
-        })
+        Ok(Io { name, workers })
     }
 }
 
@@ -95,7 +95,7 @@ impl Io {
 ///
 /// The file descriptor must be open.
 unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
-    let mut request = crate::ioctl::Request::<crate::ioctl::GetInterfaceNamePayload>::new();
+    let mut request = ioctl::Request::<ioctl::GetInterfaceNamePayload>::new();
 
     unsafe { ioctl::exec(fd, libc::TUNGETIFF as libc::c_ulong, &mut request)? };
 

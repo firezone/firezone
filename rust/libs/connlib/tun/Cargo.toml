@@ -7,10 +7,11 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-futures = { workspace = true }
 bufferpool = { workspace = true }
+futures = { workspace = true }
 ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

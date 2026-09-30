@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod workers;
+pub use workers::Workers;
+
 use bufferpool::{Buffer, SharedBufferPool, VecBuf};
 use ip_packet::IpPacket;
 use tokio::sync::mpsc;

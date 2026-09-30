@@ -15,9 +15,9 @@ otel-instruments = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+divan = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
-divan = { workspace = true }
 
 [lints]
 workspace = true

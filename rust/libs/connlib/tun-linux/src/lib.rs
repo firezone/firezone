@@ -1,3 +1,6 @@
+#![cfg(target_os = "linux")]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 //! Linux-specific TUN I/O using segmentation offloads (`IFF_VNET_HDR` + `TUNSETOFFLOAD`).
 //!
 //! With offloads enabled, the kernel exchanges "super packets" of up to 64 KiB with us:
