@@ -61,7 +61,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
   end
 
   test "providers/0 lists firezone and every mirror" do
-    assert Fields.providers() == [:firezone, :intune, :iru, :defender, :santa, :sentinelone]
+    assert Fields.providers() == [:firezone, :intune, :iru, :defender, :santa, :sentinelone, :sophos]
   end
 
   test "types/0 lists every semantic type and each has operators" do

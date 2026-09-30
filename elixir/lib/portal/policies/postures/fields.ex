@@ -64,7 +64,7 @@ defmodule Portal.Policies.Postures.Fields do
 
   alias Portal.Policies.Postures.Fields.Classifier
 
-  @providers ~w[firezone intune iru defender santa sentinelone]a
+  @providers ~w[firezone intune iru defender santa sentinelone sophos]a
 
   @types ~w[string enum_string boolean integer float version datetime ip ipv4 ipv6 string_array json]a
 
@@ -160,7 +160,13 @@ defmodule Portal.Policies.Postures.Fields do
        location_type ranger_status operational_state remote_profiling_state
        detection_state proxy_method installer_type
      ]a,
-     version: ~w[agent_version ranger_version os_revision]a}
+     version: ~w[agent_version ranger_version os_revision]a},
+    {:sophos, Portal.Sophos.Device,
+     excluded: ~w[sophos_tenant_id]a,
+     enum_string: ~w[
+       type health_overall health_threats_status health_services_status os_platform
+       encryption_overall_status lockdown_status cloud_provider isolation_status
+     ]a}
   ]
 
   @registry @mirrors
@@ -178,7 +184,8 @@ defmodule Portal.Policies.Postures.Fields do
     iru: ~w[macos ios]a,
     defender: ~w[windows macos linux]a,
     santa: ~w[macos]a,
-    sentinelone: ~w[windows macos linux]a
+    sentinelone: ~w[windows macos linux]a,
+    sophos: ~w[windows macos linux]a
   }
 
   # Fields narrower than their provider. Intune's attestation_* columns are
@@ -203,7 +210,8 @@ defmodule Portal.Policies.Postures.Fields do
       malware_removal_tool_version: ~w[macos]a
     },
     defender: %{os_up_to_date: ~w[macos]a},
-    sentinelone: %{os_up_to_date: ~w[windows macos]a}
+    sentinelone: %{os_up_to_date: ~w[windows macos]a},
+    sophos: %{os_up_to_date: ~w[macos]a}
   }
 
   @provider_names Map.new(@providers, &{Atom.to_string(&1), &1})

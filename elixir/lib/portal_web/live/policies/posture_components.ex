@@ -9,7 +9,8 @@ defmodule PortalWeb.Policies.PostureComponents do
     "iru" => "Iru",
     "defender" => "Defender",
     "santa" => "Santa",
-    "sentinelone" => "SentinelOne"
+    "sentinelone" => "SentinelOne",
+    "sophos" => "Sophos"
   }
 
   @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"
@@ -84,7 +85,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             Device posture
           </h4>
           <Core.new_badge data-postures-new-badge />
-          <span class="text-[10px] text-muted">
+          <span class="text-[10px] text-subtle">
             (optional)
           </span>
         </div>

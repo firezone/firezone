@@ -134,7 +134,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     for provider <- [
           "CrowdStrike Falcon",
-          "Sophos XDR",
           "Jamf Pro",
           "Workspace ONE",
           "Mosyle",
@@ -146,7 +145,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Coming soon"
 
     assert has_element?(lv, ~s(img[src="/images/logo-crowdstrike.svg"]))
-    assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
+    refute has_element?(lv, "#register-interest-sophos")
     assert has_element?(lv, ~s(img[src="/images/logo-jamf.svg"]))
     assert has_element?(lv, ~s(img[src="/images/logo-workspace-one-uem.png"]))
     assert has_element?(lv, ~s(img[src="/images/logo-mosyle.svg"]))
@@ -791,6 +790,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
                lv,
                ~s|a[href="/#{account.slug}/settings/device_posture/sentinelone/new"]|
              )
+
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/sophos/new"]|)
+      assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
@@ -872,6 +874,110 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert render(lv) =~ "SentinelOne rejected the API token"
       refute has_element?(lv, "#provider-verification-status", "Verified")
       assert Portal.Repo.aggregate(Portal.SentinelOne.PostureProvider, :count) == 0
+    end
+  end
+
+  describe "Sophos providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sophos/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies the tenant and creates the provider", %{lv: lv, account: account} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "tenant",
+            "apiHosts" => %{"dataRegion" => "https://api-eu01.central.sophos.com"}
+          })
+
+        %{request_path: "/endpoint/v1/endpoints"} = conn ->
+          Req.Test.json(conn, %{"items" => [], "pages" => %{"size" => 1}})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      html = render(lv)
+      assert html =~ "GET /endpoint/v1/endpoints"
+      assert html =~ "logo-sophos.svg"
+
+      attrs = %{name: "Production Sophos", client_id: "client-1", client_secret: "secret-1"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "57ca9a6b-885f-4e36-95ec-290548c26059")
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Sophos.PostureProvider, account_id: account.id)
+
+      assert provider_name(provider) == "Production Sophos"
+      assert provider.client_id == "client-1"
+      assert provider.client_secret == "secret-1"
+      assert provider.tenant_id == "57ca9a6b-885f-4e36-95ec-290548c26059"
+      assert provider.data_region_url == "https://api-eu01.central.sophos.com"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Sophos.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses partner credentials and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "partner",
+            "apiHosts" => %{"global" => "https://api.central.sophos.com"}
+          })
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Partner", client_id: "client-1", client_secret: "secret-1"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "These are partner or organization credentials"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Sophos.PostureProvider, :count) == 0
+    end
+
+    test "reports rejected credentials", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "invalidClient"})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Sophos", client_id: "client-1", client_secret: "wrong"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Sophos rejected the client ID or secret"
     end
   end
 

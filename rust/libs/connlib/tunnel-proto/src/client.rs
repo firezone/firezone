@@ -1143,6 +1143,16 @@ impl ClientState {
             return Ok(());
         };
 
+        if self
+            .node
+            .remote_public_key(&ClientOrGatewayId::Client(cid))
+            .is_some_and(|key| key != client_key)
+        {
+            tracing::debug!(%cid, "Peer reconnected with a new key; forgetting its previous session");
+
+            self.cleanup_connected_client(&cid);
+        }
+
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
