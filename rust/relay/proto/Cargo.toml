@@ -13,7 +13,8 @@ derive_more = { workspace = true, features = ["from"] }
 hex = { workspace = true }
 logging = { workspace = true }
 once_cell = { workspace = true }
-opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
+otel-instruments = { workspace = true }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 secrecy = { workspace = true }

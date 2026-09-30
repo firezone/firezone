@@ -8,7 +8,7 @@
 //! unassigned protocol numbers) into placeholders or an `other` bucket.
 
 use ip_packet::{IpPacket, IpVersion};
-use opentelemetry::{KeyValue, Value};
+pub use opentelemetry::{KeyValue, Value};
 use std::{io, net::SocketAddr};
 
 #[macro_export]
@@ -86,6 +86,16 @@ pub fn queue_item_gro_batch() -> KeyValue {
 
 pub fn queue_item_gso_batch() -> KeyValue {
     KeyValue::new("queue.item", "udp-gso-batch")
+}
+
+/// `relay.datapath = userspace`: relayed by the userspace TURN server.
+pub fn relay_datapath_userspace() -> KeyValue {
+    KeyValue::new("relay.datapath", "userspace")
+}
+
+/// `relay.datapath = xdp`: relayed by the in-kernel XDP program.
+pub fn relay_datapath_xdp() -> KeyValue {
+    KeyValue::new("relay.datapath", "xdp")
 }
 
 /// Caps how many layers of an error's source chain are recorded as attributes.
