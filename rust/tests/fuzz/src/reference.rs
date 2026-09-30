@@ -25,8 +25,8 @@ use crate::resource as client;
 
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
-/// How long after a relay frees up its ports until every node that ignores it asks for it again:
-/// how long a node ignores a relay that failed its allocation, plus a margin.
+/// How long after a relay frees up its ports until no node ignores it anymore: how long a node
+/// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
 
 /// The reference state machine of the tunnel.

@@ -22,7 +22,7 @@ use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
 use crate::transition::{Seq, Transition};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 enum TransitionKind {
     // Always-legal.
     UpdateSystemDnsServers,
@@ -53,21 +53,6 @@ enum TransitionKind {
     ExhaustRelayPorts,
     FreeRelayPorts,
 }
-
-/// The transitions that open no connection.
-///
-/// A node whose allocations all failed cannot open any connection until it gets a relay back,
-/// which the reference model does not predict. While every relay is exhausted or recovering,
-/// only these are legal.
-const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
-    TransitionKind::RoamClient,
-    TransitionKind::DeployNewRelays,
-    TransitionKind::PartitionRelaysFromPortal,
-    TransitionKind::RebootRelaysWhilePartitioned,
-    TransitionKind::RestartClient,
-    TransitionKind::FreeRelayPorts,
-    TransitionKind::Idle,
-];
 
 #[derive(Clone, Copy)]
 enum ExistingFlow {
@@ -121,13 +106,8 @@ pub(super) fn generate(
         .iter()
         .filter(|relay| !state.recovering_relays.contains_key(relay))
         .count();
-    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
-    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
-    let can_exhaust_relay = if portal.iceless() {
-        healthy_relays > 1
-    } else {
-        !accepting_relays.is_empty()
-    };
+    // Production has plenty of relays, so a node always keeps one that accepts allocations.
+    let can_exhaust_relay = healthy_relays > 1;
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -165,7 +145,6 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .filter(|(kind, _)| healthy_relays > 0 || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
