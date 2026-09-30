@@ -17,7 +17,7 @@ defmodule Portal.OSReleases do
   use GenServer
 
   alias __MODULE__.Database
-  alias Portal.{Defender, Intune, Iru, OSRelease, Santa, SentinelOne}
+  alias Portal.{Defender, Intune, Iru, OSRelease, Santa, SentinelOne, Sophos}
   alias Portal.Policies.Postures
 
   @table __MODULE__.ETS
@@ -134,6 +134,14 @@ defmodule Portal.OSReleases do
   # 24H2 cannot be placed on a line.
   defp os_and_version(%SentinelOne.Device{os_type: "windows", os_revision: "10.0." <> _rest = version}),
     do: {:windows, version}
+
+  # Sophos reports a Windows build without its update revision, which is what
+  # tells the releases of one line apart, so only macOS can be judged.
+  defp os_and_version(%Sophos.Device{os_platform: "macOS", os_major_version: major} = row)
+       when is_integer(major) do
+    version = [major, row.os_minor_version, row.os_build] |> Enum.reject(&is_nil/1) |> Enum.join(".")
+    {:macos, version}
+  end
 
   defp os_and_version(_row), do: nil
 
