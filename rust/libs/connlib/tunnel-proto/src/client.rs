@@ -1167,16 +1167,6 @@ impl ClientState {
             return Ok(());
         };
 
-        // A peer that reset since we were authorized to reach it comes back with a new key,
-        // having lost the inbound authorization for us, so our next flow asks the portal again.
-        if self
-            .clients
-            .peer_by_id(&cid)
-            .is_some_and(|peer| peer.remote_key() != client_key)
-        {
-            self.forget_outbound_authorizations(cid);
-        }
-
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
@@ -1198,9 +1188,8 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(cid, client_key, local_tun, client_tun, client_name.clone())
+            ClientOnClient::new(cid, local_tun, client_tun, client_name.clone())
         });
-        peer.set_remote_key(client_key);
 
         if peer.remote_name() != client_name {
             tracing::debug!(%cid, name = %client_name, "Updated client peer name");
