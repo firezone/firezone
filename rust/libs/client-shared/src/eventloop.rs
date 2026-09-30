@@ -483,10 +483,7 @@ impl<P: tunnel::packet_io::PacketIo> Eventloop<P> {
                 continue;
             }
 
-            if e.any_is::<tunnel::UdpSocketThreadStopped>()
-                || e.any_is::<tunnel::TunChannelClosed>()
-                || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
-            {
+            if e.any_is::<socket_factory::RoutingLoopPreventionFailed>() {
                 return Err(e);
             }
 

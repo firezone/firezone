@@ -17,13 +17,10 @@ use std::pin::Pin;
 use tokio::io::Interest;
 
 mod buffer_sizes;
-mod pool;
 #[cfg(any(windows, test))]
 mod uro;
 
 pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
-
-use pool::{OwnedSocket, Socket, SocketPool};
 
 pub trait SocketFactory<S>: Send + Sync + 'static {
     fn bind(&self, local: SocketAddr) -> io::Result<S>;
@@ -262,8 +259,8 @@ pub struct UdpSocket {
 
 /// A UDP socket with performance optimisations for fast send & receive.
 pub struct PerfUdpSocket {
-    /// The socket(s) we send and receive on; see [`SocketPool`].
-    pool: SocketPool,
+    socket: tokio::net::UdpSocket,
+    state: quinn_udp::UdpSocketState,
 
     /// The pools backing batched receives; see [`RecvBuffers`].
     recv_buffers: RecvBuffers,
@@ -326,10 +323,17 @@ impl UdpSocket {
         // sizing the buffer to a single datagram.
         let recv_buf_size = ip_packet::MAX_FZ_PAYLOAD * quinn_state.gro_segments();
 
-        let wildcard = OwnedSocket::new(self.inner, quinn_state);
+        #[cfg(windows)]
+        if !uro::is_broken() {
+            match quinn_state.set_gro(UdpSockRef::from(&self.inner), true) {
+                Ok(()) => tracing::debug!("Enabled URO"),
+                Err(e) => tracing::debug!("Failed to enable URO: {e}"),
+            }
+        }
 
         Ok(PerfUdpSocket {
-            pool: SocketPool::new(wildcard),
+            socket: self.inner,
+            state: quinn_state,
             recv_buffers: RecvBuffers::new(
                 recv_buf_size,
                 match socket_addr.ip() {
@@ -417,25 +421,31 @@ impl DatagramOut {
 }
 
 impl PerfUdpSocket {
-    /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
+    /// Receives a batch of datagrams from the socket.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
-        std::future::poll_fn(|cx| {
-            self.pool
-                .poll_recv(cx, |socket| self.try_recv_batch(socket))
-        })
-        .await
+        loop {
+            self.socket
+                .readable()
+                .await
+                .context("Failed to wait for socket to become readable")?;
+            match self.try_recv_batch() {
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                result => return result.context("Failed to read from socket"),
+            }
+        }
     }
 
-    /// Attempts to receive a batch of datagrams from the given socket without blocking.
+    /// Attempts to receive a batch of datagrams without blocking.
     ///
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
-    fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
+    fn try_recv_batch(&self) -> io::Result<DatagramBatch> {
         let mut batch = self.recv_buffers.pull_batch();
 
-        let len = socket.inner.try_io(Interest::READABLE, || {
+        let len = self.socket.try_io(Interest::READABLE, || {
             let (mut io_bufs, metas) = batch.recv_slices();
-            socket.recv(&mut io_bufs, metas)
+            self.state
+                .recv(UdpSockRef::from(&self.socket), &mut io_bufs, metas)
         })?;
 
         #[cfg(windows)]
@@ -447,7 +457,9 @@ impl PerfUdpSocket {
                 .zip(batch.metas.iter_mut())
                 .take(len),
         ) {
-            socket.disable_gro();
+            if let Err(e) = self.state.set_gro(UdpSockRef::from(&self.socket), false) {
+                tracing::warn!("Failed to disable URO: {e}");
+            }
         }
 
         let batch = DatagramBatch::new(batch.buffers, batch.metas, self.port, len);
@@ -474,12 +486,7 @@ impl PerfUdpSocket {
             datagram.ecn,
         )?;
 
-        let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
-        let pooled =
-            self.pool
-                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, &self.recv_buffers);
-
-        self.send_transmit(pooled.as_socket(), &transmit).await
+        self.send_transmit(&transmit).await
     }
 
     pub fn set_buffer_sizes(
@@ -487,16 +494,35 @@ impl PerfUdpSocket {
         requested_send_buffer_size: usize,
         requested_recv_buffer_size: usize,
     ) {
-        self.pool.set_buffer_sizes(
+        let socket = socket2::SockRef::from(&self.socket);
+        for (requested, send) in [
+            (requested_send_buffer_size, true),
+            (requested_recv_buffer_size, false),
+        ] {
+            if let Err(e) = apply_buffer_size(requested, |size| {
+                if send {
+                    socket.set_send_buffer_size(size)
+                } else {
+                    socket.set_recv_buffer_size(size)
+                }
+            }) {
+                tracing::warn!(requested, send, "Failed to set UDP buffer size: {e}");
+            }
+        }
+        let send_buffer_size = socket.send_buffer_size().unwrap_or_default();
+        let recv_buffer_size = socket.recv_buffer_size().unwrap_or_default();
+        tracing::debug!(
             requested_send_buffer_size,
+            send_buffer_size,
             requested_recv_buffer_size,
-            self.port,
+            recv_buffer_size,
+            port = self.port,
+            "UDP socket buffer sizes"
         );
     }
 
-    /// Sends a [`Transmit`] over the given socket, chunked to honor GSO limits.
-    ///
-    async fn send_transmit(&self, socket: Socket<'_>, transmit: &Transmit<'_>) -> Result<()> {
+    /// Sends a [`Transmit`] over the socket, chunked to honor GSO limits.
+    async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
         let segment_size = transmit
             .segment_size
             .expect("`segment_size` must always be set");
@@ -514,7 +540,7 @@ impl PerfUdpSocket {
         while offset < total {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
             // the remaining data needs to be re-split into smaller batches.
-            let chunk_size = self.calculate_chunk_size(socket.state, segment_size, dst)?;
+            let chunk_size = self.calculate_chunk_size(segment_size, dst)?;
 
             let end = std::cmp::min(offset + chunk_size, total);
             let contents = &transmit.contents[offset..end];
@@ -530,12 +556,10 @@ impl PerfUdpSocket {
             #[cfg(debug_assertions)]
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size);
 
-            let result = socket
-                .inner
+            let result = self
+                .socket
                 .async_io(Interest::WRITABLE, || {
-                    socket
-                        .state
-                        .try_send(UdpSockRef::from(socket.inner), &chunk)
+                    self.state.try_send(UdpSockRef::from(&self.socket), &chunk)
                 })
                 .await;
 
@@ -609,14 +633,9 @@ impl PerfUdpSocket {
     /// `max_gso_segments` to 1.
     ///
     /// Fails if `segment_size` exceeds the maximum UDP payload, in which case not even a single segment fits.
-    fn calculate_chunk_size(
-        &self,
-        state: &quinn_udp::UdpSocketState,
-        segment_size: usize,
-        dst: SocketAddr,
-    ) -> Result<usize> {
+    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> Result<usize> {
         let chunk_size = std::cmp::min(
-            segment_size * state.max_gso_segments(),
+            segment_size * self.state.max_gso_segments(),
             DatagramOut::max_len(dst, segment_size),
         );
 
@@ -816,10 +835,6 @@ async fn spin_and_yield(attempt: u32) {
 
 /// The pools backing a batched receive: scratch space for the datagrams themselves
 /// plus containers for the buffers and metas that make up one batch.
-///
-/// The buffers and metas live in pooled, heap-allocated `Vec`s rather than inline in
-/// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
-/// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
     bytes: BufferPool<Vec<u8>>,
     buffers: BufferPool<VecBuf<Buffer<Vec<u8>>>>,
@@ -834,7 +849,7 @@ pub(crate) struct RecvBatch {
 
 impl RecvBatch {
     /// The batch's datagram buffers as scatter slices, paired with the meta array the
-    /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
+    /// kernel fills in, the two arguments a `recvmmsg`-style read expects. Borrows the
     /// batch for the duration of the read; afterwards the buffers are handed to a
     /// [`DatagramBatch`].
     fn recv_slices(
@@ -874,8 +889,7 @@ impl RecvBuffers {
     }
 }
 
-/// A batch of datagrams, received from the socket in a single syscall and exchanged
-/// over the socket channels as a single item.
+/// A batch of datagrams received from the socket in a single syscall.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
@@ -1100,16 +1114,6 @@ mod tests {
         fn clone(&self) -> Self {
             Self(self.0.clone())
         }
-    }
-
-    /// The batch is the item of the channel to the main thread; keeping it small is
-    /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
-    /// allocates channel slots in blocks, so a large item would cross musl's mmap
-    /// threshold and thrash the allocator (see the pooling that produced this type).
-    #[cfg(target_pointer_width = "64")]
-    #[test]
-    fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 88);
     }
 
     #[test]

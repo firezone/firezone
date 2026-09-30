@@ -8,15 +8,11 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
-futures = { workspace = true }
 ip-packet = { workspace = true }
 smallvec = { workspace = true }
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
 [target.'cfg(target_family = "unix")'.dependencies]
 libc = { workspace = true }
-opentelemetry = { workspace = true, features = ["metrics"] }
-otel-instruments = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

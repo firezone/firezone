@@ -1,8 +1,12 @@
 //! Owned Compio operations on the same thread as the client state machine.
 
 mod ancillary;
+#[cfg(any(target_os = "android", all(test, target_os = "linux")))]
+mod android_tun;
 mod buffer;
 mod local_queue;
+#[cfg(target_os = "android")]
+use android_tun::AndroidTun;
 #[cfg(windows)]
 mod windows_tun;
 #[cfg(windows)]
@@ -172,11 +176,8 @@ impl PacketDevice for DeviceSlot {
     async fn read(&self) -> Result<PacketBatch> {
         let device = self.get().await;
         let batch = match &device.device {
-            Device::Channels { owner, .. } => {
-                std::future::poll_fn(|cx| owner.borrow_mut().receiver().poll_recv(cx))
-                    .await
-                    .context("TUN channel closed")?
-            }
+            #[cfg(target_os = "android")]
+            Device::Android(tun) => tun.read().await?,
             #[cfg(target_os = "linux")]
             Device::Linux(tun) => tun.read().await?,
             #[cfg(windows)]
@@ -192,10 +193,8 @@ impl PacketDevice for DeviceSlot {
     async fn write(&self, batch: PacketBatch) -> Result<()> {
         let device = self.get().await;
         match &device.device {
-            Device::Channels { sender, .. } => sender
-                .send(batch)
-                .await
-                .map_err(|_| anyhow::anyhow!("TUN channel closed"))?,
+            #[cfg(target_os = "android")]
+            Device::Android(tun) => tun.write(batch).await?,
             #[cfg(target_os = "linux")]
             Device::Linux(tun) => tun.write(batch).await?,
             #[cfg(windows)]
@@ -209,10 +208,8 @@ struct InstalledDevice {
     inspectors: Vec<fn(&ip_packet::IpPacket)>,
 }
 enum Device {
-    Channels {
-        sender: tun::OutboundTx,
-        owner: RefCell<Box<dyn tun::ChannelTun>>,
-    },
+    #[cfg(target_os = "android")]
+    Android(AndroidTun),
     #[cfg(target_os = "linux")]
     Linux(OffloadedTun),
     #[cfg(windows)]
@@ -221,7 +218,7 @@ enum Device {
 impl InstalledDevice {
     #[cfg_attr(
         windows,
-        expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")
+        expect(clippy::unnecessary_wraps, reason = "Fallible on Unix")
     )]
     fn new(mut io: tun::TunIo) -> Result<Self> {
         let mut inspectors = Vec::new();
@@ -230,10 +227,8 @@ impl InstalledDevice {
             io = *inner;
         }
         let device = match io {
-            tun::TunIo::Channels(owner) => Device::Channels {
-                sender: owner.sender().clone(),
-                owner: RefCell::new(owner),
-            },
+            #[cfg(target_os = "android")]
+            tun::TunIo::Android(fd) => Device::Android(AndroidTun::from_fd(fd)?),
             #[cfg(target_os = "linux")]
             tun::TunIo::Linux(fd) => Device::Linux(OffloadedTun::from_fd(fd)?),
             #[cfg(windows)]

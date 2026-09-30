@@ -1,16 +1,14 @@
-mod device;
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
-pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub(crate) use udp_gso_queue::UdpGsoQueue;
 
 use crate::{
     TunnelError, dns, otel,
-    packet_io::{PacketIo, Threaded},
+    packet_io::{PacketIo, completion::CompletionIo},
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
@@ -36,7 +34,7 @@ use std::{
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
-pub struct Io<P = Threaded> {
+pub struct Io<P = CompletionIo> {
     /// The UDP sockets used to send & receive packets from the network.
     packets: P,
     gso_queue: UdpGsoQueue,
@@ -704,52 +702,17 @@ mod tests {
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
-            let mut io = Io::with_packets(
+            let (packets, _) = CompletionIo::new();
+            Io::with_packets(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
-                Threaded::new(Arc::new(socket_factory::udp)),
-            );
-            io.set_tun(Box::new(DummyTun::new()));
-
-            io
+                packets,
+            )
         }
 
-        async fn next(&mut self) -> Input<<Threaded as PacketIo>::Network> {
+        async fn next(&mut self) -> Input<<CompletionIo as PacketIo>::Network> {
             poll_fn(|cx| self.poll(cx)).await
-        }
-    }
-
-    struct DummyTun {
-        tx: tun::OutboundTx,
-        rx: tun::InboundRx,
-        _keep_alive: (tun::OutboundRx, tun::InboundTx),
-    }
-
-    impl DummyTun {
-        fn new() -> Self {
-            let (tx, outbound_rx) = tun::outbound_channel();
-            let (inbound_tx, rx) = tun::inbound_channel();
-
-            Self {
-                tx,
-                rx,
-                _keep_alive: (outbound_rx, inbound_tx),
-            }
-        }
-    }
-
-    impl tun::ChannelTun for DummyTun {
-        fn sender(&self) -> &tun::OutboundTx {
-            &self.tx
-        }
-
-        fn receiver(&mut self) -> &mut tun::InboundRx {
-            &mut self.rx
-        }
-
-        fn name(&self) -> &str {
-            "dummy"
         }
     }
 }

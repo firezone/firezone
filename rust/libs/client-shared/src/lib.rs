@@ -9,7 +9,9 @@ pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceList};
-use eventloop::{Command, Eventloop};
+use eventloop::Command;
+#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
+use eventloop::Eventloop;
 use futures::future::{Fuse, FusedFuture as _};
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -90,32 +92,61 @@ impl Session {
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
         let spawn = EventStream::new_native;
-        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "android")))]
         let spawn = EventStream::new;
         let event_stream = spawn(
             move |resource_list_sender,
                   tun_config_sender,
                   connected_as_sender,
                   user_notification_sender| {
-                let packets = tunnel::packet_io::PlatformIo::new(udp_socket_factory.clone());
-                Eventloop::with_packets(
-                    tcp_socket_factory,
-                    udp_socket_factory,
-                    is_internet_resource_active,
-                    dns_servers,
-                    flow_logs_dir,
-                    local_flow_logs,
-                    portal,
-                    cmd_rx,
-                    resource_list_sender,
-                    tun_config_sender,
-                    connected_as_sender,
-                    user_notification_sender,
-                    packets,
-                )
-                .run()
+                #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
+                {
+                    let packets = tunnel::packet_io::platform(udp_socket_factory.clone());
+                    Eventloop::with_packets(
+                        tcp_socket_factory,
+                        udp_socket_factory,
+                        is_internet_resource_active,
+                        dns_servers,
+                        flow_logs_dir,
+                        local_flow_logs,
+                        portal,
+                        cmd_rx,
+                        resource_list_sender,
+                        tun_config_sender,
+                        connected_as_sender,
+                        user_notification_sender,
+                        packets,
+                    )
+                    .run()
+                }
+                #[cfg(not(any(
+                    target_os = "linux",
+                    target_os = "windows",
+                    target_os = "android"
+                )))]
+                {
+                    drop((
+                        tcp_socket_factory,
+                        udp_socket_factory,
+                        portal,
+                        is_internet_resource_active,
+                        dns_servers,
+                        flow_logs_dir,
+                        local_flow_logs,
+                        cmd_rx,
+                        resource_list_sender,
+                        tun_config_sender,
+                        connected_as_sender,
+                        user_notification_sender,
+                    ));
+                    async {
+                        Err(DisconnectError::from(anyhow::anyhow!(
+                            "This platform requires a host-driven packet transport"
+                        )))
+                    }
+                }
             },
             handle,
         );
@@ -244,7 +275,10 @@ impl Drop for Session {
     }
 }
 
-#[cfg(any(test, not(any(target_os = "linux", target_os = "windows"))))]
+#[cfg(any(
+    test,
+    not(any(target_os = "linux", target_os = "windows", target_os = "android"))
+))]
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
@@ -284,7 +318,7 @@ impl EventStream {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
 impl EventStream {
     fn new_native<E>(
         make_event_loop: impl FnOnce(

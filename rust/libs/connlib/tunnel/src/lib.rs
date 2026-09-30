@@ -30,13 +30,10 @@ use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 pub mod packet_io;
-mod sockets;
 mod utils;
 
 pub use tunnel_proto::*;
 
-pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -95,7 +92,7 @@ impl Drop for TunnelError {
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take packet input from [`PacketIo`] or time and pass it to the respective state.
 pub struct Tunnel<TRoleState, P = PlatformIo> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
@@ -630,7 +627,7 @@ impl ClientTunnel {
         is_internet_resource_active: bool,
         now: Instant,
     ) -> Self {
-        let packets = PlatformIo::new(udp_socket_factory.clone());
+        let packets = packet_io::platform(udp_socket_factory.clone());
         Self::with_packets(
             tcp_socket_factory,
             udp_socket_factory,
@@ -649,7 +646,7 @@ impl GatewayTunnel {
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
     ) -> Self {
-        let packets = PlatformIo::new(udp_socket_factory.clone());
+        let packets = packet_io::platform(udp_socket_factory.clone());
         Self::with_packets(
             tcp_socket_factory,
             udp_socket_factory,

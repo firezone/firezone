@@ -153,6 +153,12 @@ impl IpPacketBuf {
     }
 }
 
+impl AsRef<[u8]> for IpPacketBuf {
+    fn as_ref(&self) -> &[u8] {
+        self.inner.as_slice()
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
     buf: Buffer<Vec<u8>>,

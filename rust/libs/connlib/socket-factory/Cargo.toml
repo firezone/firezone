@@ -27,7 +27,6 @@ libc = { workspace = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libc = { workspace = true }
-parking_lot = { workspace = true }
 
 [dev-dependencies]
 bufferpool = { workspace = true }

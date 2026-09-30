@@ -3,20 +3,13 @@
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::IpPacket;
 use std::sync::LazyLock;
-use tokio::sync::mpsc;
 
 #[cfg(target_family = "unix")]
 pub mod ioctl;
 #[cfg(target_os = "linux")]
 pub mod linux;
-#[cfg(target_family = "unix")]
-pub mod unix;
 
-/// How many packets a single item on the TUN channels may at most hold.
-///
-/// The channels exchange whole batches of packets, so the cost of a channel
-/// send / receive (and the associated task wake-up) is paid once per batch
-/// rather than once per packet.
+/// How many packets a single TUN batch may at most hold.
 ///
 /// Apple batches bound the buffers retained from `NEPacketTunnelFlow`. Linux
 /// batches feed TUN and UDP segmentation offloads without crossing packet channels.
@@ -27,32 +20,10 @@ pub const MAX_BATCH_SIZE: usize = cfg_select! {
     _ => { 100 }
 };
 
-/// Capacity (in batches) of the channels connecting the TUN device threads to the main thread.
-const CHANNEL_CAPACITY: usize = cfg_select! {
-    target_os = "linux" => { 100 }
-    target_os = "windows" => { 100 }
-    target_os = "macos" => { 100 }
-    target_os = "ios" => { 40 }
-    target_os = "android" => { 40 }
-    _ => { 40 }
-};
-
 static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
     LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
 
-/// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
-/// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
-const MAX_CHANNEL_MEMORY: usize = 2
-    * CHANNEL_CAPACITY
-    * (size_of::<PacketBatch>()
-        + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
-
-#[cfg(any(target_os = "ios", target_os = "android"))]
-const _: () = assert!(MAX_CHANNEL_MEMORY <= 4 * 1024 * 1024);
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
-const _: () = assert!(MAX_CHANNEL_MEMORY <= 32 * 1024 * 1024);
-
-/// A batch of packets, exchanged over the TUN channels as a single item.
+/// A batch of packets processed in one state transition.
 ///
 /// A batch holds at most [`MAX_BATCH_SIZE`] packets in a pooled buffer:
 /// [`PacketBatch::try_push`] hands the packet back once the batch is full, so the
@@ -114,7 +85,8 @@ pub trait Tun: Send + Sync + 'static {
 
 /// Owns the platform device and the state needed for its lifetime.
 pub enum TunIo {
-    Channels(Box<dyn ChannelTun>),
+    #[cfg(target_os = "android")]
+    Android(std::os::fd::OwnedFd),
     #[cfg(target_os = "linux")]
     Linux(linux::TunFd<std::os::fd::OwnedFd>),
     #[cfg(windows)]
@@ -126,139 +98,6 @@ pub enum TunIo {
         inner: Box<TunIo>,
         inspect: fn(&IpPacket),
     },
-}
-
-impl<T: ChannelTun> Tun for T {
-    fn into_io(self: Box<Self>) -> TunIo {
-        TunIo::Channels(self)
-    }
-    fn name(&self) -> &str {
-        ChannelTun::name(self)
-    }
-}
-
-/// Channel device used by Android and transport tests.
-pub trait ChannelTun: Send + Sync + 'static {
-    /// Get a reference to the sender for outbound packets.
-    fn sender(&self) -> &OutboundTx;
-
-    /// Get a mutable reference to the receiver for inbound packets.
-    fn receiver(&mut self) -> &mut InboundRx;
-
-    /// The name of the TUN device.
-    fn name(&self) -> &str;
-}
-
-/// Creates the channel connecting the main thread to the thread writing to the TUN device.
-pub fn outbound_channel() -> (OutboundTx, OutboundRx) {
-    let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-
-    (OutboundTx(tx), OutboundRx(rx))
-}
-
-/// Creates the channel connecting the thread reading from the TUN device to the main thread.
-pub fn inbound_channel() -> (InboundTx, InboundRx) {
-    let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
-
-    (InboundTx(tx), InboundRx(rx))
-}
-
-/// Creates an outbound channel with an explicit capacity.
-///
-/// Only meant for tests that need to exercise behaviour on a full channel.
-pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
-    let (tx, rx) = mpsc::channel(capacity);
-
-    (OutboundTx(tx), OutboundRx(rx))
-}
-
-/// The sending half of the channel to the thread writing to the TUN device.
-///
-/// Each item is one batch of packets; the end of a batch marks the boundary
-/// up to which the TUN thread may coalesce packets before writing them out.
-#[derive(Clone)]
-pub struct OutboundTx(mpsc::Sender<PacketBatch>);
-
-impl OutboundTx {
-    pub fn try_send(
-        &self,
-        batch: PacketBatch,
-    ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
-        self.0.try_send(batch)
-    }
-
-    pub async fn send(
-        &self,
-        batch: PacketBatch,
-    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.send(batch).await
-    }
-
-    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
-        self.0.downgrade()
-    }
-}
-
-/// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx(mpsc::Receiver<PacketBatch>);
-
-impl OutboundRx {
-    pub async fn recv(&mut self) -> Option<PacketBatch> {
-        self.0.recv().await
-    }
-
-    pub fn blocking_recv(&mut self) -> Option<PacketBatch> {
-        self.0.blocking_recv()
-    }
-}
-
-/// The sending half of the channel of packet batches read from the TUN device.
-#[derive(Clone)]
-pub struct InboundTx(mpsc::Sender<PacketBatch>);
-
-impl InboundTx {
-    pub async fn send(
-        &self,
-        batch: PacketBatch,
-    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.send(batch).await
-    }
-
-    pub fn blocking_send(
-        &self,
-        batch: PacketBatch,
-    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.blocking_send(batch)
-    }
-
-    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
-        self.0.downgrade()
-    }
-
-    /// Completes when the receiving half of the channel is gone.
-    pub async fn closed(&self) {
-        self.0.closed().await
-    }
-}
-
-/// The receiving half of the channel of packet batches read from the TUN device.
-pub struct InboundRx(mpsc::Receiver<PacketBatch>);
-
-impl InboundRx {
-    pub fn poll_recv(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<PacketBatch>> {
-        self.0.poll_recv(cx)
-    }
-
-    pub async fn recv(&mut self) -> Option<PacketBatch> {
-        self.0.recv().await
-    }
-
-    pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
-        self.0.try_recv()
-    }
 }
 
 #[cfg(test)]

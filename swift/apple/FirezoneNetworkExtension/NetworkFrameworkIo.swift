@@ -99,6 +99,7 @@ final class NetworkFrameworkIo: @unchecked Sendable {
     #endif
     while tunOffset < receivedTun.count, fz_completion_receive_ready(session, false) == 0 {
       let end = min(tunOffset + capacity, receivedTun.count)
+      // swiftlint:disable:next legacy_objc_type - NSData keeps packet pointers stable through the FFI call.
       let owners = receivedTun[tunOffset..<end].map { $0 as NSData }
       let slices = owners.map {
         FzByteSlice(data: $0.bytes.assumingMemoryBound(to: UInt8.self), len: $0.length)
@@ -153,7 +154,8 @@ final class NetworkFrameworkIo: @unchecked Sendable {
       }
     case 2:
       let packets = (0..<operation.packets).compactMap { owner.packet($0) }
-      let families = packets.map { data -> NSNumber in
+      let families = packets.map { data in
+        // swiftlint:disable:next legacy_objc_type - NEPacketTunnelFlow requires NSNumber protocol families.
         NSNumber(value: data.first.map { $0 >> 4 } == 6 ? AF_INET6 : AF_INET)
       }
       let accepted =
@@ -395,7 +397,9 @@ private struct CompletionError: Error, LocalizedError {
   var errorDescription: String? { message }
 }
 private final class InputBuffer {
+  // swiftlint:disable:next legacy_objc_type - NSData retains the bytes borrowed by Rust until the lease is released.
   let data: NSData
+  // swiftlint:disable:next legacy_objc_type - NSData retains the bytes borrowed by Rust until the lease is released.
   init(_ data: Data) { self.data = data as NSData }
 }
 private func releaseInputBuffer(_ context: UnsafeMutableRawPointer?) {

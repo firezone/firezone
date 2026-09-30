@@ -26,7 +26,6 @@ snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
@@ -51,6 +50,10 @@ wintun = "0.5.1"
 telemetry = { workspace = true }
 windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_System_Threading", "Win32_System_IO"] }
 socket2 = { workspace = true, features = ["all"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+compio = { workspace = true, features = ["polling"] }
+libc = { workspace = true }
 
 [lints]
 workspace = true

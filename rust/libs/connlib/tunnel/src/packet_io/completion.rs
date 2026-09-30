@@ -149,7 +149,7 @@ impl CompletionPort {
         Ok(())
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "windows", target_os = "android"))]
     pub(crate) fn report_error(&self, error: anyhow::Error) {
         let mut queues = self.0.borrow_mut();
         queues.errors.push_back(error);

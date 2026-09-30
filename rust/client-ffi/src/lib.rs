@@ -421,11 +421,8 @@ impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
         tracing::debug!("Received set_tun command");
 
-        let runtime = self.runtime.as_ref().context("No runtime")?;
         // SAFETY: FD must be open.
-        let tun = unsafe {
-            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
-        };
+        let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
 
         self.inner.set_tun(Box::new(tun));
 
