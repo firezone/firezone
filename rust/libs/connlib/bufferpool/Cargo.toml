@@ -9,12 +9,10 @@ path = "lib.rs"
 
 [dependencies]
 bytes = { workspace = true }
+crossbeam-queue = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 tracing = { workspace = true }
-
-[target.'cfg(not(any(target_os = "linux", target_os = "macos")))'.dependencies]
-crossbeam-queue = { workspace = true }
 
 [dev-dependencies]
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }

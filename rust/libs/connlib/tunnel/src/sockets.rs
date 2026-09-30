@@ -1,13 +1,11 @@
 use crate::otel;
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, SharedBufferPool, VecBuf};
 use futures::{FutureExt as _, ready};
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
 use std::env::VarError;
 use std::rc::Rc;
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use std::sync::LazyLock;
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -40,24 +38,11 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
 /// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
 /// Dropping the collection after processing returns it to the pool, keeping the
 /// receive path free of allocations.
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> =
-    LazyLock::new(|| BufferPool::new(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-thread_local! {
-    static BATCHES_POOL: BufferPool<VecBuf<DatagramBatch>> = BufferPool::new(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches");
-}
-
-fn batches_pool_pull() -> bufferpool::Buffer<VecBuf<DatagramBatch>> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        BATCHES_POOL.with(|pool| pool.pull())
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        BATCHES_POOL.pull()
-    }
-}
+static BATCHES_POOL: SharedBufferPool<VecBuf<DatagramBatch>> = bufferpool::shared_buffer_pool!(
+    VecBuf<DatagramBatch>,
+    2 * UDP_RECV_BATCH_LIMIT,
+    "udp-recv-batches"
+);
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -135,7 +120,7 @@ impl Sockets {
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
     pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
-        let mut batches = batches_pool_pull();
+        let mut batches = BATCHES_POOL.pull();
 
         if let Some(socket) = self.socket_v4.as_mut() {
             socket.poll_recv_from(cx, &mut batches);

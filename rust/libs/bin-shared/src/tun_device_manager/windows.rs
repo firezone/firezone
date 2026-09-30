@@ -435,6 +435,10 @@ fn wintun_bytes() -> DllBytes {
 }
 
 impl tun::Tun for Tun {
-    fn name(&self) -> &str { tun::ChannelTun::name(self) }
-    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> { Ok(self) }
+    fn name(&self) -> &str {
+        tun::ChannelTun::name(self)
+    }
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
+        Ok(self)
+    }
 }

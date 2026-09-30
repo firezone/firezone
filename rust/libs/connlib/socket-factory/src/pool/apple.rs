@@ -39,29 +39,8 @@ use std::{
 };
 
 use anyhow::Result;
-#[cfg(target_os = "ios")]
-use parking_lot::{Mutex as StateCell, MutexGuard as StateGuard};
-#[cfg(target_os = "ios")]
-use std::sync::Arc as Shared;
-#[cfg(target_os = "macos")]
-use std::{
-    cell::{RefCell, RefMut as StateGuard},
-    rc::Rc as Shared,
-};
-
-#[cfg(target_os = "macos")]
-struct StateCell<T>(RefCell<T>);
-
-#[cfg(target_os = "macos")]
-impl<T> StateCell<T> {
-    fn new(value: T) -> Self {
-        Self(RefCell::new(value))
-    }
-    fn lock(&self) -> StateGuard<'_, T> {
-        self.0.borrow_mut()
-    }
-}
 use quinn_udp::UdpSockRef;
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{DatagramBatch, RecvBuffers};
 
@@ -101,10 +80,10 @@ type Key = (Option<IpAddr>, SocketAddr);
 pub(crate) struct SocketPool {
     /// Unconnected socket bound to the wildcard address; receives from any peer and is the
     /// fallback for sends when connecting fails.
-    wildcard: Shared<OwnedSocket>,
+    wildcard: Rc<OwnedSocket>,
     /// The local address flow sockets bind to; they share the wildcard socket's port.
     local: SocketAddr,
-    inner: StateCell<Inner>,
+    inner: RefCell<Inner>,
     evictions: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -132,7 +111,7 @@ struct Inner {
 
 /// A connected flow socket plus the metadata the cache needs to evict it.
 struct Flow {
-    socket: Shared<OwnedSocket>,
+    socket: Rc<OwnedSocket>,
     created_at: Instant,
     /// When we last read a datagram off this socket.
     ///
@@ -140,7 +119,7 @@ struct Flow {
     /// sends are self-generated and keep flowing to dead destinations too.
     ///
     /// Interior-mutable so the receive path can update it while iterating the cache.
-    last_received: StateCell<Option<Instant>>,
+    last_received: RefCell<Option<Instant>>,
 }
 
 impl SocketPool {
@@ -150,9 +129,9 @@ impl SocketPool {
             .expect("a bound socket to have a local address");
 
         Self {
-            wildcard: Shared::new(wildcard),
+            wildcard: Rc::new(wildcard),
             local,
-            inner: StateCell::new(Inner {
+            inner: RefCell::new(Inner {
                 flows: BTreeMap::new(),
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
@@ -175,7 +154,7 @@ impl SocketPool {
         dst: SocketAddr,
         datagrams: usize,
         recv_buffers: &RecvBuffers,
-    ) -> Shared<OwnedSocket> {
+    ) -> Rc<OwnedSocket> {
         self.get_or_connect(src, dst, datagrams, recv_buffers)
             .unwrap_or_else(|| self.wildcard.clone())
     }
@@ -194,7 +173,7 @@ impl SocketPool {
     where
         F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
     {
-        let mut inner = self.lock();
+        let mut inner = self.inner.borrow_mut();
 
         // Register the waker first: a flow socket connected after we inspect the
         // set below must still be able to wake us.
@@ -232,7 +211,7 @@ impl SocketPool {
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
         self.wildcard.apply_buffer_sizes(send, recv, port);
 
-        let mut inner = self.lock();
+        let mut inner = self.inner.borrow_mut();
         inner.buffer_sizes = Some((send, recv));
 
         for flow in inner.flows.values() {
@@ -251,9 +230,9 @@ impl SocketPool {
         dst: SocketAddr,
         datagrams: usize,
         recv_buffers: &RecvBuffers,
-    ) -> Option<Shared<OwnedSocket>> {
+    ) -> Option<Rc<OwnedSocket>> {
         let key = (src, dst);
-        let mut inner = self.lock();
+        let mut inner = self.inner.borrow_mut();
 
         if let Some(flow) = inner.flows.get(&key) {
             return Some(flow.socket.clone());
@@ -277,13 +256,13 @@ impl SocketPool {
 
                 inner.rates.forget(&key);
 
-                let socket = Shared::new(socket);
+                let socket = Rc::new(socket);
                 inner.flows.insert(
                     key,
                     Flow {
                         socket: socket.clone(),
                         created_at: Instant::now(),
-                        last_received: StateCell::new(None),
+                        last_received: RefCell::new(None),
                     },
                 );
 
@@ -304,12 +283,8 @@ impl SocketPool {
         }
     }
 
-    fn lock(&self) -> StateGuard<'_, Inner> {
-        self.inner.lock()
-    }
-
     pub(crate) fn flow_socket_count(&self) -> usize {
-        self.lock().flows.len()
+        self.inner.borrow().flows.len()
     }
 }
 
@@ -339,7 +314,7 @@ impl Inner {
 
 impl Flow {
     fn record_received(&self, now: Instant) {
-        *self.last_received.lock() = Some(now);
+        *self.last_received.borrow_mut() = Some(now);
     }
 }
 
@@ -405,7 +380,7 @@ fn evict_one(
         .flows
         .iter()
         .min_by_key(|(_, flow)| {
-            let last_received = *flow.last_received.lock();
+            let last_received = *flow.last_received.borrow();
 
             eviction_rank(last_received, flow.created_at)
         })

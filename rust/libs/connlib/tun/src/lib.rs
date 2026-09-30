@@ -1,9 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, SharedBufferPool, VecBuf};
 use ip_packet::IpPacket;
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
 /// How many packets a single item on the TUN channels may at most hold.
@@ -40,24 +38,8 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
-    LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-thread_local! {
-    static BATCH_POOL: BufferPool<VecBuf<IpPacket>> = BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch");
-}
-
-fn batch_pool_pull() -> bufferpool::Buffer<VecBuf<IpPacket>> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        BATCH_POOL.with(|pool| pool.pull())
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        BATCH_POOL.pull()
-    }
-}
+static BATCH_POOL: SharedBufferPool<VecBuf<IpPacket>> =
+    bufferpool::shared_buffer_pool!(VecBuf<IpPacket>, MAX_BATCH_SIZE, "ip-packet-batch");
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
@@ -87,7 +69,7 @@ pub struct PacketBatch {
 impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: batch_pool_pull(),
+            inner: BATCH_POOL.pull(),
         }
     }
 }

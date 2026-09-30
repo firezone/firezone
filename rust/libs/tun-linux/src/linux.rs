@@ -24,8 +24,8 @@ use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use virtio::VNET_HDR_LEN;
 
-use tun::PacketBatch;
 use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
+use tun::PacketBatch;
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
@@ -51,34 +51,34 @@ impl<T> TunFd<T> {
 /// Creates TUN I/O owned by the calling packet-processing thread.
 impl<T: AsRawFd + 'static> Io<T> {
     pub fn new(tun_fd: TunFd<T>) -> Result<Self> {
-    use futures::StreamExt as _;
-    use std::{cell::RefCell, rc::Rc};
-    let fd = Rc::new(AsyncFd::new(tun_fd.fd)?);
-    let coalescer = Rc::new(RefCell::new(tun_fd.offloads.then(|| {
-        PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
-    })));
-    let read_fd = fd.clone();
-    let reader = futures::stream::try_unfold(
-        (
-            read_fd,
-            vec![0; READ_BUFFER_SIZE],
-            VecDeque::new(),
-            otel_instruments::network_packets_batch_count(),
-        ),
-        |(fd, mut buffer, mut overflow, histogram)| async move {
-            let batch = receive_batch(&fd, &mut buffer, &mut overflow, &histogram).await?;
-            anyhow::Ok(Some((batch, (fd, buffer, overflow, histogram))))
-        },
-    )
-    .boxed_local();
-    Ok(Self {
-        fd,
-        coalescer,
-        reader,
-        ready: Rc::new(RefCell::new(Vec::new())),
-        batch_histogram: otel_instruments::network_packets_batch_count(),
-        dropped_packets: otel_instruments::network_packet_dropped(),
-    })
+        use futures::StreamExt as _;
+        use std::{cell::RefCell, rc::Rc};
+        let fd = Rc::new(AsyncFd::new(tun_fd.fd)?);
+        let coalescer = Rc::new(RefCell::new(tun_fd.offloads.then(|| {
+            PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
+        })));
+        let read_fd = fd.clone();
+        let reader = futures::stream::try_unfold(
+            (
+                read_fd,
+                vec![0; READ_BUFFER_SIZE],
+                VecDeque::new(),
+                otel_instruments::network_packets_batch_count(),
+            ),
+            |(fd, mut buffer, mut overflow, histogram)| async move {
+                let batch = receive_batch(&fd, &mut buffer, &mut overflow, &histogram).await?;
+                anyhow::Ok(Some((batch, (fd, buffer, overflow, histogram))))
+            },
+        )
+        .boxed_local();
+        Ok(Self {
+            fd,
+            coalescer,
+            reader,
+            ready: Rc::new(RefCell::new(Vec::new())),
+            batch_histogram: otel_instruments::network_packets_batch_count(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
+        })
     }
 }
 

@@ -19,11 +19,11 @@ The entry-point for the data plane is [`Tunnel`](../rust/libs/connlib/tunnel) wh
 Packets from IO sources (TUN device and UDP socket) are passed to the state component, resulting in a UDP or IP packet.
 The state component also manages ICE through the [`snownet`](../rust/libs/connlib/snownet) library, so some UDP traffic is handled internally and does not yield an IP packet.
 
-On Linux and macOS, the event-loop polls the TUN device and both UDP address families directly on the crypto thread.
+On Linux, macOS and iOS, the event-loop polls the TUN device and both UDP address families directly on the crypto thread.
 Linux TUN segmentation offloads and Apple's batched TUN/socket syscalls remain enabled.
 Buffer pools and socket caches on these platforms use thread-confined ownership.
 
-Windows, Android and iOS retain separate TUN read/write workers and shared buffer pools.
+Windows and Android retain separate TUN read/write workers and shared buffer pools.
 UDP I/O runs on the crypto thread on every platform.
 Client sessions construct and run the packet-processing event-loop on a dedicated thread with a current-thread Tokio runtime.
 The gateway uses its existing current-thread runtime.

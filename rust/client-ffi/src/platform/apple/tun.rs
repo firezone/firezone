@@ -21,7 +21,9 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn name(&self) -> &str { self.0.name() }
+    fn name(&self) -> &str {
+        self.0.name()
+    }
 
     fn into_io(self: Box<Self>) -> anyhow::Result<Box<dyn tun::TunIo>> {
         let io = Box::new(self.0).into_io()?;

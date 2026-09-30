@@ -7283,7 +7283,6 @@ dependencies = [
  "memchr",
  "opentelemetry",
  "otel-instruments",
- "parking_lot",
  "quinn-udp",
  "smallvec",
  "socket2",

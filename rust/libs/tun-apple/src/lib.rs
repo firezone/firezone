@@ -27,36 +27,36 @@ impl Io {
     ///
     /// The descriptor must remain open until this IO is dropped.
     pub unsafe fn new(fd: RawFd) -> Result<Self> {
-    use futures::StreamExt as _;
-    use ip_packet::IpPacketBuf;
-    use std::rc::Rc;
-    use tokio::io::unix::AsyncFd;
-    let fd = Rc::new(AsyncFd::new(fd)?);
-    let syscalls = sys::batch_syscalls();
-    let batch_histogram = otel_instruments::network_packets_batch_count();
-    let read_fd = fd.clone();
-    let reader = futures::stream::try_unfold(
-        (
-            read_fd,
-            (0..tun::MAX_BATCH_SIZE)
-                .map(|_| IpPacketBuf::new())
-                .collect::<Vec<_>>(),
-            batch_histogram.clone(),
-        ),
-        move |(fd, mut buffers, batch_histogram)| async move {
-            let batch = receive_batch(&fd, syscalls, &mut buffers, &batch_histogram).await?;
-            anyhow::Ok(Some((batch, (fd, buffers, batch_histogram))))
-        },
-    )
-    .boxed_local();
-    Ok(Self {
-        fd,
-        syscalls,
-        reader,
-        batch_histogram,
-        dropped_packets: otel_instruments::network_packet_dropped(),
-        write_retries: otel_instruments::network_retries(),
-    })
+        use futures::StreamExt as _;
+        use ip_packet::IpPacketBuf;
+        use std::rc::Rc;
+        use tokio::io::unix::AsyncFd;
+        let fd = Rc::new(AsyncFd::new(fd)?);
+        let syscalls = sys::batch_syscalls();
+        let batch_histogram = otel_instruments::network_packets_batch_count();
+        let read_fd = fd.clone();
+        let reader = futures::stream::try_unfold(
+            (
+                read_fd,
+                (0..tun::MAX_BATCH_SIZE)
+                    .map(|_| IpPacketBuf::new())
+                    .collect::<Vec<_>>(),
+                batch_histogram.clone(),
+            ),
+            move |(fd, mut buffers, batch_histogram)| async move {
+                let batch = receive_batch(&fd, syscalls, &mut buffers, &batch_histogram).await?;
+                anyhow::Ok(Some((batch, (fd, buffers, batch_histogram))))
+            },
+        )
+        .boxed_local();
+        Ok(Self {
+            fd,
+            syscalls,
+            reader,
+            batch_histogram,
+            dropped_packets: otel_instruments::network_packet_dropped(),
+            write_retries: otel_instruments::network_retries(),
+        })
     }
 }
 
@@ -294,7 +294,9 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
         // Safety: `Tun::new` requires the descriptor to outlive its local IO.

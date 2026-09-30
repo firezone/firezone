@@ -1,7 +1,7 @@
+use crate::ioctl;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::{io, os::fd::RawFd};
-use crate::ioctl;
 
 pub struct Io {
     name: String,

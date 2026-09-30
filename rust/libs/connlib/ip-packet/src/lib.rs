@@ -27,7 +27,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, SharedBufferPool};
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -38,27 +38,9 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use std::sync::LazyLock;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-thread_local! {
-    static BUFFER_POOL: BufferPool<Vec<u8>> = BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet");
-}
-
-fn buffer_pool_pull() -> bufferpool::Buffer<Vec<u8>> {
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        BUFFER_POOL.with(|pool| pool.pull())
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        BUFFER_POOL.pull()
-    }
-}
+static BUFFER_POOL: SharedBufferPool<Vec<u8>> =
+    bufferpool::shared_buffer_pool!(Vec<u8>, MAX_FZ_PAYLOAD, "ip-packet");
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -155,7 +137,7 @@ pub struct IpPacketBuf {
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: buffer_pool_pull(),
+            inner: BUFFER_POOL.pull(),
         }
     }
 }

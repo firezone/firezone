@@ -1,33 +1,33 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::ops::{Deref, DerefMut};
+mod sharing;
+
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "ios"))]
+#[path = "shared_local.rs"]
+mod shared;
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "ios")))]
+#[path = "shared_thread_safe.rs"]
+mod shared;
+
+pub use shared::{DefaultSharing, SharedBufferPool};
+pub use sharing::{Local, Sharing, ThreadSafe};
 
 use bytes::BytesMut;
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use crossbeam_queue::SegQueue;
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-use std::sync::Arc as Shared;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::{cell::RefCell, collections::VecDeque, rc::Rc as Shared};
+use std::ops::{Deref, DerefMut};
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-struct Queue<B>(RefCell<VecDeque<B>>);
+/// A pool with no synchronization that belongs to a single thread.
+///
+/// Its buffers cannot cross threads:
+///
+/// ```compile_fail
+/// let pool = bufferpool::LocalBufferPool::<Vec<u8>>::new(1024, "example");
+/// let buffer = pool.pull();
+/// std::thread::spawn(move || drop(buffer));
+/// ```
+pub type LocalBufferPool<B> = BufferPool<B, Local>;
+/// A pool that supports sharing buffers between threads.
+pub type ThreadSafeBufferPool<B> = BufferPool<B, ThreadSafe>;
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-impl<B> Queue<B> {
-    fn new() -> Self {
-        Self(RefCell::new(VecDeque::new()))
-    }
-    fn pop(&self) -> Option<B> {
-        self.0.borrow_mut().pop_front()
-    }
-    fn push(&self, buffer: B) {
-        self.0.borrow_mut().push_back(buffer);
-    }
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
-type Queue<B> = SegQueue<B>;
 use opentelemetry::{
     KeyValue,
     metrics::{Meter, UpDownCounter},
@@ -35,13 +35,13 @@ use opentelemetry::{
 
 /// A pool of equally sized buffers.
 ///
-/// Linux and macOS pools belong to the packet-processing thread. Other platforms
-/// share their pools with dedicated TUN workers.
-pub struct BufferPool<B> {
-    inner: Shared<PoolInner<B>>,
+/// The sharing policy also determines whether its buffers may cross threads.
+/// The default is local on Linux, macOS and iOS, and thread-safe elsewhere.
+pub struct BufferPool<B, S: Sharing = DefaultSharing> {
+    inner: S::Shared<PoolInner<B, S>>,
 }
 
-impl<B> Clone for BufferPool<B> {
+impl<B, S: Sharing> Clone for BufferPool<B, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -53,8 +53,8 @@ impl<B> Clone for BufferPool<B> {
 ///
 /// Everything that is constant per pool lives here (rather than in each buffer),
 /// keeping a [`Buffer`] handle at the size of the buffer itself plus one pool reference.
-struct PoolInner<B> {
-    queue: Queue<B>,
+struct PoolInner<B, S: Sharing> {
+    queue: S::Queue<B>,
 
     /// Creates (and counts) a new buffer for when the queue is empty.
     new_buffer_fn: Box<dyn Fn() -> B + Send + Sync>,
@@ -80,11 +80,11 @@ struct PoolInner<B> {
     counter: UpDownCounter<i64>,
 }
 
-impl<B> Drop for PoolInner<B> {
+impl<B, S: Sharing> Drop for PoolInner<B, S> {
     fn drop(&mut self) {
         let mut num_buffers = 0;
 
-        while self.queue.pop().is_some() {
+        while S::pop(&self.queue).is_some() {
             num_buffers += 1;
         }
 
@@ -92,7 +92,7 @@ impl<B> Drop for PoolInner<B> {
     }
 }
 
-impl<B> BufferPool<B>
+impl<B, S: Sharing> BufferPool<B, S>
 where
     B: Buf,
 {
@@ -116,8 +116,8 @@ where
         ];
 
         Self {
-            inner: Shared::new(PoolInner {
-                queue: Queue::new(),
+            inner: S::share(PoolInner {
+                queue: S::Queue::default(),
 
                 // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
                 // This however means that getting a buffer can fail which would require us to implement back-pressure.
@@ -141,24 +141,19 @@ where
         }
     }
 
-    pub fn pull(&self) -> Buffer<B> {
+    pub fn pull(&self) -> Buffer<B, S> {
         Buffer {
-            inner: Some(
-                self.inner
-                    .queue
-                    .pop()
-                    .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
-            ),
+            inner: Some(S::pop(&self.inner.queue).unwrap_or_else(|| (self.inner.new_buffer_fn)())),
             pool: self.inner.clone(),
         }
     }
 }
 
-impl<B> BufferPool<B>
+impl<B, S: Sharing> BufferPool<B, S>
 where
     B: ResizeBuf + DerefMut<Target = [u8]>,
 {
-    pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B> {
+    pub fn pull_initialised(&self, data: &[u8]) -> Buffer<B, S> {
         let mut buffer = self.pull();
         let len = data.len();
 
@@ -169,13 +164,13 @@ where
     }
 }
 
-pub struct Buffer<B> {
+pub struct Buffer<B, S: Sharing = DefaultSharing> {
     inner: Option<B>,
 
-    pool: Shared<PoolInner<B>>,
+    pool: S::Shared<PoolInner<B, S>>,
 }
 
-impl Buffer<Vec<u8>> {
+impl<S: Sharing> Buffer<Vec<u8>, S> {
     /// Shifts the start of the buffer to the right by N bytes, returning the bytes removed from the front of the buffer.
     pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
         let num_to_end = self.split_off(num);
@@ -194,7 +189,7 @@ impl Buffer<Vec<u8>> {
     }
 }
 
-impl<B> Buffer<B> {
+impl<B, S: Sharing> Buffer<B, S> {
     fn storage(&self) -> &B {
         self.inner
             .as_ref()
@@ -208,16 +203,12 @@ impl<B> Buffer<B> {
     }
 }
 
-impl<B> Clone for Buffer<B>
+impl<B, S: Sharing> Clone for Buffer<B, S>
 where
     B: Buf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self
-            .pool
-            .queue
-            .pop()
-            .unwrap_or_else(|| (self.pool.new_buffer_fn)());
+        let mut copy = S::pop(&self.pool.queue).unwrap_or_else(|| (self.pool.new_buffer_fn)());
 
         self.storage().clone(&mut copy);
 
@@ -228,7 +219,7 @@ where
     }
 }
 
-impl<B> PartialEq for Buffer<B>
+impl<B, S: Sharing> PartialEq for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -237,9 +228,9 @@ where
     }
 }
 
-impl<B> Eq for Buffer<B> where B: Deref<Target = [u8]> {}
+impl<B, S: Sharing> Eq for Buffer<B, S> where B: Deref<Target = [u8]> {}
 
-impl<B> PartialOrd for Buffer<B>
+impl<B, S: Sharing> PartialOrd for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -248,7 +239,7 @@ where
     }
 }
 
-impl<B> Ord for Buffer<B>
+impl<B, S: Sharing> Ord for Buffer<B, S>
 where
     B: Deref<Target = [u8]>,
 {
@@ -257,13 +248,13 @@ where
     }
 }
 
-impl<B> std::fmt::Debug for Buffer<B> {
+impl<B, S: Sharing> std::fmt::Debug for Buffer<B, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Buffer").finish()
     }
 }
 
-impl<B> Deref for Buffer<B> {
+impl<B, S: Sharing> Deref for Buffer<B, S> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
@@ -271,13 +262,13 @@ impl<B> Deref for Buffer<B> {
     }
 }
 
-impl<B> DerefMut for Buffer<B> {
+impl<B, S: Sharing> DerefMut for Buffer<B, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage_mut()
     }
 }
 
-impl<B> Drop for Buffer<B> {
+impl<B, S: Sharing> Drop for Buffer<B, S> {
     fn drop(&mut self) {
         let mut buffer = self.inner.take().expect("should have storage in `Drop`");
 
@@ -298,7 +289,7 @@ impl<B> Drop for Buffer<B> {
             return;
         }
 
-        self.pool.queue.push(buffer);
+        S::push(&self.pool.queue, buffer);
     }
 }
 
@@ -428,6 +419,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn thread_safe_buffers_return_to_their_pool_across_threads() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ThreadSafeBufferPool<Vec<u8>>>();
+        assert_send_sync::<Buffer<Vec<u8>, ThreadSafe>>();
+
+        let pool = ThreadSafeBufferPool::<Vec<u8>>::new(1024, "test");
+        let buffer = pool.pull();
+        let address = buffer.as_ptr() as usize;
+        let worker_pool = pool.clone();
+
+        std::thread::spawn(move || {
+            drop(buffer);
+            let mut recycled = worker_pool.pull();
+            assert_eq!(recycled.as_ptr() as usize, address);
+            recycled[0] = 42;
+        })
+        .join()
+        .unwrap();
+
+        let recycled = pool.pull();
+        assert_eq!(recycled.as_ptr() as usize, address);
+        assert_eq!(recycled[0], 42);
+    }
+
+    #[test]
+    fn static_pools_keep_distinct_capacities_for_the_same_buffer_type() {
+        static SMALL: SharedBufferPool<Vec<u8>> = shared_buffer_pool!(Vec<u8>, 8, "small");
+        static LARGE: SharedBufferPool<Vec<u8>> = shared_buffer_pool!(Vec<u8>, 16, "large");
+
+        assert_eq!(SMALL.pull().capacity(), 8);
+        assert_eq!(LARGE.pull().capacity(), 16);
+    }
+
+    #[test]
     fn buffer_can_be_cloned() {
         let pool = BufferPool::<Vec<u8>>::new(1024, "test");
 
@@ -499,7 +524,8 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn handles_are_slim() {
-        assert_eq!(size_of::<Buffer<Vec<u8>>>(), 32);
+        assert_eq!(size_of::<Buffer<Vec<u8>, Local>>(), 32);
+        assert_eq!(size_of::<Buffer<Vec<u8>, ThreadSafe>>(), 32);
     }
 
     #[test]
