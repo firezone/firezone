@@ -89,13 +89,17 @@ impl Session {
         local_flow_logs: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
-        let packets = tunnel::packet_io::Threaded::new(udp_socket_factory.clone());
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        let event_stream = EventStream::new(
-            |resource_list_sender,
-             tun_config_sender,
-             connected_as_sender,
-             user_notification_sender| {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        let spawn = EventStream::new_native;
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        let spawn = EventStream::new;
+        let event_stream = spawn(
+            move |resource_list_sender,
+                  tun_config_sender,
+                  connected_as_sender,
+                  user_notification_sender| {
+                let packets = tunnel::packet_io::PlatformIo::new(udp_socket_factory.clone());
                 Eventloop::with_packets(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -240,6 +244,7 @@ impl Drop for Session {
     }
 }
 
+#[cfg(any(test, not(any(target_os = "linux", target_os = "windows"))))]
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
@@ -268,6 +273,53 @@ impl EventStream {
 
         let eventloop = handle.spawn(event_loop);
 
+        Self {
+            eventloop: eventloop.fuse(),
+            resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
+            tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
+            user_notification_receiver,
+            seen_notifications: Default::default(),
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+impl EventStream {
+    fn new_native<E>(
+        make_event_loop: impl FnOnce(
+            watch::Sender<ResourceList>,
+            watch::Sender<Option<TunConfig>>,
+            watch::Sender<Option<ConnectedAs>>,
+            mpsc::Sender<UserNotification>,
+        ) -> E
+        + Send
+        + 'static,
+        handle: tokio::runtime::Handle,
+    ) -> Self
+    where
+        E: Future<Output = Result<(), DisconnectError>> + 'static,
+    {
+        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
+        let (resource_list_sender, resource_list_receiver) =
+            watch::channel(ResourceList::default());
+        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
+        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
+        let eventloop = handle.spawn_blocking(move || {
+            tunnel::packet_io::native::run(
+                async move {
+                    make_event_loop(
+                        resource_list_sender,
+                        tun_config_sender,
+                        connected_as_sender,
+                        user_notification_sender,
+                    )
+                    .await
+                },
+                None,
+            )
+            .map_err(DisconnectError::from)?
+        });
         Self {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),

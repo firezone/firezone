@@ -121,3 +121,55 @@ impl IoBuf for Outgoing {
         self.0.packet()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{net::Ipv6Addr, os::unix::net::UnixDatagram};
+
+    #[test]
+    fn completion_tun_preserves_offloaded_batch_boundaries() {
+        super::super::run(
+            async {
+                let (device, peer) = UnixDatagram::pair().unwrap();
+                device.set_nonblocking(true).unwrap();
+                let device =
+                    OffloadedTun::from_fd(TunFd::new(OwnedFd::from(device), true)).unwrap();
+                let peer = AsyncFd::new(OwnedFd::from(peer)).unwrap();
+                let packets = (0..3)
+                    .map(|sequence| {
+                        ip_packet::make::udp_packet(
+                            Ipv6Addr::LOCALHOST,
+                            Ipv6Addr::LOCALHOST,
+                            1234,
+                            4321,
+                            &[sequence; 500],
+                        )
+                        .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+                let mut outgoing = PacketBatch::default();
+                for packet in &packets {
+                    assert!(outgoing.try_push(packet.clone()).is_ok());
+                }
+
+                device.write(outgoing).await.unwrap();
+                let BufResult(result, bytes) = (&peer)
+                    .read(Vec::with_capacity(VNET_HDR_LEN + u16::MAX as usize))
+                    .await;
+                assert_eq!(result.unwrap(), VNET_HDR_LEN + 48 + 1500);
+                let reading = device.read();
+                let sending = async {
+                    compio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    let BufResult(result, _) = (&peer).write(bytes).await;
+                    result.unwrap();
+                };
+                let (received, ()) = futures::join!(reading, sending);
+                let mut received = received.unwrap();
+                assert_eq!(received.drain().collect::<Vec<_>>(), packets);
+            },
+            None,
+        )
+        .unwrap();
+    }
+}

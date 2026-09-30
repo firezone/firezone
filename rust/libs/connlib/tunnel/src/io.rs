@@ -739,7 +739,7 @@ mod tests {
         }
     }
 
-    impl Tun for DummyTun {
+    impl tun::ChannelTun for DummyTun {
         fn sender(&self) -> &tun::OutboundTx {
             &self.tx
         }

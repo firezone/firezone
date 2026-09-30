@@ -1328,8 +1328,8 @@ dependencies = [
  "android_log-sys",
  "anyhow-ext",
  "backoff",
+ "bufferpool",
  "client-shared",
- "completion-io",
  "connlib-model",
  "flow-log-upload",
  "flow-log-writer",
@@ -1348,7 +1348,6 @@ dependencies = [
  "phoenix-channel",
  "rustls",
  "secrecy",
- "serde_json",
  "socket-factory",
  "telemetry",
  "thiserror 2.0.21",
@@ -1614,39 +1613,6 @@ checksum = "fa4a63ae089032966c7eb5411267dd14524fb249e6833818b2d6d9d9548bf504"
 dependencies = [
  "cfg-if",
  "loom",
-]
-
-[[package]]
-name = "completion-io"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "backoff",
- "bin-shared",
- "bufferpool",
- "clap",
- "client-shared",
- "compio",
- "futures",
- "ip-packet",
- "libc",
- "packet-coalescer",
- "phoenix-channel",
- "quinn-udp",
- "rustls",
- "secrecy",
- "serde",
- "serde_json",
- "socket-factory",
- "socket2",
- "tokio",
- "tracing",
- "tun",
- "tunnel",
- "tunnel-bypass-resolver",
- "windows-sys 0.61.2",
- "wintun",
- "x509-credential",
 ]
 
 [[package]]
@@ -9048,6 +9014,7 @@ dependencies = [
  "smallvec",
  "tokio",
  "tracing",
+ "wintun",
 ]
 
 [[package]]
@@ -9075,6 +9042,7 @@ dependencies = [
  "anyhow-ext",
  "bootstrap-dns-client",
  "bufferpool",
+ "compio",
  "connlib-model",
  "dns-types",
  "eventloop-budget",
@@ -9085,19 +9053,26 @@ dependencies = [
  "itertools 0.15.0",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
+ "libc",
  "logging",
  "opentelemetry",
  "otel-instruments",
+ "packet-coalescer",
+ "quinn-udp",
  "rand 0.10.3",
  "rustls",
  "snownet",
  "socket-factory",
+ "socket2",
+ "telemetry",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
  "tracing",
  "tun",
  "tunnel-proto",
+ "windows-sys 0.61.2",
+ "wintun",
 ]
 
 [[package]]

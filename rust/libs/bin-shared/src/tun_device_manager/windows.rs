@@ -1,17 +1,13 @@
 use crate::TUNNEL_NAME;
 use crate::network_changes::TunnelInterfaceIndexGuard;
-use crate::tun_device_manager::{TunIpStack, TunWorkers};
+use crate::tun_device_manager::TunIpStack;
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
 use ip_network::IpNetwork;
-use ip_packet::{IpPacket, IpPacketBuf};
 use logging::err_with_src;
-use opentelemetry::KeyValue;
-use opentelemetry::metrics::Histogram;
 use ring::digest;
 use std::net::IpAddr;
-use std::sync::Weak;
 use std::time::Duration;
 use std::{
     collections::HashSet,
@@ -100,14 +96,6 @@ impl TunDeviceManager {
         self.luid = Some(tun.luid);
 
         Ok(Box::new(tun))
-    }
-
-    /// Opens the managed Wintun rings without creating packet worker threads.
-    pub fn make_completion_tun(&mut self) -> Result<CompletionTun> {
-        let tun = open_session(self.mtu)?;
-        self.iface_idx = Some(tun.iface_idx);
-        self.luid = Some(tun.luid);
-        Ok(tun)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -236,28 +224,11 @@ pub struct Tun {
     luid: wintun::NET_LUID_LH,
 
     session: Arc<wintun::Session>,
-    workers: TunWorkers,
     /// Drop after the session so address-removal callbacks remain filtered during teardown.
     _interface_index_guard: TunnelInterfaceIndexGuard,
 }
 
-impl Drop for Tun {
-    fn drop(&mut self) {
-        // Shut down the session before `workers` drops: it cancels any
-        // `receive_blocking` calls, so the worker threads can exit and be joined.
-        let _ = self.session.shutdown();
-    }
-}
-
-/// Owns a managed Wintun ring without packet worker threads.
-pub struct CompletionTun {
-    pub session: Arc<wintun::Session>,
-    iface_idx: u32,
-    luid: wintun::NET_LUID_LH,
-    _interface_index_guard: TunnelInterfaceIndexGuard,
-}
-
-fn open_session(mtu: u32) -> Result<CompletionTun> {
+fn open_session(mtu: u32) -> Result<Tun> {
     let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
     // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
     let wintun = unsafe { wintun::load_from_path(path.clone()) }
@@ -292,7 +263,7 @@ fn open_session(mtu: u32) -> Result<CompletionTun> {
             .start_session(capacity)
             .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
     );
-    Ok(CompletionTun {
+    Ok(Tun {
         session,
         iface_idx,
         luid,
@@ -302,28 +273,8 @@ fn open_session(mtu: u32) -> Result<CompletionTun> {
 
 impl Tun {
     fn new(mtu: u32) -> Result<Self> {
-        let CompletionTun {
-            session,
-            iface_idx,
-            luid,
-            _interface_index_guard: interface_index_guard,
-        } = open_session(mtu)?;
-        let send_session = Arc::downgrade(&session);
-        let recv_session = Arc::downgrade(&session);
-
-        let workers = TunWorkers::spawn(
-            move |outbound_rx| send_worker(outbound_rx, send_session),
-            move |inbound_tx| recv_worker(inbound_tx, recv_session),
-        )
-        .context("Failed to start TUN worker threads")?;
-
-        Ok(Self {
-            iface_idx,
-            luid,
-            session,
-            workers,
-            _interface_index_guard: interface_index_guard,
-        })
+        let tun = open_session(mtu)?;
+        Ok(tun)
     }
 
     pub fn iface_idx(&self) -> u32 {
@@ -332,14 +283,13 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.workers.sender()
+    fn into_io(self: Box<Self>) -> tun::TunIo {
+        let owner = Arc::<Self>::from(self);
+        tun::TunIo::Windows {
+            session: owner.session.clone(),
+            owner,
+        }
     }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.workers.receiver()
-    }
-
     fn name(&self) -> &str {
         TUNNEL_NAME
     }
@@ -390,287 +340,6 @@ fn parse_ring_capacity(var: &str) -> Result<u32> {
 ///
 /// This is the WinTUN twin of the `ENOBUFS` (UDP) and `ENOSPC` (TUN on MacOS / iOS) conditions:
 /// transient, clears off-thread, and not observable via a readiness signal. Kept in sync with
-/// the retry budgets of those paths.
-const MAX_RING_FULL_RETRIES: u32 = 24;
-
-/// Upper bound (as a power of two) for how many times we busy-spin between write retries.
-///
-/// `2^6 = 64` iterations of [`std::hint::spin_loop`] stay well below a microsecond.
-const SPIN_LIMIT: u32 = 6;
-
-// Moves packets from Internet towards the user
-fn send_worker(mut packet_rx: tun::OutboundRx, session: Weak<wintun::Session>) {
-    let batch_size_histogram = otel_instruments::network_packets_batch_count();
-    let write_retry_histogram = otel_instruments::network_retries();
-    let dropped_packets_counter = otel_instruments::network_packet_dropped();
-
-    let mut tcp_coalescer = packet_coalescer::PacketCoalescer::new(
-        [packet_coalescer::Protocol::Tcp],
-        packet_coalescer::ChecksumMode::Complete,
-    );
-    let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
-
-    while let Some(mut batch) = packet_rx.blocking_recv() {
-        let coalesce_tcp = telemetry::feature_flags::wintun_tcp_coalescing();
-        let coalescer = if coalesce_tcp {
-            &mut tcp_coalescer
-        } else {
-            &mut passthrough
-        };
-
-        for packet in batch.drain() {
-            #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::dev::send", ?packet);
-
-            coalescer.enqueue(packet);
-        }
-
-        'next_packet: for packet in coalescer.drain() {
-            let bytes = packet.packet();
-            let num_segments = packet.num_segments();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                dropped_packets_counter.add(num_segments as u64, &drop_attributes_without_error());
-                continue 'next_packet;
-            };
-
-            let mut attempt = 0;
-
-            loop {
-                let Some(session) = session.upgrade() else {
-                    tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
-                    );
-                    return;
-                };
-
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        session.send_packet(pkt);
-
-                        if num_segments > 1 {
-                            batch_size_histogram.record(num_segments as u64, &metric_attributes());
-                        }
-                        record_write_retries(&write_retry_histogram, attempt);
-
-                        continue 'next_packet;
-                    }
-                    Err(e) if is_ring_full(&e) && attempt < MAX_RING_FULL_RETRIES => {
-                        if attempt == 0 {
-                            tracing::trace!("WinTUN ring buffer is full");
-                        }
-
-                        spin_and_yield(attempt);
-
-                        attempt += 1;
-                    }
-                    Err(e) => {
-                        record_write_retries(&write_retry_histogram, attempt);
-                        dropped_packets_counter.add(num_segments as u64, &drop_attributes(&e));
-
-                        if is_ring_full(&e) {
-                            // The ring buffer is still full after all retries; dropping is by design, like for any congested network device.
-                            tracing::debug!("Failed to write to WinTUN ring buffer: {e}");
-                        } else {
-                            tracing::warn!("Failed to allocate WinTUN packet: {e}");
-                        }
-
-                        continue 'next_packet;
-                    }
-                }
-            }
-        }
-    }
-
-    tracing::debug!("Stopping TUN send worker thread because the packet channel closed");
-}
-
-/// Whether the write failed because the WinTUN ring buffer is full.
-///
-/// Dropping in this case is expected back-pressure; any other error is a genuine failure.
-fn is_ring_full(e: &wintun::Error) -> bool {
-    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
-    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
-
-    matches!(e, wintun::Error::Io(io) if io.raw_os_error() == Some(ERROR_BUFFER_OVERFLOW))
-}
-
-/// Briefly back off after a full ring buffer before trying again.
-///
-/// We avoid [`std::thread::sleep`]: on Windows the timer resolution rounds sub-millisecond
-/// durations up to ~15ms, far longer than the microseconds the ring buffer needs to drain.
-/// Instead we busy-spin an escalating number of times and then yield the thread, letting the
-/// OS run whichever thread is draining the ring buffer.
-fn spin_and_yield(attempt: u32) {
-    for _ in 0..(1u32 << attempt.min(SPIN_LIMIT)) {
-        std::hint::spin_loop();
-    }
-
-    std::thread::yield_now();
-}
-
-/// Records how many times a single packet write had to be retried before it went through or was dropped.
-///
-/// Writes that succeed on the first try (the common case) are not recorded, keeping the hot path cheap.
-fn record_write_retries(histogram: &Histogram<u64>, attempt: u32) {
-    if attempt == 0 {
-        return;
-    }
-
-    histogram.record(attempt as u64, &metric_attributes());
-}
-
-fn metric_attributes() -> [KeyValue; 2] {
-    [
-        KeyValue::new("system.device", "tun"),
-        KeyValue::new("network.io.direction", "transmit"),
-    ]
-}
-
-/// Attributes for a dropped packet, including the OS error code so ring-full
-/// drops can be told apart from other write failures.
-fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
-    let error_code = if let wintun::Error::Io(io) = e {
-        io.raw_os_error().unwrap_or_default() as i64
-    } else {
-        0
-    };
-
-    [
-        KeyValue::new("system.device", "tun"),
-        KeyValue::new("network.io.direction", "transmit"),
-        KeyValue::new("error.code", error_code),
-    ]
-}
-
-fn drop_attributes_without_error() -> [KeyValue; 3] {
-    [
-        KeyValue::new("system.device", "tun"),
-        KeyValue::new("network.io.direction", "transmit"),
-        KeyValue::new("error.code", 0),
-    ]
-}
-
-fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
-    let mut batch = tun::PacketBatch::default();
-
-    'recv: loop {
-        let Some(session) = session.upgrade() else {
-            tracing::debug!(
-                "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
-            );
-            break;
-        };
-
-        // Block for the first packet of a batch.
-        let pkt = match session.receive_blocking() {
-            Ok(pkt) => pkt,
-            Err(wintun::Error::ShuttingDown) => {
-                tracing::debug!("Stopping TUN recv worker thread because Wintun is shutting down");
-                break;
-            }
-            Err(e) => {
-                tracing::error!("Failed to receive from wintun session: {e}");
-                break;
-            }
-        };
-
-        if let Some(packet) = parse_packet(&pkt)
-            && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
-        {
-            break 'recv;
-        }
-
-        // Drain whatever else is already in the ring buffer, so one channel item
-        // carries the whole burst.
-        loop {
-            match session.try_receive() {
-                Ok(Some(pkt)) => {
-                    if let Some(packet) = parse_packet(&pkt)
-                        && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
-                    {
-                        break 'recv;
-                    }
-                }
-                // Ring buffer is drained; hand off what we have.
-                Ok(None) => break,
-                // Any genuine error will surface via `receive_blocking` above.
-                Err(_) => break,
-            }
-        }
-
-        if batch.is_empty() {
-            continue;
-        }
-
-        if packet_tx.blocking_send(std::mem::take(&mut batch)).is_err() {
-            tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
-            break 'recv;
-        }
-    }
-}
-
-/// Appends the packet to the batch; if the batch is full, hands it off and starts a
-/// new one with the packet.
-///
-/// Uses `blocking_send` so that if connlib is behind by a few packets, Wintun will
-/// queue up new packets in its ring buffer while we wait for our MPSC channel to
-/// clear. Unfortunately we don't know if Wintun is dropping packets, since it
-/// doesn't expose a sequence number or anything.
-///
-/// Errors if the channel is closed.
-fn push_or_start_new_batch(
-    batch: &mut tun::PacketBatch,
-    packet: IpPacket,
-    packet_tx: &tun::InboundTx,
-) -> Result<(), ()> {
-    let Err(packet) = batch.try_push(packet) else {
-        return Ok(());
-    };
-
-    packet_tx
-        .blocking_send(std::mem::replace(
-            &mut *batch,
-            tun::PacketBatch::new(packet),
-        ))
-        .map_err(|_| {
-            tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
-        })
-}
-
-fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
-    let mut ip_packet_buf = IpPacketBuf::new();
-
-    let src = pkt.bytes();
-    let dst = ip_packet_buf.buf();
-
-    if src.len() > dst.len() {
-        tracing::warn!(len = %src.len(), "Received too large packet");
-        return None;
-    }
-
-    dst[..src.len()].copy_from_slice(src);
-
-    let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
-        Ok(pkt) => pkt,
-        Err(e) => {
-            tracing::debug!("Failed to parse IP packet: {e:#}");
-            return None;
-        }
-    };
-
-    #[cfg(debug_assertions)]
-    tracing::trace!(target: "wire::dev::recv", ?pkt);
-
-    Some(pkt)
-}
-
-/// Sets MTU on the interface
-/// TODO: Set IP and other things in here too, so the code is more organized
 fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
     // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
     // the u64 value and re-wrapping it, since wintun doesn't refer to the windows

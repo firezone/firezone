@@ -18,7 +18,6 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 use telemetry::SentryMeterProvider;
-use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
 use clock::Clock;
@@ -80,12 +79,19 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    let result = tunnel::packet_io::native::run(try_main(cli), None).and_then(|result| result);
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    let result = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("Failed to create tokio runtime");
-
-    match runtime.block_on(try_main(cli)) {
+        .and_then(|runtime| {
+            runtime
+                .block_on(try_main(cli))
+                .map_err(std::io::Error::other)
+        })
+        .map_err(anyhow::Error::new);
+    match result {
         Ok(()) => {
             tracing::info!("Goodbye!");
             telemetry::stop();
@@ -486,58 +492,23 @@ impl Cli {
     }
 }
 
-/// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
-struct ValidateChecksumAdapter {
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-    name: String,
-    _task: AbortOnDropHandle<()>,
-}
+struct ValidateChecksumAdapter(Box<dyn Tun>);
 
 impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
+    fn into_io(self: Box<Self>) -> tun::TunIo {
+        tun::TunIo::Inspect {
+            inner: Box::new(self.0.into_io()),
+            inspect: validate_checksums,
+        }
     }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
-    }
-
     fn name(&self) -> &str {
-        &self.name
+        self.0.name()
     }
 }
 
 impl ValidateChecksumAdapter {
-    fn wrap(mut inner: Box<dyn Tun>) -> Box<dyn Tun> {
-        let name = inner.name().to_string();
-
-        // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-
-        // Get reference to inner TUN's sender for outbound packets
-        let outbound_tx = inner.sender().clone();
-
-        // Spawn task to validate and forward inbound packets from TUN device
-        let task = tokio::spawn(async move {
-            while let Some(batch) = inner.receiver().recv().await {
-                for packet in batch.iter() {
-                    validate_checksums(packet);
-                }
-
-                // Forward the validated batch to our inbound channel
-                if inbound_tx.send(batch).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Box::new(Self {
-            outbound_tx,
-            inbound_rx,
-            name,
-            _task: AbortOnDropHandle::new(task),
-        })
+    fn wrap(inner: Box<dyn Tun>) -> Box<dyn Tun> {
+        Box::new(Self(inner))
     }
 }
 

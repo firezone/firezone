@@ -118,6 +118,7 @@ actor Adapter {
 
   /// Command sender for communicating with PacketTunnelProvider.
   private let providerCommandSender: Sender<ProviderCommand>
+  private let packetIO: NetworkFrameworkIo
 
   /// Continuation to signal tunnel is ready after receiving first tunInterfaceUpdated event.
   private var startContinuation: CheckedContinuation<Void, Error>?
@@ -204,7 +205,8 @@ actor Adapter {
     logFilter: String,
     internetResourceEnabled: Bool,
     identityReference: Data?,
-    providerCommandSender: Sender<ProviderCommand>
+    providerCommandSender: Sender<ProviderCommand>,
+    packetFlow: NEPacketTunnelFlow
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -213,6 +215,9 @@ actor Adapter {
     self.internetResourceEnabled = internetResourceEnabled
     self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
+    self.packetIO = NetworkFrameworkIo(flow: packetFlow) { error in
+      providerCommandSender.send(.cancelWithError(SendableError(error.localizedDescription)))
+    }
     self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
     providerCommandSender.send(.startLogCleanupTask)
@@ -273,6 +278,10 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
+      guard let driver = connection.packetDriver else {
+        throw AdapterError.connlibConnectError("Missing packet driver")
+      }
+      try await packetIO.start(driver: driver)
       events = connection.events
       handoff = SessionHandoff(connection.session)
     } catch {
@@ -374,6 +383,7 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
+    await packetIO.stop()
 
     // Closing the command channel drops the session, so only do it once connlib has shut down.
     commandSender = nil

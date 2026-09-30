@@ -1,7 +1,9 @@
 use anyhow::Result;
 use compio::io::ancillary::{AncillaryBuf, AncillaryIter};
 use ip_packet::Ecn;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+#[cfg(unix)]
+use std::net::IpAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 pub type Control = AncillaryBuf<256>;
 
@@ -139,11 +141,7 @@ pub fn encode(
         builder.push(IPPROTO_IPV6, IPV6_ECN, &(ecn as i32))?;
     }
     if let Some(segment) = segment {
-        builder.push(
-            IPPROTO_UDP,
-            UDP_SEND_MSG_SIZE as i32,
-            &u32::try_from(segment)?,
-        )?;
+        builder.push(IPPROTO_UDP, UDP_SEND_MSG_SIZE, &u32::try_from(segment)?)?;
     }
     Ok(control)
 }

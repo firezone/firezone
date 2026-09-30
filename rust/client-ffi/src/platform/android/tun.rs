@@ -10,7 +10,7 @@ pub struct Tun {
     _fd: OwnedFd,
 }
 
-impl tun::Tun for Tun {
+impl tun::ChannelTun for Tun {
     fn sender(&self) -> &tun::OutboundTx {
         &self.outbound_tx
     }

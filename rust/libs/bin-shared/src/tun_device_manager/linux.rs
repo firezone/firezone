@@ -1,9 +1,6 @@
 //! Virtual network interface
 
-use crate::{
-    FIREZONE_MARK,
-    tun_device_manager::{TunIpStack, TunWorkers},
-};
+use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
 use anyhow::{Context as _, Result};
 use futures::{
     StreamExt, TryStreamExt,
@@ -170,13 +167,6 @@ impl TunDeviceManager {
         });
 
         Ok(tun)
-    }
-
-    /// Opens the managed device without creating packet worker threads.
-    pub fn make_tun_fd(&mut self) -> Result<tun::linux::TunFd<OwnedFd>> {
-        create_tun_device()?;
-        let fd = open_tun()?;
-        Ok(fd)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -812,35 +802,14 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
 }
 
 pub struct Tun {
-    workers: TunWorkers,
+    fd: tun::linux::TunFd<OwnedFd>,
 }
 
 impl Tun {
     pub fn new() -> Result<Self> {
         create_tun_device()?;
-
-        let fd = open_tun()?.map(Arc::new);
-
-        let workers = TunWorkers::spawn(
-            {
-                let fd = fd.clone();
-
-                move |outbound_rx| {
-                    logging::unwrap_or_warn!(
-                        tun::linux::tun_send(fd, outbound_rx),
-                        "Failed to send to TUN device: {}"
-                    )
-                }
-            },
-            move |inbound_tx| {
-                logging::unwrap_or_warn!(
-                    tun::linux::tun_recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            },
-        )?;
-
-        Ok(Self { workers })
+        let fd = open_tun()?;
+        Ok(Self { fd })
     }
 }
 
@@ -898,14 +867,9 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.workers.sender()
+    fn into_io(self: Box<Self>) -> tun::TunIo {
+        tun::TunIo::Linux(self.fd)
     }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.workers.receiver()
-    }
-
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
     }

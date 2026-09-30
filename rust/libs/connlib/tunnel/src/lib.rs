@@ -15,7 +15,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use io::Io;
-use packet_io::{NetworkInput as _, PacketIo, Threaded};
+use packet_io::{NetworkInput as _, PacketIo, PlatformIo};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -47,8 +47,8 @@ pub use utils::turn;
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-pub type GatewayTunnel<P = Threaded> = Tunnel<GatewayState, P>;
-pub type ClientTunnel<P = Threaded> = Tunnel<ClientState, P>;
+pub type GatewayTunnel<P = PlatformIo> = Tunnel<GatewayState, P>;
+pub type ClientTunnel<P = PlatformIo> = Tunnel<ClientState, P>;
 
 /// A collection of errors that occurred during a single event-loop tick.
 ///
@@ -96,7 +96,7 @@ impl Drop for TunnelError {
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
 /// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
-pub struct Tunnel<TRoleState, P = Threaded> {
+pub struct Tunnel<TRoleState, P = PlatformIo> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
@@ -630,7 +630,7 @@ impl ClientTunnel {
         is_internet_resource_active: bool,
         now: Instant,
     ) -> Self {
-        let packets = Threaded::new(udp_socket_factory.clone());
+        let packets = PlatformIo::new(udp_socket_factory.clone());
         Self::with_packets(
             tcp_socket_factory,
             udp_socket_factory,
@@ -649,7 +649,7 @@ impl GatewayTunnel {
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
     ) -> Self {
-        let packets = Threaded::new(udp_socket_factory.clone());
+        let packets = PlatformIo::new(udp_socket_factory.clone());
         Self::with_packets(
             tcp_socket_factory,
             udp_socket_factory,

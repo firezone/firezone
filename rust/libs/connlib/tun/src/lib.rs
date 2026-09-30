@@ -12,26 +12,14 @@ pub mod linux;
 #[cfg(target_family = "unix")]
 pub mod unix;
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod apple;
-
 /// How many packets a single item on the TUN channels may at most hold.
 ///
 /// The channels exchange whole batches of packets, so the cost of a channel
 /// send / receive (and the associated task wake-up) is paid once per batch
 /// rather than once per packet.
 ///
-/// On Apple, sized as a multiple of `quinn_udp::BATCH_SIZE` (32): a TUN batch destined
-/// for a single peer becomes one GSO transmit, and the Apple UDP send path moves 32
-/// datagrams per `sendmsg_x`, so any other size leaves the last syscall of every full
-/// batch underfilled. iOS is memory-constrained and gets exactly one syscall's worth;
-/// macOS gets three. Both are far below the kernel's `sendmsg_x` / `recvmsg_x` clamp
-/// (`kern.ipc.somaxsendmsgx` / `somaxrecvmsgx`, 256 by default).
-///
-/// Elsewhere the batch size has no syscall quantum to align to - Linux and Android
-/// send real GSO super-datagrams of up to 64 segments per syscall regardless of batch
-/// size, and Windows sends a whole transmit in one USO call - so those values only
-/// balance channel amortisation against buffer memory.
+/// Apple batches bound the buffers retained from `NEPacketTunnelFlow`. Linux
+/// batches feed TUN and UDP segmentation offloads without crossing packet channels.
 pub const MAX_BATCH_SIZE: usize = cfg_select! {
     target_os = "ios" => { 32 }
     target_os = "android" => { 25 }
@@ -120,6 +108,37 @@ impl std::ops::Deref for PacketBatch {
 }
 
 pub trait Tun: Send + Sync + 'static {
+    fn into_io(self: Box<Self>) -> TunIo;
+    fn name(&self) -> &str;
+}
+
+/// Owns the platform device and the state needed for its lifetime.
+pub enum TunIo {
+    Channels(Box<dyn ChannelTun>),
+    #[cfg(target_os = "linux")]
+    Linux(linux::TunFd<std::os::fd::OwnedFd>),
+    #[cfg(windows)]
+    Windows {
+        session: std::sync::Arc<wintun::Session>,
+        owner: std::sync::Arc<dyn Send + Sync>,
+    },
+    Inspect {
+        inner: Box<TunIo>,
+        inspect: fn(&IpPacket),
+    },
+}
+
+impl<T: ChannelTun> Tun for T {
+    fn into_io(self: Box<Self>) -> TunIo {
+        TunIo::Channels(self)
+    }
+    fn name(&self) -> &str {
+        ChannelTun::name(self)
+    }
+}
+
+/// Channel device used by Android and transport tests.
+pub trait ChannelTun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
     fn sender(&self) -> &OutboundTx;
 

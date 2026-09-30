@@ -13,9 +13,7 @@ doc = false
 anyhow = { workspace = true }
 backoff = { workspace = true }
 client-shared = { workspace = true }
-completion-io = { workspace = true }
 futures = { workspace = true }
-serde_json = { workspace = true }
 connlib-model = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
@@ -56,3 +54,6 @@ mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android 
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+bufferpool = { workspace = true }

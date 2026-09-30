@@ -47,7 +47,7 @@ use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, 
 /// That however means we need to define a more explicit eviction policy to stop the cache from growing.
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
-pub struct Eventloop<P = tunnel::packet_io::Threaded> {
+pub struct Eventloop<P = tunnel::packet_io::PlatformIo> {
     clock: Clock,
     tunnel: Option<ClientTunnel<P>>,
 
@@ -468,6 +468,9 @@ impl<P: tunnel::packet_io::PacketIo> Eventloop<P> {
             self.tunnel_errors
                 .add(1, &otel_attributes::error_layers(&e));
 
+            if e.any_is::<tunnel::packet_io::PacketIoFailed>() {
+                return Err(e);
+            }
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {

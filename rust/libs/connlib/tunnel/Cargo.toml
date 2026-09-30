@@ -32,10 +32,25 @@ tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
 [dev-dependencies]
+quinn-udp = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
 rustls = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+compio = { workspace = true, features = ["io-uring"] }
+libc = { workspace = true }
+packet-coalescer = { workspace = true }
+socket2 = { workspace = true, features = ["all"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+compio = { workspace = true, features = ["iocp-wait-packet"] }
+packet-coalescer = { workspace = true }
+wintun = "0.5.1"
+telemetry = { workspace = true }
+windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_System_Threading", "Win32_System_IO"] }
+socket2 = { workspace = true, features = ["all"] }
 
 [lints]
 workspace = true

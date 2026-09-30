@@ -17,7 +17,6 @@ members = [
     "libs/clock",
     "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
-    "libs/connlib/completion-io",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
@@ -103,7 +102,6 @@ clap_complete = "4.6.9"
 client-ipc = { path = "gui-client/src-ipc" }
 client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
-completion-io = { path = "libs/connlib/completion-io" }
 compio = { version = "0.19.2", default-features = false, features = ["runtime", "net", "io-ancillary", "bytemuck", "compat-tokio", "time", "async-fd"] }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"

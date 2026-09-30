@@ -11,7 +11,6 @@ import os
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
-  private var completionAdapter: CompletionAdapter?
   /// Task for consuming commands from Adapter. Uses CancellableTask for RAII cleanup.
   private var commandConsumerTask: CancellableTask?
 
@@ -137,26 +136,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     Telemetry.setEnvironmentOrClose(apiURL)
 
-    if providerConfiguration["completion_io"] == "true" {
-      do {
-        let config = CompletionConfig(
-          apiUrl: apiURL, token: token.description, deviceId: firezoneId.uuid,
-          deviceName: nil, internetResourceActive: internetResourceEnabled,
-          dnsServers: ScopedResolvers.getDefaultDNSServers(interfaceName: nil))
-        let identity = try identityReference.flatMap {
-          try X509Identity.load(persistentReference: $0)
-        }
-        let adapter = CompletionAdapter(provider: self)
-        completionAdapter = adapter
-        adapter.start(config: config, tlsIdentity: identity.map(AppleClientTlsIdentity.init)) {
-          error in
-          if error == nil, let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
-          completionHandler(error)
-        }
-      } catch { completionHandler(error) }
-      return
-    }
-
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
       Channel.create()
@@ -168,7 +147,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled,
       identityReference: identityReference,
-      providerCommandSender: commandSender
+      providerCommandSender: commandSender,
+      packetFlow: packetFlow
     )
 
     // Store adapter reference so it's accessible to wake() and stopTunnel()
@@ -231,11 +211,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func wake() {
     Log.log("wake")
 
-    if let completionAdapter {
-      completionAdapter.reset()
-      return
-    }
-
     guard let adapter else {
       Log.warning("Adapter is nil")
       return
@@ -258,12 +233,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Cancel command consumer - CancellableTask handles cancellation on deinit
     commandConsumerTask = nil
-
-    if let completionAdapter {
-      completionAdapter.stop(completion: completionHandler)
-      self.completionAdapter = nil
-      return
-    }
 
     // handles both connlib-initiated and user-initiated stops
     let adapter = self.adapter

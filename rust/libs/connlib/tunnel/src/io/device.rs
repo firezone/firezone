@@ -13,7 +13,7 @@ pub struct Device {
     // before `tun`: `Tun`'s drop can wait for its worker threads, which only exit
     // once all sender clones are gone. Fields drop in declaration order.
     flush_future: Option<BoxFuture<'static, Result<()>>>,
-    tun: Option<Box<dyn Tun>>,
+    tun: Option<Box<dyn tun::ChannelTun>>,
     waker: Option<Waker>,
 
     /// The batch of packets queued since the last call to [`Device::flush_batch`].
@@ -39,6 +39,9 @@ impl Device {
         // A pending flush still holds a sender clone of the previous TUN device;
         // drop it so the previous device's worker threads can exit.
         self.flush_future = None;
+        let tun::TunIo::Channels(tun) = tun.into_io() else {
+            panic!("Channel transport requires a channel TUN");
+        };
         self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {
@@ -323,7 +326,7 @@ mod tests {
         }
     }
 
-    impl Tun for TestTun {
+    impl tun::ChannelTun for TestTun {
         fn sender(&self) -> &tun::OutboundTx {
             &self.send_tx
         }

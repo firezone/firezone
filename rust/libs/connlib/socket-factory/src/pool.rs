@@ -1,20 +1,6 @@
-//! The [`SocketPool`]: the set of UDP sockets [`PerfUdpSocket`](crate::PerfUdpSocket) sends and
-//! receives on, plus the small vocabulary the send and receive paths share.
-//!
-//! There are two implementations behind a single platform-selected `SocketPool` alias:
-//!
-//! - `apple`: an unconnected catch-all socket plus a cache of connected per-destination "flow"
-//!   sockets, which unlock Darwin's UDP fast path and flow advisories.
-//! - `fallback`: just the catch-all socket, for every other platform.
+//! UDP socket ownership for the Android channel transport.
 
-#[cfg(apple)]
-mod apple;
-#[cfg(not(apple))]
 mod fallback;
-
-#[cfg(apple)]
-pub(crate) use apple::SocketPool;
-#[cfg(not(apple))]
 pub(crate) use fallback::SocketPool;
 
 use std::{
@@ -33,8 +19,6 @@ use crate::{DatagramBatch, apply_buffer_size};
 pub(crate) struct Socket<'a> {
     pub(crate) inner: &'a tokio::net::UdpSocket,
     pub(crate) state: &'a quinn_udp::UdpSocketState,
-    /// Whether the socket is `connect`ed to a fixed peer and thus takes Darwin's fast path.
-    pub(crate) connected: bool,
 }
 
 impl Socket<'_> {
@@ -60,36 +44,21 @@ impl Socket<'_> {
 pub(crate) struct OwnedSocket {
     socket: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
-    connected: bool,
 }
 
 impl OwnedSocket {
-    pub(crate) fn new(
-        socket: tokio::net::UdpSocket,
-        state: quinn_udp::UdpSocketState,
-        connected: bool,
-    ) -> Self {
+    pub(crate) fn new(socket: tokio::net::UdpSocket, state: quinn_udp::UdpSocketState) -> Self {
         #[cfg(windows)]
         enable_gro(&socket, &state);
 
-        Self {
-            socket,
-            state,
-            connected,
-        }
+        Self { socket, state }
     }
 
     pub(crate) fn as_socket(&self) -> Socket<'_> {
         Socket {
             inner: &self.socket,
             state: &self.state,
-            connected: self.connected,
         }
-    }
-
-    #[cfg(apple)]
-    pub(crate) fn local_addr(&self) -> io::Result<std::net::SocketAddr> {
-        self.socket.local_addr()
     }
 
     /// Applies the requested send and recv buffer sizes, best-effort.

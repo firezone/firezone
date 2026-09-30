@@ -324,6 +324,9 @@ impl Eventloop {
             self.tunnel_errors
                 .add(1, &otel_attributes::error_layers(&e));
 
+            if e.any_is::<tunnel::packet_io::PacketIoFailed>() {
+                return Err(e);
+            }
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
             {

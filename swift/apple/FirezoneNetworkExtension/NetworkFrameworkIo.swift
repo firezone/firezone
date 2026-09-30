@@ -7,107 +7,61 @@ import Network
 import NetworkExtension
 
 /// All state and I/O submissions are serialized on `queue`.
-final class CompletionAdapter: @unchecked Sendable {
+final class NetworkFrameworkIo: @unchecked Sendable {
   private let queue = DispatchQueue(label: "dev.firezone.completion", qos: .userInteractive)
   private let flow: NEPacketTunnelFlow
-  private let provider: NEPacketTunnelProvider
+  private let onError: @Sendable (Error) -> Void
   private var session: OpaquePointer?
-  private var control: CompletionControl?
   private var started = false
   private var timer: DispatchSourceTimer?
   private var listeners: [NWListener] = []
   private var connections: [String: NWConnection] = [:]
   private var generation: UInt64 = 0
   private var running = false
-  private var stopping = false
-  private var onStopped: (@Sendable () -> Void)?
-  private let pathMonitor = NWPathMonitor()
-  private var lastInterface: String?
-  private var settings = NetworkSettings()
-  private var onStarted: (@Sendable (Error?) -> Void)?
   private var receivedNetwork: [NetworkInput] = []
   private var receivedTun: [Data] = []
   private var tunOffset = 0
   private var tunReadPending = false
+  private var networkReads: Set<ObjectIdentifier> = []
 
-  init(provider: NEPacketTunnelProvider) {
-    self.provider = provider
-    self.flow = provider.packetFlow
+  init(flow: NEPacketTunnelFlow, onError: @escaping @Sendable (Error) -> Void) {
+    self.flow = flow
+    self.onError = onError
   }
 
-  func start(
-    config: CompletionConfig, tlsIdentity: ClientTlsIdentity?,
-    completion: @escaping @Sendable (Error?) -> Void
-  ) {
-    queue.async {
-      guard !self.started else {
-        completion(CompletionError("Adapter already started"))
-        return
+  func start(driver: UInt64) async throws {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+      queue.async {
+        guard !self.started else {
+          continuation.resume(throwing: CompletionError("Packet I/O already started"))
+          return
+        }
+        self.started = true
+        self.session = OpaquePointer(bitPattern: UInt(driver))
+        self.running = true
+        do { try self.bindListeners() } catch {
+          self.destroy()
+          continuation.resume(throwing: error)
+          return
+        }
+        let timer = DispatchSource.makeTimerSource(queue: self.queue)
+        // Packet callbacks pump immediately; this timer services Rust portal and DNS timers.
+        timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(1))
+        timer.setEventHandler { [weak self] in self?.pump() }
+        self.timer = timer
+        timer.resume()
+        self.readTun()
+        continuation.resume()
       }
-      self.started = true
-      do {
-        let connection = try connectCompletion(config: config, tlsIdentity: tlsIdentity)
-        self.control = connection.control
-        self.session = OpaquePointer(bitPattern: UInt(connection.driverHandle))
-      } catch {
-        completion(error)
-        return
-      }
-      self.running = true
-      self.onStarted = completion
-      do { try self.bindListeners() } catch {
-        self.fail(error)
-        return
-      }
-      let timer = DispatchSource.makeTimerSource(queue: self.queue)
-      // This services the existing Rust portal/DNS reactor and timers. Packet
-      // completions call `pump` immediately without waiting for this timer.
-      timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(1))
-      timer.setEventHandler { [weak self] in self?.pump() }
-      self.timer = timer
-      timer.resume()
-      self.pathMonitor.pathUpdateHandler = { [weak self] path in
-        guard let self else { return }
-        self.setDNS(
-          ScopedResolvers.getDefaultDNSServers(interfaceName: path.availableInterfaces.first?.name))
-        let interface = path.availableInterfaces.first?.name
-        if self.lastInterface != nil, interface != self.lastInterface { self.reset() }
-        self.lastInterface = interface
-      }
-      self.pathMonitor.start(queue: self.queue)
-      self.readTun()
     }
   }
 
-  func reset() {
-    queue.async {
-      guard self.session != nil else { return }
-      self.control?.reset(reason: "host network changed")
-      self.pump()
-    }
-  }
-
-  func setDNS(_ addresses: [String]) {
-    queue.async {
-      guard self.session != nil else { return }
-      do { try self.control?.setDns(dnsServers: addresses) } catch {
-        self.fail(error)
-        return
+  func stop() async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      queue.async {
+        self.destroy()
+        continuation.resume()
       }
-      self.pump()
-    }
-  }
-
-  func stop(completion: @escaping @Sendable () -> Void) {
-    queue.async {
-      guard self.session != nil else {
-        completion()
-        return
-      }
-      self.onStopped = completion
-      self.stopping = true
-      self.control?.stop()
-      self.pump()
     }
   }
 
@@ -118,10 +72,6 @@ final class CompletionAdapter: @unchecked Sendable {
     if status < 0 {
       fail(driverError())
       return
-    }
-    for event in control?.drainEvents() ?? [] {
-      handleEvent(event)
-      guard self.session == session else { return }
     }
     var operation = FzPacketOperation()
     while fz_completion_next_operation(session, &operation) == 0 {
@@ -140,7 +90,7 @@ final class CompletionAdapter: @unchecked Sendable {
         session, generation,
         owner.data.bytes.assumingMemoryBound(to: UInt8.self), owner.data.length,
         input.local, input.remote, input.ecn, retained, releaseInputBuffer)
-      if !stopping, input.rearm { receive(input.connection, generation: generation) }
+      if running, input.rearm { receive(input.connection, generation: generation) }
     }
     #if os(iOS)
       let capacity = 32
@@ -169,6 +119,7 @@ final class CompletionAdapter: @unchecked Sendable {
   private func submit(_ operation: FzPacketOperation) {
     guard let session, let buffer = operation.buffer else { return }
     let owner = OutputBuffer(buffer)
+    let driver = UInt(bitPattern: session)
     switch operation.kind {
     case 1:
       do {
@@ -188,8 +139,10 @@ final class CompletionAdapter: @unchecked Sendable {
                 guard let self else { return }
                 completion.remaining -= 1
                 completion.failed = completion.failed || error != nil
-                if completion.remaining == 0, self.running, self.session == session {
-                  _ = fz_completion_complete(session, completion.id, completion.failed ? -1 : 0)
+                if completion.remaining == 0, self.running, let current = self.session,
+                  UInt(bitPattern: current) == driver
+                {
+                  _ = fz_completion_complete(current, completion.id, completion.failed ? -1 : 0)
                   self.pump()
                 }
               })
@@ -225,13 +178,19 @@ final class CompletionAdapter: @unchecked Sendable {
   }
 
   private func bindListeners() throws {
+    let listenerGeneration = generation
     for host in ["0.0.0.0", "::"] {
       let parameters = NWParameters.udp
+      (parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version =
+        host == "::" ? .v6 : .v4
       parameters.allowLocalEndpointReuse = true
       parameters.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: 52625)
       let listener = try NWListener(using: parameters)
       listener.newConnectionHandler = { [weak self] connection in
-        guard let self else { return }
+        guard let self, self.running, self.generation == listenerGeneration else {
+          connection.cancel()
+          return
+        }
         guard self.connections.count < 256 else {
           connection.cancel()
           return
@@ -239,7 +198,8 @@ final class CompletionAdapter: @unchecked Sendable {
         self.install(connection, key: "incoming:\(connection.endpoint)")
       }
       listener.stateUpdateHandler = { [weak self] state in
-        if case .failed(let error) = state { self?.fail(error) }
+        guard let self, self.running, self.generation == listenerGeneration else { return }
+        if case .failed(let error) = state { self.fail(error) }
       }
       listeners.append(listener)
       listener.start(queue: queue)
@@ -270,10 +230,23 @@ final class CompletionAdapter: @unchecked Sendable {
     connection.stateUpdateHandler = { [weak self, weak connection] state in
       guard let self, let connection, self.generation == currentGeneration else { return }
       switch state {
-      case .ready: self.receive(connection, generation: currentGeneration)
+      case .ready:
+        if key.hasPrefix("incoming:"), let local = connection.currentPath?.localEndpoint {
+          let canonical = "\(local)>\(connection.endpoint)"
+          if let existing = self.connections[canonical], existing !== connection {
+            connection.cancel()
+            self.connections.removeValue(forKey: key)
+            return
+          }
+          self.connections.removeValue(forKey: key)
+          self.connections[canonical] = connection
+        }
+        self.receive(connection, generation: currentGeneration)
       case .failed:
         connection.cancel()
-        self.connections.removeValue(forKey: key)
+        for key in self.connections.keys.filter({ self.connections[$0] === connection }) {
+          self.connections.removeValue(forKey: key)
+        }
       default: break
       }
     }
@@ -281,10 +254,13 @@ final class CompletionAdapter: @unchecked Sendable {
   }
 
   private func receive(_ connection: NWConnection, generation: UInt64) {
+    let identity = ObjectIdentifier(connection)
+    guard networkReads.insert(identity).inserted else { return }
     connection.receiveMessage { [weak self, weak connection] data, context, _, error in
       guard let self, let connection, self.running, generation == self.generation,
-        let session = self.session
+        self.session != nil
       else { return }
+      self.networkReads.remove(identity)
       if let data, !data.isEmpty,
         let local = connection.currentPath?.localEndpoint,
         let localAddress = self.address(local),
@@ -309,14 +285,14 @@ final class CompletionAdapter: @unchecked Sendable {
   }
 
   private func readTun() {
-    guard running, !stopping, !tunReadPending, receivedTun.isEmpty else { return }
+    guard running, !tunReadPending, receivedTun.isEmpty else { return }
     tunReadPending = true
     let readGeneration = generation
     flow.readPackets { [weak self] packets, _ in
       guard let self else { return }
       self.queue.async {
         self.tunReadPending = false
-        guard self.running, !self.stopping, self.session != nil else { return }
+        guard self.running, self.session != nil else { return }
         guard self.generation == readGeneration else {
           self.readTun()
           return
@@ -326,34 +302,6 @@ final class CompletionAdapter: @unchecked Sendable {
         self.receivedTun = packets
         self.pump()
       }
-    }
-  }
-
-  private func handleEvent(_ event: Event) {
-    switch event {
-    case .tunInterfaceUpdated(
-      let ipv4, let ipv6, let dns, let searchDomain, let routes4, let routes6):
-      guard
-        let payload = settings.updateTunInterface(
-          ipv4: ipv4, ipv6: ipv6, dnsServers: dns,
-          searchDomain: searchDomain,
-          routes4: routes4.map {
-            NetworkSettings.Cidr(address: $0.address, prefix: Int($0.prefix))
-          },
-          routes6: routes6.map { NetworkSettings.Cidr(address: $0.address, prefix: Int($0.prefix)) }
-        )
-      else { return }
-      provider.setTunnelNetworkSettings(payload.build()) { [weak self] error in
-        guard let self else { return }
-        self.queue.async {
-          let callback = self.onStarted
-          self.onStarted = nil
-          callback?(error)
-          if let error { self.fail(error) }
-        }
-      }
-    case .disconnected(let error): fail(CompletionError(error.userMessage()))
-    default: break
     }
   }
 
@@ -406,13 +354,11 @@ final class CompletionAdapter: @unchecked Sendable {
     return CompletionError(String(cString: message))
   }
   private func fail(_ error: Error) {
-    let callback = onStarted
-    onStarted = nil
-    callback?(error)
     destroy()
-    provider.cancelTunnelWithError(error)
+    onError(error)
   }
   private func cancelConnections() {
+    networkReads.removeAll()
     listeners.forEach { $0.cancel() }
     listeners.removeAll()
     connections.values.forEach { $0.cancel() }
@@ -422,16 +368,11 @@ final class CompletionAdapter: @unchecked Sendable {
     running = false
     timer?.cancel()
     timer = nil
-    pathMonitor.cancel()
     cancelConnections()
     receivedNetwork.removeAll()
     receivedTun.removeAll()
     if let session { fz_completion_free(session) }
     session = nil
-    control = nil
-    let callback = onStopped
-    onStopped = nil
-    callback?()
   }
 }
 

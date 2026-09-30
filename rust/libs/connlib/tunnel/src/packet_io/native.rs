@@ -7,16 +7,17 @@ mod local_queue;
 mod windows_tun;
 #[cfg(windows)]
 pub use windows_tun::Wintun;
-#[cfg(unix)]
-mod unix_tun;
-#[cfg(unix)]
-pub use unix_tun::RawTun;
 #[cfg(target_os = "linux")]
 mod linux_tun;
 #[cfg(target_os = "linux")]
 pub use linux_tun::OffloadedTun;
 
-use crate::{CompletionPort, Operation, Payload, ReceivedDatagram};
+use super::{
+    PacketIo,
+    completion::{
+        CompletionIo, CompletionPort, Operation, Payload, ReceivedDatagram, ReceivedNetwork,
+    },
+};
 use anyhow::{Context as _, Result};
 use buffer::UdpBuffer;
 use bufferpool::BufferPool;
@@ -26,10 +27,220 @@ use compio::{
     compat::{RuntimeCompat, TokioAdapter},
     net::UdpSocket,
 };
+use futures::{FutureExt as _, future::LocalBoxFuture};
 use local_queue::LocalQueue;
 use socket_factory::DatagramOut;
+use socket_factory::{SocketFactory, SourceIpResolver};
 use std::{cell::Cell, future::Future, net::SocketAddr, rc::Rc};
+use std::{
+    cell::RefCell,
+    sync::Arc,
+    task::{Context, Poll, Waker},
+};
 use tun::PacketBatch;
+
+/// Owns packet state, device buffers, and completion operations on one thread.
+pub struct Native {
+    io: CompletionIo,
+    port: CompletionPort,
+    device: DeviceSlot,
+    factory: Rc<RefCell<Arc<dyn SocketFactory<socket_factory::UdpSocket>>>>,
+    driver: Option<LocalBoxFuture<'static, Result<()>>>,
+    error: Option<anyhow::Error>,
+}
+
+impl Native {
+    pub fn new(factory: Arc<dyn SocketFactory<socket_factory::UdpSocket>>) -> Self {
+        let (io, port) = CompletionIo::new();
+        let device = DeviceSlot::default();
+        let factory = Rc::new(RefCell::new(factory));
+        let driver =
+            drive_with_factory(port.clone(), device.clone(), factory.clone()).boxed_local();
+        Self {
+            io,
+            port,
+            device,
+            factory,
+            driver: Some(driver),
+            error: None,
+        }
+    }
+
+    fn poll_driver(&mut self, cx: &mut Context<'_>) {
+        let Some(driver) = &mut self.driver else {
+            return;
+        };
+        if let Poll::Ready(result) = driver.as_mut().poll(cx) {
+            self.driver = None;
+            self.error = result
+                .err()
+                .map(|error| super::PacketIoFailed(error).into());
+            self.port.close();
+        }
+    }
+}
+
+impl PacketIo for Native {
+    type Network = ReceivedNetwork;
+    fn poll_network(&mut self, cx: &mut Context<'_>) -> Poll<Self::Network> {
+        self.poll_driver(cx);
+        self.io.poll_network(cx)
+    }
+    fn poll_tun(&mut self, cx: &mut Context<'_>) -> Poll<Result<PacketBatch>> {
+        self.poll_driver(cx);
+        self.io.poll_tun(cx)
+    }
+    fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
+        self.poll_driver(cx);
+        if let Some(error) = self.error.take() {
+            return Poll::Ready(error);
+        }
+        self.io.poll_error(cx)
+    }
+    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.poll_driver(cx);
+        self.io.poll_send_ready(cx)
+    }
+    fn send(&mut self, datagram: DatagramOut) -> Result<()> {
+        self.io.send(datagram)?;
+        Ok(())
+    }
+    fn queue_tun(&mut self, packet: ip_packet::IpPacket) {
+        self.io.queue_tun(packet);
+    }
+    fn flush_tun_batch(&mut self) {
+        self.io.flush_tun_batch();
+    }
+    fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.poll_driver(cx);
+        self.io.poll_flush(cx)
+    }
+    fn poll_shutdown(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.poll_driver(cx);
+        if self.driver.is_none() {
+            return Poll::Ready(self.error.take().map_or(Ok(()), Err));
+        }
+        std::task::ready!(self.io.poll_shutdown(cx))?;
+        self.port.close();
+        self.poll_driver(cx);
+        if let Some(error) = self.error.take() {
+            return Poll::Ready(Err(error));
+        }
+        if self.driver.is_some() {
+            return Poll::Pending;
+        }
+        Poll::Ready(Ok(()))
+    }
+    fn set_tun(&mut self, tun: Box<dyn tun::Tun>) {
+        match InstalledDevice::new(tun.into_io()) {
+            Ok(device) => {
+                *self.device.device.borrow_mut() = Some(Rc::new(device));
+                if let Some(waker) = self.device.waker.borrow_mut().take() {
+                    waker.wake();
+                }
+                self.io.reset(self.factory.borrow().clone());
+            }
+            Err(error) => self.error = Some(error),
+        }
+    }
+    fn reset(&mut self, factory: Arc<dyn SocketFactory<socket_factory::UdpSocket>>) {
+        factory.reset();
+        *self.factory.borrow_mut() = factory.clone();
+        self.io.reset(factory);
+    }
+}
+
+#[derive(Clone, Default)]
+struct DeviceSlot {
+    device: Rc<RefCell<Option<Rc<InstalledDevice>>>>,
+    waker: Rc<RefCell<Option<Waker>>>,
+}
+
+impl DeviceSlot {
+    async fn get(&self) -> Rc<InstalledDevice> {
+        std::future::poll_fn(|cx| match self.device.borrow().as_ref() {
+            Some(device) => Poll::Ready(device.clone()),
+            None => {
+                *self.waker.borrow_mut() = Some(cx.waker().clone());
+                Poll::Pending
+            }
+        })
+        .await
+    }
+}
+impl PacketDevice for DeviceSlot {
+    async fn read(&self) -> Result<PacketBatch> {
+        let device = self.get().await;
+        let batch = match &device.device {
+            Device::Channels { owner, .. } => {
+                std::future::poll_fn(|cx| owner.borrow_mut().receiver().poll_recv(cx))
+                    .await
+                    .context("TUN channel closed")?
+            }
+            #[cfg(target_os = "linux")]
+            Device::Linux(tun) => tun.read().await?,
+            #[cfg(windows)]
+            Device::Windows { tun, .. } => tun.read().await?,
+        };
+        for inspect in &device.inspectors {
+            for packet in batch.iter() {
+                inspect(packet);
+            }
+        }
+        Ok(batch)
+    }
+    async fn write(&self, batch: PacketBatch) -> Result<()> {
+        let device = self.get().await;
+        match &device.device {
+            Device::Channels { sender, .. } => sender
+                .send(batch)
+                .await
+                .map_err(|_| anyhow::anyhow!("TUN channel closed"))?,
+            #[cfg(target_os = "linux")]
+            Device::Linux(tun) => tun.write(batch).await?,
+            #[cfg(windows)]
+            Device::Windows { tun, .. } => tun.write(batch).await?,
+        }
+        Ok(())
+    }
+}
+struct InstalledDevice {
+    device: Device,
+    inspectors: Vec<fn(&ip_packet::IpPacket)>,
+}
+enum Device {
+    Channels {
+        sender: tun::OutboundTx,
+        owner: RefCell<Box<dyn tun::ChannelTun>>,
+    },
+    #[cfg(target_os = "linux")]
+    Linux(OffloadedTun),
+    #[cfg(windows)]
+    Windows { tun: Wintun },
+}
+impl InstalledDevice {
+    fn new(mut io: tun::TunIo) -> Result<Self> {
+        let mut inspectors = Vec::new();
+        while let tun::TunIo::Inspect { inner, inspect } = io {
+            inspectors.push(inspect);
+            io = *inner;
+        }
+        let device = match io {
+            tun::TunIo::Channels(owner) => Device::Channels {
+                sender: owner.sender().clone(),
+                owner: RefCell::new(owner),
+            },
+            #[cfg(target_os = "linux")]
+            tun::TunIo::Linux(fd) => Device::Linux(OffloadedTun::from_fd(fd)?),
+            #[cfg(windows)]
+            tun::TunIo::Windows { session, owner } => Device::Windows {
+                tun: Wintun::new(session, owner),
+            },
+            tun::TunIo::Inspect { .. } => unreachable!(),
+        };
+        Ok(Self { device, inspectors })
+    }
+}
 
 pub trait PacketDevice: 'static {
     fn read(&self) -> impl Future<Output = Result<PacketBatch>>;
@@ -38,6 +249,10 @@ pub trait PacketDevice: 'static {
 
 /// Runs control tasks and packet completions on one current-thread executor.
 pub fn run<F: Future>(future: F, core: Option<usize>) -> Result<F::Output> {
+    let core = core.or(std::env::var("FIREZONE_PACKET_CORE")
+        .ok()
+        .map(|core| core.parse())
+        .transpose()?);
     if let Some(core) = core {
         pin_thread(core)?;
     }
@@ -52,41 +267,27 @@ pub fn run<F: Future>(future: F, core: Option<usize>) -> Result<F::Output> {
     Ok(result)
 }
 
-/// Drives owned packet operations until the host closes the port or I/O fails.
-///
-/// Each socket and TUN writer has one ordered stream of submissions. Receive,
-/// state processing, and sends can overlap without handing payloads to another thread.
-pub async fn drive<D: PacketDevice>(
-    port: CompletionPort,
-    device: D,
-    v4: std::net::UdpSocket,
-    v6: Option<std::net::UdpSocket>,
-) -> Result<()> {
-    let address_v4 = v4.local_addr()?;
-    let address_v6 = v6
-        .as_ref()
-        .map(std::net::UdpSocket::local_addr)
-        .transpose()?;
-    let mut initial = Some((v4, v6));
-    drive_with_factory(port, device, move || {
-        if let Some(sockets) = initial.take() {
-            return Ok(sockets);
-        }
-        let v4 = bind_udp(address_v4)?;
-        let v6 = address_v6.map(bind_udp).transpose()?;
-        Ok((v4, v6))
-    })
-    .await?;
-    Ok(())
+struct BoundSocket {
+    socket: std::net::UdpSocket,
+    resolve: Option<SourceIpResolver>,
 }
 
-pub async fn drive_with_factory<D: PacketDevice>(
+async fn drive_with_factory<D: PacketDevice>(
     port: CompletionPort,
     device: D,
-    mut bind: impl FnMut() -> Result<(std::net::UdpSocket, Option<std::net::UdpSocket>)>,
+    factory: Rc<RefCell<Arc<dyn SocketFactory<socket_factory::UdpSocket>>>>,
 ) -> Result<()> {
     loop {
-        let (v4, v6) = bind()?;
+        let bind = |address| -> Result<BoundSocket> {
+            let (socket, resolve) = factory.borrow().bind(address)?.into_completion()?;
+            Ok(BoundSocket { socket, resolve })
+        };
+        let v4 = bind("0.0.0.0:52625".parse()?)
+            .map_err(|error| port.report_error(error))
+            .ok();
+        let v6 = bind("[::]:52625".parse()?)
+            .map_err(|error| port.report_error(error))
+            .ok();
         if !drive_generation(&port, &device, v4, v6).await? {
             return Ok(());
         }
@@ -96,14 +297,34 @@ pub async fn drive_with_factory<D: PacketDevice>(
 async fn drive_generation<D: PacketDevice>(
     port: &CompletionPort,
     device: &D,
-    v4: std::net::UdpSocket,
-    v6: Option<std::net::UdpSocket>,
+    mut v4: Option<BoundSocket>,
+    mut v6: Option<BoundSocket>,
 ) -> Result<bool> {
-    let v4 = Rc::new(UdpSocket::from_std(v4)?);
-    let v6 = v6.map(UdpSocket::from_std).transpose()?.map(Rc::new);
+    let resolve_v4 = v4.as_mut().and_then(|socket| socket.resolve.take());
+    let resolve_v6 = v6.as_mut().and_then(|socket| socket.resolve.take());
+    let v4 = v4
+        .map(|socket| UdpSocket::from_std(socket.socket))
+        .transpose()?
+        .map(Rc::new);
+    let v6 = v6
+        .map(|socket| UdpSocket::from_std(socket.socket))
+        .transpose()?
+        .map(Rc::new);
     let send_v4 = LocalQueue::new();
     let send_v6 = LocalQueue::new();
     let send_tun = LocalQueue::new();
+    let receive_v4 = async {
+        match &v4 {
+            Some(socket) => receive_network(port, socket).await,
+            None => std::future::pending().await,
+        }
+    };
+    let write_v4 = async {
+        match &v4 {
+            Some(socket) => send_network(port, socket, &send_v4, resolve_v4.as_ref()).await,
+            None => std::future::pending().await,
+        }
+    };
     let receive_v6 = async {
         match &v6 {
             Some(socket) => receive_network(port, socket).await,
@@ -112,16 +333,16 @@ async fn drive_generation<D: PacketDevice>(
     };
     let write_v6 = async {
         match &v6 {
-            Some(socket) => send_network(port, socket, &send_v6).await,
+            Some(socket) => send_network(port, socket, &send_v6, resolve_v6.as_ref()).await,
             None => std::future::pending().await,
         }
     };
     let tasks = async {
         futures::try_join!(
-            receive_network(port, &v4),
+            receive_v4,
             receive_v6,
             receive_tun(port, device),
-            send_network(port, &v4, &send_v4),
+            write_v4,
             write_v6,
             write_tun(port, device, &send_tun),
         )?;
@@ -138,12 +359,16 @@ async fn drive_generation<D: PacketDevice>(
                 },
             };
             match &tracked.operation.payload {
-                Payload::Network(datagram) if datagram.dst.is_ipv4() => send_v4.push(tracked),
-                Payload::Network(_) if v6.is_some() => send_v6.push(tracked),
+                Payload::Network(datagram) if datagram.dst.is_ipv4() && v4.is_some() => {
+                    send_v4.push(tracked)
+                }
+                Payload::Network(datagram) if datagram.dst.is_ipv6() && v6.is_some() => {
+                    send_v6.push(tracked)
+                }
                 Payload::Network(_) => {
                     tracked
                         .guard
-                        .complete(Err(anyhow::anyhow!("IPv6 socket unavailable")))?;
+                        .complete(Err(anyhow::anyhow!("UDP address family unavailable")))?;
                 }
                 Payload::Tun(_) => send_tun.push(tracked),
                 Payload::Rebind => {
@@ -170,10 +395,12 @@ async fn drive_generation<D: PacketDevice>(
     drop(send_v4);
     drop(send_v6);
     drop(send_tun);
-    Rc::try_unwrap(v4)
-        .map_err(|_| anyhow::anyhow!("IPv4 socket still referenced"))?
-        .close()
-        .await?;
+    if let Some(v4) = v4 {
+        Rc::try_unwrap(v4)
+            .map_err(|_| anyhow::anyhow!("IPv4 socket still referenced"))?
+            .close()
+            .await?;
+    }
     if let Some(v6) = v6 {
         Rc::try_unwrap(v6)
             .map_err(|_| anyhow::anyhow!("IPv6 socket still referenced"))?
@@ -184,7 +411,8 @@ async fn drive_generation<D: PacketDevice>(
 }
 
 /// Configures metadata reception and segmentation before transferring the socket to Compio.
-pub fn bind_udp(address: SocketAddr) -> Result<std::net::UdpSocket> {
+#[cfg(all(test, target_os = "linux"))]
+fn bind_udp(address: SocketAddr) -> Result<std::net::UdpSocket> {
     let domain = if address.is_ipv4() {
         socket2::Domain::IPV4
     } else {
@@ -202,13 +430,13 @@ pub fn bind_udp(address: SocketAddr) -> Result<std::net::UdpSocket> {
 }
 
 async fn receive_network(port: &CompletionPort, socket: &UdpSocket) -> Result<()> {
-    let pool = BufferPool::<Vec<u8>>::new(u16::MAX as usize, "completion-udp-receive");
+    let pool = BufferPool::<Vec<u8>>::new(ip_packet::MAX_FZ_PAYLOAD * 64, "completion-udp-receive");
     let local_port = socket.local_addr()?.port();
     let generation = port.generation();
     loop {
         std::future::poll_fn(|cx| port.poll_receive_ready(cx, true)).await;
         let mut inner = pool.pull();
-        inner.resize(u16::MAX as usize, 0);
+        inner.resize(ip_packet::MAX_FZ_PAYLOAD * 64, 0);
         let BufResult(result, (buffer, control)) = socket
             .recv_msg(UdpBuffer { inner, len: 0 }, ancillary::Control::new())
             .await;
@@ -249,13 +477,25 @@ async fn send_network(
     _port: &CompletionPort,
     socket: &UdpSocket,
     queue: &LocalQueue<TrackedOperation>,
+    resolve: Option<&SourceIpResolver>,
 ) -> Result<()> {
     let gso = Cell::new(true);
     loop {
         let TrackedOperation { operation, guard } = queue.pop().await;
-        let Payload::Network(datagram) = operation.payload else {
+        let Payload::Network(mut datagram) = operation.payload else {
             unreachable!()
         };
+        if datagram.src.is_none()
+            && let Some(resolve) = resolve
+        {
+            match resolve(datagram.dst.ip()) {
+                Ok(ip) => datagram.src = Some(SocketAddr::new(ip, socket.local_addr()?.port())),
+                Err(error) => {
+                    guard.complete(Err(error.into()))?;
+                    continue;
+                }
+            }
+        }
         let result = send_datagram(socket, datagram, &gso).await;
         guard.complete(result)?;
     }

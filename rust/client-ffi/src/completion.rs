@@ -5,9 +5,8 @@
 //! completion and may outlive the session. No packet bytes use UniFFI serialization.
 
 use anyhow::Result;
-use completion_io::{
-    Operation, Payload, ReceivedDatagram,
-    host::{Config, Host},
+use client_shared::completion::{
+    CompletionPort, DrivenEvents, Operation, Payload, ReceivedDatagram,
 };
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use std::{
@@ -20,7 +19,6 @@ use std::{
 pub struct CompletionSession {
     host: Host,
     error: CString,
-    control: std::sync::Arc<CompletionControl>,
 }
 
 #[repr(C)]
@@ -71,99 +69,70 @@ impl Drop for BorrowedPacket {
     }
 }
 
-/// Configuration for a client whose host completes packet I/O.
-#[derive(uniffi::Record)]
-pub struct CompletionConfig {
-    pub api_url: String,
-    pub token: String,
-    pub device_id: String,
-    pub device_name: Option<String>,
-    pub internet_resource_active: bool,
-    pub dns_servers: Vec<String>,
+struct Host {
+    events: DrivenEvents,
+    port: CompletionPort,
+    output: Option<tokio::sync::mpsc::UnboundedSender<client_shared::Event>>,
+    closed: bool,
+    runtime: tokio::runtime::Runtime,
 }
 
-/// Thread-safe commands and typed events; packet state stays on the host's serial queue.
-#[derive(uniffi::Object)]
-pub struct CompletionControl {
-    session: client_shared::Session,
-    events: parking_lot::Mutex<Vec<crate::Event>>,
+impl CompletionSession {
+    #[cfg(target_vendor = "apple")]
+    pub(crate) fn new(
+        runtime: tokio::runtime::Runtime,
+        events: DrivenEvents,
+        port: CompletionPort,
+    ) -> (
+        u64,
+        tokio::sync::mpsc::UnboundedReceiver<client_shared::Event>,
+    ) {
+        let (output, receiver) = tokio::sync::mpsc::unbounded_channel();
+        let driver = Box::new(Self {
+            host: Host {
+                events,
+                port,
+                output: Some(output),
+                closed: false,
+                runtime,
+            },
+            error: CString::default(),
+        });
+        (Box::into_raw(driver) as usize as u64, receiver)
+    }
 }
 
-/// Transfers a serial packet driver to the host together with its control interface.
-///
-/// The handle is borrowed by C packet calls and freed exactly once on the host's
-/// serial queue. It is not a UniFFI object because its future and local queues are
-/// neither Send nor Sync. The host must not call it concurrently.
-#[derive(uniffi::Record)]
-pub struct CompletionConnection {
-    pub control: std::sync::Arc<CompletionControl>,
-    pub driver_handle: u64,
-}
-
-#[uniffi::export]
-pub fn connect_completion(
-    config: CompletionConfig,
-    tls_identity: Option<std::sync::Arc<dyn crate::ClientTlsIdentity>>,
-) -> Result<CompletionConnection, crate::ConnlibError> {
-    let certificate = tls_identity
-        .map(crate::client_identity::certificate)
-        .transpose()?;
-    let dns_servers = config
-        .dns_servers
-        .into_iter()
-        .map(|ip| ip.parse())
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(anyhow::Error::new)?;
-    let host = Host::with_factories(
-        Config {
-            api_url: config.api_url,
-            token: config.token,
-            device_id: config.device_id,
-            device_name: config.device_name,
-            internet_resource_active: config.internet_resource_active,
-            dns_servers,
-        },
-        std::sync::Arc::new(socket_factory::tcp),
-        std::sync::Arc::new(socket_factory::udp),
-        certificate,
-    )?;
-    let control = std::sync::Arc::new(CompletionControl {
-        session: host.session.clone(),
-        events: parking_lot::Mutex::new(Vec::new()),
-    });
-    let driver = Box::new(CompletionSession {
-        host,
-        error: CString::default(),
-        control: control.clone(),
-    });
-    Ok(CompletionConnection {
-        control,
-        driver_handle: Box::into_raw(driver) as usize as u64,
-    })
-}
-
-#[uniffi::export]
-impl CompletionControl {
-    pub fn drain_events(&self) -> Vec<crate::Event> {
-        std::mem::take(&mut *self.events.lock())
-    }
-    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), crate::ConnlibError> {
-        let addresses = dns_servers
-            .into_iter()
-            .map(|ip| ip.parse())
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(anyhow::Error::new)?;
-        self.session.set_dns(addresses);
-        Ok(())
-    }
-    pub fn reset(&self, reason: String) {
-        self.session.reset(reason);
-    }
-    pub fn stop(&self) {
-        self.session.stop();
-    }
-    pub fn set_internet_resource_state(&self, active: bool) {
-        self.session.set_internet_resource_state(active);
+impl Host {
+    fn poll(&mut self) {
+        if self.closed {
+            return;
+        }
+        let events = &mut self.events;
+        let output = &mut self.output;
+        let closed = &mut self.closed;
+        self.runtime.block_on(async {
+            tokio::task::yield_now().await;
+            std::future::poll_fn(|cx| {
+                for _ in 0..128 {
+                    match events.poll_next(cx) {
+                        std::task::Poll::Ready(Some(event)) => {
+                            if let Some(output) = output.as_ref() {
+                                let _ = output.send(event);
+                            }
+                        }
+                        std::task::Poll::Ready(None) => {
+                            *closed = true;
+                            output.take();
+                            break;
+                        }
+                        std::task::Poll::Pending => break,
+                    }
+                }
+                std::task::Poll::Ready(())
+            })
+            .await;
+            tokio::task::yield_now().await;
+        });
     }
 }
 
@@ -182,9 +151,6 @@ pub(crate) unsafe extern "C" fn fz_completion_poll(session: *mut CompletionSessi
     unsafe {
         call(session, |session| {
             session.host.poll();
-            while let Some(event) = session.host.next_event() {
-                session.control.events.lock().push(event.into());
-            }
             Ok(if session.host.closed { 2 } else { 0 })
         })
     }
@@ -548,5 +514,91 @@ impl From<SocketAddr> for Endpoint {
             }
         }
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn rejected_foreign_input_releases_its_lease() {
+        let released = Cell::new(0usize);
+        let status = unsafe {
+            fz_completion_receive_network(
+                ptr::null_mut(),
+                0,
+                [42].as_ptr(),
+                1,
+                Endpoint::default(),
+                Endpoint::default(),
+                0,
+                &released as *const Cell<usize> as *mut c_void,
+                release_counter,
+            )
+        };
+        assert_eq!(status, -1);
+        assert_eq!(released.get(), 1);
+    }
+
+    #[test]
+    fn output_segments_borrow_the_pool_buffer_until_release() {
+        let pool = bufferpool::BufferPool::<Vec<u8>>::new(5, "test-ffi-lease");
+        let mut packet = pool.pull();
+        packet.clear();
+        packet.extend([1, 1, 2, 2, 3]);
+        let original = packet.as_ptr();
+        let lease = Box::into_raw(Box::new(BufferLease(Payload::Network(
+            socket_factory::DatagramOut {
+                src: None,
+                dst: "127.0.0.1:1234".parse().unwrap(),
+                packet,
+                segment_size: 2,
+                ecn: Ecn::NonEct,
+            },
+        ))));
+        let mut output = ByteSlice {
+            data: ptr::null(),
+            len: 0,
+        };
+        for (index, expected) in [&[1, 1][..], &[2, 2][..], &[3][..]].into_iter().enumerate() {
+            assert_eq!(
+                unsafe { fz_completion_packet(lease, index, &mut output) },
+                0
+            );
+            assert_eq!(output.data, unsafe { original.add(index * 2) });
+            assert_eq!(
+                unsafe { std::slice::from_raw_parts(output.data, output.len) },
+                expected
+            );
+        }
+        assert_eq!(unsafe { fz_completion_packet(lease, 3, &mut output) }, -1);
+        let address = lease as usize;
+        std::thread::spawn(move || unsafe {
+            fz_completion_buffer_free(address as *mut BufferLease)
+        })
+        .join()
+        .unwrap();
+        assert_eq!(pool.pull().as_ptr(), original);
+    }
+
+    #[test]
+    fn scoped_ipv6_endpoint_roundtrips() {
+        let address = c"fe80::1234%7";
+        let mut endpoint = Endpoint::default();
+        assert_eq!(
+            unsafe { fz_completion_endpoint_parse(address.as_ptr(), 52625, &mut endpoint) },
+            0
+        );
+        assert_eq!(
+            endpoint.socket().unwrap(),
+            "[fe80::1234%7]:52625".parse().unwrap()
+        );
+    }
+
+    unsafe extern "C" fn release_counter(context: *mut c_void) {
+        let counter = unsafe { &*context.cast::<Cell<usize>>() };
+        counter.set(counter.get() + 1);
     }
 }

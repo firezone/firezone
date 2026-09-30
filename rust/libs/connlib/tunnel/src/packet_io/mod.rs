@@ -13,6 +13,16 @@ use tun::{PacketBatch, Tun};
 use crate::{io::Device, sockets::Sockets};
 
 pub mod completion;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub mod native;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub type PlatformIo = native::Native;
+#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+pub type PlatformIo = Threaded;
+
+#[derive(Debug, thiserror::Error)]
+#[error("Packet transport stopped: {0:#}")]
+pub struct PacketIoFailed(#[source] pub anyhow::Error);
 
 pub trait NetworkInput {
     fn for_each(&mut self, callback: impl FnMut(DatagramIn<'_>));

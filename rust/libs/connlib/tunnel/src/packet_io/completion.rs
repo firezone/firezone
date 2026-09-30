@@ -149,6 +149,13 @@ impl CompletionPort {
         Ok(())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    pub(crate) fn report_error(&self, error: anyhow::Error) {
+        let mut queues = self.0.borrow_mut();
+        queues.errors.push_back(error);
+        queues.wake_state();
+    }
+
     pub fn close(&self) {
         let mut queues = self.0.borrow_mut();
         queues.closed = true;
@@ -180,9 +187,10 @@ impl PacketIo for CompletionIo {
         }
         match batch {
             Some(batch) => Poll::Ready(Ok(batch)),
-            None if queues.closed => {
-                Poll::Ready(Err(anyhow::anyhow!("Completion transport closed")))
-            }
+            None if queues.closed => Poll::Ready(Err(super::PacketIoFailed(anyhow::anyhow!(
+                "Completion transport closed"
+            ))
+            .into())),
             None => Poll::Pending,
         }
     }
