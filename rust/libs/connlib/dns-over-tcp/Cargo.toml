@@ -15,6 +15,7 @@ rand = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+firezone-runtime = { workspace = true }
 tokio = { workspace = true, features = ["process", "rt", "macros"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

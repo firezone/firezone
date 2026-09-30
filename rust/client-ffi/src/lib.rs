@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
-
 // Not on iOS: the Network Extension has a hard memory cap and mimalloc retains freed pages, which
 // risks a jetsam kill. The system allocator is tuned for that budget, so we keep it there.
 #[cfg(not(target_os = "ios"))]
@@ -43,7 +41,7 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    runtime: Option<tokio::runtime::Runtime>,
+    runtime: Option<platform::RuntimeThread>,
     uploader: Option<flow_log_upload::Uploader>,
 }
 
@@ -326,6 +324,7 @@ pub fn connect_apple(
     let tcp_socket_factory = Arc::new(socket_factory::tcp);
     let udp_socket_factory = Arc::new(socket_factory::udp);
 
+    // Locate and duplicate the descriptor before allocating session resources.
     let tun_fd = find_tun_fd()?;
     // SAFETY: The NetworkExtension owns the descriptor throughout connect_apple.
     let tun = unsafe { platform::Tun::from_fd(tun_fd).context("Failed to create new Tun")? };
@@ -467,14 +466,7 @@ impl Session {
 impl EventStream {
     /// Returns the next event, or `None` once the [`Session`] has shut down.
     pub async fn next(&self) -> Option<Event> {
-        let event = self.0.lock().await.next().await?;
-        Some(event.into())
-    }
-}
-
-impl From<client_shared::Event> for Event {
-    fn from(event: client_shared::Event) -> Self {
-        match event {
+        match self.0.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
@@ -498,14 +490,14 @@ impl From<client_shared::Event> for Event {
                             }),
                         });
 
-                Event::TunInterfaceUpdated {
+                Some(Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),
                     ipv6: config.ip.v6.to_string(),
                     dns,
                     search_domain: config.search_domain.map(|d| d.to_string()),
                     ipv4_routes,
                     ipv6_routes,
-                }
+                })
             }
             client_shared::Event::ResourcesUpdated(resource_list) => {
                 let resources = resource_list
@@ -519,10 +511,10 @@ impl From<client_shared::Event> for Event {
                     .map(Into::into)
                     .collect();
 
-                Event::ResourcesUpdated {
+                Some(Event::ResourcesUpdated {
                     resources,
                     connected_devices,
-                }
+                })
             }
             client_shared::Event::ConnectedToPortal(connected) => {
                 telemetry::set_account_slug(connected.account_slug.clone());
@@ -534,34 +526,38 @@ impl From<client_shared::Event> for Event {
                     None,
                 );
 
-                Event::ConnectedToPortal {
+                Some(Event::ConnectedToPortal {
                     account_slug: connected.account_slug,
                     actor_name: connected.actor_name,
-                }
+                })
             }
-            client_shared::Event::AllGatewaysOffline { resource_id } => Event::AllGatewaysOffline {
-                resource_id: resource_id.to_string(),
-            },
-            client_shared::Event::GatewayVersionMismatch { resource_id } => {
-                Event::GatewayVersionMismatch {
+            client_shared::Event::AllGatewaysOffline { resource_id } => {
+                Some(Event::AllGatewaysOffline {
                     resource_id: resource_id.to_string(),
-                }
+                })
             }
-            client_shared::Event::Disconnected(error) => Event::Disconnected {
+            client_shared::Event::GatewayVersionMismatch { resource_id } => {
+                Some(Event::GatewayVersionMismatch {
+                    resource_id: resource_id.to_string(),
+                })
+            }
+            client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
-            },
+            }),
         }
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.inner.stop();
-        if let Some(runtime) = self.runtime.take() {
-            runtime.block_on(async {
-                let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
-            });
-            runtime.shutdown_timeout(Duration::from_secs(1));
+        let Some(runtime) = self.runtime.take() else {
+            return;
+        };
+
+        self.inner.stop(); // Instruct the event-loop to shut down.
+
+        if let Err(error) = runtime.shutdown() {
+            tracing::error!(%error, "Failed to shut down connlib thread");
         }
 
         // The event loop spooled its open flows on the way out; flush them.
@@ -601,14 +597,6 @@ fn connect(
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
-    let mut builder = tokio::runtime::Builder::new_multi_thread();
-    builder.worker_threads(1);
-    let runtime = builder
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
-
     install_rustls_crypto_provider();
 
     // Fail loudly rather than run a session with no logs and no flow-log spool.
@@ -642,43 +630,42 @@ fn connect(
     )
     .context("Failed to create login URL")?;
 
-    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
+    let (runtime, (session, events, uploader)) = platform::RuntimeThread::start(move || {
+        let portal = PhoenixChannel::disconnected(
+            url,
+            Some(token),
+            get_user_agent(platform::COMPONENT, platform::VERSION),
+            "client",
+            (),
+            || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(Some(platform::MAX_PARTITION_TIME))
+                    .build()
+            },
+            tcp_socket_factory.clone(),
+        );
+        // The uploader lives and dies with the session (idle, it would only poll
+        // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
+        let uploader = flow_logs_dir.clone().map(|dir| {
+            let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
 
-    let portal = PhoenixChannel::disconnected(
-        url,
-        Some(token),
-        get_user_agent(platform::COMPONENT, platform::VERSION),
-        "client",
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(platform::MAX_PARTITION_TIME))
-                .build()
-        },
-        tcp_socket_factory.clone(),
-    );
-    // The uploader lives and dies with the session (idle, it would only poll
-    // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
-    let uploader = flow_logs_dir.clone().map(|dir| {
-        let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
+            *lock_uploader() = Some(uploader.clone());
 
-        *lock_uploader() = Some(uploader.clone());
+            uploader
+        });
 
-        uploader
-    });
+        let (session, events) = client_shared::Session::connect(
+            tcp_socket_factory,
+            udp_socket_factory,
+            portal,
+            is_internet_resource_active,
+            Vec::default(),
+            flow_logs_dir,
+            false,
+        );
 
-    let (session, events) = client_shared::Session::connect(
-        tcp_socket_factory,
-        udp_socket_factory,
-        portal,
-        is_internet_resource_active,
-        Vec::default(),
-        flow_logs_dir,
-        false,
-        runtime.handle().clone(),
-    );
-
-    drop(_guard);
+        Ok((session.clone(), (session, events, uploader)))
+    })?;
 
     analytics::new_session(device_id, api_url);
 

@@ -14,12 +14,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
+    let rt = firezone_runtime::Runtime::new().context("Failed to create connlib runtime")?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 

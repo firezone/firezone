@@ -930,7 +930,6 @@ impl<'a> Handler<'a> {
             dns,
             known_dirs::flow_logs(),
             false,
-            tokio::runtime::Handle::current(),
         );
 
         analytics::new_session(device_id.id, api_url);
@@ -1008,11 +1007,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()?;
+    let rt = firezone_runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -1049,9 +1044,7 @@ pub fn run_smoke_test() -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    let rt = firezone_runtime::Runtime::new()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),

@@ -1323,12 +1323,11 @@ dependencies = [
  "android_log-sys",
  "anyhow-ext",
  "backoff",
- "bufferpool",
  "client-shared",
  "connlib-model",
+ "firezone-runtime",
  "flow-log-upload",
  "flow-log-writer",
- "futures",
  "ip-packet",
  "ip_network",
  "itertools 0.15.0",
@@ -2286,6 +2285,7 @@ dependencies = [
  "anyhow-ext",
  "bin-shared",
  "dns-types",
+ "firezone-runtime",
  "ip-packet",
  "ip_network",
  "l3-tcp",
@@ -2648,6 +2648,7 @@ dependencies = [
  "clap",
  "clock",
  "dns-types",
+ "firezone-runtime",
  "flow-log-upload",
  "flow-log-writer",
  "futures",
@@ -2705,6 +2706,7 @@ dependencies = [
  "desktop-notifications",
  "dirs 6.0.0",
  "embed-resource",
+ "firezone-runtime",
  "flow-log-upload",
  "flow-log-writer",
  "futures",
@@ -2778,6 +2780,7 @@ dependencies = [
  "bin-shared",
  "clap",
  "client-shared",
+ "firezone-runtime",
  "flow-log-upload",
  "flow-log-writer",
  "futures",
@@ -2877,6 +2880,17 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "firezone-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "compio",
+ "libc",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7527,6 +7541,7 @@ dependencies = [
  "memchr",
  "opentelemetry",
  "otel-instruments",
+ "parking_lot",
  "quinn-udp",
  "smallvec",
  "socket2",
@@ -9035,6 +9050,7 @@ dependencies = [
  "connlib-model",
  "dns-types",
  "eventloop-budget",
+ "firezone-runtime",
  "futures",
  "futures-bounded",
  "http-client",

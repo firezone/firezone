@@ -87,10 +87,9 @@ impl Session {
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
         local_flow_logs: bool,
-        handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
-        let event_stream = EventStream::new_native(
+        let event_stream = EventStream::new(
             move |resource_list_sender,
                   tun_config_sender,
                   connected_as_sender,
@@ -113,7 +112,7 @@ impl Session {
                 )
                 .run()
             },
-            handle,
+            tokio::task::spawn_local,
         );
 
         (Self { channel: cmd_tx }, event_stream)
@@ -240,7 +239,6 @@ impl Drop for Session {
     }
 }
 
-#[cfg(test)]
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
@@ -249,10 +247,10 @@ impl EventStream {
             watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
         ) -> E,
-        handle: tokio::runtime::Handle,
+        spawn: impl FnOnce(E) -> tokio::task::JoinHandle<Result<(), DisconnectError>>,
     ) -> Self
     where
-        E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
+        E: Future<Output = Result<(), DisconnectError>> + 'static,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) =
@@ -267,54 +265,8 @@ impl EventStream {
             user_notification_sender,
         );
 
-        let eventloop = handle.spawn(event_loop);
+        let eventloop = spawn(event_loop);
 
-        Self {
-            eventloop: eventloop.fuse(),
-            resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
-            tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
-            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
-            user_notification_receiver,
-            seen_notifications: Default::default(),
-        }
-    }
-}
-
-impl EventStream {
-    fn new_native<E>(
-        make_event_loop: impl FnOnce(
-            watch::Sender<ResourceList>,
-            watch::Sender<Option<TunConfig>>,
-            watch::Sender<Option<ConnectedAs>>,
-            mpsc::Sender<UserNotification>,
-        ) -> E
-        + Send
-        + 'static,
-        handle: tokio::runtime::Handle,
-    ) -> Self
-    where
-        E: Future<Output = Result<(), DisconnectError>> + 'static,
-    {
-        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) =
-            watch::channel(ResourceList::default());
-        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
-        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
-        let eventloop = handle.spawn_blocking(move || {
-            tunnel::packet_io::native::run(
-                async move {
-                    make_event_loop(
-                        resource_list_sender,
-                        tun_config_sender,
-                        connected_as_sender,
-                        user_notification_sender,
-                    )
-                    .await
-                },
-                None,
-            )
-            .map_err(DisconnectError::from)?
-        });
         Self {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
@@ -332,10 +284,8 @@ mod tests {
 
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
-        let mut stream = EventStream::new(
-            |_, _, _, _| async move { panic!("Boom!") },
-            tokio::runtime::Handle::current(),
-        );
+        let mut stream =
+            EventStream::new(|_, _, _, _| async move { panic!("Boom!") }, tokio::spawn);
 
         let Event::Disconnected(error) = stream.next().await.unwrap() else {
             panic!("Unexpected event!");
@@ -346,10 +296,8 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
-        let mut stream = EventStream::new(
-            |_, _, _, _| async move { panic!("Boom!") },
-            tokio::runtime::Handle::current(),
-        );
+        let mut stream =
+            EventStream::new(|_, _, _, _| async move { panic!("Boom!") }, tokio::spawn);
 
         let _next = stream.next().await.unwrap();
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
@@ -361,7 +309,7 @@ mod tests {
     async fn stream_ends_after_disconnect() {
         let mut stream = EventStream::new(
             |_, _, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
-            tokio::runtime::Handle::current(),
+            tokio::spawn,
         );
 
         let Event::Disconnected(_) = stream.next().await.unwrap() else {
@@ -388,7 +336,7 @@ mod tests {
 
                 Ok(())
             },
-            tokio::runtime::Handle::current(),
+            tokio::spawn,
         );
 
         let Event::ConnectedToPortal(connected) = stream.next().await.unwrap() else {
@@ -418,7 +366,7 @@ mod tests {
 
                 Ok(())
             },
-            tokio::runtime::Handle::current(),
+            tokio::spawn,
         );
 
         let Event::AllGatewaysOffline { resource_id } = stream.next().await.unwrap() else {
@@ -451,7 +399,7 @@ mod tests {
 
                 Ok(())
             },
-            tokio::runtime::Handle::current(),
+            tokio::spawn,
         );
 
         let Event::GatewayVersionMismatch { resource_id } = stream.next().await.unwrap() else {

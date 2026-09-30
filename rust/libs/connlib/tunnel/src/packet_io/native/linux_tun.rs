@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn completion_tun_preserves_offloaded_batch_boundaries() {
-        super::super::run(
+        super::super::tests::test_runtime(
             async {
                 let (device, peer) = UnixDatagram::pair().unwrap();
                 device.set_nonblocking(true).unwrap();

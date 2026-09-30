@@ -266,12 +266,7 @@ fn run_service(arguments: Vec<OsString>) {
         return;
     }
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .expect("Failed to create tokio runtime");
+    let rt = firezone_runtime::Runtime::new().expect("Failed to create connlib runtime");
 
     let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 

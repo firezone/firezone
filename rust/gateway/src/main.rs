@@ -79,28 +79,15 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    let result = match tunnel::packet_io::native::run(try_main(cli), None) {
-        Ok(result) => result,
-        #[expect(
-            clippy::print_stderr,
-            reason = "The runtime failed before the logger was set up"
-        )]
-        Err(e) => {
-            eprintln!("Failed to start packet I/O: {e:#}");
+    let runtime = match firezone_runtime::Runtime::new() {
+        Ok(runtime) => runtime,
+        #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+        Err(error) => {
+            eprintln!("Failed to create runtime: {error:#}");
             return ExitCode::FAILURE;
         }
     };
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-    let result = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .and_then(|runtime| {
-            runtime
-                .block_on(try_main(cli))
-                .map_err(std::io::Error::other)
-        })
-        .map_err(anyhow::Error::new);
+    let result = runtime.block_on(try_main(cli));
     match result {
         Ok(()) => {
             tracing::info!("Goodbye!");

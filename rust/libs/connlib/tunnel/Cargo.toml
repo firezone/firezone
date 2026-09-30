@@ -21,6 +21,7 @@ l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
+quinn-udp = { workspace = true }
 rand = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
@@ -30,12 +31,9 @@ tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
-[dev-dependencies]
-quinn-udp = { workspace = true }
-ip-packet = { workspace = true, features = ["proptest"] }
-rand = { workspace = true }
-rustls = { workspace = true }
-tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
+[target.'cfg(target_os = "android")'.dependencies]
+compio = { workspace = true, features = ["polling"] }
+libc = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 compio = { workspace = true, features = ["io-uring"] }
@@ -46,14 +44,17 @@ socket2 = { workspace = true, features = ["all"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 compio = { workspace = true, features = ["iocp-wait-packet"] }
 packet-coalescer = { workspace = true }
-wintun = "0.5.1"
+socket2 = { workspace = true, features = ["all"] }
 telemetry = { workspace = true }
 windows-sys = { version = "0.61", features = ["Win32_Networking_WinSock", "Win32_System_Threading", "Win32_System_IO"] }
-socket2 = { workspace = true, features = ["all"] }
+wintun = "0.5.1"
 
-[target.'cfg(target_os = "android")'.dependencies]
-compio = { workspace = true, features = ["polling"] }
-libc = { workspace = true }
+[dev-dependencies]
+firezone-runtime = { workspace = true }
+ip-packet = { workspace = true, features = ["proptest"] }
+rand = { workspace = true }
+rustls = { workspace = true }
+tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 
 [lints]
 workspace = true

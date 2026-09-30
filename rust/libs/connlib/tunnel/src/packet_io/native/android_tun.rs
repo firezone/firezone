@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn plain_tun_reads_into_owned_packets_and_preserves_write_order() {
-        super::super::run(
+        super::super::tests::test_runtime(
             async {
                 let (device, peer) = UnixDatagram::pair().unwrap();
                 device.set_nonblocking(true).unwrap();

@@ -14,14 +14,16 @@ use dns_types::{ResponseBuilder, ResponseCode};
 use ip_network::Ipv4Network;
 use tokio::task::JoinSet;
 use tun::TunIo;
-use tunnel::packet_io::native::{OffloadedTun, PacketDevice, run};
+use tunnel::packet_io::native::{OffloadedTun, PacketDevice};
 
 const CLIENT_CONCURRENCY: usize = 3;
 
 #[test]
 #[ignore = "Requires root & IP forwarding"]
 fn smoke() {
-    run(smoke_test(), None).unwrap();
+    firezone_runtime::Runtime::new()
+        .unwrap()
+        .block_on(smoke_test());
 }
 
 async fn smoke_test() {

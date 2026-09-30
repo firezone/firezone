@@ -27,11 +27,7 @@ use super::{
     PacketIo,
     completion::{CompletionIo, CompletionPort, Operation, Payload, ReceivedNetwork},
 };
-#[cfg(not(target_vendor = "apple"))]
-use anyhow::Context as _;
 use anyhow::Result;
-#[cfg(not(target_vendor = "apple"))]
-use compio::compat::{RuntimeCompat, TokioAdapter};
 use futures::{FutureExt as _, future::LocalBoxFuture};
 use local_queue::LocalQueue;
 use socket_factory::DatagramOut;
@@ -256,35 +252,6 @@ pub trait PacketDevice: 'static {
     fn write(&self, batch: PacketBatch) -> impl Future<Output = Result<()>>;
 }
 
-/// Runs control tasks and packet completions on one current-thread executor.
-pub fn run<F: Future>(future: F, core: Option<usize>) -> Result<F::Output> {
-    let core = core.or(std::env::var("FIREZONE_PACKET_CORE")
-        .ok()
-        .map(|core| core.parse())
-        .transpose()?);
-    if let Some(core) = core {
-        pin_thread(core)?;
-    }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    #[cfg(target_vendor = "apple")]
-    {
-        Ok(runtime.block_on(future))
-    }
-    #[cfg(not(target_vendor = "apple"))]
-    {
-        let result = runtime.block_on(async {
-            let completion = compio::runtime::Runtime::new()?;
-            let completion = RuntimeCompat::<TokioAdapter>::new(completion)?;
-            // Arm the driver's wake notification before Tokio can wake the externally polled future.
-            completion.poll_with(Some(std::time::Duration::ZERO));
-            anyhow::Ok(completion.execute(future).await)
-        })?;
-        Ok(result)
-    }
-}
-
 async fn drive_with_factory<D: PacketDevice>(
     port: CompletionPort,
     device: D,
@@ -452,38 +419,6 @@ async fn write_tun<D: PacketDevice>(
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
-fn pin_thread(core: usize) -> Result<()> {
-    anyhow::ensure!(
-        core < libc::CPU_SETSIZE as usize,
-        "CPU index exceeds affinity mask"
-    );
-    let mut mask = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
-    unsafe { libc::CPU_SET(core, &mut mask) };
-    let result = unsafe { libc::sched_setaffinity(0, std::mem::size_of_val(&mask), &mask) };
-    if result < 0 {
-        return Err(std::io::Error::last_os_error()).context("Failed to pin completion thread");
-    }
-    Ok(())
-}
-#[cfg(windows)]
-fn pin_thread(core: usize) -> Result<()> {
-    use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadAffinityMask};
-    anyhow::ensure!(
-        core < usize::BITS as usize,
-        "CPU index exceeds processor group"
-    );
-    if unsafe { SetThreadAffinityMask(GetCurrentThread(), 1usize << core) } == 0 {
-        return Err(std::io::Error::last_os_error()).context("Failed to pin completion thread");
-    }
-    Ok(())
-}
-
-#[cfg(target_vendor = "apple")]
-fn pin_thread(_core: usize) -> Result<()> {
-    anyhow::bail!("Pinning to a CPU core is unsupported on Apple platforms")
-}
-
 struct TrackedOperation {
     operation: Operation,
     guard: CompletionGuard,
@@ -523,9 +458,13 @@ mod tests {
         udp::send_datagram,
     };
 
+    pub(super) fn test_runtime<F: Future>(future: F, _core: Option<usize>) -> Result<F::Output> {
+        Ok(firezone_runtime::Runtime::new()?.block_on(future))
+    }
+
     #[test]
     fn completion_runtime_keeps_servicing_tokio_channels() {
-        run(
+        test_runtime(
             async {
                 let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
                 let sending = tokio::spawn(async move {
@@ -553,7 +492,7 @@ mod tests {
         use crate::packet_io::NetworkInput as _;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
-        run(
+        test_runtime(
             async {
                 tokio::time::timeout(std::time::Duration::from_secs(3), async {
                     let bindings = Arc::new(AtomicUsize::new(0));
@@ -624,7 +563,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn io_uring_retains_gso_gro_metadata_and_fallback_ordering() {
-        run(
+        test_runtime(
             async {
                 assert!(
                     compio::runtime::Runtime::current()
