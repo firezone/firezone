@@ -8,6 +8,7 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, UdpSocket};
 use std::os::fd::RawFd;
 use std::time::Duration;
+use tun::TunIo as _;
 
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;

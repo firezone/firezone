@@ -15,8 +15,8 @@ tun = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
 
-[lints]
-workspace = true
-
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "time"] }
+
+[lints]
+workspace = true

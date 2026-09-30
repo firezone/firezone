@@ -438,6 +438,15 @@ fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
     Some(pkt)
 }
 
+impl tun::Tun for Io {
+    fn name(&self) -> &str {
+        tun::ChannelTun::name(self)
+    }
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
+        Ok(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,14 +475,5 @@ mod tests {
         assert!(parse_ring_capacity("3145728").is_err()); // Not a power of two.
         assert!(parse_ring_capacity("65536").is_err()); // Below `wintun::MIN_RING_CAPACITY`.
         assert!(parse_ring_capacity("134217728").is_err()); // Above `wintun::MAX_RING_CAPACITY`.
-    }
-}
-
-impl tun::Tun for Io {
-    fn name(&self) -> &str {
-        tun::ChannelTun::name(self)
-    }
-    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
-        Ok(self)
     }
 }

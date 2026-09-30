@@ -7,7 +7,6 @@
 //! macOS and iOS poll I/O on the packet-processing thread using Apple's batched
 //! `recvmsg_x` / `sendmsg_x` syscalls (see [`sys`] / [`bulk`])
 //! when available and fall back to per-packet I/O ([`per_packet`]) otherwise.
-//!
 
 mod bulk;
 mod per_packet;
@@ -19,6 +18,48 @@ mod tests;
 use anyhow::Result;
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
+
+pub struct Tun {
+    name: String,
+    fd: RawFd,
+}
+
+impl Tun {
+    /// Configures the descriptor owned by NetworkExtension.
+    ///
+    /// # Safety
+    ///
+    /// The descriptor must remain open until this TUN and its local IO are dropped.
+    pub unsafe fn new(name: String, fd: RawFd) -> io::Result<Self> {
+        set_non_blocking(fd)?;
+        raise_recv_buffer(fd);
+        raise_max_pending_packets(fd);
+
+        Ok(Self { name, fd })
+    }
+}
+
+impl tun::Tun for Tun {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
+        // Safety: `Tun::new` requires the descriptor to outlive its local IO.
+        let io = unsafe { Io::new(self.fd)? };
+
+        Ok(Box::new(io))
+    }
+}
+
+pub struct Io {
+    fd: std::rc::Rc<tokio::io::unix::AsyncFd<RawFd>>,
+    syscalls: Option<&'static sys::BatchSyscalls>,
+    reader: futures::stream::LocalBoxStream<'static, Result<tun::PacketBatch>>,
+    batch_histogram: opentelemetry::metrics::Histogram<u64>,
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
+    write_retries: opentelemetry::metrics::Histogram<u64>,
+}
 
 impl Io {
     /// Creates local IO for a borrowed utun descriptor.
@@ -58,15 +99,6 @@ impl Io {
             write_retries: otel_instruments::network_retries(),
         })
     }
-}
-
-pub struct Io {
-    fd: std::rc::Rc<tokio::io::unix::AsyncFd<RawFd>>,
-    syscalls: Option<&'static sys::BatchSyscalls>,
-    reader: futures::stream::LocalBoxStream<'static, Result<tun::PacketBatch>>,
-    batch_histogram: opentelemetry::metrics::Histogram<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
-    write_retries: opentelemetry::metrics::Histogram<u64>,
 }
 
 impl tun::TunIo for Io {
@@ -271,39 +303,6 @@ fn record_drop(
         ],
     );
     tracing::debug!(count, %error, "Failed to write to TUN FD");
-}
-
-pub struct Tun {
-    name: String,
-    fd: RawFd,
-}
-
-impl Tun {
-    /// Configures the descriptor owned by NetworkExtension.
-    ///
-    /// # Safety
-    ///
-    /// The descriptor must remain open until this TUN and its local IO are dropped.
-    pub unsafe fn new(name: String, fd: RawFd) -> io::Result<Self> {
-        set_non_blocking(fd)?;
-        raise_recv_buffer(fd);
-        raise_max_pending_packets(fd);
-
-        Ok(Self { name, fd })
-    }
-}
-
-impl tun::Tun for Tun {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
-        // Safety: `Tun::new` requires the descriptor to outlive its local IO.
-        let io = unsafe { Io::new(self.fd)? };
-
-        Ok(Box::new(io))
-    }
 }
 
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.

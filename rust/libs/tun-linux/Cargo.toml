@@ -23,6 +23,7 @@ smallvec = { workspace = true }
 
 [dev-dependencies]
 ingot = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
 
 [lints]
 workspace = true

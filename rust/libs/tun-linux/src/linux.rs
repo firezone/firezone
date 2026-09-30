@@ -48,8 +48,17 @@ impl<T> TunFd<T> {
     }
 }
 
-/// Creates TUN I/O owned by the calling packet-processing thread.
+pub struct Io<T: AsRawFd> {
+    fd: std::rc::Rc<AsyncFd<T>>,
+    coalescer: std::rc::Rc<std::cell::RefCell<Option<PacketCoalescer>>>,
+    reader: futures::stream::LocalBoxStream<'static, Result<PacketBatch>>,
+    ready: std::rc::Rc<std::cell::RefCell<Vec<CoalescedPacket>>>,
+    batch_histogram: opentelemetry::metrics::Histogram<u64>,
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
+}
+
 impl<T: AsRawFd + 'static> Io<T> {
+    /// Creates TUN IO on the calling packet-processing thread.
     pub fn new(tun_fd: TunFd<T>) -> Result<Self> {
         use futures::StreamExt as _;
         use std::{cell::RefCell, rc::Rc};
@@ -80,15 +89,6 @@ impl<T: AsRawFd + 'static> Io<T> {
             dropped_packets: otel_instruments::network_packet_dropped(),
         })
     }
-}
-
-pub struct Io<T: AsRawFd> {
-    fd: std::rc::Rc<AsyncFd<T>>,
-    coalescer: std::rc::Rc<std::cell::RefCell<Option<PacketCoalescer>>>,
-    reader: futures::stream::LocalBoxStream<'static, Result<PacketBatch>>,
-    ready: std::rc::Rc<std::cell::RefCell<Vec<CoalescedPacket>>>,
-    batch_histogram: opentelemetry::metrics::Histogram<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 impl<T: AsRawFd + 'static> tun::TunIo for Io<T> {
@@ -218,7 +218,7 @@ async fn receive_batch<T: AsRawFd>(
         }
 
         let mut guard = fd.readable().await?;
-        for _ in 0..crate::MAX_BATCH_SIZE {
+        for _ in 0..tun::MAX_BATCH_SIZE {
             let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), buffer)) {
                 Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                 Ok(Ok(len)) => len,
@@ -239,7 +239,7 @@ async fn receive_batch<T: AsRawFd>(
                 }
                 Err(error) => tracing::warn!("{error:#}"),
             }
-            if batch.len() == crate::MAX_BATCH_SIZE {
+            if batch.len() == tun::MAX_BATCH_SIZE {
                 break;
             }
         }

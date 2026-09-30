@@ -871,8 +871,9 @@ impl tun::Tun for Tun {
         TunDeviceManager::IFACE_NAME
     }
     fn into_io(self: Box<Self>) -> Result<Box<dyn tun::TunIo>> {
-        let io = tun::linux::into_io(self.fd)?;
-        Ok(io)
+        let io = tun_linux::Io::new(self.fd)?;
+
+        Ok(Box::new(io))
     }
 }
 

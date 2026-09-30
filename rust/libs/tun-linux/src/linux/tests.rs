@@ -1,4 +1,5 @@
 use std::net::Ipv4Addr;
+use tun::TunIo as _;
 
 use ingot::ip::{IpProtocol, Ipv4};
 use ingot::tcp::{Tcp, TcpFlags};
@@ -19,7 +20,7 @@ async fn local_io_preserves_gso_segments_across_batch_boundaries() {
     use std::os::unix::net::UnixDatagram;
     let (device, kernel) = UnixDatagram::pair().unwrap();
     device.set_nonblocking(true).unwrap();
-    let mut io = super::into_io(super::TunFd::new(device, true)).unwrap();
+    let mut io = super::Io::new(super::TunFd::new(device, true)).unwrap();
     let packets = (0..128)
         .map(|i| udp4_id(i, &[i as u8; 500]))
         .collect::<Vec<_>>();
@@ -32,14 +33,14 @@ async fn local_io_preserves_gso_segments_across_batch_boundaries() {
     }
 
     let first = std::future::poll_fn(|cx| io.poll_read(cx)).await.unwrap();
-    assert_eq!(first.len(), crate::MAX_BATCH_SIZE);
+    assert_eq!(first.len(), tun::MAX_BATCH_SIZE);
     let second = std::future::poll_fn(|cx| io.poll_read(cx)).await.unwrap();
-    assert_eq!(second.len(), packets.len() - crate::MAX_BATCH_SIZE);
+    assert_eq!(second.len(), packets.len() - tun::MAX_BATCH_SIZE);
     for (actual, expected) in first.iter().chain(second.iter()).zip(&packets) {
         assert_eq!(actual.packet(), expected.packet());
     }
 
-    let mut outbound = crate::PacketBatch::default();
+    let mut outbound = tun::PacketBatch::default();
     for packet in packets.iter().take(3).cloned() {
         outbound.try_push(packet).unwrap();
     }
