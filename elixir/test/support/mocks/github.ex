@@ -13,9 +13,13 @@ defmodule PortalWeb.Mocks.GitHub do
 
       Mocks.GitHub.stub(token_response: {200, %{"error" => "bad_verification_code"}})
 
+  `/user/emails` is paginated like GitHub: it honors `per_page` and `page` and
+  returns a `Link` header with the next page. Pass `emails_link: fn page -> ... end`
+  to return a custom `Link` header instead.
+
   Each token request is forwarded to the test process as
   `{:github_token_request, params}`, and each API request as
-  `{:github_api_request, path, headers}`.
+  `{:github_api_request, path, headers, query_string}`.
   """
 
   @default_user %{
@@ -41,6 +45,7 @@ defmodule PortalWeb.Mocks.GitHub do
     test_pid = self()
     user = Keyword.get(opts, :user, @default_user)
     emails = Keyword.get(opts, :emails, @default_emails)
+    emails_link = Keyword.get(opts, :emails_link, &default_emails_link/3)
 
     token_response =
       Keyword.get(opts, :token_response, {200, %{"access_token" => "gho_test", "scope" => ""}})
@@ -59,13 +64,31 @@ defmodule PortalWeb.Mocks.GitHub do
 
         {"GET", "/user/emails" = path} ->
           send_api_request(test_pid, conn, path)
-          Req.Test.json(conn, emails)
+          conn = Plug.Conn.fetch_query_params(conn)
+          per_page = String.to_integer(conn.query_params["per_page"] || "30")
+          page = String.to_integer(conn.query_params["page"] || "1")
+          last_page? = page * per_page >= length(emails)
+
+          conn =
+            case emails_link.(page, per_page, last_page?) do
+              nil -> conn
+              link -> Plug.Conn.put_resp_header(conn, "link", link)
+            end
+
+          Req.Test.json(conn, Enum.slice(emails, (page - 1) * per_page, per_page))
       end
     end)
   end
 
+  defp default_emails_link(_page, _per_page, true), do: nil
+
+  defp default_emails_link(page, per_page, false) do
+    ~s(<https://api.github.test/user/emails?per_page=#{per_page}&page=#{page + 1}>; rel="next", ) <>
+      ~s(<https://api.github.test/user/emails?per_page=#{per_page}&page=1>; rel="first")
+  end
+
   defp send_api_request(test_pid, conn, path) do
     headers = Map.new(["authorization", "x-github-api-version"], &{&1, Plug.Conn.get_req_header(conn, &1)})
-    send(test_pid, {:github_api_request, path, headers})
+    send(test_pid, {:github_api_request, path, headers, conn.query_string})
   end
 end

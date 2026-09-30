@@ -278,6 +278,27 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
       assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id).actor_id == actor.id
     end
 
+    test "matches a verified email past the first page", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "work@corp.example")
+
+      unverified =
+        for n <- 1..150 do
+          %{"email" => "old#{n}@example.com", "primary" => false, "verified" => false}
+        end
+
+      Mocks.GitHub.stub(
+        emails:
+          [%{"email" => "personal@example.com", "primary" => true, "verified" => true}] ++
+            unverified ++
+            [%{"email" => "work@corp.example", "primary" => false, "verified" => true}]
+      )
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id).actor_id == actor.id
+    end
+
     test "still rejects an email GitHub has not verified", ctx do
       admin_actor_fixture(account: ctx.account, email: "octocat@example.com")
 

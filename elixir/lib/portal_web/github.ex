@@ -13,6 +13,11 @@ defmodule PortalWeb.GitHub do
   @scope "user:email"
   @api_version "2026-03-10"
 
+  # GitHub's largest page size. A page limit keeps a misbehaving response from
+  # looping forever; 1,000 addresses is far beyond any real account.
+  @emails_per_page 100
+  @max_email_pages 10
+
   @type config :: %{
           required(:provider) => :github,
           required(:client_id) => String.t() | nil,
@@ -78,7 +83,7 @@ defmodule PortalWeb.GitHub do
     with :ok <- verify_issuer(iss),
          {:ok, access_token} <- exchange_code(config, code, verifier),
          {:ok, user} <- fetch(config, access_token, "/user"),
-         {:ok, emails} <- fetch(config, access_token, "/user/emails"),
+         {:ok, emails} <- fetch_emails(config, access_token),
          {:ok, claims} <- build_claims(user, emails) do
       {:ok, claims, {:ok, %{}}}
     end
@@ -122,15 +127,66 @@ defmodule PortalWeb.GitHub do
   end
 
   defp fetch(config, access_token, path) do
+    with {:ok, response} <- get(config, access_token, config.api_endpoint <> path) do
+      {:ok, response.body}
+    end
+  end
+
+  # The email list is paginated, and the address that matches an actor may be on
+  # any page, so every page is read.
+  defp fetch_emails(config, access_token) do
+    url = config.api_endpoint <> "/user/emails?per_page=#{@emails_per_page}"
+    fetch_email_pages(config, access_token, url, [], @max_email_pages)
+  end
+
+  defp fetch_email_pages(_config, _access_token, _url, emails, 0), do: {:ok, emails}
+
+  defp fetch_email_pages(config, access_token, url, emails, pages_left) do
+    case get(config, access_token, url) do
+      {:ok, %Req.Response{body: page} = response} when is_list(page) ->
+        emails = emails ++ page
+
+        case next_page_url(config, response) do
+          nil -> {:ok, emails}
+          next_url -> fetch_email_pages(config, access_token, next_url, emails, pages_left - 1)
+        end
+
+      {:ok, %Req.Response{}} ->
+        {:error, :invalid_github_user}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Only follows links back to the GitHub API, so the access token is never sent
+  # to another host.
+  defp next_page_url(config, response) do
+    with [link | _] <- Req.Response.get_header(response, "link"),
+         [_, next_url] <- Regex.run(~r/<([^>]+)>;\s*rel="next"/, link),
+         true <- same_origin?(next_url, config.api_endpoint) do
+      next_url
+    else
+      _ -> nil
+    end
+  end
+
+  defp same_origin?(url, api_endpoint) do
+    %URI{scheme: scheme, host: host, port: port} = URI.parse(url)
+    api = URI.parse(api_endpoint)
+    {scheme, host, port} == {api.scheme, api.host, api.port}
+  end
+
+  defp get(config, access_token, url) do
     [
-      url: config.api_endpoint <> path,
+      url: url,
       auth: {:bearer, access_token},
       headers: [accept: "application/vnd.github+json", x_github_api_version: @api_version]
     ]
     |> Keyword.merge(config[:req_opts] || [])
     |> Req.get()
     |> case do
-      {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
+      {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
       {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
       {:error, reason} -> {:error, reason}
     end

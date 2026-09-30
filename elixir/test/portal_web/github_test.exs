@@ -67,7 +67,7 @@ defmodule PortalWeb.GitHubTest do
              }
 
       for path <- ["/user", "/user/emails"] do
-        assert_receive {:github_api_request, ^path, headers}
+        assert_receive {:github_api_request, ^path, headers, _query}
         assert headers["x-github-api-version"] == ["2026-03-10"]
         assert headers["authorization"] == ["Bearer gho_test"]
       end
@@ -121,6 +121,66 @@ defmodule PortalWeb.GitHubTest do
 
       assert GitHub.verify_callback(GitHub.config(@redirect_uri), "code", "verifier", @issuer) ==
                {:error, {503, %{"message" => "unavailable"}}}
+    end
+
+    test "reads verified emails from every page" do
+      unverified =
+        for n <- 1..239 do
+          %{"email" => "old#{n}@example.com", "primary" => false, "verified" => false}
+        end
+
+      Mocks.GitHub.stub(
+        emails:
+          [%{"email" => "personal@example.com", "primary" => true, "verified" => true}] ++
+            unverified ++
+            [%{"email" => "work@corp.example", "primary" => false, "verified" => true}]
+      )
+
+      assert {:ok, claims, _userinfo} =
+               GitHub.verify_callback(GitHub.config(@redirect_uri), "code", "verifier", @issuer)
+
+      assert claims["email"] == "personal@example.com"
+      assert claims["verified_emails"] == ["personal@example.com", "work@corp.example"]
+
+      for query <- ["per_page=100", "per_page=100&page=2", "per_page=100&page=3"] do
+        assert_receive {:github_api_request, "/user/emails", _headers, ^query}
+      end
+
+      refute_received {:github_api_request, "/user/emails", _headers, _query}
+    end
+
+    test "does not follow a next link to another host" do
+      Mocks.GitHub.stub(
+        emails_link: fn _page, _per_page, _last_page? ->
+          ~s(<https://evil.example/user/emails?page=2>; rel="next")
+        end
+      )
+
+      assert {:ok, claims, _userinfo} =
+               GitHub.verify_callback(GitHub.config(@redirect_uri), "code", "verifier", @issuer)
+
+      assert claims["verified_emails"] == ["octocat@example.com"]
+      assert_receive {:github_api_request, "/user/emails", _headers, "per_page=100"}
+      refute_received {:github_api_request, "/user/emails", _headers, _query}
+    end
+
+    test "stops after ten pages of emails" do
+      Mocks.GitHub.stub(
+        emails_link: fn page, per_page, _last_page? ->
+          ~s(<https://api.github.test/user/emails?per_page=#{per_page}&page=#{page + 1}>; rel="next")
+        end
+      )
+
+      assert {:ok, claims, _userinfo} =
+               GitHub.verify_callback(GitHub.config(@redirect_uri), "code", "verifier", @issuer)
+
+      assert claims["email"] == "octocat@example.com"
+
+      for _page <- 1..10 do
+        assert_receive {:github_api_request, "/user/emails", _headers, _query}
+      end
+
+      refute_received {:github_api_request, "/user/emails", _headers, _query}
     end
 
     test "rejects a callback without an issuer before using the code" do
