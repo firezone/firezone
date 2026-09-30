@@ -58,6 +58,28 @@ defmodule Portal.LoggerFiltersTest do
       end
     end
 
+    test "relevels Bandit HTTP/2 protocol stream errors to info" do
+      event =
+        bandit_event(%Bandit.HTTP2.Errors.StreamError{
+          message: "Field value contains invalid characters (RFC9113§8.2.1)",
+          error_code: Bandit.HTTP2.Errors.protocol_error(),
+          stream_id: 1
+        })
+
+      assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+    end
+
+    test "leaves Bandit HTTP/2 internal stream errors at error" do
+      event =
+        bandit_event(%Bandit.HTTP2.Errors.StreamError{
+          message: "boom",
+          error_code: Bandit.HTTP2.Errors.internal_error(),
+          stream_id: 1
+        })
+
+      assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
+    end
+
     test "relevels a closed socket lookup reported by Bandit to info" do
       event =
         bandit_event(%Bandit.TransportError{message: "Unable to obtain conn_data", error: :einval})
