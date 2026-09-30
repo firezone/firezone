@@ -12798,6 +12798,15 @@
             "example": "clients_and_portal",
             "type": "string"
           },
+          "email_verification_method": {
+            "description": "How a GitHub identity is first linked to an existing user by email: proof emails a one-time code first, none links on a GitHub-verified email",
+            "enum": [
+              "none",
+              "proof"
+            ],
+            "example": "proof",
+            "type": "string"
+          },
           "id": {
             "description": "Provider ID",
             "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -12847,6 +12856,7 @@
           "account_id",
           "client_session_lifetime_secs",
           "context",
+          "email_verification_method",
           "id",
           "inserted_at",
           "is_default",

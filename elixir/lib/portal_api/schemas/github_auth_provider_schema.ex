@@ -49,6 +49,13 @@ defmodule PortalAPI.Schemas.GitHubAuthProvider do
           description:
             "Portal session lifetime in seconds. Null when the account default applies."
         },
+        email_verification_method: %Schema{
+          example: "proof",
+          type: :string,
+          description:
+            "How a GitHub identity is first linked to an existing user by email: proof emails a one-time code first, none links on a GitHub-verified email",
+          enum: ["none", "proof"]
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -76,6 +83,7 @@ defmodule PortalAPI.Schemas.GitHubAuthProvider do
         :account_id,
         :client_session_lifetime_secs,
         :context,
+        :email_verification_method,
         :id,
         :inserted_at,
         :is_default,

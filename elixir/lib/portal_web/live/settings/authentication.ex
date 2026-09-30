@@ -42,7 +42,7 @@ defmodule PortalWeb.Settings.Authentication do
     EmailOTP.AuthProvider => @common_fields,
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
-    GitHub.AuthProvider => @common_fields ++ ~w[is_verified]a,
+    GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
     Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
@@ -1350,6 +1350,69 @@ defmodule PortalWeb.Settings.Authentication do
               The OIDC claim to use as the user's email address during sign-in.
             </p>
           </div>
+        </div>
+
+        <%!-- GitHub-specific config --%>
+        <div :if={@type == "github"} class="pt-4 border-t border-border space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Provider Configuration
+          </p>
+          <fieldset>
+            <legend class="block text-xs font-medium text-body mb-3">
+              Email Verification <span class="text-error">*</span>
+            </legend>
+            <% email_verification_method = get_field(@form.source, :email_verification_method) %>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :proof,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="proof"
+                  checked={email_verification_method == :proof}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  Proof
+                </span>
+                <span class="text-xs text-body">
+                  Send a one-time passcode to the user's email before linking their GitHub account for the first time.
+                  <strong class="block mt-1">Default.</strong>
+                </span>
+              </label>
+
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :none,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="none"
+                  checked={email_verification_method == :none}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  None
+                </span>
+                <span class="text-xs text-body">
+                  Link a GitHub account to the user with the same email, as long as GitHub has verified that email.
+                  GitHub does not re-check addresses, so a former owner of an email can still sign in as its current user.
+                  <strong class="block mt-1">Not recommended.</strong>
+                </span>
+              </label>
+            </div>
+          </fieldset>
         </div>
 
         <%!-- Provider-specific config (Okta / OIDC) --%>

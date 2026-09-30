@@ -46,12 +46,20 @@ defmodule Portal.GitHub.AuthProvider do
 
     field :name, :string, default: "GitHub"
 
+    # How a GitHub identity is first linked to an existing actor by email.
+    # - proof: email a one-time code to the actor before linking
+    # - none: link on an email GitHub has verified, without a code
+    # GitHub never re-checks an address once verified, so proof is the default.
+    field :email_verification_method, Ecto.Enum,
+      values: ~w[none proof]a,
+      default: :proof
+
     timestamps()
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:name, :context, :issuer, :is_verified])
+    |> validate_required([:name, :context, :issuer, :is_verified, :email_verification_method])
     |> validate_acceptance(:is_verified)
     |> validate_inclusion(:issuer, [@issuer])
     |> validate_number(:portal_session_lifetime_secs,
@@ -69,6 +77,9 @@ defmodule Portal.GitHub.AuthProvider do
       message: "A GitHub authentication provider for this account already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
+    |> check_constraint(:email_verification_method,
+      name: :email_verification_method_must_be_valid
+    )
   end
 
   @spec issuer() :: String.t()

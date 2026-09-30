@@ -551,10 +551,16 @@ defmodule PortalWeb.OIDCController do
   # email_verification_method (none/claim/proof).
   # GitHub never re-checks an address after verifying it once, and the customer does
   # not control the GitHub account, so a stale or recycled email would otherwise link
-  # to whoever holds that address in Firezone today. Proof requires a code sent to the
-  # actor's email on the first link. The admin who signed up with GitHub is linked at
-  # sign-up, so they match by GitHub user ID and never see the code.
+  # to whoever holds that address in Firezone today. Proof (the default) requires a
+  # code sent to the actor's email on the first link. The admin who signed up with
+  # GitHub is linked at sign-up, so they match by GitHub user ID and never see it.
+  # GitHub's "none" still requires a GitHub-verified email: anyone can add an
+  # unverified address to a GitHub account, so trusting one would allow takeover.
   defp email_verification_method(%Portal.Google.AuthProvider{}), do: :claim
+
+  defp email_verification_method(%Portal.GitHub.AuthProvider{email_verification_method: :none}),
+    do: :claim
+
   defp email_verification_method(%Portal.GitHub.AuthProvider{}), do: :proof
   defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
 

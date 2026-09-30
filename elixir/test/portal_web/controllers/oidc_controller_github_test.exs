@@ -238,6 +238,78 @@ defmodule PortalWeb.OIDCControllerGitHubTest do
     end
   end
 
+  describe "callback/2 with GitHub provider set to None" do
+    setup do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      account = account_fixture()
+      provider = github_provider_fixture(account: account, email_verification_method: :none)
+      %{account: account, provider: provider}
+    end
+
+    test "links a verified primary email without a code", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "octocat@example.com")
+      Mocks.GitHub.stub()
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"].max_age > 0
+      refute_received {:email, _email}
+
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.actor_id == actor.id
+      assert identity.idp_id == "583231"
+    end
+
+    test "links a verified secondary email without a code", ctx do
+      actor = admin_actor_fixture(account: ctx.account, email: "work@corp.example")
+
+      Mocks.GitHub.stub(
+        emails: [
+          %{"email" => "personal@example.com", "primary" => true, "verified" => true},
+          %{"email" => "work@corp.example", "primary" => false, "verified" => true}
+        ]
+      )
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      refute_received {:email, _email}
+      assert Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id).actor_id == actor.id
+    end
+
+    test "still rejects an email GitHub has not verified", ctx do
+      admin_actor_fixture(account: ctx.account, email: "octocat@example.com")
+
+      Mocks.GitHub.stub(
+        emails: [%{"email" => "octocat@example.com", "primary" => true, "verified" => false}]
+      )
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      refute_received {:email, _email}
+      refute Repo.exists?(Portal.PortalSession)
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+    end
+
+    test "does not match an actor through an unverified secondary email", ctx do
+      admin_actor_fixture(account: ctx.account, email: "work@corp.example")
+
+      Mocks.GitHub.stub(
+        emails: [
+          %{"email" => "personal@example.com", "primary" => true, "verified" => true},
+          %{"email" => "work@corp.example", "primary" => false, "verified" => false}
+        ]
+      )
+
+      conn = perform_callback(ctx.conn, ctx.account, ctx.provider)
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+    end
+  end
+
   describe "sign_up/2 with GitHub" do
     test "redirects to GitHub and binds the state to a cookie", %{conn: conn} do
       conn = post(conn, ~p"/sign_up/github")

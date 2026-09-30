@@ -26,6 +26,7 @@ defmodule Portal.Repo.Migrations.CreateGithubAuthProviders do
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)
+      add(:email_verification_method, :string, null: false, default: "proof")
 
       timestamps()
     end
@@ -47,6 +48,12 @@ defmodule Portal.Repo.Migrations.CreateGithubAuthProviders do
     create(
       constraint(:github_auth_providers, :context_must_be_valid,
         check: "context IN ('clients_and_portal', 'clients_only', 'portal_only')"
+      )
+    )
+
+    create(
+      constraint(:github_auth_providers, :email_verification_method_must_be_valid,
+        check: "email_verification_method IN ('none', 'proof')"
       )
     )
   end

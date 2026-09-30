@@ -160,6 +160,7 @@ defmodule PortalAPI.GitHubAuthProviderControllerTest do
       assert data["id"] == provider.id
       assert data["account_id"] == account.id
       assert data["issuer"] == provider.issuer
+      assert data["email_verification_method"] == "proof"
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: actor} do

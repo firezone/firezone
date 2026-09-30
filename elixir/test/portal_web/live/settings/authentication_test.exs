@@ -648,6 +648,11 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert html =~ "Sign in with your GitHub account to verify the configuration."
       assert html =~ "Verify Now"
       refute html =~ "Redirect URI"
+
+      parsed = Floki.parse_fragment!(html)
+      radios = "input[name='auth_provider[email_verification_method]']"
+      assert parsed |> Floki.find(radios) |> Floki.attribute("value") == ["proof", "none"]
+      assert parsed |> Floki.find(radios <> "[checked]") |> Floki.attribute("value") == ["proof"]
     end
 
     test "does not verify when the callback has no GitHub issuer", %{
@@ -713,6 +718,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       provider = Portal.Repo.get_by!(Portal.GitHub.AuthProvider, account_id: account.id)
       assert provider.issuer == "https://github.com/login/oauth"
       assert provider.name == "GitHub"
+      assert provider.email_verification_method == :proof
       refute provider.is_default
 
       parent = Portal.Repo.get_by!(Portal.AuthProvider, id: provider.id)
@@ -977,6 +983,52 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       assert html =~ "Authentication provider saved successfully"
+    end
+  end
+
+  describe "edit github provider" do
+    test "switches email verification to None without re-verifying", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = github_provider_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/#{provider.id}/edit")
+
+      assert html =~ "Verified"
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{email_verification_method: "none"}})
+      |> render_change()
+
+      assert render(lv) =~ "Verified"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      assert Portal.Repo.reload!(provider).email_verification_method == :none
+    end
+
+    test "rejects an unknown email verification method", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = github_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/#{provider.id}/edit")
+
+      render_change(lv, "validate", %{"auth_provider" => %{"email_verification_method" => "claim"}})
+      render_submit(lv, "submit_provider", %{})
+
+      assert Portal.Repo.reload!(provider).email_verification_method == :proof
     end
   end
 
