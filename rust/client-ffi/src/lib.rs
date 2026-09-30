@@ -1024,3 +1024,5 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
         Self::Failed(format!("Callback failed: {}", value.reason))
     }
 }
+
+mod completion;

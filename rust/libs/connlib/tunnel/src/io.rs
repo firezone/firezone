@@ -8,10 +8,12 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{TunnelError, dns, otel, sockets::Sockets};
+use crate::{
+    TunnelError, dns, otel,
+    packet_io::{PacketIo, Threaded},
+};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use bufferpool::{Buffer, VecBuf};
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
@@ -22,7 +24,7 @@ use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -34,9 +36,9 @@ use std::{
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
-pub struct Io {
+pub struct Io<P = Threaded> {
     /// The UDP sockets used to send & receive packets from the network.
-    sockets: Sockets,
+    packets: P,
     gso_queue: UdpGsoQueue,
 
     nameservers: NameserverSet,
@@ -54,7 +56,6 @@ pub struct Io {
     doh_clients: BTreeMap<DoHUrl, DohClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
-    tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
@@ -80,16 +81,16 @@ enum DohClient {
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
-pub struct Input {
+pub struct Input<N> {
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    pub network: Option<N>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
-impl Input {
+impl<N> Input<N> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             device: None,
@@ -127,20 +128,15 @@ where
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 
-impl Io {
-    /// Creates a new I/O abstraction
-    ///
-    /// Must be called within a Tokio runtime context so we can bind the sockets.
-    pub fn new(
+impl<P: PacketIo> Io<P> {
+    pub fn with_packets(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        packets: P,
     ) -> Self {
-        let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
-
         Self {
-            sockets,
+            packets,
             nameservers: NameserverSet::new(
                 nameservers,
                 tcp_socket_factory.clone(),
@@ -164,7 +160,6 @@ impl Io {
                 10,
             ),
             gso_queue: UdpGsoQueue::new(),
-            tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
             packet_counter: otel_instruments::network_packets(),
@@ -226,7 +221,7 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input<P::Network>> {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
@@ -253,13 +248,13 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let network = self.packets.poll_network(cx);
 
-        while let Poll::Ready(e) = self.sockets.poll_error(cx) {
+        while let Poll::Ready(e) = self.packets.poll_error(cx) {
             error.push(e);
         }
 
-        let device = self.tun.poll_read(cx).map_ok(|batch| {
+        let device = self.packets.poll_tun(cx).map_ok(|batch| {
             let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
             let num_ipv6 = batch.len() - num_ipv4;
 
@@ -376,7 +371,7 @@ impl Io {
             any_pending = true
         }
 
-        if self.tun.poll_flush(cx)?.is_pending() {
+        if self.packets.poll_flush(cx)?.is_pending() {
             any_pending = true;
         }
 
@@ -387,11 +382,16 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
+    pub fn poll_shutdown(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        ready!(self.flush(cx))?;
+        self.packets.poll_shutdown(cx)
+    }
+
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
 
         loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
+            ready!(self.packets.poll_send_ready(cx)?);
 
             let Some(datagram) = datagrams.next() else {
                 break;
@@ -408,14 +408,14 @@ impl Io {
                 );
             }
 
-            self.sockets.send(datagram)?;
+            self.packets.send(datagram)?;
         }
 
         Poll::Ready(Ok(()))
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.tun.set_tun(tun);
+        self.packets.set_tun(tun);
     }
 
     pub fn queue_tun(&mut self, packet: IpPacket) {
@@ -427,18 +427,18 @@ impl Io {
             ],
         );
 
-        self.tun.queue(packet);
+        self.packets.queue_tun(packet);
     }
 
     /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
     pub fn flush_tun_batch(&mut self) {
-        self.tun.flush_batch();
+        self.packets.flush_tun_batch();
     }
 
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
-        self.sockets.rebind(self.udp_socket_factory.clone());
+        self.packets.reset(self.udp_socket_factory.clone());
         self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);

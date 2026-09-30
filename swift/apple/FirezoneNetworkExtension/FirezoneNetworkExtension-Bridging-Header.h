@@ -7,3 +7,5 @@
 #include "Connlib/Generated/x509claimsFFI.h"
 
 #include <resolv.h>
+
+#include "../../../rust/client-ffi/include/completion.h"

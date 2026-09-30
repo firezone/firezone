@@ -151,6 +151,10 @@ impl IpPacketBuf {
     pub fn buf(&mut self) -> &mut [u8] {
         &mut self.inner
     }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.inner
+    }
 }
 
 #[derive(PartialEq, Clone)]

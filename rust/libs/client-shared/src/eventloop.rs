@@ -1,22 +1,20 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::ConnectedAs;
+use crate::portal::{PortalCommand, PortalEvent};
 use anyhow::{Context as _, ErrorExt as _, Result};
-use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
 use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
-use std::pin::pin;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{
     collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
 };
-use std::{future, iter, mem};
+use std::{future, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
@@ -26,7 +24,7 @@ use tunnel::messages::client::{
     GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
     ResourceFiltersUpdated,
 };
-use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::messages::{IngestToken, RelaysPresence};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
@@ -49,9 +47,9 @@ use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, 
 /// That however means we need to define a more explicit eviction policy to stop the cache from growing.
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
-pub struct Eventloop {
+pub struct Eventloop<P = tunnel::packet_io::Threaded> {
     clock: Clock,
-    tunnel: Option<ClientTunnel>,
+    tunnel: Option<ClientTunnel<P>>,
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
 
@@ -90,21 +88,6 @@ pub enum Command {
 pub enum UserNotification {
     AllGatewaysOffline { resource_id: ResourceId },
     GatewayVersionMismatch { resource_id: ResourceId },
-}
-
-enum PortalCommand {
-    Connect(PublicKeyParam),
-    Send(EgressMessages),
-    UpdateDnsServers(Vec<IpAddr>),
-}
-
-/// An update from the portal connection task to the main event-loop.
-enum PortalEvent {
-    Message(IngressMessages),
-    /// The portal connection (re)established.
-    Connected,
-    /// The portal connection dropped and is being re-established.
-    Disconnected,
 }
 
 /// Unified error type to use across connlib.
@@ -159,8 +142,8 @@ impl DisconnectError {
     }
 }
 
-impl Eventloop {
-    pub(crate) fn new(
+impl<P: tunnel::packet_io::PacketIo> Eventloop<P> {
+    pub(crate) fn with_packets(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
@@ -173,22 +156,24 @@ impl Eventloop {
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
+        packets: P,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
 
-        let mut tunnel = ClientTunnel::new(
+        let mut tunnel = ClientTunnel::with_packets(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
+            packets,
         );
         tunnel.update_system_resolvers(dns_servers.clone());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
-        tokio::spawn(phoenix_channel_event_loop(
+        tokio::spawn(crate::portal::run(
             portal,
             PublicKeyParam(tunnel.public_key().to_bytes()),
             portal_event_tx,
@@ -224,7 +209,7 @@ enum CombinedEvent {
     Clock(clock::Event),
 }
 
-impl Eventloop {
+impl<P: tunnel::packet_io::PacketIo> Eventloop<P> {
     pub async fn run(mut self) -> Result<(), DisconnectError> {
         loop {
             match self.tick().await {
@@ -922,139 +907,6 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
             tracing::warn!("{e:#}");
         }
     }
-}
-
-async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
-    mut public_key: PublicKeyParam,
-    event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
-    mut cmd_rx: mpsc::Receiver<PortalCommand>,
-    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    dns_servers: Vec<IpAddr>,
-) {
-    use futures::future::Either;
-    use futures::future::select;
-    use std::future::poll_fn;
-
-    let mut bootstrap_dns_client = BootstrapDnsClient::new(
-        udp_socket_factory.clone(),
-        tcp_socket_factory.clone(),
-        dns_servers,
-    );
-
-    let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
-    portal.connect(ips, Duration::ZERO, public_key.clone());
-
-    let hiccups = otel_instruments::portal_connection_hiccups();
-
-    loop {
-        // We process commands from the channel first (i.e. it is polled first) to update the DNS servers as quickly as possible.
-        // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
-        match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
-            Either::Left((Some(PortalCommand::Send(msg)), _)) => {
-                match portal.send(PHOENIX_TOPIC, msg) {
-                    Ok(()) => {}
-                    Err(phoenix_channel::NotConnected(msg)) => {
-                        tracing::debug!(?msg, "Failed to send message to portal: Not connected")
-                    }
-                }
-            }
-            Either::Left((Some(PortalCommand::Connect(new_public_key)), _)) => {
-                public_key = new_public_key; // Important! Update the current public key so we can reuse on connection hiccups!
-
-                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
-                portal.connect(ips, Duration::ZERO, public_key.clone());
-            }
-            Either::Left((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                bootstrap_dns_client = BootstrapDnsClient::new(
-                    udp_socket_factory.clone(),
-                    tcp_socket_factory.clone(),
-                    servers,
-                );
-            }
-            Either::Left((None, _)) => {
-                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
-
-                break;
-            }
-            Either::Right((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
-                if event_tx.send(Ok(PortalEvent::Message(msg))).await.is_err() {
-                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
-
-                    break;
-                }
-            }
-            Either::Right((Ok(phoenix_channel::Event::Closed), _)) => {
-                unimplemented!("Client never actively closes the portal connection")
-            }
-            Either::Right((
-                Ok(phoenix_channel::Event::Hiccup {
-                    backoff,
-                    max_elapsed_time,
-                    error,
-                }),
-                _,
-            )) => {
-                tracing::info!(
-                    ?backoff,
-                    ?max_elapsed_time,
-                    body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
-                    "Hiccup in portal connection: {error:#}"
-                );
-                hiccups.add(1, &otel_attributes::error_layers(&error));
-
-                let _ = event_tx.send(Ok(PortalEvent::Disconnected)).await;
-
-                let ips = resolve_portal_host_ips(&bootstrap_dns_client, portal.host()).await;
-                portal.connect(ips, backoff, public_key.clone());
-            }
-            Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
-                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
-                ) {
-                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
-                }
-
-                let _ = event_tx.send(Ok(PortalEvent::Connected)).await;
-            }
-            Either::Right((Err(e), _)) => {
-                let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
-
-                break;
-            }
-        }
-    }
-}
-
-/// Re-resolves the IPs of the portal hostname.
-///
-/// We combine the result of two sources here:
-///
-/// - We make DNS queries to our configured system resolvers.
-/// - We read `/etc/hosts`.
-///
-/// If any of these fail, we simply default to an empty list of IPs.
-/// This is fine as this routine will be triggered again if we ever run out of IPs to use.
-async fn resolve_portal_host_ips(
-    bootstrap_dns_client: &BootstrapDnsClient,
-    host: String,
-) -> Vec<IpAddr> {
-    let dns_ips = bootstrap_dns_client
-        .resolve(host.clone())
-        .await
-        .context("Failed to lookup portal host via DNS")
-        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
-        .unwrap_or_default();
-
-    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
-        .await
-        .context("Failed to lookup portal host from `/etc/hosts`")
-        .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
-        .unwrap_or_default();
-
-    iter::empty().chain(dns_ips).chain(etc_hosts_ips).collect()
 }
 
 fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {

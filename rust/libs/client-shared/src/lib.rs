@@ -23,13 +23,14 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tun::Tun;
 
 use crate::eventloop::UserNotification;
 
+pub mod completion;
 mod eventloop;
+pub mod portal;
 
 const PHOENIX_TOPIC: &str = "client";
 
@@ -43,8 +44,8 @@ pub struct Session {
 }
 
 #[derive(Debug)]
-pub struct EventStream {
-    eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
+pub struct EventStream<F = tokio::task::JoinHandle<Result<(), DisconnectError>>> {
+    eventloop: Fuse<F>,
     resource_list_receiver: WatchStream<ResourceList>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     connected_as_receiver: WatchStream<Option<ConnectedAs>>,
@@ -88,13 +89,14 @@ impl Session {
         local_flow_logs: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
+        let packets = tunnel::packet_io::Threaded::new(udp_socket_factory.clone());
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
             |resource_list_sender,
              tun_config_sender,
              connected_as_sender,
              user_notification_sender| {
-                Eventloop::new(
+                Eventloop::with_packets(
                     tcp_socket_factory,
                     udp_socket_factory,
                     is_internet_resource_active,
@@ -107,6 +109,7 @@ impl Session {
                     tun_config_sender,
                     connected_as_sender,
                     user_notification_sender,
+                    packets,
                 )
                 .run()
             },
@@ -156,7 +159,10 @@ impl Session {
     }
 }
 
-impl EventStream {
+impl<F> EventStream<F>
+where
+    F: Future<Output = Result<Result<(), DisconnectError>, tokio::task::JoinError>> + Unpin,
+{
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
         loop {
             // Polled first so the account and actor are known before anything else the
@@ -261,6 +267,53 @@ impl EventStream {
         );
 
         let eventloop = handle.spawn(event_loop);
+
+        Self {
+            eventloop: eventloop.fuse(),
+            resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
+            tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
+            user_notification_receiver,
+            seen_notifications: Default::default(),
+        }
+    }
+}
+
+impl
+    EventStream<
+        futures::future::LocalBoxFuture<
+            'static,
+            Result<Result<(), DisconnectError>, tokio::task::JoinError>,
+        >,
+    >
+{
+    pub(crate) fn new_local<E>(
+        make_event_loop: impl FnOnce(
+            watch::Sender<ResourceList>,
+            watch::Sender<Option<TunConfig>>,
+            watch::Sender<Option<ConnectedAs>>,
+            mpsc::Sender<UserNotification>,
+        ) -> E,
+    ) -> Self
+    where
+        E: Future<Output = Result<(), DisconnectError>> + 'static,
+    {
+        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
+        let (resource_list_sender, resource_list_receiver) =
+            watch::channel(ResourceList::default());
+        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
+        let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
+
+        let event_loop = make_event_loop(
+            resource_list_sender,
+            tun_config_sender,
+            connected_as_sender,
+            user_notification_sender,
+        );
+
+        let eventloop = event_loop
+            .map(Ok::<_, tokio::task::JoinError>)
+            .boxed_local();
 
         Self {
             eventloop: eventloop.fuse(),

@@ -14,8 +14,8 @@
 use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
-use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use packet_io::{NetworkInput as _, PacketIo, Threaded};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -29,6 +29,7 @@ use tun::Tun;
 use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
+pub mod packet_io;
 mod sockets;
 mod utils;
 
@@ -46,8 +47,8 @@ pub use utils::turn;
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-pub type GatewayTunnel = Tunnel<GatewayState>;
-pub type ClientTunnel = Tunnel<ClientState>;
+pub type GatewayTunnel<P = Threaded> = Tunnel<GatewayState, P>;
+pub type ClientTunnel<P = Threaded> = Tunnel<ClientState, P>;
 
 /// A collection of errors that occurred during a single event-loop tick.
 ///
@@ -95,14 +96,14 @@ impl Drop for TunnelError {
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
 /// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
-pub struct Tunnel<TRoleState> {
+pub struct Tunnel<TRoleState, P = Threaded> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
     /// The I/O component of connlib.
     ///
     /// Handles all side-effects.
-    io: Io,
+    io: Io<P>,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
 
@@ -113,7 +114,7 @@ pub struct Tunnel<TRoleState> {
     needs_timeout: bool,
 }
 
-impl<TRoleState> Tunnel<TRoleState> {
+impl<TRoleState, P: PacketIo> Tunnel<TRoleState, P> {
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
     }
@@ -129,19 +130,21 @@ impl<TRoleState> Tunnel<TRoleState> {
     }
 }
 
-impl ClientTunnel {
-    pub fn new(
+impl<P: PacketIo> ClientTunnel<P> {
+    pub fn with_packets(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
+        packets: P,
     ) -> Self {
         Self {
-            io: Io::new(
+            io: Io::with_packets(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
                 BTreeSet::default(),
+                packets,
             ),
             role_state: ClientState::new(
                 rand::random(),
@@ -193,7 +196,7 @@ impl ClientTunnel {
     }
 
     /// Shut down the Client tunnel.
-    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> impl Future<Output = Result<()>> + 'static {
         // Initiate shutdown.
         self.role_state.shut_down(now);
 
@@ -207,14 +210,13 @@ impl ClientTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| self.io.flush(cx)),
+                future::poll_fn(move |cx| self.io.poll_shutdown(cx)),
             )
             .await
             .context("Failed to flush within 1s")??;
 
             Ok(())
         }
-        .boxed()
     }
 
     pub fn poll_next_event(
@@ -301,7 +303,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    batches.for_each(|received| {
                         self.packet_counter.add(
                             1,
                             &[
@@ -329,7 +331,7 @@ impl ClientTunnel {
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
-                    }
+                    });
 
                     self.io.flush_tun_batch();
 
@@ -346,15 +348,21 @@ impl ClientTunnel {
     }
 }
 
-impl GatewayTunnel {
-    pub fn new(
+impl<P: PacketIo> GatewayTunnel<P> {
+    pub fn with_packets(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
+        packets: P,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::with_packets(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                nameservers,
+                packets,
+            ),
             role_state: GatewayState::new(
                 rand::random(),
                 now,
@@ -383,7 +391,7 @@ impl GatewayTunnel {
     }
 
     /// Shut down the Gateway tunnel.
-    pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
+    pub fn shut_down(mut self, now: Instant) -> impl Future<Output = Result<()>> + 'static {
         // Initiate shutdown.
         self.role_state.shut_down(now);
 
@@ -397,14 +405,13 @@ impl GatewayTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| self.io.flush(cx)),
+                future::poll_fn(move |cx| self.io.poll_shutdown(cx)),
             )
             .await
             .context("Failed to flush within 1s")??;
 
             Ok(())
         }
-        .boxed()
     }
 
     pub fn poll_next_event(
@@ -505,7 +512,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    batches.for_each(|received| {
                         self.packet_counter.add(
                             1,
                             &[
@@ -533,7 +540,7 @@ impl GatewayTunnel {
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
-                    }
+                    });
 
                     self.io.flush_tun_batch();
 
@@ -613,4 +620,42 @@ impl GatewayTunnel {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
+}
+
+impl ClientTunnel {
+    pub fn new(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        records: BTreeSet<DnsResourceRecord>,
+        is_internet_resource_active: bool,
+        now: Instant,
+    ) -> Self {
+        let packets = Threaded::new(udp_socket_factory.clone());
+        Self::with_packets(
+            tcp_socket_factory,
+            udp_socket_factory,
+            records,
+            is_internet_resource_active,
+            now,
+            packets,
+        )
+    }
+}
+
+impl GatewayTunnel {
+    pub fn new(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        nameservers: BTreeSet<IpAddr>,
+        now: Instant,
+    ) -> Self {
+        let packets = Threaded::new(udp_socket_factory.clone());
+        Self::with_packets(
+            tcp_socket_factory,
+            udp_socket_factory,
+            nameservers,
+            now,
+            packets,
+        )
+    }
 }
