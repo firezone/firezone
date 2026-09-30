@@ -194,6 +194,10 @@ defmodule PortalAPI.Router do
 
     resources "/sentinelone_devices", SentinelOneDeviceController, only: [:index]
     get "/sentinelone_devices/:sentinelone_agent", SentinelOneDeviceController, :show
+
+    resources "/sophos_posture_providers", SophosPostureProviderController, only: [:index, :show]
+
+    resources "/sophos_devices", SophosDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

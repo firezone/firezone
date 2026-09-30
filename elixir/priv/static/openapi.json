@@ -405,7 +405,16 @@
               "sentinelone.proxy_console",
               "sentinelone.proxy_deep_visibility",
               "sentinelone.proxy_pac_file_usage",
-              "sentinelone.threat_reboot_required"
+              "sentinelone.threat_reboot_required",
+              "sophos.cloned",
+              "sophos.enrolled",
+              "sophos.isolation_admin_isolated",
+              "sophos.isolation_self_isolated",
+              "sophos.online",
+              "sophos.os_is_server",
+              "sophos.os_up_to_date",
+              "sophos.tamper_protection_enabled",
+              "sophos.tamper_protection_supported"
             ],
             "type": "string"
           },
@@ -766,7 +775,17 @@
               "sentinelone.site_name",
               "sentinelone.storage_name",
               "sentinelone.storage_type",
-              "sentinelone.uuid"
+              "sentinelone.uuid",
+              "sophos.associated_person_id",
+              "sophos.associated_person_name",
+              "sophos.associated_person_via_login",
+              "sophos.cloud_instance_id",
+              "sophos.group_id",
+              "sophos.group_name",
+              "sophos.hostname",
+              "sophos.os_name",
+              "sophos.serial_number",
+              "sophos.sophos_id"
             ],
             "type": "string"
           },
@@ -1033,7 +1052,10 @@
               "sentinelone.remote_profiling_state_expires_at",
               "sentinelone.scan_aborted_at",
               "sentinelone.scan_finished_at",
-              "sentinelone.scan_started_at"
+              "sentinelone.scan_started_at",
+              "sophos.last_agent_update_at",
+              "sophos.last_os_update_at",
+              "sophos.last_seen_at"
             ],
             "type": "string"
           },
@@ -1303,7 +1325,16 @@
               "sentinelone.proxy_console",
               "sentinelone.proxy_deep_visibility",
               "sentinelone.proxy_pac_file_usage",
-              "sentinelone.threat_reboot_required"
+              "sentinelone.threat_reboot_required",
+              "sophos.cloned",
+              "sophos.enrolled",
+              "sophos.isolation_admin_isolated",
+              "sophos.isolation_self_isolated",
+              "sophos.online",
+              "sophos.os_is_server",
+              "sophos.os_up_to_date",
+              "sophos.tamper_protection_enabled",
+              "sophos.tamper_protection_supported"
             ],
             "type": "string"
           },
@@ -1348,7 +1379,10 @@
               "sentinelone.ad_computer_member_of",
               "sentinelone.ad_last_user_member_of",
               "sentinelone.missing_permissions",
-              "sentinelone.user_actions_needed"
+              "sentinelone.user_actions_needed",
+              "sophos.ipv4_addresses",
+              "sophos.ipv6_addresses",
+              "sophos.mac_addresses"
             ],
             "type": "string"
           },
@@ -1822,7 +1856,10 @@
               "sentinelone.ad_computer_member_of",
               "sentinelone.ad_last_user_member_of",
               "sentinelone.missing_permissions",
-              "sentinelone.user_actions_needed"
+              "sentinelone.user_actions_needed",
+              "sophos.ipv4_addresses",
+              "sophos.ipv6_addresses",
+              "sophos.mac_addresses"
             ],
             "type": "string"
           },
@@ -1956,7 +1993,17 @@
               "sentinelone.site_name",
               "sentinelone.storage_name",
               "sentinelone.storage_type",
-              "sentinelone.uuid"
+              "sentinelone.uuid",
+              "sophos.associated_person_id",
+              "sophos.associated_person_name",
+              "sophos.associated_person_via_login",
+              "sophos.cloud_instance_id",
+              "sophos.group_id",
+              "sophos.group_name",
+              "sophos.hostname",
+              "sophos.os_name",
+              "sophos.serial_number",
+              "sophos.sophos_id"
             ],
             "type": "string"
           },
@@ -2152,7 +2199,16 @@
                   "sentinelone.proxy_console",
                   "sentinelone.proxy_deep_visibility",
                   "sentinelone.proxy_pac_file_usage",
-                  "sentinelone.threat_reboot_required"
+                  "sentinelone.threat_reboot_required",
+                  "sophos.cloned",
+                  "sophos.enrolled",
+                  "sophos.isolation_admin_isolated",
+                  "sophos.isolation_self_isolated",
+                  "sophos.online",
+                  "sophos.os_is_server",
+                  "sophos.os_up_to_date",
+                  "sophos.tamper_protection_enabled",
+                  "sophos.tamper_protection_supported"
                 ],
                 "type": "string"
               },
@@ -2283,7 +2339,16 @@
                   "sentinelone.proxy_console",
                   "sentinelone.proxy_deep_visibility",
                   "sentinelone.proxy_pac_file_usage",
-                  "sentinelone.threat_reboot_required"
+                  "sentinelone.threat_reboot_required",
+                  "sophos.cloned",
+                  "sophos.enrolled",
+                  "sophos.isolation_admin_isolated",
+                  "sophos.isolation_self_isolated",
+                  "sophos.online",
+                  "sophos.os_is_server",
+                  "sophos.os_up_to_date",
+                  "sophos.tamper_protection_enabled",
+                  "sophos.tamper_protection_supported"
                 ],
                 "type": "string"
               },
@@ -2356,7 +2421,10 @@
                   "sentinelone.remote_profiling_state_expires_at",
                   "sentinelone.scan_aborted_at",
                   "sentinelone.scan_finished_at",
-                  "sentinelone.scan_started_at"
+                  "sentinelone.scan_started_at",
+                  "sophos.last_agent_update_at",
+                  "sophos.last_os_update_at",
+                  "sophos.last_seen_at"
                 ],
                 "type": "string"
               },
@@ -2432,7 +2500,10 @@
                   "sentinelone.remote_profiling_state_expires_at",
                   "sentinelone.scan_aborted_at",
                   "sentinelone.scan_finished_at",
-                  "sentinelone.scan_started_at"
+                  "sentinelone.scan_started_at",
+                  "sophos.last_agent_update_at",
+                  "sophos.last_os_update_at",
+                  "sophos.last_seen_at"
                 ],
                 "type": "string"
               },
@@ -2510,7 +2581,10 @@
                   "sentinelone.remote_profiling_state_expires_at",
                   "sentinelone.scan_aborted_at",
                   "sentinelone.scan_finished_at",
-                  "sentinelone.scan_started_at"
+                  "sentinelone.scan_started_at",
+                  "sophos.last_agent_update_at",
+                  "sophos.last_os_update_at",
+                  "sophos.last_seen_at"
                 ],
                 "type": "string"
               },
@@ -2691,7 +2765,16 @@
                   "sentinelone.proxy_method",
                   "sentinelone.ranger_status",
                   "sentinelone.remote_profiling_state",
-                  "sentinelone.scan_status"
+                  "sentinelone.scan_status",
+                  "sophos.cloud_provider",
+                  "sophos.encryption_overall_status",
+                  "sophos.health_overall",
+                  "sophos.health_services_status",
+                  "sophos.health_threats_status",
+                  "sophos.isolation_status",
+                  "sophos.lockdown_status",
+                  "sophos.os_platform",
+                  "sophos.type"
                 ],
                 "type": "string"
               },
@@ -2781,7 +2864,16 @@
                   "sentinelone.proxy_method",
                   "sentinelone.ranger_status",
                   "sentinelone.remote_profiling_state",
-                  "sentinelone.scan_status"
+                  "sentinelone.scan_status",
+                  "sophos.cloud_provider",
+                  "sophos.encryption_overall_status",
+                  "sophos.health_overall",
+                  "sophos.health_services_status",
+                  "sophos.health_threats_status",
+                  "sophos.isolation_status",
+                  "sophos.lockdown_status",
+                  "sophos.os_platform",
+                  "sophos.type"
                 ],
                 "type": "string"
               },
@@ -2869,7 +2961,16 @@
                   "sentinelone.proxy_method",
                   "sentinelone.ranger_status",
                   "sentinelone.remote_profiling_state",
-                  "sentinelone.scan_status"
+                  "sentinelone.scan_status",
+                  "sophos.cloud_provider",
+                  "sophos.encryption_overall_status",
+                  "sophos.health_overall",
+                  "sophos.health_services_status",
+                  "sophos.health_threats_status",
+                  "sophos.isolation_status",
+                  "sophos.lockdown_status",
+                  "sophos.os_platform",
+                  "sophos.type"
                 ],
                 "type": "string"
               },
@@ -2955,7 +3056,16 @@
                   "sentinelone.proxy_method",
                   "sentinelone.ranger_status",
                   "sentinelone.remote_profiling_state",
-                  "sentinelone.scan_status"
+                  "sentinelone.scan_status",
+                  "sophos.cloud_provider",
+                  "sophos.encryption_overall_status",
+                  "sophos.health_overall",
+                  "sophos.health_services_status",
+                  "sophos.health_threats_status",
+                  "sophos.isolation_status",
+                  "sophos.lockdown_status",
+                  "sophos.os_platform",
+                  "sophos.type"
                 ],
                 "type": "string"
               },
@@ -3096,7 +3206,10 @@
                   "sentinelone.protected_containers_count",
                   "sentinelone.protected_pods_count",
                   "sentinelone.protected_tasks_count",
-                  "sentinelone.total_memory"
+                  "sentinelone.total_memory",
+                  "sophos.os_build",
+                  "sophos.os_major_version",
+                  "sophos.os_minor_version"
                 ],
                 "type": "string"
               },
@@ -3152,7 +3265,10 @@
                   "sentinelone.protected_containers_count",
                   "sentinelone.protected_pods_count",
                   "sentinelone.protected_tasks_count",
-                  "sentinelone.total_memory"
+                  "sentinelone.total_memory",
+                  "sophos.os_build",
+                  "sophos.os_major_version",
+                  "sophos.os_minor_version"
                 ],
                 "type": "string"
               },
@@ -3428,7 +3544,14 @@
                   "sentinelone.cloud_providers",
                   "sentinelone.locations",
                   "sentinelone.network_interfaces",
-                  "sentinelone.tags"
+                  "sentinelone.tags",
+                  "sophos.assigned_products",
+                  "sophos.device_software",
+                  "sophos.encryption_volumes",
+                  "sophos.group_hierarchy",
+                  "sophos.health_service_details",
+                  "sophos.packages",
+                  "sophos.tags"
                 ],
                 "type": "string"
               },
@@ -3562,7 +3685,17 @@
                   "sentinelone.site_name",
                   "sentinelone.storage_name",
                   "sentinelone.storage_type",
-                  "sentinelone.uuid"
+                  "sentinelone.uuid",
+                  "sophos.associated_person_id",
+                  "sophos.associated_person_name",
+                  "sophos.associated_person_via_login",
+                  "sophos.cloud_instance_id",
+                  "sophos.group_id",
+                  "sophos.group_name",
+                  "sophos.hostname",
+                  "sophos.os_name",
+                  "sophos.serial_number",
+                  "sophos.sophos_id"
                 ],
                 "type": "string"
               },
@@ -3696,7 +3829,17 @@
                   "sentinelone.site_name",
                   "sentinelone.storage_name",
                   "sentinelone.storage_type",
-                  "sentinelone.uuid"
+                  "sentinelone.uuid",
+                  "sophos.associated_person_id",
+                  "sophos.associated_person_name",
+                  "sophos.associated_person_via_login",
+                  "sophos.cloud_instance_id",
+                  "sophos.group_id",
+                  "sophos.group_name",
+                  "sophos.hostname",
+                  "sophos.os_name",
+                  "sophos.serial_number",
+                  "sophos.sophos_id"
                 ],
                 "type": "string"
               },
@@ -3828,7 +3971,17 @@
                   "sentinelone.site_name",
                   "sentinelone.storage_name",
                   "sentinelone.storage_type",
-                  "sentinelone.uuid"
+                  "sentinelone.uuid",
+                  "sophos.associated_person_id",
+                  "sophos.associated_person_name",
+                  "sophos.associated_person_via_login",
+                  "sophos.cloud_instance_id",
+                  "sophos.group_id",
+                  "sophos.group_name",
+                  "sophos.hostname",
+                  "sophos.os_name",
+                  "sophos.serial_number",
+                  "sophos.sophos_id"
                 ],
                 "type": "string"
               },
@@ -3958,7 +4111,17 @@
                   "sentinelone.site_name",
                   "sentinelone.storage_name",
                   "sentinelone.storage_type",
-                  "sentinelone.uuid"
+                  "sentinelone.uuid",
+                  "sophos.associated_person_id",
+                  "sophos.associated_person_name",
+                  "sophos.associated_person_via_login",
+                  "sophos.cloud_instance_id",
+                  "sophos.group_id",
+                  "sophos.group_name",
+                  "sophos.hostname",
+                  "sophos.os_name",
+                  "sophos.serial_number",
+                  "sophos.sophos_id"
                 ],
                 "type": "string"
               },
@@ -4186,7 +4349,10 @@
                   "sentinelone.ad_computer_member_of",
                   "sentinelone.ad_last_user_member_of",
                   "sentinelone.missing_permissions",
-                  "sentinelone.user_actions_needed"
+                  "sentinelone.user_actions_needed",
+                  "sophos.ipv4_addresses",
+                  "sophos.ipv6_addresses",
+                  "sophos.mac_addresses"
                 ],
                 "type": "string"
               },
@@ -4238,7 +4404,10 @@
                   "sentinelone.ad_computer_member_of",
                   "sentinelone.ad_last_user_member_of",
                   "sentinelone.missing_permissions",
-                  "sentinelone.user_actions_needed"
+                  "sentinelone.user_actions_needed",
+                  "sophos.ipv4_addresses",
+                  "sophos.ipv6_addresses",
+                  "sophos.mac_addresses"
                 ],
                 "type": "string"
               },
@@ -4290,7 +4459,10 @@
                   "sentinelone.ad_computer_member_of",
                   "sentinelone.ad_last_user_member_of",
                   "sentinelone.missing_permissions",
-                  "sentinelone.user_actions_needed"
+                  "sentinelone.user_actions_needed",
+                  "sophos.ipv4_addresses",
+                  "sophos.ipv6_addresses",
+                  "sophos.mac_addresses"
                 ],
                 "type": "string"
               },
@@ -5223,6 +5395,89 @@
         "title": "GatewayUpdateRequest",
         "type": "object"
       },
+      "SophosPostureProvider": {
+        "description": "Sophos XDR posture provider",
+        "properties": {
+          "account_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "client_id": {
+            "type": "string"
+          },
+          "data_region_url": {
+            "format": "uri",
+            "type": "string"
+          },
+          "disabled_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "error_message": {
+            "nullable": true,
+            "type": "string"
+          },
+          "errored_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "is_disabled": {
+            "type": "boolean"
+          },
+          "is_verified": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tenant_id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "sophos"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "client_id",
+          "data_region_url",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
+          "is_verified",
+          "name",
+          "synced_at",
+          "tenant_id",
+          "type",
+          "updated_at"
+        ],
+        "title": "SophosPostureProvider",
+        "type": "object"
+      },
       "GroupCreateRequest": {
         "description": "POST body for creating a Group",
         "properties": {
@@ -5543,7 +5798,16 @@
               "sentinelone.proxy_method",
               "sentinelone.ranger_status",
               "sentinelone.remote_profiling_state",
-              "sentinelone.scan_status"
+              "sentinelone.scan_status",
+              "sophos.cloud_provider",
+              "sophos.encryption_overall_status",
+              "sophos.health_overall",
+              "sophos.health_services_status",
+              "sophos.health_threats_status",
+              "sophos.isolation_status",
+              "sophos.lockdown_status",
+              "sophos.os_platform",
+              "sophos.type"
             ],
             "type": "string"
           },
@@ -5967,7 +6231,16 @@
               "sentinelone.proxy_method",
               "sentinelone.ranger_status",
               "sentinelone.remote_profiling_state",
-              "sentinelone.scan_status"
+              "sentinelone.scan_status",
+              "sophos.cloud_provider",
+              "sophos.encryption_overall_status",
+              "sophos.health_overall",
+              "sophos.health_services_status",
+              "sophos.health_threats_status",
+              "sophos.isolation_status",
+              "sophos.lockdown_status",
+              "sophos.os_platform",
+              "sophos.type"
             ],
             "type": "string"
           },
@@ -6289,7 +6562,7 @@
         "type": "object"
       },
       "PolicyPostureNode": {
-        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that\nprovider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\n`enum_string` uses the string operators; `integer` and `float` use the\nnumeric operators. `string_array` values use a single string for `contains`\nand `does_not_contain`, or a non-empty string list for `contains_any_of`\nand `contains_all_of`.\n\nEvery attribute also accepts `exists` and `does_not_exist`. These and\n`is_empty` / `is_not_empty` take no value: omit `value` or set it to null.\nMissing attributes fail every operator except `does_not_exist`, including\nnegative operators such as `is_not`. A missing provider is evaluated as\none empty row. Its synthetic `enrolled` field is false, so `enrolled is\nfalse` can explicitly match an unenrolled device. `not` negates the\nresult and can also match missing data; use a positive `enrolled is true`\ncheck when enrollment is required.\n\nLeaves that do not apply to the device's platform are removed before\nevaluation, including inside `or` and `not`. An expression with no\napplicable leaves passes. If the platform is unknown, no leaves are\nremoved. Supported platforms for each field are listed below.\nProvider `os_up_to_date` fields are computed from known OS releases;\nthey are not raw provider attributes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. Different leaves may match different provider rows; `and` does\nnot require one row to satisfy all leaves. `rows` is not allowed for\n`firezone`, which always describes exactly one connecting device.\n\nExpressions allow at most 10 nested boolean levels and 100 leaves.\nList values contain 1–100 items; strings are at most 1024 bytes and\nregular expressions at most 256 bytes. Unknown fields, incompatible\noperators, invalid values, and exceeded limits return HTTP 422 with\na path in `validation_errors.postures`.\n\nSupported fields (generated from the same registry used for validation):\n\n### defender fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `defender.agent_version` | version | windows, macos, linux |\n| `defender.computer_dns_name` | string | windows, macos, linux |\n| `defender.defender_id` | string | windows, macos, linux |\n| `defender.device_value` | enum_string | windows, macos, linux |\n| `defender.enrolled` | boolean | windows, macos, linux |\n| `defender.entra_device_id` | string | windows, macos, linux |\n| `defender.entra_joined` | boolean | windows, macos, linux |\n| `defender.exclusion_reason` | enum_string | windows, macos, linux |\n| `defender.exposure_level` | enum_string | windows, macos, linux |\n| `defender.first_seen_at` | datetime | windows, macos, linux |\n| `defender.health_status` | enum_string | windows, macos, linux |\n| `defender.ip_addresses` | json | windows, macos, linux |\n| `defender.is_excluded` | boolean | windows, macos, linux |\n| `defender.is_potential_duplication` | boolean | windows, macos, linux |\n| `defender.last_external_ip_address` | ip | windows, macos, linux |\n| `defender.last_ip_address` | ip | windows, macos, linux |\n| `defender.last_seen_at` | datetime | windows, macos, linux |\n| `defender.machine_tags` | string_array | windows, macos, linux |\n| `defender.managed_by` | enum_string | windows, macos, linux |\n| `defender.managed_by_status` | enum_string | windows, macos, linux |\n| `defender.onboarding_status` | enum_string | windows, macos, linux |\n| `defender.os_architecture` | enum_string | windows, macos, linux |\n| `defender.os_build` | integer | windows, macos, linux |\n| `defender.os_platform` | enum_string | windows, macos, linux |\n| `defender.os_processor` | string | windows, macos, linux |\n| `defender.os_up_to_date` | boolean | macos |\n| `defender.rbac_group_id` | integer | windows, macos, linux |\n| `defender.rbac_group_name` | string | windows, macos, linux |\n| `defender.risk_score` | enum_string | windows, macos, linux |\n| `defender.version` | string | windows, macos, linux |\n| `defender.vm_cloud_provider` | string | windows, macos, linux |\n| `defender.vm_id` | string | windows, macos, linux |\n| `defender.vm_resource_id` | string | windows, macos, linux |\n| `defender.vm_subscription_id` | string | windows, macos, linux |\n\n### firezone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `firezone.device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.hostname` | string | windows, macos, linux, ios, android |\n| `firezone.identifier_for_vendor` | string | windows, macos, linux, ios, android |\n| `firezone.ipv4` | ipv4 | windows, macos, linux, ios, android |\n| `firezone.ipv6` | ipv6 | windows, macos, linux, ios, android |\n| `firezone.last_attested_at` | datetime | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_fingerprint` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_mdm_device_id` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_remote_ip_location_city` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_user_agent` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_version` | version | windows, macos, linux, ios, android |\n| `firezone.name` | string | windows, macos, linux, ios, android |\n\n### intune fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `intune.android_security_patch_level` | datetime | windows, macos, ios, android |\n| `intune.attestation_bit_locker_enabled` | boolean | windows |\n| `intune.attestation_boot_app_security_version` | version | windows |\n| `intune.attestation_boot_debugging` | boolean | windows |\n| `intune.attestation_boot_manager_security_version` | version | windows |\n| `intune.attestation_boot_manager_version` | version | windows |\n| `intune.attestation_boot_revision_list_info` | string | windows |\n| `intune.attestation_code_integrity` | boolean | windows |\n| `intune.attestation_code_integrity_check_version` | version | windows |\n| `intune.attestation_code_integrity_policy` | string | windows |\n| `intune.attestation_content_version` | version | windows |\n| `intune.attestation_data_execution_policy_enabled` | boolean | windows |\n| `intune.attestation_early_launch_anti_malware_driver_protection` | boolean | windows |\n| `intune.attestation_health_status_mismatch_info` | string | windows |\n| `intune.attestation_identity_key` | string | windows |\n| `intune.attestation_issued_at` | datetime | windows |\n| `intune.attestation_operating_system_kernel_debugging` | boolean | windows |\n| `intune.attestation_operating_system_rev_list_info` | string | windows |\n| `intune.attestation_pcr0` | string | windows |\n| `intune.attestation_pcr_hash_algorithm` | string | windows |\n| `intune.attestation_reset_count` | integer | windows |\n| `intune.attestation_restart_count` | integer | windows |\n| `intune.attestation_safe_mode` | boolean | windows |\n| `intune.attestation_secure_boot` | boolean | windows |\n| `intune.attestation_secure_boot_config_policy_fingerprint` | string | windows |\n| `intune.attestation_status` | enum_string | windows |\n| `intune.attestation_supported` | boolean | windows |\n| `intune.attestation_test_signing` | boolean | windows |\n| `intune.attestation_tpm_version` | version | windows |\n| `intune.attestation_virtual_secure_mode` | boolean | windows |\n| `intune.attestation_windows_pe` | boolean | windows |\n| `intune.compliance_grace_period_expiration_at` | datetime | windows, macos, ios, android |\n| `intune.compliance_state` | enum_string | windows, macos, ios, android |\n| `intune.config_manager_compliance_policy` | boolean | windows, macos, ios, android |\n| `intune.config_manager_device_configuration` | boolean | windows, macos, ios, android |\n| `intune.config_manager_inventory` | boolean | windows, macos, ios, android |\n| `intune.config_manager_modern_apps` | boolean | windows, macos, ios, android |\n| `intune.config_manager_resource_access` | boolean | windows, macos, ios, android |\n| `intune.config_manager_windows_update_for_business` | boolean | windows, macos, ios, android |\n| `intune.device_category_display_name` | string | windows, macos, ios, android |\n| `intune.device_enrollment_type` | enum_string | windows, macos, ios, android |\n| `intune.device_name` | string | windows, macos, ios, android |\n| `intune.device_registration_state` | enum_string | windows, macos, ios, android |\n| `intune.eas_activated` | boolean | windows, macos, ios, android |\n| `intune.eas_activated_at` | datetime | windows, macos, ios, android |\n| `intune.eas_device_id` | string | windows, macos, ios, android |\n| `intune.email_address` | string | windows, macos, ios, android |\n| `intune.enrolled` | boolean | windows, macos, ios, android |\n| `intune.enrolled_at` | datetime | windows, macos, ios, android |\n| `intune.enrollment_profile_name` | string | windows, macos, ios, android |\n| `intune.entra_device_id` | string | windows, macos, ios, android |\n| `intune.entra_registered` | boolean | windows, macos, ios, android |\n| `intune.ethernet_mac_address` | string | windows, macos, ios, android |\n| `intune.exchange_access_state` | enum_string | windows, macos, ios, android |\n| `intune.exchange_access_state_reason` | enum_string | windows, macos, ios, android |\n| `intune.exchange_last_successful_sync_at` | datetime | windows, macos, ios, android |\n| `intune.free_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.iccid` | string | windows, macos, ios, android |\n| `intune.imei` | string | windows, macos, ios, android |\n| `intune.intune_id` | string | windows, macos, ios, android |\n| `intune.is_encrypted` | boolean | windows, macos, ios, android |\n| `intune.is_supervised` | boolean | macos, ios |\n| `intune.jail_broken` | boolean | ios, android |\n| `intune.last_sync_at` | datetime | windows, macos, ios, android |\n| `intune.managed_device_name` | string | windows, macos, ios, android |\n| `intune.managed_device_owner_type` | enum_string | windows, macos, ios, android |\n| `intune.management_agent` | enum_string | windows, macos, ios, android |\n| `intune.management_certificate_expires_at` | datetime | windows, macos, ios, android |\n| `intune.management_state` | enum_string | windows, macos, ios, android |\n| `intune.manufacturer` | string | windows, macos, ios, android |\n| `intune.meid` | string | windows, macos, ios, android |\n| `intune.model` | string | windows, macos, ios, android |\n| `intune.notes` | string | windows, macos, ios, android |\n| `intune.operating_system` | string | windows, macos, ios, android |\n| `intune.os_up_to_date` | boolean | windows, macos, ios, android |\n| `intune.os_version` | version | windows, macos, ios, android |\n| `intune.partner_reported_threat_state` | enum_string | windows, macos, ios, android |\n| `intune.phone_number` | string | windows, macos, ios, android |\n| `intune.physical_memory_bytes` | integer | windows, macos, ios, android |\n| `intune.require_user_enrollment_approval` | boolean | windows, macos, ios, android |\n| `intune.serial_number` | string | windows, macos, ios, android |\n| `intune.subscriber_carrier` | string | windows, macos, ios, android |\n| `intune.total_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.udid` | string | windows, macos, ios, android |\n| `intune.user_display_name` | string | windows, macos, ios, android |\n| `intune.user_id` | string | windows, macos, ios, android |\n| `intune.user_principal_name` | string | windows, macos, ios, android |\n| `intune.wifi_mac_address` | string | windows, macos, ios, android |\n\n### iru fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `iru.activation_lock_allowed_while_supervised` | boolean | macos, ios |\n| `iru.activation_lock_bypass_code_failed` | boolean | macos, ios |\n| `iru.activation_lock_collected_at` | datetime | macos, ios |\n| `iru.activation_lock_supported` | boolean | macos, ios |\n| `iru.agent_installed` | boolean | macos, ios |\n| `iru.agent_version` | version | macos, ios |\n| `iru.any_signed_os` | boolean | macos, ios |\n| `iru.apple_silicon` | boolean | macos, ios |\n| `iru.asset_tag` | string | macos, ios |\n| `iru.blueprint_id` | string | macos, ios |\n| `iru.blueprint_name` | string | macos, ios |\n| `iru.bootstrap_token_auth` | boolean | macos, ios |\n| `iru.bootstrap_token_escrowed` | boolean | macos, ios |\n| `iru.cellular_technology` | enum_string | macos, ios |\n| `iru.data_roaming` | boolean | macos, ios |\n| `iru.device_activation_lock_enabled` | boolean | macos, ios |\n| `iru.device_capacity_gb` | float | macos, ios |\n| `iru.device_family` | enum_string | macos, ios |\n| `iru.device_name` | string | macos, ios |\n| `iru.display_os_version` | version | macos, ios |\n| `iru.enrolled` | boolean | macos, ios |\n| `iru.external_boot_level` | enum_string | macos |\n| `iru.filevault_collected_at` | datetime | macos, ios |\n| `iru.filevault_enabled` | boolean | macos |\n| `iru.filevault_key_escrowed` | boolean | macos, ios |\n| `iru.filevault_key_rotation_scheduled_at` | datetime | macos, ios |\n| `iru.filevault_key_type` | enum_string | macos |\n| `iru.filevault_regeneration_needed` | boolean | macos, ios |\n| `iru.firewall_allow_signed_applications` | boolean | macos, ios |\n| `iru.firewall_block_all_incoming` | boolean | macos, ios |\n| `iru.firewall_collected_at` | datetime | macos, ios |\n| `iru.firewall_enabled` | boolean | macos |\n| `iru.firewall_logging` | boolean | macos, ios |\n| `iru.firewall_logging_option` | enum_string | macos |\n| `iru.firewall_stealth_mode` | boolean | macos, ios |\n| `iru.firewall_unloading` | boolean | macos, ios |\n| `iru.firewall_version` | version | macos |\n| `iru.first_enrolled_at` | datetime | macos, ios |\n| `iru.gatekeeper_collected_at` | datetime | macos, ios |\n| `iru.gatekeeper_enabled` | boolean | macos |\n| `iru.gatekeeper_opaque_version` | version | macos |\n| `iru.gatekeeper_trusted_developers` | boolean | macos, ios |\n| `iru.gatekeeper_version` | version | macos |\n| `iru.host_name` | string | macos, ios |\n| `iru.hotspot` | boolean | macos, ios |\n| `iru.inventory_collected_at` | datetime | macos, ios |\n| `iru.iru_id` | string | macos, ios |\n| `iru.is_missing` | boolean | macos, ios |\n| `iru.is_removed` | boolean | macos, ios |\n| `iru.kext_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.last_check_in_at` | datetime | macos, ios |\n| `iru.last_enrolled_at` | datetime | macos, ios |\n| `iru.local_hostname` | string | macos, ios |\n| `iru.lost_mode_status` | enum_string | macos, ios |\n| `iru.malware_removal_tool_version` | version | macos |\n| `iru.mdm_enabled` | boolean | macos, ios |\n| `iru.mdm_manages_kext` | boolean | macos, ios |\n| `iru.model` | string | macos, ios |\n| `iru.model_identifier` | string | macos, ios |\n| `iru.model_name` | string | macos, ios |\n| `iru.os_build` | string | macos, ios |\n| `iru.os_name` | string | macos, ios |\n| `iru.os_up_to_date` | boolean | macos, ios |\n| `iru.os_version` | version | macos, ios |\n| `iru.platform` | enum_string | macos, ios |\n| `iru.secure_boot_level` | enum_string | macos |\n| `iru.serial_number` | string | macos, ios |\n| `iru.shared_ipad` | boolean | macos, ios |\n| `iru.sip_enabled` | boolean | macos |\n| `iru.software_update_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.ssv_enabled` | boolean | macos |\n| `iru.startup_settings_collected_at` | datetime | macos, ios |\n| `iru.supplemental_build_version` | string | macos, ios |\n| `iru.supplemental_os_version_extra` | version | macos, ios |\n| `iru.tags` | string_array | macos, ios |\n| `iru.user_activation_lock_enabled` | boolean | macos, ios |\n| `iru.user_email` | string | macos, ios |\n| `iru.user_id` | string | macos, ios |\n| `iru.user_is_archived` | boolean | macos, ios |\n| `iru.user_manages_kext` | boolean | macos, ios |\n| `iru.user_name` | string | macos, ios |\n| `iru.xprotect_version` | version | macos |\n\n### santa fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `santa.configured_client_mode` | enum_string | macos |\n| `santa.enrolled` | boolean | macos |\n| `santa.first_seen_at` | datetime | macos |\n| `santa.hostname` | string | macos |\n| `santa.last_preflight_at` | datetime | macos |\n| `santa.last_preflight_ip` | ip | macos |\n| `santa.last_seen_client_mode` | enum_string | macos |\n| `santa.last_sync_at` | datetime | macos |\n| `santa.machine_model` | string | macos |\n| `santa.os_build` | string | macos |\n| `santa.os_type` | enum_string | macos |\n| `santa.os_up_to_date` | boolean | macos |\n| `santa.os_version` | version | macos |\n| `santa.primary_user` | string | macos |\n| `santa.primary_user_groups` | string_array | macos |\n| `santa.rule_sync_at` | datetime | macos |\n| `santa.santa_id` | string | macos |\n| `santa.santa_version` | version | macos |\n| `santa.santanetd_version` | version | macos |\n| `santa.serial_number` | string | macos |\n| `santa.sip_status` | integer | macos |\n| `santa.tags` | string_array | macos |\n| `santa.temporary_admin_mode_ends_at` | datetime | macos |\n| `santa.temporary_admin_mode_user` | string | macos |\n| `santa.temporary_monitor_mode_ends_at` | datetime | macos |\n\n### sentinelone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sentinelone.account_name` | string | windows, macos, linux |\n| `sentinelone.active_protection` | string_array | windows, macos, linux |\n| `sentinelone.active_threats` | integer | windows, macos, linux |\n| `sentinelone.ad_computer_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_computer_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_last_user_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_last_user_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_mail` | string | windows, macos, linux |\n| `sentinelone.ad_user_principal_name` | string | windows, macos, linux |\n| `sentinelone.agent_version` | version | windows, macos, linux |\n| `sentinelone.allow_remote_shell` | boolean | windows, macos, linux |\n| `sentinelone.apps_vulnerability_status` | enum_string | windows, macos, linux |\n| `sentinelone.cloud_providers` | json | windows, macos, linux |\n| `sentinelone.computer_name` | string | windows, macos, linux |\n| `sentinelone.console_migration_status` | enum_string | windows, macos, linux |\n| `sentinelone.core_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_id` | string | windows, macos, linux |\n| `sentinelone.detection_state` | enum_string | windows, macos, linux |\n| `sentinelone.domain` | string | windows, macos, linux |\n| `sentinelone.encrypted_applications` | boolean | windows, macos, linux |\n| `sentinelone.enrolled` | boolean | windows, macos, linux |\n| `sentinelone.external_id` | string | windows, macos, linux |\n| `sentinelone.external_ip` | ip | windows, macos, linux |\n| `sentinelone.firewall_enabled` | boolean | windows, macos, linux |\n| `sentinelone.first_full_mode_at` | datetime | windows, macos, linux |\n| `sentinelone.full_disk_scan_updated_at` | datetime | windows, macos, linux |\n| `sentinelone.group_id` | string | windows, macos, linux |\n| `sentinelone.group_ip` | string | windows, macos, linux |\n| `sentinelone.group_name` | string | windows, macos, linux |\n| `sentinelone.has_containerized_workload` | boolean | windows, macos, linux |\n| `sentinelone.in_remote_shell_session` | boolean | windows, macos, linux |\n| `sentinelone.infected` | boolean | windows, macos, linux |\n| `sentinelone.installer_type` | enum_string | windows, macos, linux |\n| `sentinelone.is_active` | boolean | windows, macos, linux |\n| `sentinelone.is_ad_connector` | boolean | windows, macos, linux |\n| `sentinelone.is_decommissioned` | boolean | windows, macos, linux |\n| `sentinelone.is_hyper_automate` | boolean | windows, macos, linux |\n| `sentinelone.is_pending_uninstall` | boolean | windows, macos, linux |\n| `sentinelone.is_uninstalled` | boolean | windows, macos, linux |\n| `sentinelone.is_up_to_date` | boolean | windows, macos, linux |\n| `sentinelone.last_active_at` | datetime | windows, macos, linux |\n| `sentinelone.last_ip_to_management` | ip | windows, macos, linux |\n| `sentinelone.last_logged_in_user_name` | string | windows, macos, linux |\n| `sentinelone.last_successful_scan_at` | datetime | windows, macos, linux |\n| `sentinelone.location_enabled` | boolean | windows, macos, linux |\n| `sentinelone.location_type` | enum_string | windows, macos, linux |\n| `sentinelone.locations` | json | windows, macos, linux |\n| `sentinelone.machine_sid` | string | windows, macos, linux |\n| `sentinelone.machine_type` | enum_string | windows, macos, linux |\n| `sentinelone.missing_permissions` | string_array | windows, macos, linux |\n| `sentinelone.mitigation_mode` | enum_string | windows, macos, linux |\n| `sentinelone.mitigation_mode_suspicious` | enum_string | windows, macos, linux |\n| `sentinelone.model_name` | string | windows, macos, linux |\n| `sentinelone.network_interfaces` | json | windows, macos, linux |\n| `sentinelone.network_quarantine_enabled` | boolean | windows, macos, linux |\n| `sentinelone.network_status` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.os_arch` | enum_string | windows, macos, linux |\n| `sentinelone.os_name` | string | windows, macos, linux |\n| `sentinelone.os_revision` | version | windows, macos, linux |\n| `sentinelone.os_start_time` | datetime | windows, macos, linux |\n| `sentinelone.os_type` | enum_string | windows, macos, linux |\n| `sentinelone.os_up_to_date` | boolean | windows, macos |\n| `sentinelone.os_username` | string | windows, macos, linux |\n| `sentinelone.protected_containers_count` | integer | windows, macos, linux |\n| `sentinelone.protected_pods_count` | integer | windows, macos, linux |\n| `sentinelone.protected_tasks_count` | integer | windows, macos, linux |\n| `sentinelone.proxy_console` | boolean | windows, macos, linux |\n| `sentinelone.proxy_deep_visibility` | boolean | windows, macos, linux |\n| `sentinelone.proxy_method` | enum_string | windows, macos, linux |\n| `sentinelone.proxy_pac_file_usage` | boolean | windows, macos, linux |\n| `sentinelone.ranger_status` | enum_string | windows, macos, linux |\n| `sentinelone.ranger_version` | version | windows, macos, linux |\n| `sentinelone.registered_at` | datetime | windows, macos, linux |\n| `sentinelone.remote_profiling_state` | enum_string | windows, macos, linux |\n| `sentinelone.remote_profiling_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_aborted_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_finished_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_started_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_status` | enum_string | windows, macos, linux |\n| `sentinelone.sentinelone_account_id` | string | windows, macos, linux |\n| `sentinelone.sentinelone_id` | string | windows, macos, linux |\n| `sentinelone.serial_number` | string | windows, macos, linux |\n| `sentinelone.site_id` | string | windows, macos, linux |\n| `sentinelone.site_name` | string | windows, macos, linux |\n| `sentinelone.storage_name` | string | windows, macos, linux |\n| `sentinelone.storage_type` | string | windows, macos, linux |\n| `sentinelone.tags` | json | windows, macos, linux |\n| `sentinelone.threat_reboot_required` | boolean | windows, macos, linux |\n| `sentinelone.total_memory` | integer | windows, macos, linux |\n| `sentinelone.user_actions_needed` | string_array | windows, macos, linux |\n| `sentinelone.uuid` | string | windows, macos, linux |",
+        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is\none of that provider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\n`enum_string` uses the string operators; `integer` and `float` use the\nnumeric operators. `string_array` values use a single string for `contains`\nand `does_not_contain`, or a non-empty string list for `contains_any_of`\nand `contains_all_of`.\n\nEvery attribute also accepts `exists` and `does_not_exist`. These and\n`is_empty` / `is_not_empty` take no value: omit `value` or set it to null.\nMissing attributes fail every operator except `does_not_exist`, including\nnegative operators such as `is_not`. A missing provider is evaluated as\none empty row. Its synthetic `enrolled` field is false, so `enrolled is\nfalse` can explicitly match an unenrolled device. `not` negates the\nresult and can also match missing data; use a positive `enrolled is true`\ncheck when enrollment is required.\n\nLeaves that do not apply to the device's platform are removed before\nevaluation, including inside `or` and `not`. An expression with no\napplicable leaves passes. If the platform is unknown, no leaves are\nremoved. Supported platforms for each field are listed below.\nProvider `os_up_to_date` fields are computed from known OS releases;\nthey are not raw provider attributes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. Different leaves may match different provider rows; `and` does\nnot require one row to satisfy all leaves. `rows` is not allowed for\n`firezone`, which always describes exactly one connecting device.\n\nExpressions allow at most 10 nested boolean levels and 100 leaves.\nList values contain 1–100 items; strings are at most 1024 bytes and\nregular expressions at most 256 bytes. Unknown fields, incompatible\noperators, invalid values, and exceeded limits return HTTP 422 with\na path in `validation_errors.postures`.\n\nSupported fields (generated from the same registry used for validation):\n\n### defender fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `defender.agent_version` | version | windows, macos, linux |\n| `defender.computer_dns_name` | string | windows, macos, linux |\n| `defender.defender_id` | string | windows, macos, linux |\n| `defender.device_value` | enum_string | windows, macos, linux |\n| `defender.enrolled` | boolean | windows, macos, linux |\n| `defender.entra_device_id` | string | windows, macos, linux |\n| `defender.entra_joined` | boolean | windows, macos, linux |\n| `defender.exclusion_reason` | enum_string | windows, macos, linux |\n| `defender.exposure_level` | enum_string | windows, macos, linux |\n| `defender.first_seen_at` | datetime | windows, macos, linux |\n| `defender.health_status` | enum_string | windows, macos, linux |\n| `defender.ip_addresses` | json | windows, macos, linux |\n| `defender.is_excluded` | boolean | windows, macos, linux |\n| `defender.is_potential_duplication` | boolean | windows, macos, linux |\n| `defender.last_external_ip_address` | ip | windows, macos, linux |\n| `defender.last_ip_address` | ip | windows, macos, linux |\n| `defender.last_seen_at` | datetime | windows, macos, linux |\n| `defender.machine_tags` | string_array | windows, macos, linux |\n| `defender.managed_by` | enum_string | windows, macos, linux |\n| `defender.managed_by_status` | enum_string | windows, macos, linux |\n| `defender.onboarding_status` | enum_string | windows, macos, linux |\n| `defender.os_architecture` | enum_string | windows, macos, linux |\n| `defender.os_build` | integer | windows, macos, linux |\n| `defender.os_platform` | enum_string | windows, macos, linux |\n| `defender.os_processor` | string | windows, macos, linux |\n| `defender.os_up_to_date` | boolean | macos |\n| `defender.rbac_group_id` | integer | windows, macos, linux |\n| `defender.rbac_group_name` | string | windows, macos, linux |\n| `defender.risk_score` | enum_string | windows, macos, linux |\n| `defender.version` | string | windows, macos, linux |\n| `defender.vm_cloud_provider` | string | windows, macos, linux |\n| `defender.vm_id` | string | windows, macos, linux |\n| `defender.vm_resource_id` | string | windows, macos, linux |\n| `defender.vm_subscription_id` | string | windows, macos, linux |\n\n### firezone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `firezone.device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.hostname` | string | windows, macos, linux, ios, android |\n| `firezone.identifier_for_vendor` | string | windows, macos, linux, ios, android |\n| `firezone.ipv4` | ipv4 | windows, macos, linux, ios, android |\n| `firezone.ipv6` | ipv6 | windows, macos, linux, ios, android |\n| `firezone.last_attested_at` | datetime | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_fingerprint` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_mdm_device_id` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_remote_ip_location_city` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_user_agent` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_version` | version | windows, macos, linux, ios, android |\n| `firezone.name` | string | windows, macos, linux, ios, android |\n\n### intune fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `intune.android_security_patch_level` | datetime | windows, macos, ios, android |\n| `intune.attestation_bit_locker_enabled` | boolean | windows |\n| `intune.attestation_boot_app_security_version` | version | windows |\n| `intune.attestation_boot_debugging` | boolean | windows |\n| `intune.attestation_boot_manager_security_version` | version | windows |\n| `intune.attestation_boot_manager_version` | version | windows |\n| `intune.attestation_boot_revision_list_info` | string | windows |\n| `intune.attestation_code_integrity` | boolean | windows |\n| `intune.attestation_code_integrity_check_version` | version | windows |\n| `intune.attestation_code_integrity_policy` | string | windows |\n| `intune.attestation_content_version` | version | windows |\n| `intune.attestation_data_execution_policy_enabled` | boolean | windows |\n| `intune.attestation_early_launch_anti_malware_driver_protection` | boolean | windows |\n| `intune.attestation_health_status_mismatch_info` | string | windows |\n| `intune.attestation_identity_key` | string | windows |\n| `intune.attestation_issued_at` | datetime | windows |\n| `intune.attestation_operating_system_kernel_debugging` | boolean | windows |\n| `intune.attestation_operating_system_rev_list_info` | string | windows |\n| `intune.attestation_pcr0` | string | windows |\n| `intune.attestation_pcr_hash_algorithm` | string | windows |\n| `intune.attestation_reset_count` | integer | windows |\n| `intune.attestation_restart_count` | integer | windows |\n| `intune.attestation_safe_mode` | boolean | windows |\n| `intune.attestation_secure_boot` | boolean | windows |\n| `intune.attestation_secure_boot_config_policy_fingerprint` | string | windows |\n| `intune.attestation_status` | enum_string | windows |\n| `intune.attestation_supported` | boolean | windows |\n| `intune.attestation_test_signing` | boolean | windows |\n| `intune.attestation_tpm_version` | version | windows |\n| `intune.attestation_virtual_secure_mode` | boolean | windows |\n| `intune.attestation_windows_pe` | boolean | windows |\n| `intune.compliance_grace_period_expiration_at` | datetime | windows, macos, ios, android |\n| `intune.compliance_state` | enum_string | windows, macos, ios, android |\n| `intune.config_manager_compliance_policy` | boolean | windows, macos, ios, android |\n| `intune.config_manager_device_configuration` | boolean | windows, macos, ios, android |\n| `intune.config_manager_inventory` | boolean | windows, macos, ios, android |\n| `intune.config_manager_modern_apps` | boolean | windows, macos, ios, android |\n| `intune.config_manager_resource_access` | boolean | windows, macos, ios, android |\n| `intune.config_manager_windows_update_for_business` | boolean | windows, macos, ios, android |\n| `intune.device_category_display_name` | string | windows, macos, ios, android |\n| `intune.device_enrollment_type` | enum_string | windows, macos, ios, android |\n| `intune.device_name` | string | windows, macos, ios, android |\n| `intune.device_registration_state` | enum_string | windows, macos, ios, android |\n| `intune.eas_activated` | boolean | windows, macos, ios, android |\n| `intune.eas_activated_at` | datetime | windows, macos, ios, android |\n| `intune.eas_device_id` | string | windows, macos, ios, android |\n| `intune.email_address` | string | windows, macos, ios, android |\n| `intune.enrolled` | boolean | windows, macos, ios, android |\n| `intune.enrolled_at` | datetime | windows, macos, ios, android |\n| `intune.enrollment_profile_name` | string | windows, macos, ios, android |\n| `intune.entra_device_id` | string | windows, macos, ios, android |\n| `intune.entra_registered` | boolean | windows, macos, ios, android |\n| `intune.ethernet_mac_address` | string | windows, macos, ios, android |\n| `intune.exchange_access_state` | enum_string | windows, macos, ios, android |\n| `intune.exchange_access_state_reason` | enum_string | windows, macos, ios, android |\n| `intune.exchange_last_successful_sync_at` | datetime | windows, macos, ios, android |\n| `intune.free_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.iccid` | string | windows, macos, ios, android |\n| `intune.imei` | string | windows, macos, ios, android |\n| `intune.intune_id` | string | windows, macos, ios, android |\n| `intune.is_encrypted` | boolean | windows, macos, ios, android |\n| `intune.is_supervised` | boolean | macos, ios |\n| `intune.jail_broken` | boolean | ios, android |\n| `intune.last_sync_at` | datetime | windows, macos, ios, android |\n| `intune.managed_device_name` | string | windows, macos, ios, android |\n| `intune.managed_device_owner_type` | enum_string | windows, macos, ios, android |\n| `intune.management_agent` | enum_string | windows, macos, ios, android |\n| `intune.management_certificate_expires_at` | datetime | windows, macos, ios, android |\n| `intune.management_state` | enum_string | windows, macos, ios, android |\n| `intune.manufacturer` | string | windows, macos, ios, android |\n| `intune.meid` | string | windows, macos, ios, android |\n| `intune.model` | string | windows, macos, ios, android |\n| `intune.notes` | string | windows, macos, ios, android |\n| `intune.operating_system` | string | windows, macos, ios, android |\n| `intune.os_up_to_date` | boolean | windows, macos, ios, android |\n| `intune.os_version` | version | windows, macos, ios, android |\n| `intune.partner_reported_threat_state` | enum_string | windows, macos, ios, android |\n| `intune.phone_number` | string | windows, macos, ios, android |\n| `intune.physical_memory_bytes` | integer | windows, macos, ios, android |\n| `intune.require_user_enrollment_approval` | boolean | windows, macos, ios, android |\n| `intune.serial_number` | string | windows, macos, ios, android |\n| `intune.subscriber_carrier` | string | windows, macos, ios, android |\n| `intune.total_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.udid` | string | windows, macos, ios, android |\n| `intune.user_display_name` | string | windows, macos, ios, android |\n| `intune.user_id` | string | windows, macos, ios, android |\n| `intune.user_principal_name` | string | windows, macos, ios, android |\n| `intune.wifi_mac_address` | string | windows, macos, ios, android |\n\n### iru fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `iru.activation_lock_allowed_while_supervised` | boolean | macos, ios |\n| `iru.activation_lock_bypass_code_failed` | boolean | macos, ios |\n| `iru.activation_lock_collected_at` | datetime | macos, ios |\n| `iru.activation_lock_supported` | boolean | macos, ios |\n| `iru.agent_installed` | boolean | macos, ios |\n| `iru.agent_version` | version | macos, ios |\n| `iru.any_signed_os` | boolean | macos, ios |\n| `iru.apple_silicon` | boolean | macos, ios |\n| `iru.asset_tag` | string | macos, ios |\n| `iru.blueprint_id` | string | macos, ios |\n| `iru.blueprint_name` | string | macos, ios |\n| `iru.bootstrap_token_auth` | boolean | macos, ios |\n| `iru.bootstrap_token_escrowed` | boolean | macos, ios |\n| `iru.cellular_technology` | enum_string | macos, ios |\n| `iru.data_roaming` | boolean | macos, ios |\n| `iru.device_activation_lock_enabled` | boolean | macos, ios |\n| `iru.device_capacity_gb` | float | macos, ios |\n| `iru.device_family` | enum_string | macos, ios |\n| `iru.device_name` | string | macos, ios |\n| `iru.display_os_version` | version | macos, ios |\n| `iru.enrolled` | boolean | macos, ios |\n| `iru.external_boot_level` | enum_string | macos |\n| `iru.filevault_collected_at` | datetime | macos, ios |\n| `iru.filevault_enabled` | boolean | macos |\n| `iru.filevault_key_escrowed` | boolean | macos, ios |\n| `iru.filevault_key_rotation_scheduled_at` | datetime | macos, ios |\n| `iru.filevault_key_type` | enum_string | macos |\n| `iru.filevault_regeneration_needed` | boolean | macos, ios |\n| `iru.firewall_allow_signed_applications` | boolean | macos, ios |\n| `iru.firewall_block_all_incoming` | boolean | macos, ios |\n| `iru.firewall_collected_at` | datetime | macos, ios |\n| `iru.firewall_enabled` | boolean | macos |\n| `iru.firewall_logging` | boolean | macos, ios |\n| `iru.firewall_logging_option` | enum_string | macos |\n| `iru.firewall_stealth_mode` | boolean | macos, ios |\n| `iru.firewall_unloading` | boolean | macos, ios |\n| `iru.firewall_version` | version | macos |\n| `iru.first_enrolled_at` | datetime | macos, ios |\n| `iru.gatekeeper_collected_at` | datetime | macos, ios |\n| `iru.gatekeeper_enabled` | boolean | macos |\n| `iru.gatekeeper_opaque_version` | version | macos |\n| `iru.gatekeeper_trusted_developers` | boolean | macos, ios |\n| `iru.gatekeeper_version` | version | macos |\n| `iru.host_name` | string | macos, ios |\n| `iru.hotspot` | boolean | macos, ios |\n| `iru.inventory_collected_at` | datetime | macos, ios |\n| `iru.iru_id` | string | macos, ios |\n| `iru.is_missing` | boolean | macos, ios |\n| `iru.is_removed` | boolean | macos, ios |\n| `iru.kext_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.last_check_in_at` | datetime | macos, ios |\n| `iru.last_enrolled_at` | datetime | macos, ios |\n| `iru.local_hostname` | string | macos, ios |\n| `iru.lost_mode_status` | enum_string | macos, ios |\n| `iru.malware_removal_tool_version` | version | macos |\n| `iru.mdm_enabled` | boolean | macos, ios |\n| `iru.mdm_manages_kext` | boolean | macos, ios |\n| `iru.model` | string | macos, ios |\n| `iru.model_identifier` | string | macos, ios |\n| `iru.model_name` | string | macos, ios |\n| `iru.os_build` | string | macos, ios |\n| `iru.os_name` | string | macos, ios |\n| `iru.os_up_to_date` | boolean | macos, ios |\n| `iru.os_version` | version | macos, ios |\n| `iru.platform` | enum_string | macos, ios |\n| `iru.secure_boot_level` | enum_string | macos |\n| `iru.serial_number` | string | macos, ios |\n| `iru.shared_ipad` | boolean | macos, ios |\n| `iru.sip_enabled` | boolean | macos |\n| `iru.software_update_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.ssv_enabled` | boolean | macos |\n| `iru.startup_settings_collected_at` | datetime | macos, ios |\n| `iru.supplemental_build_version` | string | macos, ios |\n| `iru.supplemental_os_version_extra` | version | macos, ios |\n| `iru.tags` | string_array | macos, ios |\n| `iru.user_activation_lock_enabled` | boolean | macos, ios |\n| `iru.user_email` | string | macos, ios |\n| `iru.user_id` | string | macos, ios |\n| `iru.user_is_archived` | boolean | macos, ios |\n| `iru.user_manages_kext` | boolean | macos, ios |\n| `iru.user_name` | string | macos, ios |\n| `iru.xprotect_version` | version | macos |\n\n### santa fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `santa.configured_client_mode` | enum_string | macos |\n| `santa.enrolled` | boolean | macos |\n| `santa.first_seen_at` | datetime | macos |\n| `santa.hostname` | string | macos |\n| `santa.last_preflight_at` | datetime | macos |\n| `santa.last_preflight_ip` | ip | macos |\n| `santa.last_seen_client_mode` | enum_string | macos |\n| `santa.last_sync_at` | datetime | macos |\n| `santa.machine_model` | string | macos |\n| `santa.os_build` | string | macos |\n| `santa.os_type` | enum_string | macos |\n| `santa.os_up_to_date` | boolean | macos |\n| `santa.os_version` | version | macos |\n| `santa.primary_user` | string | macos |\n| `santa.primary_user_groups` | string_array | macos |\n| `santa.rule_sync_at` | datetime | macos |\n| `santa.santa_id` | string | macos |\n| `santa.santa_version` | version | macos |\n| `santa.santanetd_version` | version | macos |\n| `santa.serial_number` | string | macos |\n| `santa.sip_status` | integer | macos |\n| `santa.tags` | string_array | macos |\n| `santa.temporary_admin_mode_ends_at` | datetime | macos |\n| `santa.temporary_admin_mode_user` | string | macos |\n| `santa.temporary_monitor_mode_ends_at` | datetime | macos |\n\n### sentinelone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sentinelone.account_name` | string | windows, macos, linux |\n| `sentinelone.active_protection` | string_array | windows, macos, linux |\n| `sentinelone.active_threats` | integer | windows, macos, linux |\n| `sentinelone.ad_computer_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_computer_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_last_user_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_last_user_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_mail` | string | windows, macos, linux |\n| `sentinelone.ad_user_principal_name` | string | windows, macos, linux |\n| `sentinelone.agent_version` | version | windows, macos, linux |\n| `sentinelone.allow_remote_shell` | boolean | windows, macos, linux |\n| `sentinelone.apps_vulnerability_status` | enum_string | windows, macos, linux |\n| `sentinelone.cloud_providers` | json | windows, macos, linux |\n| `sentinelone.computer_name` | string | windows, macos, linux |\n| `sentinelone.console_migration_status` | enum_string | windows, macos, linux |\n| `sentinelone.core_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_id` | string | windows, macos, linux |\n| `sentinelone.detection_state` | enum_string | windows, macos, linux |\n| `sentinelone.domain` | string | windows, macos, linux |\n| `sentinelone.encrypted_applications` | boolean | windows, macos, linux |\n| `sentinelone.enrolled` | boolean | windows, macos, linux |\n| `sentinelone.external_id` | string | windows, macos, linux |\n| `sentinelone.external_ip` | ip | windows, macos, linux |\n| `sentinelone.firewall_enabled` | boolean | windows, macos, linux |\n| `sentinelone.first_full_mode_at` | datetime | windows, macos, linux |\n| `sentinelone.full_disk_scan_updated_at` | datetime | windows, macos, linux |\n| `sentinelone.group_id` | string | windows, macos, linux |\n| `sentinelone.group_ip` | string | windows, macos, linux |\n| `sentinelone.group_name` | string | windows, macos, linux |\n| `sentinelone.has_containerized_workload` | boolean | windows, macos, linux |\n| `sentinelone.in_remote_shell_session` | boolean | windows, macos, linux |\n| `sentinelone.infected` | boolean | windows, macos, linux |\n| `sentinelone.installer_type` | enum_string | windows, macos, linux |\n| `sentinelone.is_active` | boolean | windows, macos, linux |\n| `sentinelone.is_ad_connector` | boolean | windows, macos, linux |\n| `sentinelone.is_decommissioned` | boolean | windows, macos, linux |\n| `sentinelone.is_hyper_automate` | boolean | windows, macos, linux |\n| `sentinelone.is_pending_uninstall` | boolean | windows, macos, linux |\n| `sentinelone.is_uninstalled` | boolean | windows, macos, linux |\n| `sentinelone.is_up_to_date` | boolean | windows, macos, linux |\n| `sentinelone.last_active_at` | datetime | windows, macos, linux |\n| `sentinelone.last_ip_to_management` | ip | windows, macos, linux |\n| `sentinelone.last_logged_in_user_name` | string | windows, macos, linux |\n| `sentinelone.last_successful_scan_at` | datetime | windows, macos, linux |\n| `sentinelone.location_enabled` | boolean | windows, macos, linux |\n| `sentinelone.location_type` | enum_string | windows, macos, linux |\n| `sentinelone.locations` | json | windows, macos, linux |\n| `sentinelone.machine_sid` | string | windows, macos, linux |\n| `sentinelone.machine_type` | enum_string | windows, macos, linux |\n| `sentinelone.missing_permissions` | string_array | windows, macos, linux |\n| `sentinelone.mitigation_mode` | enum_string | windows, macos, linux |\n| `sentinelone.mitigation_mode_suspicious` | enum_string | windows, macos, linux |\n| `sentinelone.model_name` | string | windows, macos, linux |\n| `sentinelone.network_interfaces` | json | windows, macos, linux |\n| `sentinelone.network_quarantine_enabled` | boolean | windows, macos, linux |\n| `sentinelone.network_status` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.os_arch` | enum_string | windows, macos, linux |\n| `sentinelone.os_name` | string | windows, macos, linux |\n| `sentinelone.os_revision` | version | windows, macos, linux |\n| `sentinelone.os_start_time` | datetime | windows, macos, linux |\n| `sentinelone.os_type` | enum_string | windows, macos, linux |\n| `sentinelone.os_up_to_date` | boolean | windows, macos |\n| `sentinelone.os_username` | string | windows, macos, linux |\n| `sentinelone.protected_containers_count` | integer | windows, macos, linux |\n| `sentinelone.protected_pods_count` | integer | windows, macos, linux |\n| `sentinelone.protected_tasks_count` | integer | windows, macos, linux |\n| `sentinelone.proxy_console` | boolean | windows, macos, linux |\n| `sentinelone.proxy_deep_visibility` | boolean | windows, macos, linux |\n| `sentinelone.proxy_method` | enum_string | windows, macos, linux |\n| `sentinelone.proxy_pac_file_usage` | boolean | windows, macos, linux |\n| `sentinelone.ranger_status` | enum_string | windows, macos, linux |\n| `sentinelone.ranger_version` | version | windows, macos, linux |\n| `sentinelone.registered_at` | datetime | windows, macos, linux |\n| `sentinelone.remote_profiling_state` | enum_string | windows, macos, linux |\n| `sentinelone.remote_profiling_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_aborted_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_finished_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_started_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_status` | enum_string | windows, macos, linux |\n| `sentinelone.sentinelone_account_id` | string | windows, macos, linux |\n| `sentinelone.sentinelone_id` | string | windows, macos, linux |\n| `sentinelone.serial_number` | string | windows, macos, linux |\n| `sentinelone.site_id` | string | windows, macos, linux |\n| `sentinelone.site_name` | string | windows, macos, linux |\n| `sentinelone.storage_name` | string | windows, macos, linux |\n| `sentinelone.storage_type` | string | windows, macos, linux |\n| `sentinelone.tags` | json | windows, macos, linux |\n| `sentinelone.threat_reboot_required` | boolean | windows, macos, linux |\n| `sentinelone.total_memory` | integer | windows, macos, linux |\n| `sentinelone.user_actions_needed` | string_array | windows, macos, linux |\n| `sentinelone.uuid` | string | windows, macos, linux |\n\n### sophos fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sophos.assigned_products` | json | windows, macos, linux |\n| `sophos.associated_person_id` | string | windows, macos, linux |\n| `sophos.associated_person_name` | string | windows, macos, linux |\n| `sophos.associated_person_via_login` | string | windows, macos, linux |\n| `sophos.cloned` | boolean | windows, macos, linux |\n| `sophos.cloud_instance_id` | string | windows, macos, linux |\n| `sophos.cloud_provider` | enum_string | windows, macos, linux |\n| `sophos.device_software` | json | windows, macos, linux |\n| `sophos.encryption_overall_status` | enum_string | windows, macos, linux |\n| `sophos.encryption_volumes` | json | windows, macos, linux |\n| `sophos.enrolled` | boolean | windows, macos, linux |\n| `sophos.group_hierarchy` | json | windows, macos, linux |\n| `sophos.group_id` | string | windows, macos, linux |\n| `sophos.group_name` | string | windows, macos, linux |\n| `sophos.health_overall` | enum_string | windows, macos, linux |\n| `sophos.health_service_details` | json | windows, macos, linux |\n| `sophos.health_services_status` | enum_string | windows, macos, linux |\n| `sophos.health_threats_status` | enum_string | windows, macos, linux |\n| `sophos.hostname` | string | windows, macos, linux |\n| `sophos.ipv4_addresses` | string_array | windows, macos, linux |\n| `sophos.ipv6_addresses` | string_array | windows, macos, linux |\n| `sophos.isolation_admin_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_self_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_status` | enum_string | windows, macos, linux |\n| `sophos.last_agent_update_at` | datetime | windows, macos, linux |\n| `sophos.last_os_update_at` | datetime | windows, macos, linux |\n| `sophos.last_seen_at` | datetime | windows, macos, linux |\n| `sophos.lockdown_status` | enum_string | windows, macos, linux |\n| `sophos.mac_addresses` | string_array | windows, macos, linux |\n| `sophos.online` | boolean | windows, macos, linux |\n| `sophos.os_build` | integer | windows, macos, linux |\n| `sophos.os_is_server` | boolean | windows, macos, linux |\n| `sophos.os_major_version` | integer | windows, macos, linux |\n| `sophos.os_minor_version` | integer | windows, macos, linux |\n| `sophos.os_name` | string | windows, macos, linux |\n| `sophos.os_platform` | enum_string | windows, macos, linux |\n| `sophos.os_up_to_date` | boolean | macos |\n| `sophos.packages` | json | windows, macos, linux |\n| `sophos.serial_number` | string | windows, macos, linux |\n| `sophos.sophos_id` | string | windows, macos, linux |\n| `sophos.tags` | json | windows, macos, linux |\n| `sophos.tamper_protection_enabled` | boolean | windows, macos, linux |\n| `sophos.tamper_protection_supported` | boolean | windows, macos, linux |\n| `sophos.type` | enum_string | windows, macos, linux |",
         "example": {
           "and": [
             {
@@ -6784,6 +7057,289 @@
         "title": "OktaDirectoryListResponse",
         "type": "object"
       },
+      "SophosDevice": {
+        "description": "Endpoint synced from Sophos Central",
+        "properties": {
+          "mac_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "os_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tamper_protection_supported": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "last_agent_update_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "os_minor_version": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "associated_person_via_login": {
+            "nullable": true,
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "os_platform": {
+            "nullable": true,
+            "type": "string"
+          },
+          "synced_at": {
+            "format": "date-time",
+            "nullable": false,
+            "type": "string"
+          },
+          "inserted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "ipv6_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "sophos_tenant_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "group_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "group_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "serial_number": {
+            "nullable": true,
+            "type": "string"
+          },
+          "isolation_admin_isolated": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "group_hierarchy": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "health_threats_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "account_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "encryption_volumes": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "cloud_instance_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "associated_person_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_os_update_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "encryption_overall_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "associated_person_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "health_overall": {
+            "nullable": true,
+            "type": "string"
+          },
+          "assigned_products": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "cloud_provider": {
+            "nullable": true,
+            "type": "string"
+          },
+          "packages": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "os_build": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "os_is_server": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "health_services_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "isolation_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "device_software": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "cloned": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "lockdown_status": {
+            "nullable": true,
+            "type": "string"
+          },
+          "ipv4_addresses": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "health_service_details": {
+            "items": {
+              "type": "object"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "tamper_protection_enabled": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "online": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "sophos_id": {
+            "nullable": false,
+            "type": "string"
+          },
+          "isolation_self_isolated": {
+            "nullable": true,
+            "type": "boolean"
+          },
+          "os_major_version": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "posture_provider_id": {
+            "format": "uuid",
+            "nullable": false,
+            "type": "string"
+          },
+          "hostname": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "sophos_id",
+          "posture_provider_id",
+          "type",
+          "sophos_tenant_id",
+          "hostname",
+          "health_overall",
+          "health_threats_status",
+          "health_services_status",
+          "health_service_details",
+          "os_is_server",
+          "os_platform",
+          "os_name",
+          "os_major_version",
+          "os_minor_version",
+          "os_build",
+          "ipv4_addresses",
+          "ipv6_addresses",
+          "mac_addresses",
+          "group_id",
+          "group_name",
+          "group_hierarchy",
+          "associated_person_id",
+          "associated_person_name",
+          "associated_person_via_login",
+          "tamper_protection_supported",
+          "tamper_protection_enabled",
+          "assigned_products",
+          "packages",
+          "device_software",
+          "last_seen_at",
+          "last_os_update_at",
+          "last_agent_update_at",
+          "serial_number",
+          "encryption_overall_status",
+          "encryption_volumes",
+          "lockdown_status",
+          "tags",
+          "online",
+          "cloud_provider",
+          "cloud_instance_id",
+          "isolation_status",
+          "isolation_admin_isolated",
+          "isolation_self_isolated",
+          "cloned",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
+        ],
+        "title": "SophosDevice",
+        "type": "object"
+      },
       "DefenderPostureProviderResponse": {
         "properties": {
           "data": {
@@ -6878,6 +7434,15 @@
         "title": "OktaAuthProviderResponse",
         "type": "object"
       },
+      "SophosPostureProviderResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SophosPostureProvider"
+          }
+        },
+        "title": "SophosPostureProviderResponse",
+        "type": "object"
+      },
       "string_array no_value provider comparison": {
         "additionalProperties": false,
         "properties": {
@@ -6892,7 +7457,10 @@
               "sentinelone.ad_computer_member_of",
               "sentinelone.ad_last_user_member_of",
               "sentinelone.missing_permissions",
-              "sentinelone.user_actions_needed"
+              "sentinelone.user_actions_needed",
+              "sophos.ipv4_addresses",
+              "sophos.ipv6_addresses",
+              "sophos.mac_addresses"
             ],
             "type": "string"
           },
@@ -7170,7 +7738,17 @@
               "sentinelone.site_name",
               "sentinelone.storage_name",
               "sentinelone.storage_type",
-              "sentinelone.uuid"
+              "sentinelone.uuid",
+              "sophos.associated_person_id",
+              "sophos.associated_person_name",
+              "sophos.associated_person_via_login",
+              "sophos.cloud_instance_id",
+              "sophos.group_id",
+              "sophos.group_name",
+              "sophos.hostname",
+              "sophos.os_name",
+              "sophos.serial_number",
+              "sophos.sophos_id"
             ],
             "type": "string"
           },
@@ -7541,7 +8119,10 @@
               "sentinelone.remote_profiling_state_expires_at",
               "sentinelone.scan_aborted_at",
               "sentinelone.scan_finished_at",
-              "sentinelone.scan_started_at"
+              "sentinelone.scan_started_at",
+              "sophos.last_agent_update_at",
+              "sophos.last_os_update_at",
+              "sophos.last_seen_at"
             ],
             "type": "string"
           },
@@ -8999,7 +9580,16 @@
               "sentinelone.proxy_method",
               "sentinelone.ranger_status",
               "sentinelone.remote_profiling_state",
-              "sentinelone.scan_status"
+              "sentinelone.scan_status",
+              "sophos.cloud_provider",
+              "sophos.encryption_overall_status",
+              "sophos.health_overall",
+              "sophos.health_services_status",
+              "sophos.health_threats_status",
+              "sophos.isolation_status",
+              "sophos.lockdown_status",
+              "sophos.os_platform",
+              "sophos.type"
             ],
             "type": "string"
           },
@@ -9337,6 +9927,30 @@
           "or"
         ],
         "title": "PolicyPostureOr",
+        "type": "object"
+      },
+      "SophosDeviceResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SophosDevice"
+          }
+        },
+        "title": "SophosDeviceResponse",
+        "type": "object"
+      },
+      "SophosPostureProviderListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SophosPostureProvider"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SophosPostureProviderListResponse",
         "type": "object"
       },
       "string regex device comparison": {
@@ -9860,7 +10474,14 @@
               "sentinelone.cloud_providers",
               "sentinelone.locations",
               "sentinelone.network_interfaces",
-              "sentinelone.tags"
+              "sentinelone.tags",
+              "sophos.assigned_products",
+              "sophos.device_software",
+              "sophos.encryption_volumes",
+              "sophos.group_hierarchy",
+              "sophos.health_service_details",
+              "sophos.packages",
+              "sophos.tags"
             ],
             "type": "string"
           },
@@ -10294,7 +10915,16 @@
               "sentinelone.proxy_method",
               "sentinelone.ranger_status",
               "sentinelone.remote_profiling_state",
-              "sentinelone.scan_status"
+              "sentinelone.scan_status",
+              "sophos.cloud_provider",
+              "sophos.encryption_overall_status",
+              "sophos.health_overall",
+              "sophos.health_services_status",
+              "sophos.health_threats_status",
+              "sophos.isolation_status",
+              "sophos.lockdown_status",
+              "sophos.os_platform",
+              "sophos.type"
             ],
             "type": "string"
           },
@@ -10380,7 +11010,10 @@
               "sentinelone.remote_profiling_state_expires_at",
               "sentinelone.scan_aborted_at",
               "sentinelone.scan_finished_at",
-              "sentinelone.scan_started_at"
+              "sentinelone.scan_started_at",
+              "sophos.last_agent_update_at",
+              "sophos.last_os_update_at",
+              "sophos.last_seen_at"
             ],
             "type": "string"
           },
@@ -10465,7 +11098,10 @@
               "sentinelone.protected_containers_count",
               "sentinelone.protected_pods_count",
               "sentinelone.protected_tasks_count",
-              "sentinelone.total_memory"
+              "sentinelone.total_memory",
+              "sophos.os_build",
+              "sophos.os_major_version",
+              "sophos.os_minor_version"
             ],
             "type": "string"
           },
@@ -10655,7 +11291,10 @@
               "sentinelone.protected_containers_count",
               "sentinelone.protected_pods_count",
               "sentinelone.protected_tasks_count",
-              "sentinelone.total_memory"
+              "sentinelone.total_memory",
+              "sophos.os_build",
+              "sophos.os_major_version",
+              "sophos.os_minor_version"
             ],
             "type": "string"
           },
@@ -11450,6 +12089,21 @@
         "title": "PoolMemberListResponse",
         "type": "object"
       },
+      "SophosDeviceListResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SophosDevice"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "SophosDeviceListResponse",
+        "type": "object"
+      },
       "version scalar device comparison": {
         "additionalProperties": false,
         "properties": {
@@ -12205,7 +12859,17 @@
               "sentinelone.site_name",
               "sentinelone.storage_name",
               "sentinelone.storage_type",
-              "sentinelone.uuid"
+              "sentinelone.uuid",
+              "sophos.associated_person_id",
+              "sophos.associated_person_name",
+              "sophos.associated_person_via_login",
+              "sophos.cloud_instance_id",
+              "sophos.group_id",
+              "sophos.group_name",
+              "sophos.hostname",
+              "sophos.os_name",
+              "sophos.serial_number",
+              "sophos.sophos_id"
             ],
             "type": "string"
           },
@@ -19113,6 +19777,114 @@
         ]
       }
     },
+    "/sophos_posture_providers": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SophosPostureProviderController.index",
+        "parameters": [
+          {
+            "description": "Limit providers returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderListResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Sophos posture providers",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      }
+    },
     "/defender_posture_providers/{id}": {
       "get": {
         "callbacks": {},
@@ -21660,6 +22432,119 @@
         "summary": "Show Account",
         "tags": [
           "Account"
+        ]
+      }
+    },
+    "/sophos_devices/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SophosDeviceController.show",
+        "parameters": [
+          {
+            "description": "Synced Sophos endpoint ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosDeviceResponse"
+                }
+              }
+            },
+            "description": "Sophos device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a synced Sophos device",
+        "tags": [
+          "Sophos Devices"
         ]
       }
     },
@@ -24683,6 +25568,114 @@
         ]
       }
     },
+    "/sophos_devices": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SophosDeviceController.index",
+        "parameters": [
+          {
+            "description": "Limit devices returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/previous page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosDeviceListResponse"
+                }
+              }
+            },
+            "description": "Sophos device response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List synced Sophos devices",
+        "tags": [
+          "Sophos Devices"
+        ]
+      }
+    },
     "/actors": {
       "get": {
         "callbacks": {},
@@ -25387,6 +26380,119 @@
         "summary": "Show Okta Auth Provider",
         "tags": [
           "Okta Auth Providers"
+        ]
+      }
+    },
+    "/sophos_posture_providers/{id}": {
+      "get": {
+        "callbacks": {},
+        "operationId": "PortalAPI.SophosPostureProviderController.show",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
         ]
       }
     },

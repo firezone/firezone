@@ -17,11 +17,14 @@ defmodule Portal.Devices.Posture do
   reached through the Intune row already matched to this device: both carry
   the same Entra device id. A row reached that way is only as well matched as
   the Intune row that led to it.
+
+  A Sophos endpoint that reports no serial, which is common on Linux, matches
+  no client device.
   """
 
   import Ecto.Query
 
-  alias Portal.{Defender, Device, Intune, Iru, Santa, SentinelOne}
+  alias Portal.{Defender, Device, Intune, Iru, Santa, SentinelOne, Sophos}
   alias __MODULE__.Database
 
   @type rung :: :mdm_device_id | :attested_serial | :device_serial
@@ -89,8 +92,9 @@ defmodule Portal.Devices.Posture do
   def schema(:defender), do: Defender.Device
   def schema(:santa), do: Santa.Device
   def schema(:sentinelone), do: SentinelOne.Device
+  def schema(:sophos), do: Sophos.Device
 
-  @types ~w[intune iru defender santa sentinelone]a
+  @types ~w[intune iru defender santa sentinelone sophos]a
 
   @spec types() :: [atom()]
   def types, do: @types
@@ -106,6 +110,7 @@ defmodule Portal.Devices.Posture do
   def type(Defender.Device), do: :defender
   def type(Santa.Device), do: :santa
   def type(SentinelOne.Device), do: :sentinelone
+  def type(Sophos.Device), do: :sophos
 
   @doc """
   The identifiers a provider row can be matched on, which are the keys its
@@ -147,7 +152,7 @@ defmodule Portal.Devices.Posture do
   # Which columns of a provider's row each rung is compared against. Both the
   # query and the credit given to a row it returns are built from this, so they
   # can never disagree. Only an MDM issues a device id a certificate attests, so
-  # neither EDR answers that rung. Defender answers none: its machine entity
+  # no EDR answers that rung. Defender answers none: its machine entity
   # carries no hardware serial either, which is why it is reached through Intune.
   @spec rung_fields(atom(), rung()) :: [atom()]
   def rung_fields(:intune, :mdm_device_id), do: [:intune_id]
@@ -159,6 +164,8 @@ defmodule Portal.Devices.Posture do
   def rung_fields(:santa, _serial_rung), do: [:serial_number]
   def rung_fields(:sentinelone, :mdm_device_id), do: []
   def rung_fields(:sentinelone, _serial_rung), do: [:serial_number]
+  def rung_fields(:sophos, :mdm_device_id), do: []
+  def rung_fields(:sophos, _serial_rung), do: [:serial_number]
 
   defp match_keys(%Device{} = device) do
     Enum.reject(
@@ -176,14 +183,14 @@ defmodule Portal.Devices.Posture do
   # Intune row it was joined through and inherits that row's rung.
   defp matches(rows, keys) do
     provider_matches =
-      for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3],
+      for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3, sophos: 4],
           row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
           rung = matched_rung(type, keys, row),
           not is_nil(rung),
           do: {type, row, rung, nil}
 
     defender_matches =
-      for {intune, _iru, _santa, _sentinelone, defender} <- rows,
+      for {intune, _iru, _santa, _sentinelone, _sophos, defender} <- rows,
           not is_nil(intune) and not is_nil(defender),
           rung = matched_rung(:intune, keys, intune),
           not is_nil(rung),
@@ -214,7 +221,7 @@ defmodule Portal.Devices.Posture do
   end
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne}
+    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     # Runs unscoped: a policy check must see the rows whatever the connecting
     # actor may read, and the account filter keeps them in bounds. The join
@@ -228,8 +235,12 @@ defmodule Portal.Devices.Posture do
       |> join_iru(all?)
       |> join_santa(all?)
       |> join_sentinelone(all?)
+      |> join_sophos(all?)
       |> join_defender(all?)
-      |> select([device: d, intune: i, iru: r, santa: s, sentinelone: o, defender: f], {d.id, i, r, s, o, f})
+      |> select(
+        [device: d, intune: i, iru: r, santa: s, sentinelone: o, sophos: x, defender: f],
+        {d.id, i, r, s, o, x, f}
+      )
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -272,6 +283,22 @@ defmodule Portal.Devices.Posture do
           o.account_id == d.account_id and
             (o.serial_number == d.last_attested_device_serial or o.serial_number == d.device_serial)
       )
+    end
+
+    # A reinstalled endpoint gets a new Sophos record while the old one stays,
+    # both with the same serial, so only the most recently seen one counts.
+    defp join_sophos(query, all?) do
+      latest =
+        from(x in subquery(rows(Sophos.Device, Sophos.PostureProvider, all?)),
+          where: x.account_id == parent_as(:device).account_id,
+          where:
+            x.serial_number == parent_as(:device).last_attested_device_serial or
+              x.serial_number == parent_as(:device).device_serial,
+          distinct: [asc: x.serial_number],
+          order_by: [desc_nulls_last: x.last_seen_at, desc: x.synced_at, desc: x.sophos_id]
+        )
+
+      join(query, :left_lateral, [device: d], x in subquery(latest), as: :sophos, on: x.account_id == d.account_id)
     end
 
     defp join_defender(query, all?) do

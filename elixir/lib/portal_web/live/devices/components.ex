@@ -1438,6 +1438,7 @@ defmodule PortalWeb.Devices.Components do
   defp posture_provider_label(:defender), do: "Microsoft Defender"
   defp posture_provider_label(:santa), do: "Santa"
   defp posture_provider_label(:sentinelone), do: "SentinelOne"
+  defp posture_provider_label(:sophos), do: "Sophos XDR"
 
   defp posture_match_label(:mdm_device_id), do: "Attested device ID"
   defp posture_match_label(:attested_serial), do: "Attested serial"
@@ -1531,6 +1532,24 @@ defmodule PortalWeb.Devices.Components do
       {"Site", device.site_name},
       {"SentinelOne UUID", device.uuid},
       {"Last active", device.last_active_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:sophos, device) do
+    drop_empty([
+      {"Hostname", device.hostname},
+      {"Serial number", device.serial_number},
+      {"Operating system", device.os_name},
+      {"Overall health", device.health_overall},
+      {"Threats", device.health_threats_status},
+      {"Services", device.health_services_status},
+      {"Tamper protection", device.tamper_protection_enabled},
+      {"Encryption", device.encryption_overall_status},
+      {"Associated person", device.associated_person_name},
+      {"Group", device.group_name},
+      {"Sophos ID", device.sophos_id},
+      {"Last seen", device.last_seen_at},
       {"Last synced", device.synced_at}
     ])
   end

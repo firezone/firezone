@@ -105,8 +105,8 @@ defmodule PortalAPI.Schemas.Policy do
       A leaf's `field` is `<provider>.<attribute>`, such as
       `intune.compliance_state` or `firezone.last_seen_version`. The provider
       is one of `firezone` (the connecting device's own record), `intune`,
-      `iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that
-      provider's synced device attributes. Every synced provider also has a
+      `iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is
+      one of that provider's synced device attributes. Every synced provider also has a
       boolean `enrolled` that is true when the provider knows the device.
 
       The attribute's type decides which operators apply and what `value`

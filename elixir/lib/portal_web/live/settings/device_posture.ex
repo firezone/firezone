@@ -3,7 +3,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   import Ecto.Changeset
 
-  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, PubSub}
+  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
   alias __MODULE__.Database
 
@@ -11,18 +11,13 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @feature_disabled "Device posture is not enabled for your account."
 
-  @types ~w[intune iru defender santa sentinelone]
+  @types ~w[intune iru defender santa sentinelone sophos]
 
   @coming_soon_providers [
     %{
       type: "crowdstrike",
       title: "CrowdStrike Falcon",
       description: "Register interest in CrowdStrike Falcon endpoint posture support."
-    },
-    %{
-      type: "sophos",
-      title: "Sophos XDR",
-      description: "Register interest in Sophos XDR endpoint posture support."
     },
     %{
       type: "jamf",
@@ -60,7 +55,8 @@ defmodule PortalWeb.Settings.DevicePosture do
     "iru" => ~w[name region subdomain api_token]a,
     "defender" => ~w[name]a,
     "santa" => ~w[name api_url api_key]a,
-    "sentinelone" => ~w[name management_url api_token]a
+    "sentinelone" => ~w[name management_url api_token]a,
+    "sophos" => ~w[name client_id client_secret]a
   }
 
   # Set by the verification flow rather than by an input, so they have to be
@@ -70,7 +66,8 @@ defmodule PortalWeb.Settings.DevicePosture do
     "iru" => ~w[is_verified]a,
     "defender" => ~w[tenant_id is_verified]a,
     "santa" => ~w[is_verified]a,
-    "sentinelone" => ~w[is_verified]a
+    "sentinelone" => ~w[is_verified]a,
+    "sophos" => ~w[tenant_id data_region_url is_verified]a
   }
 
   # What the Iru test call used, so a change to any of them means the tenant
@@ -78,6 +75,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   @iru_verification_fields ~w[region subdomain api_token]a
   @santa_verification_fields ~w[api_url api_key]a
   @sentinelone_verification_fields ~w[management_url api_token]a
+  @sophos_verification_fields ~w[client_id client_secret]a
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -318,6 +316,11 @@ defmodule PortalWeb.Settings.DevicePosture do
         %{assigns: %{type: "sentinelone"}} = socket
       ) do
     send(self(), :verify_sentinelone)
+    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+  end
+
+  def handle_event("start_verification", _params, %{assigns: %{type: "sophos"}} = socket) do
+    send(self(), :verify_sophos)
     {:noreply, assign(socket, verification_error: nil, verifying: true)}
   end
 
@@ -569,6 +572,36 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
+  def handle_info(:verify_sophos, socket) do
+    changeset = socket.assigns.form.source
+
+    case Sophos.APIClient.verify(
+           get_field(changeset, :client_id),
+           get_field(changeset, :client_secret)
+         ) do
+      {:ok, %{tenant_id: tenant_id, data_region_url: data_region_url}} ->
+        attrs =
+          Map.merge(changeset.changes, %{
+            tenant_id: tenant_id,
+            data_region_url: data_region_url,
+            is_verified: true
+          })
+
+        {:noreply,
+         assign(socket,
+           form: to_form(provider_changeset(changeset.data, "sophos", attrs), as: :provider),
+           verification_error: nil,
+           verifying: false
+         )}
+
+      {:error, reason} ->
+        Logger.info("Failed to verify Sophos provider", reason: inspect(reason))
+
+        {:noreply,
+         assign(socket, verifying: false, verification_error: sophos_verification_error(reason))}
+    end
+  end
+
   def handle_info({:peek_pending_verification, from}, socket) do
     send(from, {:pending_verification, socket.assigns[:pending_verification]})
     {:noreply, socket}
@@ -807,6 +840,20 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                   <span class="text-xs text-body">
                     Sync endpoint agents and posture from a SentinelOne tenant.
+                  </span>
+                </Navigation.link>
+              </li>
+              <li>
+                <Navigation.link
+                  patch={~p"/#{@account}/settings/device_posture/sophos/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <Core.provider_icon provider="sophos" size="xl" />
+                    <span class="text-sm font-medium text-heading">Sophos XDR</span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync endpoints and their health from a Sophos Central tenant.
                   </span>
                 </Navigation.link>
               </li>
@@ -1294,6 +1341,48 @@ defmodule PortalWeb.Settings.DevicePosture do
         </div>
       </div>
 
+      <div :if={@type == "sophos"}>
+        <Form.input
+          field={@form[:client_id]}
+          type="text"
+          label="Client ID"
+          autocomplete="off"
+          phx-debounce="300"
+          required
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Create tenant API credentials with the Service Principal Read-Only role in Sophos
+          Central under Global Settings > Access Control > API Credentials.
+        </p>
+      </div>
+
+      <div :if={@type == "sophos"}>
+        <label for={@form[:client_secret].id} class="block text-xs font-medium text-body mb-1.5">
+          Client Secret <span class="text-error">*</span>
+        </label>
+        <Form.input
+          field={@form[:client_secret]}
+          value={typed_client_secret(@form)}
+          type="password"
+          autocomplete="off"
+          phx-debounce="300"
+          data-1p-ignore
+          placeholder={if @editing?, do: "Leave blank to keep the current secret"}
+          required={not @editing?}
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Sophos shows the secret only once, when the credentials are created.
+        </p>
+        <div class="mt-2 rounded border border-border bg-raised px-3 py-2">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Required
+          </p>
+          <p class="mt-1 text-xs font-mono text-body">
+            GET {Sophos.APIClient.endpoints_path()}
+          </p>
+        </div>
+      </div>
+
       <div :if={@type == "iru"}>
         <Form.input
           field={@form[:subdomain]}
@@ -1371,7 +1460,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         </div>
 
         <div
-          :if={@type in ~w[intune defender]}
+          :if={@type in ~w[intune defender sophos]}
           class="mt-4 pt-4 border-t border-border space-y-3"
         >
           <div class="flex justify-between items-center">
@@ -1459,6 +1548,9 @@ defmodule PortalWeb.Settings.DevicePosture do
       type == "sentinelone" ->
         "Check that the API token can view endpoints in the SentinelOne tenant."
 
+      type == "sophos" ->
+        "Check that the API credentials can read endpoints in the Sophos Central tenant."
+
       true ->
         "Check that the API key can read hosts in the Workshop tenant."
     end
@@ -1477,12 +1569,14 @@ defmodule PortalWeb.Settings.DevicePosture do
   # no change and the stored token stays.
   defp typed_api_token(form), do: get_change(form.source, :api_token) || ""
   defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
+  defp typed_client_secret(form), do: get_change(form.source, :client_secret) || ""
 
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
   defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
   defp provider_title("santa"), do: "Santa (Workshop)"
   defp provider_title("sentinelone"), do: "SentinelOne"
+  defp provider_title("sophos"), do: "Sophos XDR"
 
   defp coming_soon_provider(type) do
     Enum.find(@coming_soon_providers, &(&1.type == type))
@@ -1504,6 +1598,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp new_provider("defender"), do: %Defender.PostureProvider{}
   defp new_provider("santa"), do: %Santa.PostureProvider{}
   defp new_provider("sentinelone"), do: %SentinelOne.PostureProvider{}
+  defp new_provider("sophos"), do: %Sophos.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
 
@@ -1514,6 +1609,9 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp reset_verification_attrs("defender"), do: %{tenant_id: nil, is_verified: false}
   defp reset_verification_attrs("santa"), do: %{is_verified: false}
   defp reset_verification_attrs("sentinelone"), do: %{is_verified: false}
+
+  defp reset_verification_attrs("sophos"),
+    do: %{tenant_id: nil, data_region_url: nil, is_verified: false}
 
   # Admin consent, or a successful call against the tenant, is what proves the
   # provider works, so the form refuses to save until one succeeded. The sync
@@ -1536,7 +1634,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   # Dropping it means the stored one stays; a new provider still has none and
   # still fails the required check.
   defp drop_blank_secret(attrs) do
-    Enum.reduce(["api_token", "api_key"], attrs, fn field, attrs ->
+    Enum.reduce(["api_token", "api_key", "client_secret"], attrs, fn field, attrs ->
       if blank_secret?(attrs[field]), do: Map.delete(attrs, field), else: attrs
     end)
   end
@@ -1561,6 +1659,8 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp base_changeset(changeset, "sentinelone"),
     do: SentinelOne.PostureProvider.changeset(changeset)
 
+  defp base_changeset(changeset, "sophos"), do: Sophos.PostureProvider.changeset(changeset)
+
   defp clear_verification_if_trigger_fields_changed(changeset, "iru") do
     if Enum.any?(@iru_verification_fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)
@@ -1579,6 +1679,14 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp clear_verification_if_trigger_fields_changed(changeset, "sentinelone") do
     if Enum.any?(@sentinelone_verification_fields, &get_change(changeset, &1)) do
+      put_change(changeset, :is_verified, false)
+    else
+      changeset
+    end
+  end
+
+  defp clear_verification_if_trigger_fields_changed(changeset, "sophos") do
+    if Enum.any?(@sophos_verification_fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)
     else
       changeset
@@ -1704,10 +1812,12 @@ defmodule PortalWeb.Settings.DevicePosture do
     defender_counts = Database.defender_device_counts(subject)
     santa_counts = Database.santa_device_counts(subject)
     sentinelone_counts = Database.sentinelone_device_counts(subject)
+    sophos_counts = Database.sophos_device_counts(subject)
 
     by_provider =
       Enum.reduce(
-        intune_counts ++ iru_counts ++ defender_counts ++ santa_counts ++ sentinelone_counts,
+        intune_counts ++
+          iru_counts ++ defender_counts ++ santa_counts ++ sentinelone_counts ++ sophos_counts,
         %{},
         fn {id, _key, n}, acc -> Map.update(acc, id, n, &(&1 + n)) end
       )
@@ -1866,12 +1976,14 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp sync_worker("defender"), do: Defender.Sync
   defp sync_worker("santa"), do: Santa.Sync
   defp sync_worker("sentinelone"), do: SentinelOne.Sync
+  defp sync_worker("sophos"), do: Sophos.Sync
 
   defp provider_type_atom("intune"), do: :intune
   defp provider_type_atom("iru"), do: :iru
   defp provider_type_atom("defender"), do: :defender
   defp provider_type_atom("santa"), do: :santa
   defp provider_type_atom("sentinelone"), do: :sentinelone
+  defp provider_type_atom("sophos"), do: :sophos
 
   defp entra_verification_type("intune"), do: "intune_posture_provider"
   defp entra_verification_type("defender"), do: "defender_posture_provider"
@@ -1881,6 +1993,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp verification_fields("defender"), do: [:tenant_id]
   defp verification_fields("santa"), do: @santa_verification_fields
   defp verification_fields("sentinelone"), do: @sentinelone_verification_fields
+  defp verification_fields("sophos"), do: @sophos_verification_fields
 
   # The worker resolves the provider by both ids, so the account has to ride
   # along with the row id rather than being trusted from the browser.
@@ -1935,6 +2048,24 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp sentinelone_verification_error(_reason),
     do: "Could not reach the SentinelOne tenant. Check the Management URL."
 
+  defp sophos_verification_error(%Req.Response{status: status}) when status in [400, 401],
+    do: "Sophos rejected the client ID or secret. Check that they are correct and not expired."
+
+  defp sophos_verification_error(%Req.Response{status: 403}),
+    do: "The API credentials cannot read endpoints. Give them the Service Principal Read-Only role."
+
+  defp sophos_verification_error(%Req.Response{status: status}),
+    do: "Sophos returned HTTP #{status}. Please try again."
+
+  defp sophos_verification_error(:unsupported_credentials),
+    do: "These are partner or organization credentials. Create API credentials in the tenant."
+
+  defp sophos_verification_error({:invalid_response, _message, _body}),
+    do: "Sophos returned an unexpected response."
+
+  defp sophos_verification_error(_reason),
+    do: "Could not reach Sophos Central. Please try again."
+
   defp account_feature_enabled?(socket),
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
@@ -1943,7 +2074,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defmodule Database do
     import Ecto.Query
 
-    alias Portal.{Defender, PostureProvider, Intune, Iru, Santa, Safe, SentinelOne}
+    alias Portal.{Defender, PostureProvider, Intune, Iru, Santa, Safe, SentinelOne, Sophos}
 
     def list_providers(subject, device_counts) do
       intune =
@@ -1991,7 +2122,16 @@ defmodule PortalWeb.Settings.DevicePosture do
           row(provider, "sentinelone", name, provider.management_url, device_counts)
         end)
 
-      Enum.sort_by(intune ++ iru ++ defender ++ santa ++ sentinelone, &{
+      sophos =
+        Sophos.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "sophos", name, provider.tenant_id, device_counts)
+        end)
+
+      Enum.sort_by(intune ++ iru ++ defender ++ santa ++ sentinelone ++ sophos, &{
         String.downcase(&1.name),
         &1.type
       })
@@ -2064,6 +2204,16 @@ defmodule PortalWeb.Settings.DevicePosture do
       |> Safe.all()
     end
 
+    @doc "Counts synced Sophos endpoints by provider and overall health."
+    def sophos_device_counts(subject) do
+      from(d in Sophos.Device,
+        group_by: [d.posture_provider_id, d.health_overall],
+        select: {d.posture_provider_id, d.health_overall, count(d.sophos_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
     def get_provider!(type, id, subject) do
       provider =
         from(p in schema(type), where: p.id == ^id, preload: [:posture_provider])
@@ -2100,6 +2250,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     defp schema("defender"), do: Defender.PostureProvider
     defp schema("santa"), do: Santa.PostureProvider
     defp schema("sentinelone"), do: SentinelOne.PostureProvider
+    defp schema("sophos"), do: Sophos.PostureProvider
 
     defp row(provider, type, name, identifier, device_counts) do
       %{

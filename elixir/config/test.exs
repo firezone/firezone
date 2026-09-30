@@ -208,6 +208,12 @@ config :portal, Portal.SentinelOne.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Sophos.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
