@@ -48,40 +48,11 @@ impl Io {
         name: impl Into<String>,
         fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
     ) -> Result<Self> {
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
+        let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
-            outbound_tx,
-            inbound_rx,
-            {
-                let fd = fd.clone();
-                move || {
-                    logging::unwrap_or_warn!(
-                        tun_send(fd, outbound_rx),
-                        "Failed to send to TUN device: {}"
-                    )
-                }
-            },
-            move || {
-                logging::unwrap_or_warn!(
-                    tun_recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            },
+            &tokio::runtime::Handle::current(),
+            move |outbound_rx| tun_send(send_fd, outbound_rx),
+            move |inbound_tx| tun_recv(fd, inbound_tx),
         )?;
 
         Ok(Self {

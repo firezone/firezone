@@ -63,39 +63,10 @@ impl Io {
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
         let workers = tun::Workers::spawn(
-            outbound_tx,
-            inbound_rx,
-            move || {
-                logging::unwrap_or_warn!(
-                    crate::send(fd, outbound_rx),
-                    "Failed to send to TUN device: {}"
-                )
-            },
-            move || {
-                logging::unwrap_or_warn!(
-                    crate::recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            },
+            runtime,
+            move |outbound_rx| send(fd, outbound_rx),
+            move |inbound_tx| recv(fd, inbound_tx),
         )?;
 
         Ok(Self { name, workers })

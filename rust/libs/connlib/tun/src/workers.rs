@@ -1,45 +1,59 @@
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
+
+use crate::{InboundRx, InboundTx, OutboundRx, OutboundTx};
 
 /// Owns the channel endpoints and worker threads of a TUN implementation.
 ///
 /// Dropping closes the channels before joining the threads. Platform-specific
 /// blocking IO must be cancelled before these workers are dropped.
-pub struct Workers<Outbound = crate::OutboundTx, Inbound = crate::InboundRx> {
-    state: Option<(Outbound, Inbound)>,
+pub struct Workers<Packet = crate::PacketBatch> {
+    state: Option<(OutboundTx<Packet>, InboundRx<Packet>)>,
     send_thread: Option<JoinHandle<()>>,
     recv_thread: Option<JoinHandle<()>>,
 }
 
-impl<Outbound, Inbound> Workers<Outbound, Inbound> {
-    /// Starts one worker thread per IO direction.
+impl<Packet: Send + Sync + 'static> Workers<Packet> {
+    /// Starts one worker per IO direction, with packet channels and queue metrics.
     pub fn spawn(
-        outbound_tx: Outbound,
-        inbound_rx: Inbound,
-        send: impl FnOnce() + Send + 'static,
-        recv: impl FnOnce() + Send + 'static,
+        runtime: &tokio::runtime::Handle,
+        send: impl FnOnce(OutboundRx<Packet>) -> anyhow::Result<()> + Send + 'static,
+        recv: impl FnOnce(InboundTx<Packet>) -> anyhow::Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
+        let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
+        let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
+
+        runtime.spawn(otel_instruments::periodic_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_transmit(),
+            ],
+        ));
+        runtime.spawn(otel_instruments::periodic_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel_attributes::queue_item_ip_packet_batch(),
+                otel_attributes::network_io_direction_receive(),
+            ],
+        ));
+
         let mut workers = Self {
-            state: Some((outbound_tx, inbound_rx)),
+            state: Some((OutboundTx(outbound_tx), InboundRx(inbound_rx))),
             send_thread: None,
             recv_thread: None,
         };
 
-        workers.send_thread = Some(
-            std::thread::Builder::new()
-                .name("TUN send".to_owned())
-                .spawn(send)?,
-        );
-        workers.recv_thread = Some(
-            std::thread::Builder::new()
-                .name("TUN recv".to_owned())
-                .spawn(recv)?,
-        );
+        workers.send_thread = Some(spawn_worker("send", move || send(OutboundRx(outbound_rx)))?);
+        workers.recv_thread = Some(spawn_worker("recv", move || recv(InboundTx(inbound_tx)))?);
 
         Ok(workers)
     }
+}
 
-    pub fn sender(&self) -> &Outbound {
+impl<Packet> Workers<Packet> {
+    pub fn sender(&self) -> &OutboundTx<Packet> {
         &self
             .state
             .as_ref()
@@ -47,7 +61,7 @@ impl<Outbound, Inbound> Workers<Outbound, Inbound> {
             .0
     }
 
-    pub fn receiver(&mut self) -> &mut Inbound {
+    pub fn receiver(&mut self) -> &mut InboundRx<Packet> {
         &mut self
             .state
             .as_mut()
@@ -56,7 +70,7 @@ impl<Outbound, Inbound> Workers<Outbound, Inbound> {
     }
 }
 
-impl<Outbound, Inbound> Drop for Workers<Outbound, Inbound> {
+impl<Packet> Drop for Workers<Packet> {
     fn drop(&mut self) {
         const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
 
@@ -97,6 +111,19 @@ impl<Outbound, Inbound> Drop for Workers<Outbound, Inbound> {
     }
 }
 
+fn spawn_worker(
+    direction: &'static str,
+    worker: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
+) -> std::io::Result<JoinHandle<()>> {
+    let thread = std::thread::Builder::new()
+        .name(format!("TUN {direction}"))
+        .spawn(move || {
+            logging::unwrap_or_warn!(worker(), "TUN {direction} worker failed: {}");
+        })?;
+
+    Ok(thread)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,29 +134,33 @@ mod tests {
 
     #[test]
     fn drop_closes_channels_and_joins_both_workers() {
-        let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::channel::<()>(1);
-        let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel::<()>(1);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
         let started = Arc::new(Barrier::new(3));
         let stopped = Arc::new(AtomicUsize::new(0));
-        let workers = Workers::spawn(
-            outbound_tx,
-            inbound_rx,
+        let workers = Workers::<()>::spawn(
+            runtime.handle(),
             {
                 let started = started.clone();
                 let stopped = stopped.clone();
-                move || {
+                move |mut outbound_rx| {
                     started.wait();
                     assert!(outbound_rx.blocking_recv().is_none());
                     stopped.fetch_add(1, Ordering::SeqCst);
+
+                    Ok(())
                 }
             },
             {
                 let started = started.clone();
                 let stopped = stopped.clone();
-                move || {
+                move |inbound_tx| {
                     started.wait();
                     while inbound_tx.blocking_send(()).is_ok() {}
                     stopped.fetch_add(1, Ordering::SeqCst);
+
+                    Ok(())
                 }
             },
         )

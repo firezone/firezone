@@ -38,42 +38,11 @@ impl Io {
         let fd = Arc::new(unsafe { OwnedFd::from_raw_fd(fd) });
         let name = unsafe { interface_name(fd.as_raw_fd())? };
 
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
-
+        let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
-            outbound_tx,
-            inbound_rx,
-            {
-                let fd = fd.clone();
-                move || {
-                    logging::unwrap_or_warn!(
-                        crate::plain_ip::tun_send(fd, outbound_rx, write),
-                        "Failed to send to TUN device: {}"
-                    )
-                }
-            },
-            move || {
-                logging::unwrap_or_warn!(
-                    crate::plain_ip::tun_recv(fd, inbound_tx, read),
-                    "Failed to recv from TUN device: {}"
-                )
-            },
+            runtime,
+            move |outbound_rx| crate::plain_ip::tun_send(send_fd, outbound_rx, write),
+            move |inbound_tx| crate::plain_ip::tun_recv(fd, inbound_tx, read),
         )?;
 
         Ok(Io { name, workers })

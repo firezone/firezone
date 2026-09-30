@@ -9,9 +9,7 @@ anyhow = { workspace = true }
 futures = { workspace = true }
 ip-packet = { workspace = true }
 libc = { workspace = true }
-logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
-otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 packet-coalescer = { workspace = true }
 smallvec = { workspace = true }

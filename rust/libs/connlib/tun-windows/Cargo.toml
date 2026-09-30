@@ -8,7 +8,6 @@ license = { workspace = true }
 anyhow = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
-otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 packet-coalescer = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync"] }

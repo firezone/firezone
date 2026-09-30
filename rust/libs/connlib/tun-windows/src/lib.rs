@@ -39,27 +39,18 @@ impl Io {
         let send_session = Arc::downgrade(&session);
         let recv_session = Arc::downgrade(&session);
 
-        let (outbound_tx, outbound_rx) = tun::outbound_channel();
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        tokio::runtime::Handle::current().spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
         let workers = tun::Workers::spawn(
-            outbound_tx,
-            inbound_rx,
-            move || send_worker(outbound_rx, send_session, should_coalesce_tcp),
-            move || recv_worker(inbound_tx, recv_session),
+            &tokio::runtime::Handle::current(),
+            move |outbound_rx| {
+                send_worker(outbound_rx, send_session, should_coalesce_tcp);
+
+                Ok(())
+            },
+            move |inbound_tx| {
+                recv_worker(inbound_tx, recv_session);
+
+                Ok(())
+            },
         )
         .context("Failed to start TUN worker threads")?;
 
