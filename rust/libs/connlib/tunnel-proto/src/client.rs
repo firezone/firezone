@@ -255,6 +255,11 @@ impl ClientState {
         })
     }
 
+    /// Returns the network path currently selected for `peer`.
+    pub fn connection_path(&self, peer: ClientOrGatewayId) -> Option<snownet::ConnectionPath> {
+        self.node.connection_path(&peer)
+    }
+
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
