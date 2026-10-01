@@ -54,8 +54,12 @@ public enum Telemetry {
 
     guard let environment
     else {
-      // Disable Sentry in unknown environments
-      SentrySDK.close()
+      // Disable Sentry in unknown environments.
+      // `close()` flushes pending events synchronously on the main queue, so drain them first.
+      Task.detached(priority: .utility) {
+        SentrySDK.flush(timeout: 2)
+        SentrySDK.close()
+      }
 
       return
     }
