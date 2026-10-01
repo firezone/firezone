@@ -17,6 +17,16 @@ impl fmt::Display for Kind {
 }
 
 impl Kind {
+    /// All variants, in declaration order.
+    pub const ALL: [Kind; 6] = [
+        Kind::Stun,
+        Kind::Wireguard,
+        Kind::Unknown,
+        Kind::StunOverTurn,
+        Kind::WireguardOverTurn,
+        Kind::UnknownOverTurn,
+    ];
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Kind::Stun => "stun",

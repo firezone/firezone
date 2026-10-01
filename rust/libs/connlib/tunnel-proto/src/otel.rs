@@ -3,21 +3,8 @@ pub mod attr {
 
     use opentelemetry::KeyValue;
 
-    pub fn network_protocol_name(payload: &[u8]) -> KeyValue {
+    pub fn network_protocol_name(kind: crate::packet_kind::Kind) -> KeyValue {
         const KEY: &str = "network.protocol.name";
-
-        KeyValue::new(KEY, crate::packet_kind::classify(payload))
-    }
-
-    /// The protocol name of a WireGuard data message, sent through a TURN channel if `relayed`.
-    pub fn wireguard_protocol_name(relayed: bool) -> KeyValue {
-        const KEY: &str = "network.protocol.name";
-
-        let kind = if relayed {
-            crate::packet_kind::Kind::WireguardOverTurn
-        } else {
-            crate::packet_kind::Kind::Wireguard
-        };
 
         KeyValue::new(KEY, kind)
     }

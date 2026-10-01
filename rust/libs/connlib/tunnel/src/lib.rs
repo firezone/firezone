@@ -16,6 +16,7 @@ use connlib_model::{ClientId, ClientOrGatewayId, PublicKey};
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use packet_kind_counts::PacketKindCounts;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -29,6 +30,7 @@ use tun::Tun;
 use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
+mod packet_kind_counts;
 mod sockets;
 mod utils;
 
@@ -333,18 +335,13 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
+                    let mut received_counts = PacketKindCounts::default();
+
                     for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
 
                         for received in batch.drain() {
-                            self.packet_counter.add(
-                                1,
-                                &[
-                                    otel::attr::network_protocol_name(received.packet),
-                                    otel::attr::network_transport_udp(),
-                                    otel::attr::network_io_direction_receive(),
-                                ],
-                            );
+                            received_counts.record(received.packet);
 
                             match self
                                 .role_state
@@ -375,6 +372,17 @@ impl ClientTunnel {
                         if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
+                    }
+
+                    for (kind, count) in received_counts.non_zero() {
+                        self.packet_counter.add(
+                            count,
+                            &[
+                                otel::attr::network_protocol_name(kind),
+                                otel::attr::network_transport_udp(),
+                                otel::attr::network_io_direction_receive(),
+                            ],
+                        );
                     }
 
                     tick.want_continue();
@@ -578,18 +586,13 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
+                    let mut received_counts = PacketKindCounts::default();
+
                     for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
 
                         for received in batch.drain() {
-                            self.packet_counter.add(
-                                1,
-                                &[
-                                    otel::attr::network_protocol_name(received.packet),
-                                    otel::attr::network_transport_udp(),
-                                    otel::attr::network_io_direction_receive(),
-                                ],
-                            );
+                            received_counts.record(received.packet);
 
                             match self
                                 .role_state
@@ -620,6 +623,17 @@ impl GatewayTunnel {
                         if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
+                    }
+
+                    for (kind, count) in received_counts.non_zero() {
+                        self.packet_counter.add(
+                            count,
+                            &[
+                                otel::attr::network_protocol_name(kind),
+                                otel::attr::network_transport_udp(),
+                                otel::attr::network_io_direction_receive(),
+                            ],
+                        );
                     }
 
                     tick.want_continue();
