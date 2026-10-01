@@ -82,6 +82,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         drop_llmnr_nxdomain_responses,
         stream_logs,
         stream_metrics,
+        metrics_reservoir_size: _,
         wintun_tcp_coalescing,
     } = &*FEATURE_FLAGS;
 
@@ -95,7 +96,7 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             drop_llmnr_nxdomain_responses.load(Ordering::Relaxed),
         ),
         ("stream_logs", !stream_logs.read().directives.is_empty()),
-        ("stream_metrics", stream_metrics.read().enabled),
+        ("stream_metrics", stream_metrics.load(Ordering::Relaxed)),
         (
             "wintun_tcp_coalescing",
             wintun_tcp_coalescing.load(Ordering::Relaxed),
@@ -234,7 +235,8 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: AtomicBool,
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
-    stream_metrics: RwLock<StreamMetrics>,
+    stream_metrics: AtomicBool,
+    metrics_reservoir_size: RwLock<MetricsReservoirSize>,
     wintun_tcp_coalescing: AtomicBool,
 }
 
@@ -263,10 +265,9 @@ impl FeatureFlags {
         self.wintun_tcp_coalescing
             .store(wintun_tcp_coalescing, Ordering::Relaxed);
 
-        *self.stream_metrics.write() = StreamMetrics {
-            enabled: stream_metrics,
-            reservoir_size: MetricsConfig::parse(&payloads.stream_metrics).reservoir_size(),
-        };
+        self.stream_metrics.store(stream_metrics, Ordering::Relaxed);
+        *self.metrics_reservoir_size.write() =
+            MetricsReservoirSize(MetricsConfig::parse(&payloads.stream_metrics).reservoir_size());
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -291,7 +292,7 @@ impl FeatureFlags {
     }
 
     fn stream_metrics(&self) -> bool {
-        self.stream_metrics.read().enabled
+        self.stream_metrics.load(Ordering::Relaxed)
     }
 
     fn wintun_tcp_coalescing(&self) -> bool {
@@ -299,7 +300,7 @@ impl FeatureFlags {
     }
 
     fn metrics_reservoir_size(&self) -> usize {
-        self.stream_metrics.read().reservoir_size
+        self.metrics_reservoir_size.read().0
     }
 }
 
@@ -361,22 +362,13 @@ impl MetricsConfig {
     }
 }
 
-/// Resolved runtime state for metric streaming, kept in [`FeatureFlags`].
-///
-/// `enabled` is driven by the boolean `stream_metrics` flag, while `reservoir_size`
-/// comes from its payload; the two are independent.
+/// The number of samples kept per distribution series, from the `stream_metrics` payload.
 #[derive(Debug)]
-struct StreamMetrics {
-    enabled: bool,
-    reservoir_size: usize,
-}
+struct MetricsReservoirSize(usize);
 
-impl Default for StreamMetrics {
+impl Default for MetricsReservoirSize {
     fn default() -> Self {
-        Self {
-            enabled: false,
-            reservoir_size: DEFAULT_METRICS_RESERVOIR_SIZE,
-        }
+        Self(DEFAULT_METRICS_RESERVOIR_SIZE)
     }
 }
 
