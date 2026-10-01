@@ -278,10 +278,6 @@ where
             error.push(e);
         }
 
-        if let Some(e) = self.crypto.take_error() {
-            error.push(e);
-        }
-
         let device = self.tun.poll_read(cx).map_ok(|batch| {
             let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
             let num_ipv6 = batch.len() - num_ipv4;
@@ -435,7 +431,7 @@ where
 
             self.count_transmit(datagram.datagram());
             let socket = self.sockets.sender(datagram.datagram().dst)?;
-            self.crypto.seal(datagram, socket);
+            self.crypto.seal(datagram, socket)?;
         }
 
         Poll::Ready(Ok(()))
@@ -455,8 +451,11 @@ where
     }
 
     /// Decrypts a batch of packets off the main thread, yielding them via [`Input::decrypted`].
-    pub fn decrypt(&mut self, packets: Vec<Received<EncryptedPacket<TId>>>) {
-        self.crypto.open(packets);
+    pub fn decrypt(
+        &mut self,
+        packets: Vec<Received<EncryptedPacket<TId>>>,
+    ) -> Result<(), CryptoWorkersUnavailable> {
+        self.crypto.open(packets)
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {

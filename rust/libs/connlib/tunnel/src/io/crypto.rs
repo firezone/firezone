@@ -11,7 +11,6 @@ use std::{
     thread,
 };
 
-use anyhow::Context as _;
 use futures::task::AtomicWaker;
 use ip_packet::Ecn;
 use snownet::{DecryptedPacket, EncryptedPacket};
@@ -54,7 +53,6 @@ pub struct CryptoWorkersUnavailable;
 /// socket; opened packets come back over a channel polled by the main thread.
 pub struct Crypto<TId> {
     workers: Vec<crossbeam_channel::Sender<Job<TId>>>,
-    spawn_error: Option<anyhow::Error>,
     seals_in_flight: Arc<SealsInFlight>,
     opens_in_flight: Arc<AtomicUsize>,
     opened_rx: mpsc::UnboundedReceiver<Opened<TId>>,
@@ -87,27 +85,15 @@ where
                 Ok(jobs_tx)
             })
             .collect::<io::Result<_>>()
-            .context(CryptoWorkersUnavailable);
-
-        let (workers, spawn_error) = match workers {
-            Ok(workers) => (workers, None),
-            Err(e) => (Vec::new(), Some(e)),
-        };
+            .inspect_err(|e| tracing::error!("Failed to spawn crypto workers: {e}"))
+            .unwrap_or_default();
 
         Self {
             workers,
-            spawn_error,
             seals_in_flight,
             opens_in_flight: Arc::default(),
             opened_rx,
         }
-    }
-
-    /// Returns the error that prevented the workers from starting, once.
-    ///
-    /// Without workers, all batches are dropped.
-    pub fn take_error(&mut self) -> Option<anyhow::Error> {
-        self.spawn_error.take()
     }
 
     pub fn poll_seal_ready(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -126,10 +112,12 @@ where
 
     /// Seals `datagram` and sends it to `socket`, after all batches previously submitted to the
     /// same peer.
-    pub fn seal(&mut self, datagram: PendingDatagram, socket: mpsc::Sender<DatagramOut>) {
-        let Some(index) = self.worker_index(datagram.datagram().dst, Direction::Seal) else {
-            return;
-        };
+    pub fn seal(
+        &mut self,
+        datagram: PendingDatagram,
+        socket: mpsc::Sender<DatagramOut>,
+    ) -> Result<(), CryptoWorkersUnavailable> {
+        let index = self.worker_index(datagram.datagram().dst, Direction::Seal)?;
         let worker = &self.workers[index];
 
         self.seals_in_flight.count.fetch_add(1, Ordering::Relaxed);
@@ -137,12 +125,17 @@ where
         if worker.send(Job::Seal(datagram, socket)).is_err() {
             self.seals_in_flight.release();
         }
+
+        Ok(())
     }
 
     /// Opens `packets`, after all packets previously submitted from the same peer.
-    pub fn open(&mut self, packets: Vec<Received<EncryptedPacket<TId>>>) {
+    pub fn open(
+        &mut self,
+        packets: Vec<Received<EncryptedPacket<TId>>>,
+    ) -> Result<(), CryptoWorkersUnavailable> {
         if packets.is_empty() {
-            return;
+            return Ok(());
         }
 
         let batch = Arc::new(BatchInFlight::new(self.opens_in_flight.clone()));
@@ -151,9 +144,7 @@ where
             .collect::<Vec<_>>();
 
         for received in packets {
-            let Some(index) = self.worker_index(received.from, Direction::Open) else {
-                return;
-            };
+            let index = self.worker_index(received.from, Direction::Open)?;
 
             parts[index].push(received);
         }
@@ -166,6 +157,8 @@ where
             // Fails only once the worker is gone, in which case the packets are dropped.
             let _ = worker.send(Job::Open(part, batch.clone()));
         }
+
+        Ok(())
     }
 
     /// Returns the number of received batches whose opened packets have not been polled yet.
@@ -187,14 +180,20 @@ where
         .collect()
     }
 
-    fn worker_index(&self, peer: SocketAddr, direction: Direction) -> Option<usize> {
+    fn worker_index(
+        &self,
+        peer: SocketAddr,
+        direction: Direction,
+    ) -> Result<usize, CryptoWorkersUnavailable> {
         let mut hasher = DefaultHasher::new();
         peer.hash(&mut hasher);
 
         let num_workers = self.workers.len();
-        let index = (hasher.finish() as usize).checked_rem(num_workers)?;
+        let index = (hasher.finish() as usize)
+            .checked_rem(num_workers)
+            .ok_or(CryptoWorkersUnavailable)?;
 
-        Some((index + direction as usize) % num_workers)
+        Ok((index + direction as usize) % num_workers)
     }
 }
 
@@ -302,7 +301,7 @@ mod tests {
             enqueue(&mut queue, &mut alice, DST_1, packet.packet(), now);
         }
         while let Some(datagram) = queue.pop() {
-            crypto.seal(datagram, socket.clone());
+            crypto.seal(datagram, socket.clone()).unwrap();
         }
         let mut released = Vec::new();
         while released.len() < 4 {

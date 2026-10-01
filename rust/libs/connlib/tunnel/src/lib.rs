@@ -366,7 +366,9 @@ impl ClientTunnel {
                             };
                         }
 
-                        self.io.decrypt(encrypted);
+                        if let Err(e) = self.io.decrypt(encrypted) {
+                            error.push(anyhow::Error::new(e));
+                        }
                     }
 
                     tick.want_continue();
@@ -603,7 +605,9 @@ impl GatewayTunnel {
                             };
                         }
 
-                        self.io.decrypt(encrypted);
+                        if let Err(e) = self.io.decrypt(encrypted) {
+                            error.push(anyhow::Error::new(e));
+                        }
                     }
 
                     tick.want_continue();
