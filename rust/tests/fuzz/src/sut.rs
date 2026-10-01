@@ -1310,11 +1310,6 @@ impl TunnelTest {
     ) -> anyhow::Result<()> {
         let now = self.flux_capacitor.now();
 
-        self.clients
-            .get_mut(&src)
-            .unwrap()
-            .exec_mut(|c| c.events.push((now, event.clone())));
-
         // Simulate a client that has not yet reconnected to the portal after a
         // roam: drop the portal-bound messages it emits. Local events (resource,
         // DNS and TUN interface updates) still flow so the harness state stays in
@@ -1605,12 +1600,18 @@ impl TunnelTest {
             }
             ClientEvent::NoRelays { excluded_relay_ids } => {
                 // Mimic the portal: reply with the current set of relays, except the excluded ones.
-                let relays = self
+                let mut relays = self
                     .relays
                     .iter()
-                    .filter(|(id, _)| !excluded_relay_ids.contains(id));
+                    .filter(|(id, _)| !excluded_relay_ids.contains(id))
+                    .peekable();
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| c.update_relays(iter::empty(), relays, now));
+                client.exec_mut(|c| {
+                    if relays.peek().is_some() {
+                        c.answerable_relay_requests.push(now);
+                    }
+                    c.update_relays(iter::empty(), relays, now)
+                });
 
                 Ok(())
             }
@@ -1826,8 +1827,6 @@ fn on_gateway_event(
     global_dns_records: &DnsRecords,
     now: Instant,
 ) {
-    gateway.exec_mut(|g| g.events.push((now, event.clone())));
-
     match event {
         GatewayEvent::AddedIceCandidates {
             conn_id,
@@ -1868,10 +1867,16 @@ fn on_gateway_event(
         }
         GatewayEvent::NoRelays { excluded_relay_ids } => {
             // Mimic the portal: reply with the current set of relays, except the excluded ones.
-            let relays = relays
+            let mut relays = relays
                 .iter()
-                .filter(|(id, _)| !excluded_relay_ids.contains(id));
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays, now));
+                .filter(|(id, _)| !excluded_relay_ids.contains(id))
+                .peekable();
+            gateway.exec_mut(|g| {
+                if relays.peek().is_some() {
+                    g.answerable_relay_requests.push(now);
+                }
+                g.update_relays(iter::empty(), relays, now)
+            });
         }
     }
 }

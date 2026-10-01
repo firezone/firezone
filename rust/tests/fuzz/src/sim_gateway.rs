@@ -17,7 +17,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::{GatewayEvent, GatewayState};
+use tunnel_proto::GatewayState;
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -43,8 +43,8 @@ pub(crate) struct SimGateway {
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 
-    /// Every event the node emitted, and when.
-    pub(crate) events: Vec<(Instant, GatewayEvent)>,
+    /// When the node asked the portal for relays while the portal had some to give it.
+    pub(crate) answerable_relay_requests: Vec<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,7 +91,7 @@ impl SimGateway {
                 })
                 .collect(),
             transmit_buffer: snownet::TransmitBuffer::new(),
-            events: Default::default(),
+            answerable_relay_requests: Default::default(),
         }
     }
 

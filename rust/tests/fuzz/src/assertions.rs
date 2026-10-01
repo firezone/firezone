@@ -26,7 +26,7 @@ use std::{
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
-use tunnel_proto::{ClientEvent, GatewayEvent, dns};
+use tunnel_proto::dns;
 
 /// Checks the simulated tunnel against the reference state.
 pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
@@ -44,20 +44,10 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
     assert_dns_nat(state);
 
     for (id, client) in &state.clients {
-        let requests = client
-            .inner()
-            .events
-            .iter()
-            .filter(|(_, event)| matches!(event, ClientEvent::NoRelays { .. }));
-        assert_relay_requests_do_not_loop(id, requests.map(|(at, _)| *at));
+        assert_relay_requests_do_not_loop(id, &client.inner().answerable_relay_requests);
     }
     for (id, gateway) in &state.gateways {
-        let requests = gateway
-            .inner()
-            .events
-            .iter()
-            .filter(|(_, event)| matches!(event, GatewayEvent::NoRelays { .. }));
-        assert_relay_requests_do_not_loop(id, requests.map(|(at, _)| *at));
+        assert_relay_requests_do_not_loop(id, &gateway.inner().answerable_relay_requests);
     }
 
     for (client_id, ref_client_host) in &ref_state.clients {
@@ -323,20 +313,15 @@ fn assert_dns_nat(state: &TunnelTest) {
     }
 }
 
-/// Asserts that a node does not ask the portal for relays in a loop.
-fn assert_relay_requests_do_not_loop(
-    node: impl fmt::Display,
-    requested_at: impl Iterator<Item = Instant>,
-) {
+/// Asserts that a node does not ask the portal in a loop for relays the portal can give it.
+fn assert_relay_requests_do_not_loop(node: impl fmt::Display, requested_at: &[Instant]) {
     const MAX_REQUESTS_PER_MINUTE: usize = 10;
-
-    let requested_at = requested_at.collect::<Vec<_>>();
 
     if requested_at
         .windows(MAX_REQUESTS_PER_MINUTE + 1)
         .any(|w| w[MAX_REQUESTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
     {
-        tracing::error!(target: "assertions", %node, "Node asks the portal for relays in a loop");
+        tracing::error!(target: "assertions", %node, "Node asks the portal for relays in a loop despite getting some");
     }
 }
 

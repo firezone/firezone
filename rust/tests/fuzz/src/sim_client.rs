@@ -23,7 +23,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel_proto::{
-    ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
@@ -76,8 +76,8 @@ pub(crate) struct SimClient {
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
 
-    /// Every event the node emitted, and when.
-    pub(crate) events: Vec<(Instant, ClientEvent)>,
+    /// When the node asked the portal for relays while the portal had some to give it.
+    pub(crate) answerable_relay_requests: Vec<Instant>,
 }
 
 impl SimClient {
@@ -110,7 +110,7 @@ impl SimClient {
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
-            events: Default::default(),
+            answerable_relay_requests: Default::default(),
         }
     }
 
