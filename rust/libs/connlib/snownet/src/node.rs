@@ -720,7 +720,7 @@ where
 
         let gc = self.allocations.gc(now);
 
-        if gc.removed_last || gc.unblocked_without_allocations {
+        if gc.removed_last {
             tracing::info!("No relays left; requesting a new set");
 
             self.pending_events.push_back(Event::NoRelays {
@@ -1348,8 +1348,8 @@ pub enum Event<TId, RId> {
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
 
-    /// We have no relay to make relayed connections with: the last one was removed, we stopped
-    /// ignoring one while we had none, or none could be sampled for a new connection.
+    /// We have no relay to make relayed connections with: the last one was removed or none could
+    /// be sampled for a new connection.
     ///
     /// Upper layers should obtain new relays other than the `blocked` ones and pass them to
     /// [`Node::update_relays`].
@@ -2354,7 +2354,7 @@ mod tests {
     }
 
     #[test]
-    fn requests_new_relays_when_a_blocked_relay_is_unblocked() {
+    fn requests_new_relays_without_the_failed_relay() {
         let now = Instant::now();
         let mut node = Node::<u64, u64>::new([0; 32], now, Duration::ZERO);
         let relay = BTreeSet::from([(
@@ -2372,17 +2372,7 @@ mod tests {
             .fail(crate::allocation::FreeReason::UnhandledResponse);
         node.handle_timeout(now);
 
-        assert_eq!(no_relays_events(&mut node), [vec![1]]);
-
-        let (unblock_at, _) = node.poll_timeout().unwrap();
-        node.handle_timeout(unblock_at);
-        node.handle_timeout(unblock_at);
-
-        assert_eq!(no_relays_events(&mut node), [Vec::<u64>::new()]);
-    }
-
-    fn no_relays_events(node: &mut Node<u64, u64>) -> Vec<Vec<u64>> {
-        iter::from_fn(|| node.poll_event())
+        let requests = iter::from_fn(|| node.poll_event())
             .filter_map(|event| {
                 if let Event::NoRelays { blocked } = event {
                     Some(blocked)
@@ -2390,7 +2380,8 @@ mod tests {
                     None
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        assert_eq!(requests, [vec![1]]);
     }
 
     #[test]

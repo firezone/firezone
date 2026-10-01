@@ -227,9 +227,9 @@ where
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        std::iter::empty()
-            .chain(self.inner.values_mut().filter_map(|a| a.poll_timeout()))
-            .chain(self.blocked.values().map(|until| (*until, "unblock relay")))
+        self.inner
+            .values_mut()
+            .filter_map(|a| a.poll_timeout())
             .min_by_key(|(t, _)| *t)
     }
 
@@ -287,14 +287,9 @@ where
             })
             .map(|(rid, _)| rid)
             .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-        let unblocked = self
-            .blocked
-            .extract_if(.., |_, until| now >= *until)
-            .count();
 
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
-            unblocked_without_allocations: unblocked > 0 && self.inner.is_empty(),
             removed,
         }
     }
@@ -394,8 +389,6 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed: SmallVec<[RId; 2]>,
     /// Whether we removed the last remaining allocation.
     pub(crate) removed_last: bool,
-    /// Whether we stopped ignoring a relay while we have no allocation at all.
-    pub(crate) unblocked_without_allocations: bool,
 }
 
 #[cfg(test)]
@@ -537,10 +530,6 @@ mod tests {
         allocations.gc(now);
 
         assert_eq!(allocations.blocked(now).collect::<Vec<_>>(), [1]);
-        assert_eq!(
-            allocations.poll_timeout().map(|(t, _)| t),
-            Some(now + BLOCK_DURATION)
-        );
         assert!(matches!(
             upsert(
                 &mut allocations,
@@ -588,40 +577,6 @@ mod tests {
             upsert(&mut allocations, 1, SERVER_V4, now),
             UpsertResult::Added
         ));
-    }
-
-    #[test]
-    fn gc_reports_unblocking_only_without_allocations() {
-        let mut allocations = Allocations::for_test();
-        let now = Instant::now();
-        upsert(&mut allocations, 1, SERVER_V4, now);
-        upsert(&mut allocations, 2, SERVER2_V4, now);
-
-        for rid in [1, 2] {
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .fail(FreeReason::UnhandledResponse);
-        }
-        assert!(allocations.gc(now).removed_last);
-
-        let now = now + BLOCK_DURATION;
-        assert!(allocations.gc(now).unblocked_without_allocations);
-        assert!(!allocations.gc(now).unblocked_without_allocations);
-
-        upsert(&mut allocations, 1, SERVER_V4, now);
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .fail(FreeReason::UnhandledResponse);
-        allocations.gc(now);
-        upsert(&mut allocations, 2, SERVER2_V4, now);
-
-        assert!(
-            !allocations
-                .gc(now + BLOCK_DURATION)
-                .unblocked_without_allocations
-        );
     }
 
     fn upsert(
