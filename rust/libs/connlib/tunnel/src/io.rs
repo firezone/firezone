@@ -8,7 +8,7 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{TunnelError, dns, otel, sockets::Sockets};
+use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -259,27 +259,7 @@ impl Io {
             error.push(e);
         }
 
-        let device = self.tun.poll_read(cx).map_ok(|batch| {
-            let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
-            let num_ipv6 = batch.len() - num_ipv4;
-
-            self.packet_counter.add(
-                num_ipv4 as u64,
-                &[
-                    otel::attr::network_type_ipv4(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
-            self.packet_counter.add(
-                num_ipv6 as u64,
-                &[
-                    otel::attr::network_type_ipv6(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
-
-            batch
-        });
+        let device = self.tun.poll_read(cx);
 
         let udp_dns_queries = self
             .udp_dns_server
@@ -389,6 +369,7 @@ impl Io {
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
+        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
         loop {
             ready!(self.sockets.poll_send_ready(cx)?);
@@ -398,14 +379,7 @@ impl Io {
             };
 
             for segment in datagram.packet.chunks(datagram.segment_size) {
-                self.packet_counter.add(
-                    1,
-                    &[
-                        otel::attr::network_protocol_name(segment),
-                        otel::attr::network_transport_udp(),
-                        otel::attr::network_io_direction_transmit(),
-                    ],
-                );
+                transmitted.record(segment);
             }
 
             self.sockets.send(datagram)?;
@@ -419,14 +393,6 @@ impl Io {
     }
 
     pub fn queue_tun(&mut self, packet: IpPacket) {
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_type_for_packet(&packet),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
-
         self.tun.queue(packet);
     }
 
