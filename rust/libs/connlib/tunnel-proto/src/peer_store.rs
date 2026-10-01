@@ -1,21 +1,21 @@
 use core::fmt;
-use foldhash::fast::FixedState;
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use random_state::RandomState;
+
 use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
-use flow_tracker::random_foldhash;
 
 pub(crate) struct PeerStore<TId, P> {
-    id_by_ip: HashMap<IpAddr, TId, FixedState>,
+    id_by_ip: HashMap<IpAddr, TId, RandomState>,
     peer_by_id: BTreeMap<TId, P>,
 }
 
 impl<TId, P> Default for PeerStore<TId, P> {
     fn default() -> Self {
         Self {
-            id_by_ip: HashMap::with_hasher(random_foldhash()),
+            id_by_ip: HashMap::default(),
             peer_by_id: Default::default(),
         }
     }

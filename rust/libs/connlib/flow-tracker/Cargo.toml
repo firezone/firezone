@@ -9,8 +9,8 @@ base64 = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
-foldhash = { workspace = true }
 ip-packet = { workspace = true }
+random-state = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
 smallvec = { workspace = true }

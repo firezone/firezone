@@ -2794,9 +2794,9 @@ dependencies = [
  "dns-types",
  "flow-log-spool",
  "flow-log-writer",
- "foldhash 0.2.0",
  "ip-packet",
  "jsonschema",
+ "random-state",
  "serde",
  "serde_json",
  "smallvec",
@@ -6199,6 +6199,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "random-state"
+version = "0.1.0"
+dependencies = [
+ "foldhash 0.2.0",
+]
+
+[[package]]
 name = "rangemap"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8880,7 +8887,6 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "flow-tracker",
- "foldhash 0.2.0",
  "glob",
  "ip-packet",
  "ip_network",
@@ -8894,6 +8900,7 @@ dependencies = [
  "otel-instruments",
  "proptest",
  "rand 0.10.3",
+ "random-state",
  "rangemap",
  "ringbuffer",
  "secrecy",
