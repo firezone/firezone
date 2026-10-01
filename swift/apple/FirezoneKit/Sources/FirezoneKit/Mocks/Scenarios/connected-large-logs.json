@@ -6,7 +6,6 @@
   "clientCertificate": "absent",
   "actorName": "Jane Doe",
   "resources": [],
-  "connectedDevices": [],
   "favorites": [],
   "providerLogFolderSize": 30000000,
   "appLogFolderSize": 200000000

@@ -27,7 +27,6 @@ public final class Store: ObservableObject {
   @Published private(set) var deviceTrustCertificateSummary: DeviceTrustCertificateSummary?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
-  @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
   /// How a running session reads once the portal has named the actor.
   var sessionHeading: String {
@@ -884,7 +883,6 @@ public final class Store: ObservableObject {
     stateUpdateTask = nil
     resourceList = ResourceList.loading
     tunnelStateHash = Data()
-    connectedDevices.removeAll()
     actorName = nil
     Log.setStreamingActive(false)
   }
@@ -943,8 +941,6 @@ public final class Store: ObservableObject {
       if let resources = state.resources {
         resourceList = ResourceList.loaded(resources)
       }
-
-      connectedDevices = state.connectedDevices
 
       if state.actorName == nil, actorName != nil {
         Log.warning("Portal did not name the actor on `init`")

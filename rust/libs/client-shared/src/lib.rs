@@ -8,7 +8,7 @@ use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
-use connlib_model::{ResourceId, ResourceList};
+use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
 use futures::future::{Fuse, FusedFuture as _};
 use futures::{FutureExt, StreamExt};
@@ -45,7 +45,7 @@ pub struct Session {
 #[derive(Debug)]
 pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
-    resource_list_receiver: WatchStream<ResourceList>,
+    resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     connected_as_receiver: WatchStream<Option<ConnectedAs>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
@@ -59,7 +59,7 @@ pub enum Event {
     /// The TUN device configuration has been updated.
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
-    ResourcesUpdated(ResourceList),
+    ResourcesUpdated(Vec<ResourceView>),
     /// Connlib connected to the portal, which named the account and actor this session belongs to.
     ConnectedToPortal(ConnectedAs),
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
@@ -237,7 +237,7 @@ impl Drop for Session {
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
-            watch::Sender<ResourceList>,
+            watch::Sender<Vec<ResourceView>>,
             watch::Sender<Option<TunConfig>>,
             watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
@@ -248,8 +248,7 @@ impl EventStream {
         E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) =
-            watch::channel(ResourceList::default());
+        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
         let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
@@ -331,7 +330,7 @@ mod tests {
                         actor_name: "Jane Doe".to_owned(),
                     }))
                     .unwrap();
-                resource_list.send(ResourceList::default()).unwrap();
+                resource_list.send(Vec::default()).unwrap();
 
                 Ok(())
             },

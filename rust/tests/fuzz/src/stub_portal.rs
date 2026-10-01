@@ -318,6 +318,10 @@ impl StubPortal {
             .collect()
     }
 
+    pub(crate) fn device_label(&self, id: ClientId) -> String {
+        self.clients[&id].device_label.clone()
+    }
+
     /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client's
     /// tunnel IPv4 + IPv6, if the slug corresponds to a known device.
     pub(crate) fn resolve_device_domain(

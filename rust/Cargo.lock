@@ -2596,6 +2596,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tunnel-bypass-resolver",
+ "tunnel-proto",
  "url",
  "uuid",
  "windows",

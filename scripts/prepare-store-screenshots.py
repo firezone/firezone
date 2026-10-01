@@ -224,7 +224,7 @@ def prepare_macos(directory: Path) -> None:
                 raise RuntimeError(f"{relative} does not fit on a {MAC_SIZE} canvas")
 
             screen, appearance = path.stem.rsplit("-", 1)
-            if screen == "menu":
+            if screen == "menu" or screen.startswith("menu-"):
                 # Two shapes on the canvas colour already (see ScreenshotDelivery.swift).
                 write_rgb(path, centred(image))
                 continue

@@ -2,7 +2,7 @@ use crate::{ConnectedAs, PHOENIX_TOPIC};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
-use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceList};
+use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -64,7 +64,7 @@ pub struct Eventloop {
     local_flow_logs: bool,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
-    resource_list_sender: watch::Sender<ResourceList>,
+    resource_list_sender: watch::Sender<Vec<ResourceView>>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
     connected_as_sender: watch::Sender<Option<ConnectedAs>>,
     user_notification_sender: mpsc::Sender<UserNotification>,
@@ -169,7 +169,7 @@ impl Eventloop {
         local_flow_logs: bool,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
-        resource_list_sender: watch::Sender<ResourceList>,
+        resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
@@ -729,6 +729,7 @@ impl Eventloop {
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
                 client_id,
                 client_name,
+                client_slug,
                 client_public_key,
                 client_ipv4,
                 client_ipv6,
@@ -766,6 +767,7 @@ impl Eventloop {
                     ice_role,
                     use_iceless,
                     client_name,
+                    client_slug,
                     resource_id,
                     authorization,
                     flow_logs_ingest_token,
