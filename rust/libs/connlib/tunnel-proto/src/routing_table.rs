@@ -8,10 +8,10 @@ use std::{
 use connlib_model::ResourceId;
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
 use lru::LruCache;
+use network_table::NetworkTable;
 
 use crate::filter_engine::FilterEngine;
 
@@ -38,7 +38,7 @@ pub(crate) trait RouteEntry: Ord + Clone {
 }
 
 pub(crate) struct RoutingTable<T> {
-    inner: IpNetworkTable<BTreeSet<T>>,
+    inner: NetworkTable<BTreeSet<T>>,
     match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FastRandomState>,
 }
 
@@ -85,7 +85,7 @@ impl From<&Result<Protocol, UnsupportedProtocol>> for FilterProtocol {
 impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
-            inner: IpNetworkTable::new(),
+            inner: NetworkTable::new(),
             match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
         }
     }

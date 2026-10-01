@@ -4951,6 +4951,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "network-table"
+version = "0.1.0"
+dependencies = [
+ "divan",
+ "fast-random-state",
+ "ip_network",
+ "ip_network_table",
+]
+
+[[package]]
 name = "network-types"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8892,11 +8902,11 @@ dependencies = [
  "glob",
  "ip-packet",
  "ip_network",
- "ip_network_table",
  "itertools 0.15.0",
  "l3-udp-dns-client",
  "logging",
  "lru",
+ "network-table",
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",

@@ -29,11 +29,11 @@ flow-tracker = { workspace = true }
 glob = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
-ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-udp-dns-client = { workspace = true }
 logging = { workspace = true }
 lru = { workspace = true }
+network-table = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
