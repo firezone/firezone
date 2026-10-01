@@ -1,6 +1,8 @@
 #![cfg(target_os = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+pub mod tundra;
+
 use anyhow::{Context as _, Result};
 use ip_packet::{IpPacket, IpPacketBuf};
 use opentelemetry::{KeyValue, metrics::Histogram};

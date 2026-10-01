@@ -29,13 +29,18 @@ use windows::Win32::{
 };
 use wintun::Adapter;
 
+mod tundra;
+
+/// Selects the TUN driver: `tundra` (default) or `wintun`.
+const TUN_DRIVER_ENV_VAR: &str = "FIREZONE_TUN_DRIVER";
+
 pub struct TunDeviceManager {
     mtu: u32,
 
     /// Interface index of the last created adapter.
     iface_idx: Option<u32>,
-    /// ID of the last created adapter.
-    luid: Option<wintun::NET_LUID_LH>,
+    /// ID (`NET_LUID`) of the last created adapter.
+    luid: Option<u64>,
 
     routes: HashSet<IpNetwork>,
 }
@@ -52,9 +57,26 @@ impl TunDeviceManager {
     }
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
+        if use_tundra() {
+            match tundra::Tundra::new(self.mtu) {
+                Ok(tun) => {
+                    self.iface_idx = Some(tun.iface_idx());
+                    self.luid = Some(tun.luid());
+
+                    return Ok(Box::new(tun));
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to create Tundra TUN device, falling back to Wintun: {e:#}"
+                    );
+                }
+            }
+        }
+
         let tun = Tun::new(self.mtu)?;
         self.iface_idx = Some(tun.iface_idx());
-        self.luid = Some(tun.luid);
+        // SAFETY: `Value` covers the entire union.
+        self.luid = Some(unsafe { tun.luid.Value });
 
         Ok(Box::new(tun))
     }
@@ -65,12 +87,7 @@ impl TunDeviceManager {
             .luid
             .context("Cannot set IPs prior to creating an adapter")?;
 
-        // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
-        // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
-        // crate's version of NET_LUID_LH.
-        let luid = NET_LUID_LH {
-            Value: unsafe { luid.Value },
-        };
+        let luid = NET_LUID_LH { Value: luid };
 
         tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
 
@@ -108,6 +125,19 @@ impl TunDeviceManager {
         self.routes = new_routes;
 
         Ok(())
+    }
+}
+
+/// Whether to use the Tundra driver instead of Wintun, see [`TUN_DRIVER_ENV_VAR`].
+fn use_tundra() -> bool {
+    match std::env::var(TUN_DRIVER_ENV_VAR) {
+        Ok(driver) if driver.eq_ignore_ascii_case("wintun") => false,
+        Ok(driver) if driver.eq_ignore_ascii_case("tundra") => true,
+        Ok(driver) => {
+            tracing::warn!(%driver, "Unknown `{TUN_DRIVER_ENV_VAR}`, using Tundra");
+            true
+        }
+        Err(_) => true,
     }
 }
 
@@ -209,7 +239,13 @@ impl Tun {
         let interface_index_guard = TunnelInterfaceIndexGuard::new(iface_idx);
         let luid = adapter.get_luid();
 
-        set_iface_config(luid, mtu).context("Failed to set interface config")?;
+        // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
+        // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
+        // crate's version of NET_LUID_LH.
+        let windows_luid = NET_LUID_LH {
+            Value: unsafe { luid.Value },
+        };
+        set_iface_config(windows_luid, mtu).context("Failed to set interface config")?;
 
         let io = tun_windows::Io::new(
             TUNNEL_NAME,
@@ -247,14 +283,7 @@ impl tun::Tun for Tun {
 
 /// Sets MTU on the interface
 /// TODO: Set IP and other things in here too, so the code is more organized
-fn set_iface_config(luid: wintun::NET_LUID_LH, mtu: u32) -> Result<()> {
-    // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
-    // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
-    // crate's version of NET_LUID_LH.
-    let luid = NET_LUID_LH {
-        Value: unsafe { luid.Value },
-    };
-
+fn set_iface_config(luid: NET_LUID_LH, mtu: u32) -> Result<()> {
     try_set_mtu(luid, AF_INET, mtu)?;
     try_set_mtu(luid, AF_INET6, mtu)?;
     Ok(())

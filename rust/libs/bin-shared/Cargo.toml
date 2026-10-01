@@ -50,6 +50,7 @@ ipconfig = "0.3.4"
 itertools = { workspace = true }
 ring = "0.17"
 tun-windows = { workspace = true }
+tundra = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }
 windows-implement = { workspace = true }
