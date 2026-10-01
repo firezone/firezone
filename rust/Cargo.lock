@@ -2794,6 +2794,7 @@ dependencies = [
  "dns-types",
  "flow-log-spool",
  "flow-log-writer",
+ "foldhash 0.2.0",
  "ip-packet",
  "jsonschema",
  "serde",
