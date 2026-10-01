@@ -47,9 +47,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # the device domain lists.
   @device_domain_browse_ttl 30
 
-  # The most names a PTR query in the device domain lists, well within the about 2,000 a DNS
-  # message carries even over TCP. A longer listing is refused rather than cut short.
-  @device_domain_browse_limit 1_000
+  # The most PTR records a DNS message holds, even with compressed one-character labels.
+  @device_domain_browse_limit 4_096
 
   @doc false
   def policy_authorization_queue_opts do
@@ -854,23 +853,22 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # Connlib forwards PTR queries for `firezone.network` and every name under it. The domain
   # itself lists the labels of the pools the client may use, and such a label the devices
-  # in those pools that resolve for the client. A label that only names a device the client
-  # may reach lists nothing, and a listing of more than `@device_domain_browse_limit` names
-  # fails with `too_many_names`. Every other name answers `not_found` after the same delay
-  # as `resolve_device_domain`, so pool names cannot be discovered by guessing either.
+  # in those pools that resolve for the client, most recently seen first. A label that only
+  # names a device the client may reach lists nothing. A listing holds at most
+  # `@device_domain_browse_limit` names and `total` counts those it would hold without that
+  # cap. Every other name answers `not_found` after the same delay as
+  # `resolve_device_domain`, so pool names cannot be discovered by guessing either.
   def handle_in("browse_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
     started_at = System.monotonic_time(:millisecond)
 
     case browse_device_domain(domain, socket) do
-      {:ok, names} ->
+      {:ok, labels, total} ->
         push(socket, "device_domain_browsed", %{
           domain: domain,
-          names: names,
-          ttl: @device_domain_browse_ttl
+          names: Enum.map(labels, &Portal.Device.fqdn_for_slug/1),
+          ttl: @device_domain_browse_ttl,
+          total: total
         })
-
-      {:error, :too_many_names} ->
-        push(socket, "device_domain_browse_failed", %{domain: domain, reason: :too_many_names})
 
       {:error, :not_found} ->
         schedule_after_constant_time(started_at, {:device_domain_browse_failed, domain})
@@ -1342,7 +1340,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     if String.downcase(domain) == Portal.Device.domain() do
       labels = for {label, _pool} <- pools, uniq: true, do: label
 
-      device_domain_listing(labels)
+      {:ok, labels |> Enum.sort() |> Enum.take(@device_domain_browse_limit), length(labels)}
     else
       with {:ok, label} <- device_domain_label(domain) do
         browse_device_label(label, pools, socket)
@@ -1351,31 +1349,19 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp browse_device_label(label, pools, socket) do
-    labelled = for {^label, pool} <- pools, do: pool
+    criteria = for {^label, pool} <- pools, do: pool.device_membership_criteria
 
-    case labelled do
+    case criteria do
       [] ->
-        with {:ok, _device} <- fetch_reachable_device(label, socket), do: {:ok, []}
+        with {:ok, _device} <- fetch_reachable_device(label, socket), do: {:ok, [], 0}
 
-      labelled ->
-        labelled
-        |> Enum.flat_map(
-          &Database.member_slugs(
-            &1.device_membership_criteria,
-            @device_domain_browse_limit + 1,
-            socket.assigns.subject
-          )
-        )
-        |> Enum.uniq()
-        |> device_domain_listing()
+      criteria ->
+        {slugs, total} =
+          Database.member_slugs(criteria, @device_domain_browse_limit, socket.assigns.subject)
+
+        {:ok, slugs, total}
     end
   end
-
-  defp device_domain_listing(labels) when length(labels) > @device_domain_browse_limit,
-    do: {:error, :too_many_names}
-
-  defp device_domain_listing(labels),
-    do: {:ok, labels |> Enum.sort() |> Enum.map(&Portal.Device.fqdn_for_slug/1)}
 
   defp device_domain_label(domain) do
     domain = String.downcase(domain)
@@ -3203,7 +3189,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?(_reason), do: true
 
   defmodule Database do
-    import Ecto.Query, only: [from: 2]
+    import Ecto.Query, only: [from: 2, dynamic: 1]
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,
@@ -3292,25 +3278,37 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     @doc """
-      The slugs of up to `limit` client devices a pool with these criteria holds when
-      `subject` asks.
+      The slugs of up to `limit` client devices that pools with any of these criteria hold
+      when `subject` asks, most recently seen first, and how many devices they hold in all.
     """
     def member_slugs(criteria, limit, subject) do
-      from(d in Portal.Device,
-        as: :devices,
-        where: d.type == :client,
-        select: d.slug,
-        limit: ^limit
-      )
-      |> Portal.Resource.DeviceMembershipCriteria.where_members(
-        criteria,
-        Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)
-      )
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.all()
-      |> case do
-        {:error, :unauthorized} -> []
-        slugs -> slugs
+      in_any_pool =
+        Enum.reduce(criteria, dynamic(false), fn criteria, in_any_pool ->
+          scope = Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)
+          dynamic(^in_any_pool or ^Portal.Resource.DeviceMembershipCriteria.members(criteria, scope))
+        end)
+
+      members = from(d in Portal.Device, as: :devices, where: d.type == :client, where: ^in_any_pool)
+
+      slugs =
+        from(d in members,
+          order_by: [desc_nulls_last: d.last_seen_at, asc: d.slug],
+          limit: ^(limit + 1),
+          select: d.slug
+        )
+        |> Portal.Safe.scoped(subject)
+        |> Portal.Safe.all()
+        |> case do
+          {:error, :unauthorized} -> []
+          slugs -> slugs
+        end
+
+      if length(slugs) > limit do
+        total = members |> Portal.Safe.scoped(subject) |> Portal.Safe.aggregate(:count)
+
+        {Enum.take(slugs, limit), total}
+      else
+        {slugs, length(slugs)}
       end
     end
 

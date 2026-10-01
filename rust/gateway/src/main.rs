@@ -18,7 +18,6 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 use telemetry::SentryMeterProvider;
-use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
 use clock::Clock;
@@ -28,7 +27,6 @@ use std::{collections::BTreeSet, fmt};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
-use tun::Tun;
 use url::Url;
 
 mod account_slug;
@@ -287,11 +285,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .make_tun()
         .context("Failed to create TUN device")?;
 
-    if cli.validate_checksums {
-        tunnel.set_tun(ValidateChecksumAdapter::wrap(tun));
-    } else {
-        tunnel.set_tun(tun);
-    }
+    tunnel.set_tun(tun);
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,
@@ -435,15 +429,6 @@ struct Cli {
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
-    /// Validates the checksums of all packets leaving the TUN device.
-    #[arg(
-        long,
-        hide = true,
-        env = "FIREZONE_VALIDATE_CHECKSUMS",
-        default_value_t = false
-    )]
-    validate_checksums: bool,
-
     /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
     no_inc_buf: bool,
@@ -483,90 +468,6 @@ impl Cli {
 
     fn is_inc_buf_allowed(&self) -> bool {
         !self.no_inc_buf
-    }
-}
-
-/// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
-struct ValidateChecksumAdapter {
-    outbound_tx: tun::OutboundTx,
-    inbound_rx: tun::InboundRx,
-    name: String,
-    _task: AbortOnDropHandle<()>,
-}
-
-impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tun::OutboundTx {
-        &self.outbound_tx
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.inbound_rx
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl ValidateChecksumAdapter {
-    fn wrap(mut inner: Box<dyn Tun>) -> Box<dyn Tun> {
-        let name = inner.name().to_string();
-
-        // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tun::inbound_channel();
-
-        // Get reference to inner TUN's sender for outbound packets
-        let outbound_tx = inner.sender().clone();
-
-        // Spawn task to validate and forward inbound packets from TUN device
-        let task = tokio::spawn(async move {
-            while let Some(batch) = inner.receiver().recv().await {
-                for packet in batch.iter() {
-                    validate_checksums(packet);
-                }
-
-                // Forward the validated batch to our inbound channel
-                if inbound_tx.send(batch).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Box::new(Self {
-            outbound_tx,
-            inbound_rx,
-            name,
-            _task: AbortOnDropHandle::new(task),
-        })
-    }
-}
-
-fn validate_checksums(packet: &ip_packet::IpPacket) {
-    if let Some(ipv4) = packet.ipv4_header() {
-        let actual = ipv4.checksum();
-        if let Ok(expected) = packet.calculate_ipv4_header_checksum()
-            && expected != actual
-        {
-            tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-        }
-    }
-
-    if let Some(udp) = packet.as_udp() {
-        let actual = udp.checksum();
-        if let Ok(expected) = packet.calculate_udp_checksum()
-            && expected != actual
-        {
-            tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-        }
-    }
-
-    if let Some(tcp) = packet.as_tcp() {
-        let actual = tcp.checksum();
-        if let Ok(expected) = packet.calculate_tcp_checksum()
-            && expected != actual
-        {
-            tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-        }
     }
 }
 
