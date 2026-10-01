@@ -27,7 +27,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, hash_map},
     fmt::Debug,
-    hash::Hash,
+    hash::{BuildHasher as _, Hash, RandomState},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -35,6 +35,7 @@ use std::{
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
+use foldhash::fast::FixedState;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use smallvec::{SmallVec, smallvec};
 
@@ -89,8 +90,8 @@ impl Scope for (ClientId, ResourceId) {
 /// identifies a flow (see the module docs).
 #[derive(Debug)]
 pub struct Tracker<S> {
-    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue>,
-    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue>,
+    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FixedState>,
+    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FixedState>,
 
     enabled: bool,
     created_at: Instant,
@@ -141,8 +142,8 @@ impl<S> Tracker<S> {
             .unwrap_or(DateTime::UNIX_EPOCH);
 
         Self {
-            active_tcp_flows: Default::default(),
-            active_udp_flows: Default::default(),
+            active_tcp_flows: HashMap::with_hasher(random_foldhash()),
+            active_udp_flows: HashMap::with_hasher(random_foldhash()),
             enabled: false,
             created_at: now,
             created_at_utc,
@@ -161,6 +162,14 @@ impl<S> Tracker<S> {
     }
 }
 
+/// Builds a `foldhash` hasher with a seed drawn from `std`'s [`RandomState`].
+///
+/// `std` draws its keys from `getrandom`, which the fuzzer interposes to stay
+/// deterministic; `foldhash`'s own random seed would bypass it.
+fn random_foldhash() -> FixedState {
+    FixedState::with_seed(RandomState::new().hash_one(()))
+}
+
 impl<S> Tracker<S>
 where
     S: Scope,
@@ -170,11 +179,7 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(
-                Entry::Tun,
-                Some(InnerFlow::from(packet)),
-                self.now_utc(now),
-            ));
+            set_current_flow(Entry::Tun, Some(InnerFlow::from(packet)), self.now_utc(now));
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -190,17 +195,13 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(FlowData::new(
-                Entry::Network { local, remote },
-                None,
-                self.now_utc(now),
-            ));
+            set_current_flow(Entry::Network { local, remote }, None, self.now_utc(now));
         }
 
         CurrentFlowGuard { tracker: self, now }
     }
 
-    fn insert_flow(&mut self, data: FlowData, now: Instant) {
+    fn insert_flow(&mut self, data: &mut FlowData, now: Instant) {
         let FlowData {
             entry,
             now_utc,
@@ -219,10 +220,10 @@ where
             outer_tx,
             peer: Some((peer, role)),
             resource,
-            ingest_token,
-            domain,
+            ref mut ingest_token,
+            ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
-        } = data
+        } = *data
         else {
             tracing::trace!(?data, "Cannot create flow with missing data");
 
@@ -250,7 +251,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token else {
+                let Some(ingest_token) = ingest_token.take() else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -270,7 +271,7 @@ where
                         tcp_rst,
                         payload_len,
                         ingest_token,
-                        domain,
+                        domain: domain.take(),
                     },
                     now,
                 );
@@ -280,7 +281,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token else {
+                let Some(ingest_token) = ingest_token.take() else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -300,7 +301,7 @@ where
                         tcp_rst,
                         payload_len,
                         ingest_token,
-                        domain,
+                        domain: domain.take(),
                     },
                     now,
                 );
@@ -699,11 +700,15 @@ pub struct CurrentFlowGuard<'a, S: Scope> {
 
 impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        let Some(data) = CURRENT_FLOW.take() else {
-            return;
-        };
+        CURRENT_FLOW.with_borrow_mut(|current| {
+            let Some(data) = current else {
+                return;
+            };
 
-        self.tracker.insert_flow(data, self.now);
+            self.tracker.insert_flow(data, self.now);
+
+            *current = None;
+        });
     }
 }
 
@@ -788,13 +793,15 @@ impl FlowData {
     }
 }
 
-fn set_current_flow(data: FlowData) {
-    let current = CURRENT_FLOW.replace(Some(data));
+fn set_current_flow(entry: Entry, inner: Option<InnerFlow>, now_utc: DateTime<Utc>) {
+    CURRENT_FLOW.with_borrow_mut(|current| {
+        debug_assert!(
+            current.is_none(),
+            "at most 1 flow should be active at any time"
+        );
 
-    debug_assert!(
-        current.is_none(),
-        "at most 1 flow should be active at any time"
-    );
+        *current = Some(FlowData::new(entry, inner, now_utc));
+    });
 }
 
 fn update_current_flow(f: impl FnOnce(&mut FlowData)) {

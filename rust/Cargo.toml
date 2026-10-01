@@ -129,6 +129,7 @@ flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
+foldhash = "0.2.0"
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 glob = "0.3.3"
