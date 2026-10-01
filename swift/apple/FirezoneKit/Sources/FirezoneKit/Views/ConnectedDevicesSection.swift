@@ -41,6 +41,9 @@
           .multilineTextAlignment(.center)
       }
       .padding()
+      // An empty grouped list draws a plain background instead of the grouped one.
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color(uiColor: .systemGroupedBackground))
     }
   }
 
