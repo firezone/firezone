@@ -1,6 +1,7 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
-use bimap::BiMap;
+use bimap::BiHashMap;
+use foldhash::fast::FixedState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -14,13 +15,26 @@ use std::time::{Duration, Instant};
 ///
 /// We need to include the L4 component because multiple DNS resources could resolve to the same IP on the Internet.
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct NatTable {
-    table: BiMap<Inside, Outside>,
+    table: BiHashMap<Inside, Outside, FixedState, FixedState>,
     state_by_inside: BTreeMap<Inside, EntryState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
-    expired: HashSet<Outside>,
+    expired: HashSet<Outside, FixedState>,
+}
+
+impl Default for NatTable {
+    fn default() -> Self {
+        Self {
+            table: BiHashMap::with_hashers(
+                crate::hasher::random_foldhash(),
+                crate::hasher::random_foldhash(),
+            ),
+            state_by_inside: BTreeMap::default(),
+            expired: HashSet::with_hasher(crate::hasher::random_foldhash()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
