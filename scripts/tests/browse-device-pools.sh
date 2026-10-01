@@ -23,9 +23,13 @@ client_nslookup "-type=a ${members[0]}" | grep -Fw "$pool_member_ip"
 echo "# Primary client should be able to ping the pool member by its name"
 client_ping "${members[0]}"
 
-# The seeded `All devices` pool holds 100,000 load test devices.
-echo "# A pool too large to list should be refused"
-client_nslookup "-type=ptr all-devices.firezone.network" | grep REFUSED
+# The seeded `All devices` pool holds 100,000 load test devices, more than a DNS message fits.
+echo "# A pool too large to list in full should list the names that fit"
+readarray -t listed < <(client_nslookup "-type=ptr all-devices.firezone.network" | awk '/name = / { print $NF }')
+assert_gteq "${#listed[@]}" 1
+
+echo "# The listing should say how many of the pool's names it lists"
+client dig +tcp PTR all-devices.firezone.network | grep -E "EDE: 0 \(Other\): \(Lists ${#listed[@]} of [0-9]{6} names\)"
 
 echo "# An unknown pool should not exist"
 client_nslookup "-type=ptr does-not-exist.firezone.network" | grep NXDOMAIN
