@@ -85,7 +85,7 @@ where
                 Ok(jobs_tx)
             })
             .collect::<io::Result<_>>()
-            .inspect_err(|e| tracing::error!("Failed to spawn crypto workers: {e}"))
+            .inspect_err(|e| tracing::debug!("Failed to spawn crypto workers: {e}"))
             .unwrap_or_default();
 
         Self {
