@@ -156,8 +156,14 @@ where
         protocol: Result<Protocol, UnsupportedProtocol>,
         filter_mode: FilterMode,
     ) -> Option<&[T]> {
+        let key = (ip, FilterProtocol::from(&protocol), filter_mode);
+
+        if self.match_cache.peek_mru().is_some_and(|(k, _)| *k == key) {
+            return self.match_cache.peek_mru().and_then(|(_, v)| v.as_deref());
+        }
+
         self.match_cache
-            .get_or_insert((ip, FilterProtocol::from(&protocol), filter_mode), || {
+            .get_or_insert(key, || {
                 let mut entries = self
                     .inner
                     .matches(ip)
