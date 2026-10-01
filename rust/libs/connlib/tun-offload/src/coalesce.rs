@@ -56,6 +56,7 @@ pub struct PacketCoalescer {
     coalesce_tcp: bool,
     coalesce_udp: bool,
     checksum_mode: ChecksumMode,
+    max_packet_len: usize,
 }
 
 impl PacketCoalescer {
@@ -77,6 +78,20 @@ impl PacketCoalescer {
             coalesce_tcp,
             coalesce_udp,
             checksum_mode,
+            max_packet_len: MAX_COALESCED_PACKET,
+        }
+    }
+
+    /// Caps the size of a coalesced packet at `max_packet_len` bytes, including the IP header.
+    ///
+    /// Packets that are already larger pass through unchanged.
+    pub fn with_max_packet_len(self, max_packet_len: usize) -> Self {
+        let max_packet_len = max_packet_len.min(MAX_COALESCED_PACKET);
+
+        Self {
+            buffer_pool: BufferPool::new(max_packet_len, "packet-coalescer"),
+            max_packet_len,
+            ..self
         }
     }
 
@@ -102,7 +117,8 @@ impl PacketCoalescer {
             .find(|i| i.same_connection(&packet))
         {
             Some(Item::Batch(batch))
-                if batch.key == candidate.key && batch.can_append(&candidate, &packet) =>
+                if batch.key == candidate.key
+                    && batch.can_append(&candidate, &packet, self.max_packet_len) =>
             {
                 batch.append(&candidate, &packet, &self.buffer_pool)
             }
@@ -486,7 +502,7 @@ impl Batch {
         }
     }
 
-    fn can_append(&self, candidate: &Candidate, packet: &IpPacket) -> bool {
+    fn can_append(&self, candidate: &Candidate, packet: &IpPacket, max_packet_len: usize) -> bool {
         if !self.is_ongoing() {
             return false;
         }
@@ -504,7 +520,7 @@ impl Batch {
             return false;
         }
 
-        if self.total_len + candidate.payload_len > MAX_COALESCED_PACKET {
+        if self.total_len + candidate.payload_len > max_packet_len {
             return false;
         }
 
@@ -809,6 +825,25 @@ mod tests {
             .expect("offloaded packet needs metadata");
         assert_eq!(metadata.protocol, Protocol::Udp);
         assert_eq!(metadata.segment_size, 100);
+    }
+
+    #[test]
+    fn max_packet_len_closes_the_batch() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete)
+            .with_max_packet_len(20 + 20 + 200);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+        queue.enqueue(tcp4(1200, &[3; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+        let [first, second] = out.as_slice() else {
+            panic!("expected the third segment to start a new packet")
+        };
+
+        assert_eq!(first.num_segments(), 2);
+        assert_eq!(first.packet().len(), 20 + 20 + 200);
+        assert_eq!(second.num_segments(), 1);
     }
 
     #[test]

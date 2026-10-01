@@ -8753,6 +8753,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tun",
+ "tun-offload",
 ]
 
 [[package]]
