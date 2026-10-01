@@ -8,8 +8,8 @@ use std::time::Duration;
 /// Unlike the receive buffer, this does not need to bridge scheduler stalls: our bounded userspace
 /// send channel applies backpressure while the send task is not running. It needs to fit complete
 /// GSO / USO sends and absorb the bursts handed to the send task while the interface drains its
-/// queue, as a full buffer stalls that task. At 10 Gbit/s, the 8 ms queue window is 10 MB and
-/// rounds up to 16 MiB.
+/// queue, as a full buffer stalls that task. At 10 Gbit/s, the 2 ms queue window is 2.5 MB and
+/// rounds up to 4 MiB.
 ///
 /// On Apple platforms UDP datagrams are handed straight to the interface and `SO_SNDBUF` primarily
 /// caps the maximum datagram size, so 64 KiB is sufficient for one complete send.
@@ -47,7 +47,7 @@ const MAX_ATOMIC_UDP_SEND_BYTES: usize = u16::MAX as usize;
 /// Time worth of controlled egress that may be queued in the kernel.
 const SEND_QUEUE_WINDOW: Duration = cfg_select! {
     apple => { Duration::ZERO }
-    _ => { Duration::from_millis(8) }
+    _ => { Duration::from_millis(2) }
 };
 /// How long a normally-scheduled receive thread may reasonably go without servicing its socket.
 const RECV_SERVICE_GAP: Duration = Duration::from_millis(10);
@@ -116,7 +116,7 @@ mod tests {
 
         let expected_send_buffer_size = cfg_select! {
             apple => { 64 * 1024 }
-            _ => { 16 * MIB }
+            _ => { 4 * MIB }
         };
         let expected_recv_buffer_size = cfg_select! {
             any(apple, target_os = "windows") => { 32 * MIB }
