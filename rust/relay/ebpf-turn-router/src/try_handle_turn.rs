@@ -50,18 +50,24 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    // ECN accessors extract bits from individual header bytes, so the resulting u8
-    // needs no endian conversion. IP versions below are host-native constants.
-    let (num_bytes, ip_version, ecn) = match eth.ether_type() {
+    let (num_bytes, ip_version) = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => (try_handle_turn_ipv4(ctx)?, 4),
+        Ok(EtherType::Ipv6) => (try_handle_turn_ipv6(ctx)?, 6),
+        _ => return Err(Error::NotIp),
+    };
+
+    // Every forwarding path preserves ECN, including address-family translation.
+    // Read it after rewriting so it need not stay live across the routing hot path.
+    // SAFETY: Reacquire packet pointers because rewriting may have adjusted the head.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+    let ecn = match eth.ether_type() {
         Ok(EtherType::Ipv4) => {
-            // SAFETY: The offset points to the incoming IPv4 header.
-            let ecn = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn();
-            (try_handle_turn_ipv4(ctx)?, 4, ecn)
+            // SAFETY: EtherType identifies the rewritten IPv4 header.
+            unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn()
         }
         Ok(EtherType::Ipv6) => {
-            // SAFETY: The offset points to the incoming IPv6 header.
-            let ecn = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn();
-            (try_handle_turn_ipv6(ctx)?, 6, ecn)
+            // SAFETY: EtherType identifies the rewritten IPv6 header.
+            unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn()
         }
         _ => return Err(Error::NotIp),
     };
@@ -70,8 +76,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     Ok(())
 }
 
-// Keep packet rewriting on its own BPF stack frame, separate from stats metadata.
-#[inline(never)]
+#[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
@@ -107,7 +112,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     Err(Error::NotTurn)
 }
 
-#[inline(never)]
+#[inline(always)]
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
