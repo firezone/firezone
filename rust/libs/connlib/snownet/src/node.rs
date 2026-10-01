@@ -602,9 +602,14 @@ where
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
-        let message = datagram
-            .subslice_range(packet)
+        let start = (packet.as_ptr() as usize)
+            .checked_sub(datagram.as_ptr() as usize)
             .expect("the payload of a TURN channel is part of its datagram");
+        let message = Range {
+            start,
+            end: start + packet.len(),
+        };
+        debug_assert!(message.end <= datagram.len());
 
         Ok(Some(EncryptedPacket {
             cid,
