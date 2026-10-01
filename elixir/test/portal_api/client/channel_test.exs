@@ -7197,7 +7197,8 @@ defmodule PortalAPI.Client.ChannelTest do
                  "field-workstations.firezone.network",
                  "your-devices.firezone.network"
                ],
-               "ttl" => 30
+               "ttl" => 30,
+               "total" => 2
              }
     end
 
@@ -7212,7 +7213,7 @@ defmodule PortalAPI.Client.ChannelTest do
       push(socket, "browse_device_domain", %{"domain" => "your-devices.firezone.network"})
 
       names = Enum.sort([Portal.Device.fqdn(client), Portal.Device.fqdn(target_client)])
-      assert_push "device_domain_browsed", %{names: ^names, ttl: 30}
+      assert_push "device_domain_browsed", %{names: ^names, ttl: 30, total: 2}
     end
 
     test "lists the devices of every pool whose name gives the label", %{
@@ -7311,7 +7312,7 @@ defmodule PortalAPI.Client.ChannelTest do
       domain = Portal.Device.fqdn(target_client)
       push(socket, "browse_device_domain", %{"domain" => domain})
 
-      assert_push "device_domain_browsed", %{domain: ^domain, names: [], ttl: 30}
+      assert_push "device_domain_browsed", %{domain: ^domain, names: [], ttl: 30, total: 0}
 
       stranger_domain = Portal.Device.fqdn(stranger)
       push(socket, "browse_device_domain", %{"domain" => stranger_domain})
@@ -7319,40 +7320,28 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "device_domain_browse_failed", %{domain: ^stranger_domain, reason: :not_found}
     end
 
-    test "lists up to 1000 names and refuses a longer listing", %{
+    test "lists up to 4096 names, most recently seen first, and counts them all", %{
       account: account,
       group: group,
       client: client,
       subject: subject
     } do
-      [extra | devices] = bulk_clients_fixture(account, 1_001)
+      devices = bulk_clients_fixture(account, 4_097)
+      now = DateTime.utc_now()
+      seen_last = record_last_seen(Enum.at(devices, 4_000), now)
+      seen_before = record_last_seen(Enum.at(devices, 2_000), DateTime.add(now, -1, :minute))
 
-      full_pool = device_pool_resource_fixture(account: account, name: "Full Pool", devices: devices)
-      policy_fixture(account: account, group: group, resource: full_pool)
-
-      crowded_pool =
-        device_pool_resource_fixture(
-          account: account,
-          name: "Crowded Pool",
-          devices: [extra | devices]
-        )
-
-      policy_fixture(account: account, group: group, resource: crowded_pool)
+      pool = device_pool_resource_fixture(account: account, name: "Crowded Pool", devices: devices)
+      policy_fixture(account: account, group: group, resource: pool)
 
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      push(socket, "browse_device_domain", %{"domain" => "full-pool.firezone.network"})
-
-      names = devices |> Enum.map(&Portal.Device.fqdn/1) |> Enum.sort()
-      assert_push "device_domain_browsed", %{names: ^names}
-
       push(socket, "browse_device_domain", %{"domain" => "crowded-pool.firezone.network"})
 
-      assert_push "device_domain_browse_failed", %{
-        domain: "crowded-pool.firezone.network",
-        reason: :too_many_names
-      }
+      assert_push "device_domain_browsed", %{names: names, total: 4_097}
+      assert length(names) == 4_096
+      assert Enum.take(names, 2) == [Portal.Device.fqdn(seen_last), Portal.Device.fqdn(seen_before)]
     end
 
     test "answers a name that lists nothing for the client no faster than an unknown one", %{

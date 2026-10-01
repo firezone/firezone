@@ -230,8 +230,19 @@ defmodule Portal.DeviceFixtures do
         }
       end
 
-    {^count, devices} = Portal.Repo.insert_all(Portal.Device, rows, returning: [:id, :slug])
+    {^count, devices} =
+      Portal.Repo.insert_all(Portal.Device, rows, returning: [:account_id, :id, :slug])
+
     devices
+  end
+
+  @doc """
+  Records when the device was last seen, as a connect does.
+  """
+  def record_last_seen(device, last_seen_at) do
+    device
+    |> Ecto.Changeset.change(last_seen_at: last_seen_at)
+    |> Portal.Repo.update!()
   end
 
   ##############################################################################
