@@ -3,15 +3,19 @@ package dev.firezone.android.features.session.ui.compose
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -23,13 +27,26 @@ fun ConnectedDeviceRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // The row is a single line, so it needs less vertical padding than the two-line resource rows
-    // to avoid looking sparse.
-    Text(
-        text = deviceLabel(device),
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
-    )
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = deviceLabel(device),
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            imageVector = FirezoneIcons.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 // A device's slug, followed by the device domain in the secondary text colour.

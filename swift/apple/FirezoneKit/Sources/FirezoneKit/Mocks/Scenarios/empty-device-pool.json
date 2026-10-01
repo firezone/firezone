@@ -1,0 +1,22 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "clientCertificate": "absent",
+  "actorName": "Jane Doe",
+  "resources": [
+    {
+      "id": "2f3e8a61-5b7d-4c09-9e14-6a8d0c2b7f53",
+      "name": "Spare hardware",
+      "address": null,
+      "addressDescription": null,
+      "status": "Unknown",
+      "sites": [],
+      "type": "device_pool",
+      "devices": []
+    }
+  ],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}
