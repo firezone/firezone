@@ -139,13 +139,13 @@ impl ClientTunnel {
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             io: Io::new(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
                 BTreeSet::default(),
-            ),
+            )?,
             role_state: ClientState::new(
                 rand::random(),
                 records,
@@ -153,11 +153,11 @@ impl ClientTunnel {
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .context("Failed to compute UNIX timestamp")?,
             ),
             packet_counter: otel_instruments::network_packets(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -388,19 +388,19 @@ impl GatewayTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
-    ) -> Self {
-        Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+    ) -> Result<Self> {
+        Ok(Self {
+            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers)?,
             role_state: GatewayState::new(
                 rand::random(),
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .context("Failed to compute UNIX timestamp")?,
             ),
             packet_counter: otel_instruments::network_packets(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {

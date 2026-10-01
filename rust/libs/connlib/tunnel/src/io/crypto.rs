@@ -1,6 +1,7 @@
 use std::{
     collections::VecDeque,
     hash::{DefaultHasher, Hash as _, Hasher as _},
+    io,
     net::SocketAddr,
     num::NonZeroUsize,
     sync::{
@@ -58,7 +59,7 @@ impl<TId> Crypto<TId>
 where
     TId: Send + 'static,
 {
-    pub fn new() -> Self {
+    pub fn new() -> io::Result<Self> {
         let (opened_tx, opened_rx) = mpsc::unbounded_channel();
         let seals_in_flight = Arc::new(SealsInFlight::default());
 
@@ -68,7 +69,7 @@ where
             .clamp(1, MAX_WORKERS);
 
         let workers = (0..num_workers)
-            .filter_map(|i| {
+            .map(|i| {
                 // Unbounded because the callers bound the jobs in flight per direction.
                 let (jobs_tx, jobs_rx) = crossbeam_channel::unbounded();
                 let opened_tx = opened_tx.clone();
@@ -76,21 +77,19 @@ where
 
                 thread::Builder::new()
                     .name(format!("connlib-crypto-{i}"))
-                    .spawn(move || work(jobs_rx, opened_tx, seals_in_flight))
-                    .inspect_err(|e| tracing::warn!("Failed to spawn crypto worker: {e}"))
-                    .ok()?;
+                    .spawn(move || work(jobs_rx, opened_tx, seals_in_flight))?;
 
-                Some(jobs_tx)
+                Ok(jobs_tx)
             })
-            .collect();
+            .collect::<io::Result<_>>()?;
 
-        Self {
+        Ok(Self {
             workers,
             seals_in_flight,
             next_open_worker: 0,
             opened_rx,
             opens: ReorderBuffer::default(),
-        }
+        })
     }
 
     pub fn poll_seal_ready(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -113,9 +112,7 @@ where
         let DatagramOut { src, dst, .. } = datagram.datagram();
         let mut hasher = DefaultHasher::new();
         (src, dst).hash(&mut hasher);
-        let Some(worker) = self.worker(hasher.finish() as usize) else {
-            return;
-        };
+        let worker = self.worker(hasher.finish() as usize);
 
         self.seals_in_flight.count.fetch_add(1, Ordering::Relaxed);
 
@@ -132,11 +129,11 @@ where
         let seq = self.opens.push();
         self.next_open_worker = self.next_open_worker.wrapping_add(1);
 
-        let sent = self
+        if self
             .worker(self.next_open_worker)
-            .is_some_and(|worker| worker.send(Job::Open(seq, packets)).is_ok());
-
-        if !sent {
+            .send(Job::Open(seq, packets))
+            .is_err()
+        {
             self.opens.complete(seq, Vec::new());
         }
     }
@@ -155,8 +152,8 @@ where
         self.opens.pop()
     }
 
-    fn worker(&self, key: usize) -> Option<&crossbeam_channel::Sender<Job<TId>>> {
-        self.workers.get(key.checked_rem(self.workers.len())?)
+    fn worker(&self, key: usize) -> &crossbeam_channel::Sender<Job<TId>> {
+        &self.workers[key % self.workers.len()]
     }
 }
 
@@ -272,7 +269,7 @@ mod tests {
         let now = Instant::now();
         let (mut alice, mut bob) = connected_tunnels(now);
         let mut queue = UdpGsoQueue::new();
-        let mut crypto = Crypto::<()>::new();
+        let mut crypto = Crypto::<()>::new().unwrap();
         let (socket, mut sent) = mpsc::channel(MAX_SEALS_IN_FLIGHT);
         // A longer segment cannot join the previous batch, so every length starts a new one.
         let packets = [100, 200, 300, 400]
