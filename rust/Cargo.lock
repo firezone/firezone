@@ -2401,6 +2401,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-random-state"
+version = "0.1.0"
+dependencies = [
+ "foldhash 0.2.0",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2792,11 +2799,11 @@ dependencies = [
  "chrono",
  "connlib-model",
  "dns-types",
+ "fast-random-state",
  "flow-log-spool",
  "flow-log-writer",
  "ip-packet",
  "jsonschema",
- "random-state",
  "serde",
  "serde_json",
  "smallvec",
@@ -6199,13 +6206,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "random-state"
-version = "0.1.0"
-dependencies = [
- "foldhash 0.2.0",
-]
-
-[[package]]
 name = "rangemap"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8886,6 +8886,7 @@ dependencies = [
  "divan",
  "dns-over-tcp",
  "dns-types",
+ "fast-random-state",
  "flow-tracker",
  "glob",
  "ip-packet",
@@ -8900,7 +8901,6 @@ dependencies = [
  "otel-instruments",
  "proptest",
  "rand 0.10.3",
- "random-state",
  "rangemap",
  "ringbuffer",
  "secrecy",

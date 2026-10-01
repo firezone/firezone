@@ -7,12 +7,12 @@ use std::{
 };
 
 use connlib_model::ResourceId;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
 use lru::LruCache;
-use random_state::RandomState;
 
 use crate::filter_engine::FilterEngine;
 
@@ -29,7 +29,7 @@ const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0
 /// An LRU cache for the outcome of routing table lookups.
 ///
 /// Must be cleared whenever the state the cached values derive from changes.
-pub(crate) struct MatchCache<K, V>(LruCache<K, V, RandomState>);
+pub(crate) struct MatchCache<K, V>(LruCache<K, V, FastRandomState>);
 
 impl<K, V> Default for MatchCache<K, V>
 where
@@ -38,7 +38,7 @@ where
     fn default() -> Self {
         Self(LruCache::with_hasher(
             MAX_CACHE_ENTRIES,
-            RandomState::default(),
+            FastRandomState::default(),
         ))
     }
 }

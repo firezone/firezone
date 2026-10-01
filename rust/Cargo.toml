@@ -43,6 +43,7 @@ members = [
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
     "libs/eventloop-budget",
+    "libs/fast-random-state",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
     "libs/flow-log-writer",
@@ -51,7 +52,6 @@ members = [
     "libs/known-dirs",
     "libs/logging",
     "libs/otel-attributes",
-    "libs/random-state",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -124,6 +124,7 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
+fast-random-state = { path = "libs/fast-random-state" }
 fastrand = "2.3.0"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
@@ -193,7 +194,6 @@ proptest = "1.9.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
-random-state = { path = "libs/random-state" }
 rangemap = "1.7.1"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
