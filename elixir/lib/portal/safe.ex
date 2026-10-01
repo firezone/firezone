@@ -877,6 +877,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Google.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.GitHub.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.GitHub.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Okta.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.OIDC.AuthProvider, :account_admin_user), do: :ok

@@ -1699,6 +1699,7 @@ defmodule PortalWeb.Groups do
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]

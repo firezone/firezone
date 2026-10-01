@@ -27,6 +27,16 @@ defmodule PortalWeb.SignInTest do
       assert html =~ "Send code"
     end
 
+    test "renders a GitHub sign-in button when a GitHub provider is configured",
+         %{conn: conn, account: account} do
+      provider = github_provider_fixture(account: account, name: "GitHub")
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert html =~ "/#{account.slug}/sign_in/github/#{provider.id}"
+      assert html =~ "ri-github-fill"
+    end
+
     test "does not show email OTP form when no providers configured",
          %{conn: conn, account: account} do
       {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")

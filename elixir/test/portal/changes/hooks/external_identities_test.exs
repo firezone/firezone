@@ -153,6 +153,30 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
     end
 
+    test "deletes client tokens for GitHub auth provider with matching issuer" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      github_provider = github_provider_fixture(account: account)
+
+      client_token =
+        client_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: github_provider.auth_provider
+        )
+
+      identity = identity_fixture(account: account, actor: actor, issuer: "https://github.com/login/oauth")
+
+      old_data = %{
+        "account_id" => identity.account_id,
+        "actor_id" => identity.actor_id,
+        "issuer" => identity.issuer
+      }
+
+      assert :ok == on_delete(0, old_data)
+      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+    end
+
     test "deletes portal sessions for Entra auth provider with matching issuer" do
       account = account_fixture()
       actor = actor_fixture(account: account)
