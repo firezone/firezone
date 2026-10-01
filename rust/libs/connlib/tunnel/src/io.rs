@@ -29,7 +29,7 @@ use snownet::{DecryptedPacket, EncryptedPacket, Outgoing};
 use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
-    io, iter,
+    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -90,7 +90,8 @@ enum DohClient {
 pub struct Input<TId> {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
-    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted.
+    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted
+    /// per peer.
     pub decrypted: Vec<Vec<Received<DecryptedPacket<TId>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
@@ -269,8 +270,7 @@ where
             }
         }
 
-        self.crypto.poll_opened(cx);
-        let decrypted = iter::from_fn(|| self.crypto.pop_opened()).collect::<Vec<_>>();
+        let decrypted = self.crypto.poll_opened(cx);
         let network = self
             .sockets
             .poll_recv_from(cx, self.crypto.opens_in_flight());

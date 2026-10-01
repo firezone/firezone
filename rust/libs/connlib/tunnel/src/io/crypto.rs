@@ -1,7 +1,6 @@
 use std::{
-    collections::VecDeque,
     hash::{DefaultHasher, Hash as _, Hasher as _},
-    io,
+    io, iter,
     net::SocketAddr,
     num::NonZeroUsize,
     sync::{
@@ -44,15 +43,15 @@ pub struct Received<P> {
 
 /// Seals and opens batches of WireGuard data messages on dedicated worker threads.
 ///
-/// Each connection is pinned to one worker, which hands its sealed batches straight to the socket,
-/// so they leave in the order they were submitted. Opened batches come back over a channel polled
-/// by the main thread and are released in the order they were submitted.
+/// Each worker runs its jobs in the order they were submitted. The seals and the opens for one peer
+/// address each go to a fixed worker, a different one per direction whenever there are several, so
+/// both directions keep their order per peer. Sealed batches go from the worker straight to the
+/// socket; opened packets come back over a channel polled by the main thread.
 pub struct Crypto<TId> {
     workers: Vec<crossbeam_channel::Sender<Job<TId>>>,
     seals_in_flight: Arc<SealsInFlight>,
-    next_open_worker: usize,
+    opens_in_flight: Arc<AtomicUsize>,
     opened_rx: mpsc::UnboundedReceiver<Opened<TId>>,
-    opens: ReorderBuffer<Vec<Received<DecryptedPacket<TId>>>>,
 }
 
 impl<TId> Crypto<TId>
@@ -86,9 +85,8 @@ where
         Ok(Self {
             workers,
             seals_in_flight,
-            next_open_worker: 0,
+            opens_in_flight: Arc::default(),
             opened_rx,
-            opens: ReorderBuffer::default(),
         })
     }
 
@@ -109,10 +107,7 @@ where
     /// Seals `datagram` and sends it to `socket`, after all batches previously submitted to the
     /// same peer.
     pub fn seal(&mut self, datagram: PendingDatagram, socket: mpsc::Sender<DatagramOut>) {
-        let DatagramOut { src, dst, .. } = datagram.datagram();
-        let mut hasher = DefaultHasher::new();
-        (src, dst).hash(&mut hasher);
-        let worker = self.worker(hasher.finish() as usize);
+        let worker = &self.workers[self.worker_index(datagram.datagram().dst, Direction::Seal)];
 
         self.seals_in_flight.count.fetch_add(1, Ordering::Relaxed);
 
@@ -121,39 +116,57 @@ where
         }
     }
 
+    /// Opens `packets`, after all packets previously submitted from the same peer.
     pub fn open(&mut self, packets: Vec<Received<EncryptedPacket<TId>>>) {
         if packets.is_empty() {
             return;
         }
 
-        let seq = self.opens.push();
-        self.next_open_worker = self.next_open_worker.wrapping_add(1);
+        let batch = Arc::new(BatchInFlight::new(self.opens_in_flight.clone()));
+        let mut parts = iter::repeat_with(Vec::new)
+            .take(self.workers.len())
+            .collect::<Vec<_>>();
 
-        if self
-            .worker(self.next_open_worker)
-            .send(Job::Open(seq, packets))
-            .is_err()
-        {
-            self.opens.complete(seq, Vec::new());
+        for received in packets {
+            parts[self.worker_index(received.from, Direction::Open)].push(received);
+        }
+
+        for (worker, part) in self.workers.iter().zip(parts) {
+            if part.is_empty() {
+                continue;
+            }
+
+            // Fails only once the worker is gone, in which case the packets are dropped.
+            let _ = worker.send(Job::Open(part, batch.clone()));
         }
     }
 
+    /// Returns the number of received batches whose opened packets have not been polled yet.
     pub fn opens_in_flight(&self) -> usize {
-        self.opens.len()
+        self.opens_in_flight.load(Ordering::Relaxed)
     }
 
-    pub fn poll_opened(&mut self, cx: &mut Context<'_>) {
-        while let Poll::Ready(Some(Opened(seq, packets))) = self.opened_rx.poll_recv(cx) {
-            self.opens.complete(seq, packets);
-        }
+    pub fn poll_opened(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Vec<Vec<Received<DecryptedPacket<TId>>>> {
+        iter::from_fn(|| {
+            let Poll::Ready(Some(Opened(packets, _batch))) = self.opened_rx.poll_recv(cx) else {
+                return None;
+            };
+
+            Some(packets)
+        })
+        .collect()
     }
 
-    pub fn pop_opened(&mut self) -> Option<Vec<Received<DecryptedPacket<TId>>>> {
-        self.opens.pop()
-    }
+    fn worker_index(&self, peer: SocketAddr, direction: Direction) -> usize {
+        let mut hasher = DefaultHasher::new();
+        peer.hash(&mut hasher);
 
-    fn worker(&self, key: usize) -> &crossbeam_channel::Sender<Job<TId>> {
-        &self.workers[key % self.workers.len()]
+        let num_workers = self.workers.len();
+
+        (hasher.finish() as usize % num_workers + direction as usize) % num_workers
     }
 }
 
@@ -169,8 +182,8 @@ fn work<TId>(
                 let _ = socket.blocking_send(datagram.seal());
                 seals_in_flight.release();
             }
-            Job::Open(seq, packets) => {
-                if opened.send(Opened(seq, open(packets))).is_err() {
+            Job::Open(packets, batch) => {
+                if opened.send(Opened(open(packets), batch)).is_err() {
                     return;
                 }
             }
@@ -180,10 +193,32 @@ fn work<TId>(
 
 enum Job<TId> {
     Seal(PendingDatagram, mpsc::Sender<DatagramOut>),
-    Open(u64, Vec<Received<EncryptedPacket<TId>>>),
+    Open(Vec<Received<EncryptedPacket<TId>>>, Arc<BatchInFlight>),
 }
 
-struct Opened<TId>(u64, Vec<Received<DecryptedPacket<TId>>>);
+struct Opened<TId>(Vec<Received<DecryptedPacket<TId>>>, Arc<BatchInFlight>);
+
+enum Direction {
+    Seal = 0,
+    Open = 1,
+}
+
+/// Counts a received batch as in flight until the opened packets of all its parts are polled.
+struct BatchInFlight(Arc<AtomicUsize>);
+
+impl BatchInFlight {
+    fn new(count: Arc<AtomicUsize>) -> Self {
+        count.fetch_add(1, Ordering::Relaxed);
+
+        Self(count)
+    }
+}
+
+impl Drop for BatchInFlight {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 #[derive(Default)]
 struct SealsInFlight {
@@ -212,49 +247,6 @@ fn open<TId>(packets: Vec<Received<EncryptedPacket<TId>>>) -> Vec<Received<Decry
             packet: received.packet.decrypt(),
         })
         .collect()
-}
-
-/// Releases the results of jobs in the order they were pushed, however they complete.
-struct ReorderBuffer<T> {
-    /// The sequence number of the oldest job not yet released.
-    head: u64,
-    results: VecDeque<Option<T>>,
-}
-
-impl<T> Default for ReorderBuffer<T> {
-    fn default() -> Self {
-        Self {
-            head: 0,
-            results: VecDeque::new(),
-        }
-    }
-}
-
-impl<T> ReorderBuffer<T> {
-    /// Returns the sequence number of a new job.
-    fn push(&mut self) -> u64 {
-        self.results.push_back(None);
-
-        self.head + self.results.len() as u64 - 1
-    }
-
-    fn complete(&mut self, seq: u64, result: T) {
-        let index = usize::try_from(seq - self.head).expect("in-flight jobs are bounded");
-
-        self.results[index] = Some(result);
-    }
-
-    fn pop(&mut self) -> Option<T> {
-        let result = self.results.pop_front_if(|r| r.is_some())??;
-        self.head += 1;
-
-        Some(result)
-    }
-
-    /// Returns the number of jobs not yet released.
-    fn len(&self) -> usize {
-        self.results.len()
-    }
 }
 
 #[cfg(test)]
@@ -299,21 +291,5 @@ mod tests {
             .map(|p| p.packet().to_vec())
             .collect::<Vec<_>>();
         assert_eq!(received, expected);
-    }
-
-    #[test]
-    fn releases_results_in_push_order() {
-        let mut buffer = ReorderBuffer::default();
-        let first = buffer.push();
-        let second = buffer.push();
-
-        buffer.complete(second, "second");
-        let before_first = buffer.pop();
-        buffer.complete(first, "first");
-
-        assert_eq!(before_first, None);
-        assert_eq!(buffer.pop(), Some("first"));
-        assert_eq!(buffer.pop(), Some("second"));
-        assert_eq!(buffer.len(), 0);
     }
 }
