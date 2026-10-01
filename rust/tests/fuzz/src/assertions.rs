@@ -934,11 +934,11 @@ fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
 }
 
 fn assert_device_listings(ref_client: &RefClient, sim_client: &SimClient) {
-    for (domain, expected) in &ref_client.expected_device_listings {
-        let actual = sim_client.device_listings.get(domain);
+    for (query, expected) in &ref_client.expected_device_listings {
+        let actual = sim_client.device_listings.get(query);
 
         if actual != Some(expected) {
-            tracing::error!(target: "assertions", %domain, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");
+            tracing::error!(target: "assertions", ?query, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");
         }
     }
 }

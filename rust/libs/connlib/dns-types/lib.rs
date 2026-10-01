@@ -7,8 +7,10 @@ use bytes::Bytes;
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
+        iana::ExtendedErrorCode,
         message_builder::{AnswerBuilder, HashCompressor},
         name::FlattenInto,
+        opt::exterr::ExtendedError,
     },
     dep::octseq::OctetsInto,
     rdata::AllRecordData,
@@ -39,6 +41,9 @@ pub type OwnedRecordData = AllRecordData<Vec<u8>, DomainName>;
 
 pub type ResponseCode = domain::base::iana::Rcode;
 pub type Ttl = domain::base::Ttl;
+
+/// Room [`ResponseBuilder::with_records_that_fit`] leaves for the OPT record of a note.
+const NOTE_ROOM: usize = 64;
 
 #[derive(Clone)]
 pub struct Query {
@@ -102,6 +107,26 @@ impl Query {
         self
     }
 
+    /// Adds an OPT record, as resolvers that support EDNS do.
+    pub fn with_edns(self) -> Self {
+        let mut builder = MessageBuilder::new_vec();
+        *builder.header_mut() = self.inner.header();
+
+        let mut builder = builder.question();
+        builder
+            .push(self.question())
+            .expect("Vec-backed message builder never fails");
+
+        let mut builder = builder.additional();
+        builder
+            .opt(|_| Ok(()))
+            .expect("Vec-backed message builder never fails");
+
+        Self {
+            inner: builder.into_message(),
+        }
+    }
+
     pub fn id(&self) -> u16 {
         self.inner.header().id()
     }
@@ -161,6 +186,7 @@ impl TryFrom<&[u8]> for Response {
 #[derive(Clone)]
 pub struct Response {
     inner: Message<Vec<u8>>,
+    note: Option<String>,
 }
 
 impl std::fmt::Debug for Response {
@@ -203,6 +229,7 @@ impl Response {
         }
 
         Ok(Self {
+            note: parse_note(&message),
             inner: message.octets_into(),
         })
     }
@@ -250,6 +277,11 @@ impl Response {
 
     pub fn response_code(&self) -> ResponseCode {
         self.inner.header().rcode()
+    }
+
+    /// Returns the text of the Extended DNS Error the response carries for queries with EDNS.
+    pub fn note(&self) -> Option<&str> {
+        self.note.as_deref()
     }
 
     pub fn ttl(&self, rtype: RecordType) -> Option<Duration> {
@@ -310,6 +342,8 @@ impl Response {
 
 pub struct ResponseBuilder {
     inner: AnswerBuilder<HashCompressor<Vec<u8>>>,
+    edns: bool,
+    note: Option<String>,
 }
 
 impl ResponseBuilder {
@@ -319,7 +353,11 @@ impl ResponseBuilder {
             .start_answer(&query.inner, code)
             .expect("Vec-backed message builder never fails");
 
-        Self { inner }
+        Self {
+            inner,
+            edns: query.inner.opt().is_some(),
+            note: None,
+        }
     }
 
     pub fn with_records(mut self, records: impl IntoIterator<Item: Into<OwnedRecord>>) -> Self {
@@ -332,11 +370,68 @@ impl ResponseBuilder {
         self
     }
 
+    /// Appends the leading `records` that fit in a message of at most 65,535 bytes, with
+    /// room left for a note, and returns how many that is.
+    pub fn with_records_that_fit(
+        mut self,
+        records: impl IntoIterator<Item: Into<OwnedRecord>>,
+    ) -> (Self, usize) {
+        self.inner
+            .as_builder_mut()
+            .set_push_limit(usize::from(u16::MAX) + 1 - NOTE_ROOM);
+
+        let mut fitting = 0;
+        for record in records {
+            if self.inner.push(record.into()).is_err() {
+                break;
+            }
+
+            fitting += 1;
+        }
+
+        self.inner.as_builder_mut().clear_push_limit();
+
+        (self, fitting)
+    }
+
+    /// Attaches `note` as an Extended DNS Error if the query carried EDNS.
+    ///
+    /// The response keeps the note either way, see [`Response::note`].
+    pub fn with_note(mut self, note: Option<String>) -> Self {
+        self.note = note;
+
+        self
+    }
+
     pub fn build(self) -> Response {
+        let mut additional = self.inner.additional();
+
+        if let (Some(note), true) = (&self.note, self.edns) {
+            let error = ExtendedError::<Vec<u8>>::new_with_str(ExtendedErrorCode::OTHER, note)
+                .expect("note fits in an EDNS option");
+
+            additional
+                .opt(|opt| opt.push(&error))
+                .expect("Vec-backed message builder never fails");
+        }
+
         Response {
-            inner: self.inner.into_message(),
+            inner: additional.into_message(),
+            note: self.note,
         }
     }
+}
+
+fn parse_note(message: &Message<&[u8]>) -> Option<String> {
+    let error = message.opt()?.opt().extended_error()?;
+
+    if error.code() != ExtendedErrorCode::OTHER {
+        return None;
+    }
+
+    let text = error.text()?.ok()?;
+
+    Some(text.to_string())
 }
 
 #[derive(Debug, thiserror::Error)]

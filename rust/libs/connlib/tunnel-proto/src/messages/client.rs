@@ -291,6 +291,8 @@ pub struct DeviceDomainBrowsed {
     pub names: Vec<String>,
     /// How long, in seconds, the answer may be cached.
     pub ttl: u32,
+    /// How many names there are in all, more than `names` holds if the portal capped them.
+    pub total: usize,
 }
 
 /// Portal's response when a PTR query in the device domain cannot be answered.
@@ -312,7 +314,6 @@ pub enum FailReason {
     MissingAddress,
     InvalidAddress,
     NotADevice,
-    TooManyNames,
     #[serde(other)]
     Unknown,
 }
@@ -1098,7 +1099,8 @@ mod tests {
             "payload": {
                 "domain": "your-devices.firezone.network",
                 "names": ["alice-laptop.firezone.network", "alice-desktop.firezone.network"],
-                "ttl": 30
+                "ttl": 30,
+                "total": 5
             }
         });
 
@@ -1115,6 +1117,7 @@ mod tests {
             ]
         );
         assert_eq!(browsed.ttl, 30);
+        assert_eq!(browsed.total, 5);
     }
 
     #[test]
@@ -1132,23 +1135,6 @@ mod tests {
             panic!("expected DeviceDomainBrowseFailed")
         };
         assert!(matches!(failed.reason, FailReason::NotFound));
-    }
-
-    #[test]
-    fn can_deserialize_too_many_names_reason() {
-        let json = serde_json::json!({
-            "event": "device_domain_browse_failed",
-            "payload": {
-                "domain": "all-devices.firezone.network",
-                "reason": "too_many_names"
-            }
-        });
-
-        let msg: IngressMessages = serde_json::from_value(json).unwrap();
-        let IngressMessages::DeviceDomainBrowseFailed(failed) = msg else {
-            panic!("expected DeviceDomainBrowseFailed")
-        };
-        assert!(matches!(failed.reason, FailReason::TooManyNames));
     }
 
     #[test]

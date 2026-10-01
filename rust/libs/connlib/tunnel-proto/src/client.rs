@@ -435,11 +435,11 @@ impl ClientState {
     }
 
     /// Handles the portal's answer to a PTR query in the device domain: the names it
-    /// lists and for how many seconds they may be cached.
+    /// lists, for how many seconds they may be cached and how many names there are in all.
     pub fn handle_device_domain_browsed(
         &mut self,
         domain: DomainName,
-        result: Result<(Vec<DomainName>, u32), FailReason>,
+        result: Result<(Vec<DomainName>, u32, usize), FailReason>,
         now: Instant,
     ) {
         self.device_stub_resolver

@@ -203,7 +203,7 @@ impl ReferenceState {
                         );
 
                         if let Some(listing) = listing {
-                            c.expect_device_listing(&query.domain, listing);
+                            c.expect_device_listing(query, listing);
                         }
                     });
                 }

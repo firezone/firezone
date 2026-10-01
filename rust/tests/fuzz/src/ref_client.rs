@@ -1,5 +1,5 @@
 use super::{
-    DeviceListing, QueryId,
+    DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
     probe::{ExpectedOutcome, RejectionResponse, Remote, Route},
@@ -108,9 +108,9 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
-    /// The expected answer to the latest PTR query for each name in the device domain.
+    /// The expected answers to the PTR queries in the device domain.
     #[debug(skip)]
-    pub(crate) expected_device_listings: BTreeMap<DomainName, DeviceListing>,
+    pub(crate) expected_device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
     #[debug(skip)]
     connection_resets: Vec<Instant>,
@@ -945,28 +945,39 @@ impl RefClient {
         self.expect_dns_response(query);
     }
 
-    /// Expects the latest PTR query for `domain` to be answered with `listing`, the names
-    /// and TTL the portal gave, REFUSED if it refused to list them, or NXDOMAIN if it gave
-    /// none.
+    /// Expects the PTR `query` to be answered with `listing`, the names and TTL the portal
+    /// gave, or NXDOMAIN if it gave none.
+    ///
+    /// If the query carried EDNS and the names are fewer than all of them, the answer notes
+    /// how many of them it lists.
     pub(crate) fn expect_device_listing(
         &mut self,
-        domain: &DomainName,
-        listing: Result<(Vec<DomainName>, u32), FailReason>,
+        query: &DnsQuery,
+        listing: Result<(Vec<DomainName>, u32, usize), FailReason>,
     ) {
         let listing = match listing {
-            Ok((names, ttl)) => (
-                ResponseCode::NOERROR,
-                names
+            Ok((names, ttl, total)) => {
+                let note = (query.edns && names.len() < total)
+                    .then(|| format!("Lists {} of {total} names", names.len()));
+                let records = names
                     .into_iter()
                     .map(|name| (dns_types::records::ptr(name), ttl))
-                    .collect(),
-            ),
-            Err(FailReason::TooManyNames) => (ResponseCode::REFUSED, BTreeSet::new()),
-            Err(_) => (ResponseCode::NXDOMAIN, BTreeSet::new()),
+                    .collect();
+
+                (ResponseCode::NOERROR, records, note)
+            }
+            Err(_) => (ResponseCode::NXDOMAIN, BTreeSet::new(), None),
         };
 
-        self.expected_device_listings
-            .insert(domain.clone(), listing);
+        self.expected_device_listings.insert(
+            (
+                query.domain.clone(),
+                query.dns_server.clone(),
+                query.query_id,
+                query.transport,
+            ),
+            listing,
+        );
     }
 
     pub(crate) fn on_dns_resource_ptr_query(

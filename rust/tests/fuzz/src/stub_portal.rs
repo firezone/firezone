@@ -354,27 +354,25 @@ impl StubPortal {
         Err(FailReason::NotFound)
     }
 
-    /// Lists the names a PTR query for `domain` returns to a client holding `held`, and
-    /// for how many seconds they may be cached.
+    /// Lists the names a PTR query for `domain` returns to a client holding `held`, for
+    /// how many seconds they may be cached and how many names there are in all.
     ///
     /// The device domain itself lists the labels of those pools, a label the members of
     /// the pools it names. A label that names none of them but a device lists nothing.
-    /// A listing of at least as many names as there are clients, such as the members of a
-    /// pool that holds them all, is refused.
+    /// A listing holds one name fewer than there are clients at most, so the members of a
+    /// pool that holds them all are cut short.
     pub(crate) fn browse_device_domain(
         &self,
         domain: &DomainName,
         held: &[ResourceId],
-    ) -> Result<(Vec<DomainName>, u32), FailReason> {
-        let names = self
+    ) -> Result<(Vec<DomainName>, u32, usize), FailReason> {
+        let mut names = self
             .device_domain_names(domain, held)
             .ok_or(FailReason::NotFound)?;
+        let total = names.len();
+        names.truncate(self.clients.len() - 1);
 
-        if names.len() > self.clients.len() - 1 {
-            return Err(FailReason::TooManyNames);
-        }
-
-        Ok((names, DEVICE_LISTING_TTL))
+        Ok((names, DEVICE_LISTING_TTL, total))
     }
 
     fn device_domain_names(

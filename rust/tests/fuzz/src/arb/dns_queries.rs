@@ -195,14 +195,20 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
         domain
     };
 
+    let query_id = arb_dns_query_id(g);
+    let transport = arb_dns_transport(g);
+    // Only the answers to PTR queries in the device domain depend on EDNS.
+    let edns = r_type == RecordType::PTR && dns::is_in_device_domain(&domain) && g.bool();
+
     (
         target.client_id,
         DnsQuery {
             domain,
             r_type,
-            query_id: arb_dns_query_id(g),
+            query_id,
             dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
+            transport,
+            edns,
         },
     )
 }

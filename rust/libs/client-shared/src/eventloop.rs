@@ -732,7 +732,6 @@ impl Eventloop {
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
                     | FailReason::NotADevice
-                    | FailReason::TooManyNames
                     | FailReason::Unknown => {}
                 }
             }
@@ -834,7 +833,6 @@ impl Eventloop {
                     | FailReason::MissingAddress
                     | FailReason::InvalidAddress
                     | FailReason::NotADevice
-                    | FailReason::TooManyNames
                     | FailReason::Unknown => {}
                 }
             }
@@ -857,7 +855,12 @@ impl Eventloop {
                     .state_mut()
                     .handle_device_domain_resolved(domain, Err(reason), now);
             }
-            IngressMessages::DeviceDomainBrowsed(DeviceDomainBrowsed { domain, names, ttl }) => {
+            IngressMessages::DeviceDomainBrowsed(DeviceDomainBrowsed {
+                domain,
+                names,
+                ttl,
+                total,
+            }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
@@ -865,9 +868,11 @@ impl Eventloop {
                     .iter()
                     .filter_map(|name| parse_portal_domain(name))
                     .collect();
-                tunnel
-                    .state_mut()
-                    .handle_device_domain_browsed(domain, Ok((names, ttl)), now);
+                tunnel.state_mut().handle_device_domain_browsed(
+                    domain,
+                    Ok((names, ttl, total)),
+                    now,
+                );
             }
             IngressMessages::DeviceDomainBrowseFailed(DeviceDomainBrowseFailed {
                 domain,

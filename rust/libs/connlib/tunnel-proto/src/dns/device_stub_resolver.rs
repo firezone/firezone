@@ -151,12 +151,15 @@ impl DeviceStubResolver {
         });
     }
 
-    /// Answers the PTR queries for `domain` with the names the portal listed and the TTL,
-    /// in seconds, it gave them.
+    /// Answers the PTR queries for `domain` with the names the portal listed, the TTL, in
+    /// seconds, it gave them and how many names there are in all.
+    ///
+    /// The answer keeps as many of the names as fit in a DNS message and notes how many
+    /// it lists if that is fewer than all of them.
     pub(crate) fn handle_device_domain_browsed(
         &mut self,
         domain: DomainName,
-        result: Result<(Vec<DomainName>, u32), FailReason>,
+        result: Result<(Vec<DomainName>, u32, usize), FailReason>,
     ) {
         let Some(pending) = self.pending.remove(&PortalQuery::Browse(domain.clone())) else {
             tracing::debug!(%domain, "Received device domain listing for unknown query");
@@ -166,14 +169,17 @@ impl DeviceStubResolver {
         tracing::debug!(%domain, ?result, "Device domain browsed");
 
         self.respond(pending.value, |query| match &result {
-            Ok((names, ttl)) => {
+            Ok((names, ttl, total)) => {
                 let records = names
                     .iter()
                     .map(|name| (query.domain(), *ttl, dns_types::records::ptr(name.clone())));
 
-                dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
-                    .with_records(records)
-                    .build()
+                let (builder, listed) =
+                    dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
+                        .with_records_that_fit(records);
+                let note = (listed < *total).then(|| format!("Lists {listed} of {total} names"));
+
+                builder.with_note(note).build()
             }
             Err(reason) => failure_response(query, reason),
         });
@@ -287,9 +293,6 @@ fn failure_response(query: &dns_types::Query, reason: &FailReason) -> dns_types:
         FailReason::NotFound => dns_types::Response::nxdomain(query),
         // The name exists but holds no records of the queried type.
         FailReason::NotADevice => dns_types::Response::no_error(query),
-        FailReason::TooManyNames => {
-            dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::REFUSED).build()
-        }
         FailReason::Offline
         | FailReason::VersionMismatch
         | FailReason::Forbidden
@@ -527,7 +530,7 @@ mod tests {
 
         resolver.handle_device_domain_browsed(
             domain("firezone.network"),
-            Ok((vec![domain("your-devices.firezone.network")], 30)),
+            Ok((vec![domain("your-devices.firezone.network")], 30, 1)),
         );
 
         let events = drain(&mut resolver);
@@ -545,26 +548,46 @@ mod tests {
     }
 
     #[test]
-    fn refuses_ptr_queries_for_listings_with_too_many_names() {
+    fn lists_the_first_names_that_fit_in_a_message_and_notes_how_many() {
         let mut resolver = DeviceStubResolver::default();
-        handle(
-            &mut resolver,
-            "all-devices.firezone.network",
-            dns_types::RecordType::PTR,
+        resolver.handle_query(
+            &query("all-devices.firezone.network", dns_types::RecordType::PTR).with_edns(),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Tcp,
+            Instant::now(),
         );
         drain(&mut resolver);
+        let names = (0..2_000)
+            .map(|n| domain(&format!("{}-{n}.firezone.network", "a".repeat(40))))
+            .collect::<Vec<_>>();
 
         resolver.handle_device_domain_browsed(
             domain("all-devices.firezone.network"),
-            Err(FailReason::TooManyNames),
+            Ok((names.clone(), 30, 3_000)),
         );
 
         let events = drain(&mut resolver);
         let [Event::SendResponse { response, .. }] = events.as_slice() else {
             panic!("unexpected events: {events:?}")
         };
-        assert_eq!(response.response_code(), dns_types::ResponseCode::REFUSED);
-        assert_eq!(response.records().count(), 0);
+        let response = dns_types::Response::parse(&response.clone().into_bytes(u16::MAX)).unwrap();
+        let listed = response.records().count();
+        assert!(!response.truncated());
+        assert!(
+            listed > 1_000,
+            "compressed names fit more than 1000 of these"
+        );
+        assert!(
+            response
+                .records()
+                .zip(&names)
+                .all(|(r, name)| r.data() == &dns_types::records::ptr(name.clone()))
+        );
+        assert_eq!(
+            response.note(),
+            Some(format!("Lists {listed} of 3000 names").as_str())
+        );
     }
 
     #[test]
