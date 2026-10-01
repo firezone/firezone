@@ -422,8 +422,8 @@ where
             }
         }
 
-        loop {
-            ready!(self.crypto.poll_seal_ready(cx));
+        while let Some(dst) = self.gso_queue.front_dst() {
+            ready!(self.crypto.poll_seal_ready(dst, cx))?;
 
             let Some(datagram) = self.gso_queue.pop() else {
                 break;

@@ -40,6 +40,14 @@ impl UdpGsoQueue {
         }
     }
 
+    /// Returns the destination of the batch [`UdpGsoQueue::pop`] returns next.
+    pub fn front_dst(&self) -> Option<SocketAddr> {
+        self.batches
+            .iter()
+            .find(|batch| !batch.buffer.is_empty())
+            .map(|batch| batch.connection.dst)
+    }
+
     /// Removes the oldest batch from the queue.
     pub fn pop(&mut self) -> Option<PendingDatagram> {
         loop {

@@ -7,31 +7,32 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    task::{Context, Poll},
+    task::{Context, Poll, ready},
     thread,
 };
 
-use futures::task::AtomicWaker;
 use ip_packet::Ecn;
 use snownet::{DecryptedPacket, EncryptedPacket};
 use socket_factory::DatagramOut;
 use tokio::sync::mpsc;
+use tokio_util::sync::PollSender;
 
 use super::udp_gso_queue::PendingDatagram;
 
-/// The most crypto worker threads we start.
+/// The most worker threads we start per direction.
 ///
 /// The main thread's per-packet work outside of the AEAD caps a tunnel's throughput long before
 /// four workers run out of capacity, so more would only add wake-ups.
 const MAX_WORKERS: usize = 4;
 
 /// Cores left to the main thread and the busiest IO thread feeding it.
+///
+/// Both pools are sized against the same remaining cores because a tunnel's load is dominated by
+/// one direction at a time.
 const RESERVED_CORES: usize = 2;
 
-/// How many GSO batches may be sealing or waiting to be handed to their socket.
-///
-/// Two per worker keep each one busy while the main thread fills the next batch.
-const MAX_SEALS_IN_FLIGHT: usize = 2 * MAX_WORKERS;
+/// How many GSO batches may queue for each seal worker on top of the one it is sealing.
+const SEAL_QUEUE_CAPACITY: usize = 2;
 
 /// A packet received from the network.
 pub struct Received<P> {
@@ -47,13 +48,13 @@ pub struct CryptoWorkersUnavailable;
 
 /// Seals and opens batches of WireGuard data messages on dedicated worker threads.
 ///
-/// Each worker runs its jobs in the order they were submitted. The seals and the opens for one peer
-/// address each go to a fixed worker, a different one per direction whenever there are several, so
-/// both directions keep their order per peer. Sealed batches go from the worker straight to the
-/// socket; opened packets come back over a channel polled by the main thread.
+/// Seals and opens run on separate pools of workers. Within each pool, all batches of one peer
+/// address go to the same worker, which runs them in submission order. Sealed batches go from the
+/// worker straight to the socket; opened packets come back over a channel polled by the main
+/// thread.
 pub struct Crypto<TId> {
-    workers: Vec<crossbeam_channel::Sender<Job<TId>>>,
-    seals_in_flight: Arc<SealsInFlight>,
+    sealers: Vec<PollSender<Seal>>,
+    openers: Vec<crossbeam_channel::Sender<Open<TId>>>,
     opens_in_flight: Arc<AtomicUsize>,
     opened_rx: mpsc::UnboundedReceiver<Opened<TId>>,
 }
@@ -64,67 +65,51 @@ where
 {
     pub fn new() -> Self {
         let (opened_tx, opened_rx) = mpsc::unbounded_channel();
-        let seals_in_flight = Arc::new(SealsInFlight::default());
 
         let num_workers = thread::available_parallelism()
             .map_or(0, NonZeroUsize::get)
             .saturating_sub(RESERVED_CORES)
             .clamp(1, MAX_WORKERS);
 
-        let workers = (0..num_workers)
-            .map(|i| {
-                // Unbounded because the callers bound the jobs in flight per direction.
-                let (jobs_tx, jobs_rx) = crossbeam_channel::unbounded();
-                let opened_tx = opened_tx.clone();
-                let seals_in_flight = seals_in_flight.clone();
-
-                thread::Builder::new()
-                    .name(format!("connlib-crypto-{i}"))
-                    .spawn(move || work(jobs_rx, opened_tx, seals_in_flight))?;
-
-                Ok(jobs_tx)
-            })
-            .collect::<io::Result<_>>()
+        let (sealers, openers) = spawn_workers(num_workers, opened_tx)
             .inspect_err(|e| tracing::debug!("Failed to spawn crypto workers: {e}"))
             .unwrap_or_default();
 
         Self {
-            workers,
-            seals_in_flight,
+            sealers,
+            openers,
             opens_in_flight: Arc::default(),
             opened_rx,
         }
     }
 
-    pub fn poll_seal_ready(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        if self.seals_in_flight.has_capacity() {
-            return Poll::Ready(());
-        }
+    /// Waits until the seal worker for `dst` has room for another batch.
+    pub fn poll_seal_ready(
+        &mut self,
+        dst: SocketAddr,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), CryptoWorkersUnavailable>> {
+        let index = worker_index(dst, self.sealers.len())?;
 
-        self.seals_in_flight.waker.register(cx.waker());
+        // Fails only once the worker is gone, in which case `seal` drops the datagram.
+        let _ = ready!(self.sealers[index].poll_reserve(cx));
 
-        if self.seals_in_flight.has_capacity() {
-            return Poll::Ready(());
-        }
-
-        Poll::Pending
+        Poll::Ready(Ok(()))
     }
 
     /// Seals `datagram` and sends it to `socket`, after all batches previously submitted to the
     /// same peer.
+    ///
+    /// Call [`Crypto::poll_seal_ready`] for the datagram's destination first, otherwise the
+    /// datagram is dropped.
     pub fn seal(
         &mut self,
         datagram: PendingDatagram,
         socket: mpsc::Sender<DatagramOut>,
     ) -> Result<(), CryptoWorkersUnavailable> {
-        let index = self.worker_index(datagram.datagram().dst, Direction::Seal)?;
-        let worker = &self.workers[index];
+        let index = worker_index(datagram.datagram().dst, self.sealers.len())?;
 
-        self.seals_in_flight.count.fetch_add(1, Ordering::Relaxed);
-
-        if worker.send(Job::Seal(datagram, socket)).is_err() {
-            self.seals_in_flight.release();
-        }
+        let _ = self.sealers[index].send_item(Seal(datagram, socket));
 
         Ok(())
     }
@@ -140,22 +125,22 @@ where
 
         let batch = Arc::new(BatchInFlight::new(self.opens_in_flight.clone()));
         let mut parts = iter::repeat_with(Vec::new)
-            .take(self.workers.len())
+            .take(self.openers.len())
             .collect::<Vec<_>>();
 
         for received in packets {
-            let index = self.worker_index(received.from, Direction::Open)?;
+            let index = worker_index(received.from, self.openers.len())?;
 
             parts[index].push(received);
         }
 
-        for (worker, part) in self.workers.iter().zip(parts) {
+        for (worker, part) in self.openers.iter().zip(parts) {
             if part.is_empty() {
                 continue;
             }
 
             // Fails only once the worker is gone, in which case the packets are dropped.
-            let _ = worker.send(Job::Open(part, batch.clone()));
+            let _ = worker.send(Open(part, batch.clone()));
         }
 
         Ok(())
@@ -179,56 +164,82 @@ where
         })
         .collect()
     }
+}
 
-    fn worker_index(
-        &self,
-        peer: SocketAddr,
-        direction: Direction,
-    ) -> Result<usize, CryptoWorkersUnavailable> {
-        let mut hasher = DefaultHasher::new();
-        peer.hash(&mut hasher);
+/// Spawns `n` workers per direction.
+fn spawn_workers<TId>(
+    n: usize,
+    opened: mpsc::UnboundedSender<Opened<TId>>,
+) -> io::Result<(
+    Vec<PollSender<Seal>>,
+    Vec<crossbeam_channel::Sender<Open<TId>>>,
+)>
+where
+    TId: Send + 'static,
+{
+    let sealers = (0..n)
+        .map(|i| {
+            let (jobs_tx, jobs_rx) = mpsc::channel(SEAL_QUEUE_CAPACITY);
 
-        let num_workers = self.workers.len();
-        let index = (hasher.finish() as usize)
-            .checked_rem(num_workers)
-            .ok_or(CryptoWorkersUnavailable)?;
+            thread::Builder::new()
+                .name(format!("connlib-seal-{i}"))
+                .spawn(move || seal_work(jobs_rx))?;
 
-        Ok((index + direction as usize) % num_workers)
+            Ok(PollSender::new(jobs_tx))
+        })
+        .collect::<io::Result<_>>()?;
+
+    let openers = (0..n)
+        .map(|i| {
+            // Unbounded because the receive budget bounds the opens in flight.
+            let (jobs_tx, jobs_rx) = crossbeam_channel::unbounded();
+            let opened = opened.clone();
+
+            thread::Builder::new()
+                .name(format!("connlib-open-{i}"))
+                .spawn(move || open_work(jobs_rx, opened))?;
+
+            Ok(jobs_tx)
+        })
+        .collect::<io::Result<_>>()?;
+
+    Ok((sealers, openers))
+}
+
+fn worker_index(peer: SocketAddr, num_workers: usize) -> Result<usize, CryptoWorkersUnavailable> {
+    let mut hasher = DefaultHasher::new();
+    peer.hash(&mut hasher);
+
+    let index = (hasher.finish() as usize)
+        .checked_rem(num_workers)
+        .ok_or(CryptoWorkersUnavailable)?;
+
+    Ok(index)
+}
+
+fn seal_work(mut jobs: mpsc::Receiver<Seal>) {
+    while let Some(Seal(datagram, socket)) = jobs.blocking_recv() {
+        // Fails only once the socket is gone, in which case the datagram is dropped.
+        let _ = socket.blocking_send(datagram.seal());
     }
 }
 
-fn work<TId>(
-    jobs: crossbeam_channel::Receiver<Job<TId>>,
+fn open_work<TId>(
+    jobs: crossbeam_channel::Receiver<Open<TId>>,
     opened: mpsc::UnboundedSender<Opened<TId>>,
-    seals_in_flight: Arc<SealsInFlight>,
 ) {
-    for job in jobs {
-        match job {
-            Job::Seal(datagram, socket) => {
-                // Fails only once the socket is gone, in which case the datagram is dropped.
-                let _ = socket.blocking_send(datagram.seal());
-                seals_in_flight.release();
-            }
-            Job::Open(packets, batch) => {
-                if opened.send(Opened(open(packets), batch)).is_err() {
-                    return;
-                }
-            }
+    for Open(packets, batch) in jobs {
+        if opened.send(Opened(open(packets), batch)).is_err() {
+            return;
         }
     }
 }
 
-enum Job<TId> {
-    Seal(PendingDatagram, mpsc::Sender<DatagramOut>),
-    Open(Vec<Received<EncryptedPacket<TId>>>, Arc<BatchInFlight>),
-}
+struct Seal(PendingDatagram, mpsc::Sender<DatagramOut>);
+
+struct Open<TId>(Vec<Received<EncryptedPacket<TId>>>, Arc<BatchInFlight>);
 
 struct Opened<TId>(Vec<Received<DecryptedPacket<TId>>>, Arc<BatchInFlight>);
-
-enum Direction {
-    Seal = 0,
-    Open = 1,
-}
 
 /// Counts a received batch as in flight until the opened packets of all its parts are polled.
 struct BatchInFlight(Arc<AtomicUsize>);
@@ -247,23 +258,6 @@ impl Drop for BatchInFlight {
     }
 }
 
-#[derive(Default)]
-struct SealsInFlight {
-    count: AtomicUsize,
-    waker: AtomicWaker,
-}
-
-impl SealsInFlight {
-    fn has_capacity(&self) -> bool {
-        self.count.load(Ordering::Relaxed) < MAX_SEALS_IN_FLIGHT
-    }
-
-    fn release(&self) {
-        self.count.fetch_sub(1, Ordering::Relaxed);
-        self.waker.wake();
-    }
-}
-
 fn open<TId>(packets: Vec<Received<EncryptedPacket<TId>>>) -> Vec<Received<DecryptedPacket<TId>>> {
     packets
         .into_iter()
@@ -278,7 +272,7 @@ fn open<TId>(packets: Vec<Received<EncryptedPacket<TId>>>) -> Vec<Received<Decry
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
+    use std::{future::poll_fn, time::Instant};
 
     use super::super::{UdpGsoQueue, udp_gso_queue::tests::*};
     use super::*;
@@ -289,7 +283,7 @@ mod tests {
         let (mut alice, mut bob) = connected_tunnels(now);
         let mut queue = UdpGsoQueue::new();
         let mut crypto = Crypto::<()>::new();
-        let (socket, mut sent) = mpsc::channel(MAX_SEALS_IN_FLIGHT);
+        let (socket, mut sent) = mpsc::channel(4);
         // A longer segment cannot join the previous batch, so every length starts a new one.
         let packets = [100, 200, 300, 400]
             .into_iter()
@@ -301,6 +295,8 @@ mod tests {
             enqueue(&mut queue, &mut alice, DST_1, packet.packet(), now);
         }
         while let Some(datagram) = queue.pop() {
+            let dst = datagram.datagram().dst;
+            poll_fn(|cx| crypto.poll_seal_ready(dst, cx)).await.unwrap();
             crypto.seal(datagram, socket.clone()).unwrap();
         }
         let mut released = Vec::new();
