@@ -21,13 +21,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
+import dev.firezone.android.ui.FirezoneIcons
 import dev.firezone.android.ui.theme.FirezoneTheme
 import uniffi.x509claims.DetailField
 import uniffi.x509claims.ValidationError
@@ -105,7 +105,7 @@ private fun WarningBanner(text: String) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.info_24px),
+                imageVector = FirezoneIcons.Info,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
                 tint = MaterialTheme.colorScheme.onErrorContainer,
@@ -136,7 +136,7 @@ private fun CertificateCard(state: DeviceTrustSettingsViewModel.UiState) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
-                painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
+                imageVector = FirezoneIcons.VerifiedUser,
                 contentDescription = null,
                 modifier = Modifier.size(32.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,

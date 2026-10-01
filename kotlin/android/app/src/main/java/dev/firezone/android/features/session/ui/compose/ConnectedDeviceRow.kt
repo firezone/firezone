@@ -20,6 +20,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.tunnel.model.ConnectedDevice
+import dev.firezone.android.ui.FirezoneIcons
 import dev.firezone.android.ui.theme.FirezoneTheme
 
 @Composable

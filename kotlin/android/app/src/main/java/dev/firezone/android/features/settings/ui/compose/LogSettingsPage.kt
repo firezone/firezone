@@ -14,10 +14,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
+import dev.firezone.android.ui.FirezoneIcons
 
 @Composable
 fun LogSettingsPage(
@@ -38,11 +38,11 @@ fun LogSettingsPage(
             style = MaterialTheme.typography.titleMedium,
         )
         OutlinedButton(onClick = onClearLogs, enabled = hasLogs, modifier = Modifier.fillMaxWidth()) {
-            Icon(painter = painterResource(R.drawable.rounded_delete_black_24dp), contentDescription = null)
+            Icon(imageVector = FirezoneIcons.Delete, contentDescription = null)
             Text(text = stringResource(R.string.clear_log_directory), modifier = Modifier.padding(start = 8.dp))
         }
         OutlinedButton(onClick = onExportLogs, enabled = hasLogs, modifier = Modifier.fillMaxWidth()) {
-            Icon(painter = painterResource(R.drawable.rounded_share_black_24dp), contentDescription = null)
+            Icon(imageVector = FirezoneIcons.Share, contentDescription = null)
             Text(text = stringResource(R.string.share_diagnostic_logs), modifier = Modifier.padding(start = 8.dp))
         }
     }

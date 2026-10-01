@@ -26,23 +26,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
+import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.coroutines.launch
 
 /** A settings page and how the navigation bar names it. */
 internal enum class SettingsPage(
     val labelRes: Int,
-    val iconRes: Int,
+    val icon: ImageVector,
 ) {
-    GENERAL(R.string.general_settings_title, R.drawable.rounded_discover_tune_black_24dp),
-    ADVANCED(R.string.advanced_settings_title, R.drawable.rounded_settings_black_24dp),
-    DEVICE_TRUST(R.string.device_trust_settings_title, R.drawable.rounded_verified_user_black_24dp),
-    LOGS(R.string.log_settings_title, R.drawable.rounded_description_black_24dp),
+    GENERAL(R.string.general_settings_title, FirezoneIcons.DiscoverTune),
+    ADVANCED(R.string.advanced_settings_title, FirezoneIcons.Settings),
+    DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
+    LOGS(R.string.log_settings_title, FirezoneIcons.Description),
 }
 
 /** The pages to show, in order. */
@@ -137,7 +138,7 @@ internal fun SettingsScreen(
                     NavigationBarItem(
                         selected = pagerState.currentPage == index,
                         onClick = { scope.launch { pagerState.scrollToPage(index) } },
-                        icon = { Icon(painter = painterResource(page.iconRes), contentDescription = null) },
+                        icon = { Icon(imageVector = page.icon, contentDescription = null) },
                         label = { Text(stringResource(page.labelRes)) },
                     )
                 }
