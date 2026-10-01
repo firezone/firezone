@@ -8,7 +8,7 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{TunnelError, dns, otel, sockets::Sockets};
+use crate::{TunnelError, dns, otel, packet_kind_counts::PacketKindCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -20,12 +20,12 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::{Ecn, IpPacket, IpVersion};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io,
+    io, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -57,6 +57,8 @@ pub struct Io {
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
+    num_queued_tun_ipv4: u64,
+    num_queued_tun_ipv6: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +171,8 @@ impl Io {
             tcp_dns_server: Default::default(),
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
+            num_queued_tun_ipv4: 0,
+            num_queued_tun_ipv6: 0,
         }
     }
 
@@ -389,27 +393,40 @@ impl Io {
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
+        let mut transmitted_counts = PacketKindCounts::default();
 
-        loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
+        let result = loop {
+            match self.sockets.poll_send_ready(cx) {
+                Poll::Ready(Ok(())) => {}
+                Poll::Ready(Err(e)) => break Poll::Ready(Err(e)),
+                Poll::Pending => break Poll::Pending,
+            }
 
             let Some(datagram) = datagrams.next() else {
-                break;
+                break Poll::Ready(Ok(()));
             };
 
             for segment in datagram.packet.chunks(datagram.segment_size) {
-                self.packet_counter.add(
-                    1,
-                    &[
-                        otel::attr::network_protocol_name(segment),
-                        otel::attr::network_transport_udp(),
-                        otel::attr::network_io_direction_transmit(),
-                    ],
-                );
+                transmitted_counts.record(segment);
             }
 
-            self.sockets.send(datagram)?;
+            if let Err(e) = self.sockets.send(datagram) {
+                break Poll::Ready(Err(e));
+            }
+        };
+
+        for (kind, count) in transmitted_counts.non_zero() {
+            self.packet_counter.add(
+                count,
+                &[
+                    otel::attr::network_protocol_name(kind),
+                    otel::attr::network_transport_udp(),
+                    otel::attr::network_io_direction_transmit(),
+                ],
+            );
         }
+
+        ready!(result)?;
 
         Poll::Ready(Ok(()))
     }
@@ -419,19 +436,38 @@ impl Io {
     }
 
     pub fn queue_tun(&mut self, packet: IpPacket) {
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_type_for_packet(&packet),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
+        match packet.version() {
+            IpVersion::V4 => self.num_queued_tun_ipv4 += 1,
+            IpVersion::V6 => self.num_queued_tun_ipv6 += 1,
+        }
 
         self.tun.queue(packet);
     }
 
     /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
     pub fn flush_tun_batch(&mut self) {
+        let num_ipv4 = mem::take(&mut self.num_queued_tun_ipv4);
+        let num_ipv6 = mem::take(&mut self.num_queued_tun_ipv6);
+
+        if num_ipv4 > 0 {
+            self.packet_counter.add(
+                num_ipv4,
+                &[
+                    otel::attr::network_type_ipv4(),
+                    otel::attr::network_io_direction_transmit(),
+                ],
+            );
+        }
+        if num_ipv6 > 0 {
+            self.packet_counter.add(
+                num_ipv6,
+                &[
+                    otel::attr::network_type_ipv6(),
+                    otel::attr::network_io_direction_transmit(),
+                ],
+            );
+        }
+
         self.tun.flush_batch();
     }
 
