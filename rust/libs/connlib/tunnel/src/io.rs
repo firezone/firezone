@@ -10,7 +10,7 @@ pub use crypto::{CryptoWorkersUnavailable, Received};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{TunnelError, dns, otel, packet_kind_counts::PacketKindCounts, sockets::Sockets};
+use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -23,7 +23,7 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
-use ip_packet::{IpPacket, IpVersion};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
 use snownet::{DecryptedPacket, EncryptedPacket, Outgoing};
 use socket_factory::{
@@ -31,7 +31,7 @@ use socket_factory::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
-    io, mem,
+    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -66,8 +66,6 @@ pub struct Io<TId> {
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
-    num_queued_tun_ipv4: u64,
-    num_queued_tun_ipv6: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -189,8 +187,6 @@ where
             tcp_dns_server: Default::default(),
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
-            num_queued_tun_ipv4: 0,
-            num_queued_tun_ipv6: 0,
         }
     }
 
@@ -284,27 +280,7 @@ where
             error.push(e);
         }
 
-        let device = self.tun.poll_read(cx).map_ok(|batch| {
-            let num_ipv4 = batch.iter().filter(|p| p.ipv4_header().is_some()).count();
-            let num_ipv6 = batch.len() - num_ipv4;
-
-            self.packet_counter.add(
-                num_ipv4 as u64,
-                &[
-                    otel::attr::network_type_ipv4(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
-            self.packet_counter.add(
-                num_ipv6 as u64,
-                &[
-                    otel::attr::network_type_ipv6(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
-
-            batch
-        });
+        let device = self.tun.poll_read(cx);
 
         let udp_dns_queries = self
             .udp_dns_server
@@ -419,7 +395,7 @@ where
     ///
     /// Pending while the socket or the crypto workers are at capacity.
     pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut transmitted = PacketKindCounts::transmit(&self.packet_counter);
+        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
         while !self.control_queue.is_empty() {
             ready!(self.sockets.poll_send_ready(cx)?);
@@ -464,38 +440,11 @@ where
     }
 
     pub fn queue_tun(&mut self, packet: IpPacket) {
-        match packet.version() {
-            IpVersion::V4 => self.num_queued_tun_ipv4 += 1,
-            IpVersion::V6 => self.num_queued_tun_ipv6 += 1,
-        }
-
         self.tun.queue(packet);
     }
 
     /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
     pub fn flush_tun_batch(&mut self) {
-        let num_ipv4 = mem::take(&mut self.num_queued_tun_ipv4);
-        let num_ipv6 = mem::take(&mut self.num_queued_tun_ipv6);
-
-        if num_ipv4 > 0 {
-            self.packet_counter.add(
-                num_ipv4,
-                &[
-                    otel::attr::network_type_ipv4(),
-                    otel::attr::network_io_direction_transmit(),
-                ],
-            );
-        }
-        if num_ipv6 > 0 {
-            self.packet_counter.add(
-                num_ipv6,
-                &[
-                    otel::attr::network_type_ipv6(),
-                    otel::attr::network_io_direction_transmit(),
-                ],
-            );
-        }
-
         self.tun.flush_batch();
     }
 

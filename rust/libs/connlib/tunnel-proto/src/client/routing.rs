@@ -2,7 +2,7 @@ use std::{cmp::Ordering, net::IpAddr};
 
 use connlib_model::ResourceId;
 use dns_types::DomainName;
-use foldhash::fast::FixedState;
+use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use lru::LruCache;
@@ -10,7 +10,6 @@ use lru::LruCache;
 use crate::{
     dns,
     filter_engine::FilterEngine,
-    hasher::random_foldhash,
     routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
 };
 
@@ -45,7 +44,7 @@ pub(super) struct RoutingTables {
     resolved: LruCache<
         (IpAddr, Protocol, Option<ResourceId>, FilterMode),
         Result<MatchedRoutes, Denied>,
-        FixedState,
+        FastRandomState,
     >,
 }
 
@@ -55,7 +54,7 @@ impl Default for RoutingTables {
             cidr: RoutingTable::default(),
             dns: RoutingTable::default(),
             device_pool: RoutingTable::default(),
-            resolved: LruCache::with_hasher(MAX_CACHE_ENTRIES, random_foldhash()),
+            resolved: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
         }
     }
 }

@@ -6,7 +6,7 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use foldhash::fast::FixedState;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
@@ -14,7 +14,6 @@ use itertools::Itertools as _;
 use lru::LruCache;
 
 use crate::filter_engine::FilterEngine;
-use crate::hasher::random_foldhash;
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
@@ -40,7 +39,7 @@ pub(crate) trait RouteEntry: Ord + Clone {
 
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FixedState>,
+    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FastRandomState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,7 +86,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, random_foldhash()),
+            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
         }
     }
 }

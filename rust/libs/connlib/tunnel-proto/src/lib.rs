@@ -26,7 +26,6 @@ pub mod dns;
 mod expiring_map;
 mod filter_engine;
 mod gateway;
-mod hasher;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
 pub mod messages;

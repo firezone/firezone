@@ -2235,6 +2235,7 @@ version = "0.1.0"
 dependencies = [
  "aya",
  "derive_more",
+ "network-types",
 ]
 
 [[package]]
@@ -2398,6 +2399,13 @@ dependencies = [
  "bit-set",
  "regex-automata",
  "regex-syntax",
+]
+
+[[package]]
+name = "fast-random-state"
+version = "0.1.0"
+dependencies = [
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -2792,9 +2800,9 @@ dependencies = [
  "chrono",
  "connlib-model",
  "dns-types",
+ "fast-random-state",
  "flow-log-spool",
  "flow-log-writer",
- "foldhash 0.2.0",
  "ip-packet",
  "jsonschema",
  "serde",
@@ -8881,8 +8889,8 @@ dependencies = [
  "divan",
  "dns-over-tcp",
  "dns-types",
+ "fast-random-state",
  "flow-tracker",
- "foldhash 0.2.0",
  "glob",
  "ip-packet",
  "ip_network",
