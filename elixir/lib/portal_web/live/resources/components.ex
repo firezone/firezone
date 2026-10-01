@@ -337,7 +337,7 @@ defmodule PortalWeb.Resources.Components do
 
   defp pool_members_choices do
     [
-      {:own_devices, "ri-user-line", "Your devices", "Each actor's own devices"},
+      {:own_devices, "ri-user-line", "My devices", "Each actor's own devices"},
       {:all_devices, "ri-device-line", "All devices", "Every device in the account"},
       {:actor_group, "ri-group-line", "A group's devices", "Devices of a group's members"},
       {:listed, "ri-list-check", "Static list", "Explicitly choose the devices in this pool"}
@@ -2075,7 +2075,7 @@ defmodule PortalWeb.Resources.Components do
     end
   end
 
-  defp pool_kind_label(:own_devices), do: "Your devices"
+  defp pool_kind_label(:own_devices), do: "My devices"
   defp pool_kind_label(:all_devices), do: "All devices"
   defp pool_kind_label(:actor_group), do: "Group's devices"
   defp pool_kind_label(:listed), do: "Static list"

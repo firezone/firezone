@@ -248,7 +248,7 @@ defmodule Portal.Billing.EventHandlerTest do
       pool =
         Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
 
-      assert pool.name == "Your devices"
+      assert pool.name == "My devices"
       assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
       assert is_nil(pool.address)
 

@@ -37,7 +37,7 @@ defmodule Portal.Group do
 
   @doc """
   Attributes of the `Account owner` group every account gets at creation, holding the actor
-  who created it. The `Your devices` pool is granted to this group, so the owner reaches
+  who created it. The `My devices` pool is granted to this group, so the owner reaches
   their own devices from the start.
   """
   @spec account_owner_attrs() :: map()
