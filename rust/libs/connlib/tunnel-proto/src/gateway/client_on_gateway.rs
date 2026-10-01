@@ -2217,6 +2217,13 @@ mod benches {
         )
         .unwrap();
 
+        let token = serde_json::from_value::<IngestToken>(serde_json::json!(
+            flow_tracker::TEST_INGEST_TOKEN
+        ))
+        .unwrap();
+        peer.set_ingest_token(cidr_id, token.clone());
+        peer.set_ingest_token(dns_id, token);
+
         peer
     }
 
