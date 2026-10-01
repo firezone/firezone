@@ -1,11 +1,11 @@
 use std::net::Ipv4Addr;
 
+use crate::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 use ingot::ip::{IpProtocol, Ipv4};
 use ingot::tcp::{Tcp, TcpFlags};
 use ingot::types::{Emit, HeaderLen as _};
 use ingot::udp::Udp;
 use ip_packet::{IpPacket, IpPacketBuf, checksum};
-use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 use super::*;
 

@@ -11,11 +11,10 @@ ip-packet = { workspace = true }
 libc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-packet-coalescer = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
-virtio-net = { workspace = true }
+tun-offload = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,13 +1,13 @@
 [package]
-name = "virtio-net"
+name = "tun-offload"
 version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+bufferpool = { workspace = true }
 ip-packet = { workspace = true }
-packet-coalescer = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 

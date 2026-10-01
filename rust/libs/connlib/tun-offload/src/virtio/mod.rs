@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
-
 //! Virtio network offload headers, checksum completion, and TCP/UDP segmentation.
 //!
 //! Frames use the 10-byte legacy header with native-endian multi-byte fields.

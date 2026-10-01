@@ -1,7 +1,7 @@
 //! The 10-byte legacy `virtio_net_hdr` with native-endian multi-byte fields.
 
+use crate::{CoalescedPacket, Protocol};
 use ip_packet::IpVersion;
-use packet_coalescer::{CoalescedPacket, Protocol};
 
 /// The length of the legacy virtio network header.
 pub const VNET_HDR_LEN: usize = 10;
