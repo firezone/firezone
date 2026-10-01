@@ -15,7 +15,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use io::Io;
+use io::{Io, parallel};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -301,6 +301,8 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
+                    let mut encrypted = Vec::new();
+
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         self.packet_counter.add(
                             1,
@@ -317,6 +319,28 @@ impl ClientTunnel {
                                 received.local,
                                 received.from,
                                 received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(packet)) => encrypted.push((received, packet)),
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
+                    }
+
+                    let decrypted =
+                        parallel::map(encrypted, |(received, packet)| (received, packet.decrypt()));
+
+                    for (received, packet) in decrypted {
+                        match self
+                            .role_state
+                            .handle_decrypted_network_input(
+                                received.local,
+                                received.from,
+                                packet,
                                 now,
                             )
                             .with_context(|| FailedToHandleNetworkPacket {
@@ -505,6 +529,8 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
+                    let mut encrypted = Vec::new();
+
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         self.packet_counter.add(
                             1,
@@ -521,6 +547,28 @@ impl GatewayTunnel {
                                 received.local,
                                 received.from,
                                 received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(packet)) => encrypted.push((received, packet)),
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
+                    }
+
+                    let decrypted =
+                        parallel::map(encrypted, |(received, packet)| (received, packet.decrypt()));
+
+                    for (received, packet) in decrypted {
+                        match self
+                            .role_state
+                            .handle_decrypted_network_input(
+                                received.local,
+                                received.from,
+                                packet,
                                 now,
                             )
                             .with_context(|| FailedToHandleNetworkPacket {

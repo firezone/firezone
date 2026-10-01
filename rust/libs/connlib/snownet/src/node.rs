@@ -22,7 +22,8 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
-    HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
+    HandshakeResponse, Index, Opened, Packet, PacketCookieReply, PacketData, PendingOpen, Tunn,
+    TunnResult,
 };
 use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
@@ -570,15 +571,16 @@ where
     /// # Returns
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
-    /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted.
+    /// - `Ok(Some)` if the packet was a wireguard data message from a peer.
+    ///   Decrypt it with [`EncryptedPacket::decrypt`], on any thread, and pass the result to
+    ///   [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<Option<EncryptedPacket<TId>>> {
         self.last_now = now;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -595,13 +597,39 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
+        let packet = match self.connections_try_handle(from, destination, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some((id, packet)))
+        Ok(Some(packet))
+    }
+
+    /// Completes the decapsulation of a packet decrypted by [`EncryptedPacket::decrypt`].
+    ///
+    /// Packets of the same connection must be handed back in the order in which they were
+    /// decapsulated, otherwise they are delivered out of order.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
+    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    pub fn handle_decrypted(
+        &mut self,
+        packet: DecryptedPacket<TId>,
+        now: Instant,
+    ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
+        let cid = packet.cid;
+        let conn = self.connections.get_mut(&cid, now)?;
+
+        match conn.handle_decrypted(cid, packet, now) {
+            ControlFlow::Continue(packet) => Ok(Some((cid, packet))),
+            ControlFlow::Break(Ok(())) => Ok(None),
+            ControlFlow::Break(Err(e)) => Err(e.context(format!("cid={cid}"))),
+        }
     }
 
     /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
@@ -1062,7 +1090,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, EncryptedPacket<TId>> {
         // If the packet is not a WireGuard packet, bail early.
         let Ok(parsed_packet) = boringtun::noise::Tunn::parse_incoming_packet(packet) else {
             tracing::debug!(packet = %hex::encode(packet));
@@ -1134,9 +1162,7 @@ where
             }
         }
 
-        control_flow
-            .map_continue(|c| (cid, c))
-            .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        control_flow.map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
     fn allocations_drain_events(&mut self, now: Instant) {
@@ -1367,6 +1393,43 @@ impl fmt::Debug for Transmit {
 pub struct EncapsulateInfo {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
+}
+
+/// A WireGuard data message received from a peer, ready to be decrypted.
+#[must_use = "the packet is lost unless it is decrypted and handed back to the `Node`"]
+pub struct EncryptedPacket<TId> {
+    cid: TId,
+    from: SocketAddr,
+    destination: SocketAddr,
+    buffer: IpPacketBuf,
+    open: PendingOpen,
+}
+
+impl<TId> EncryptedPacket<TId> {
+    /// Decrypts the packet.
+    ///
+    /// This does not touch the [`Node`] and can therefore run on any thread.
+    pub fn decrypt(mut self) -> DecryptedPacket<TId> {
+        let opened = self.open.open(self.buffer.buf());
+
+        DecryptedPacket {
+            cid: self.cid,
+            from: self.from,
+            destination: self.destination,
+            buffer: self.buffer,
+            opened,
+        }
+    }
+}
+
+/// A WireGuard data message decrypted by [`EncryptedPacket::decrypt`].
+#[must_use = "the packet is lost unless it is handed back to the `Node`"]
+pub struct DecryptedPacket<TId> {
+    cid: TId,
+    from: SocketAddr,
+    destination: SocketAddr,
+    buffer: IpPacketBuf,
+    opened: Opened,
 }
 
 #[derive(derive_more::Debug)]
@@ -1877,7 +1940,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> ControlFlow<Result<()>, EncryptedPacket<TId>>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1892,53 +1955,43 @@ where
             ControlFlow::Continue(packet) => packet,
         };
 
-        let mut ip_packet = IpPacketBuf::new();
+        if let Ok(Packet::PacketData(data)) = Tunn::parse_incoming_packet(packet) {
+            let mut buffer = IpPacketBuf::new();
 
-        let control_flow = match self.tunnel.decapsulate_at(
-            Some(from.ip()),
-            packet,
-            ip_packet.buf(),
-            now,
-        ) {
+            let open = match self.tunnel.decapsulate_data_deferred(data, buffer.buf()) {
+                Ok(open) => open,
+                Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+            };
+
+            return ControlFlow::Continue(EncryptedPacket {
+                cid,
+                from,
+                destination,
+                buffer,
+                open,
+            });
+        }
+
+        let mut buffer = IpPacketBuf::new();
+
+        match self
+            .tunnel
+            .decapsulate_at(Some(from.ip()), packet, buffer.buf(), now)
+        {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) if crate::is_handshake(packet) => {
                 ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")))
             }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+            TunnResult::WriteToTunnelV4(..) => ControlFlow::Break(Err(anyhow!(
+                "Unexpected IPv4 packet from WireGuard control message"
+            ))),
+            TunnResult::WriteToTunnelV6(..) => ControlFlow::Break(Err(anyhow!(
+                "Unexpected IPv6 packet from WireGuard control message"
+            ))),
 
-            // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-            // I am guessing this was done for convenience reasons.
-            // In our API, we parse the packets directly as an IpPacket.
-            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-            TunnResult::WriteToTunnelV4(packet, ip) => {
-                let packet_len = packet.len();
-
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
-                    Ok(p) => {
-                        debug_assert_eq!(p.source(), IpAddr::V4(ip));
-
-                        ControlFlow::Continue(p)
-                    }
-                    Err(e) => ControlFlow::Break(Err(e)),
-                }
-            }
-            TunnResult::WriteToTunnelV6(packet, ip) => {
-                let packet_len = packet.len();
-
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
-                    Ok(p) => {
-                        debug_assert_eq!(p.source(), IpAddr::V6(ip));
-
-                        ControlFlow::Continue(p)
-                    }
-                    Err(e) => ControlFlow::Break(Err(e)),
-                }
-            }
-
-            // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-            // However, in case `Tunn` has buffered packets, they may be returned here instead.
-            // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-            // Overall, this results in a much nicer API for our caller and should not affect performance.
+            // Handshake messages yield a response for the peer.
+            // This is rare enough that we just allocate these and return them from `poll_transmit`.
             TunnResult::WriteToNetwork(bytes) => {
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
@@ -1983,6 +2036,64 @@ where
 
                 ControlFlow::Break(Ok(()))
             }
+        }
+    }
+
+    fn handle_decrypted<TId>(
+        &mut self,
+        cid: TId,
+        packet: DecryptedPacket<TId>,
+        now: Instant,
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+    {
+        let DecryptedPacket {
+            from,
+            destination,
+            mut buffer,
+            opened,
+            ..
+        } = packet;
+
+        let control_flow = match self
+            .tunnel
+            .finish_decapsulate_data_at(opened, buffer.buf(), now)
+        {
+            TunnResult::Done => ControlFlow::Break(Ok(())),
+            TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+
+            // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+            // I am guessing this was done for convenience reasons.
+            // In our API, we parse the packets directly as an IpPacket.
+            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+            TunnResult::WriteToTunnelV4(packet, ip) => {
+                let packet_len = packet.len();
+
+                match IpPacket::new(buffer, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V4(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
+            }
+            TunnResult::WriteToTunnelV6(packet, ip) => {
+                let packet_len = packet.len();
+
+                match IpPacket::new(buffer, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V6(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
+            }
+            TunnResult::WriteToNetwork(_) => ControlFlow::Break(Err(anyhow!(
+                "Unexpected datagram from WireGuard data message"
+            ))),
         };
 
         match control_flow {

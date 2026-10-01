@@ -293,6 +293,24 @@ impl SimClient {
         self.encapsulate(packet, now)
     }
 
+    /// Drive the SUT's network -> TUN path, decrypting on the current thread.
+    fn handle_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        payload: &[u8],
+        now: Instant,
+    ) -> anyhow::Result<Option<IpPacket>> {
+        let Some(packet) = self.sut.handle_network_input(local, from, payload, now)? else {
+            return Ok(None);
+        };
+        let packet = self
+            .sut
+            .handle_decrypted_network_input(local, from, packet.decrypt(), now)?;
+
+        Ok(packet)
+    }
+
     /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
     ///
     /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
@@ -332,7 +350,6 @@ impl SimClient {
         now: Instant,
     ) -> Option<Transmit> {
         let Some(packet) = self
-            .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()

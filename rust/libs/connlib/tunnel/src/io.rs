@@ -1,7 +1,7 @@
 mod device;
 mod doh;
 mod nameserver_set;
-mod parallel;
+pub(crate) mod parallel;
 mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;

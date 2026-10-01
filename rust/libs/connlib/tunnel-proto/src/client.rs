@@ -54,7 +54,7 @@ use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use secrecy::ExposeSecret as _;
-use snownet::{NoTurnServers, Node, RelaySocket};
+use snownet::{DecryptedPacket, EncryptedPacket, NoTurnServers, Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -728,7 +728,8 @@ impl ClientState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`EncryptedPacket`].
+    /// Decrypt it with [`EncryptedPacket::decrypt`], on any thread, and pass the result to [`ClientState::handle_decrypted_network_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
@@ -738,13 +739,33 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
+    ) -> Result<Option<EncryptedPacket<ClientOrGatewayId>>> {
+        let packet = self
+            .node
+            .decapsulate(local, from, packet, now)
+            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?;
+
+        Ok(packet)
+    }
+
+    /// Handles a packet from [`ClientState::handle_network_input`] once it has been decrypted.
+    ///
+    /// Packets must be handed back in the order in which they were received.
+    ///
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub fn handle_decrypted_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: DecryptedPacket<ClientOrGatewayId>,
+        now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
         let Some((pid, packet)) = self
             .node
-            .decapsulate(local, from, packet.as_ref(), now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
+            .handle_decrypted(packet, now)
+            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?
         else {
             return Ok(None);
         };
