@@ -9,10 +9,10 @@ anyhow = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-packet-coalescer = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
+tun-offload = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.wintun]
 version = "0.5.1"

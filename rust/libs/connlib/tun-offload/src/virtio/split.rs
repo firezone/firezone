@@ -1,17 +1,11 @@
-//! Splits "super packets" read from a TUN fd with offloads enabled into individual IP packets.
-//!
-//! With `TUNSETOFFLOAD` active, the kernel hands us TSO / USO packets of up to 64 KiB
-//! together with a [`VirtioNetHdr`] describing how to segment them.
-//! Additionally, locally-generated packets arrive with *partial* checksums
-//! ([`VIRTIO_NET_HDR_F_NEEDS_CSUM`]): the transport checksum field only contains the
-//! pseudo-header sum and we have to complete it.
+//! Splits virtio network frames into individual IP packets and completes partial checksums.
 
 use anyhow::{Context as _, Result, bail, ensure};
 use ip_packet::{IpNumber, IpPacket, IpPacketBuf, IpVersion};
 use smallvec::SmallVec;
 use std::net::IpAddr;
 
-use super::virtio::*;
+use super::header::*;
 use ip_packet::checksum;
 
 /// The most segments a single super packet can split into.
@@ -28,7 +22,7 @@ const MAX_SEGMENTS: usize = 256;
 /// packets. Rounding up to the next power of two gives some headroom.
 const INLINE_SEGMENTS: usize = (u16::MAX as usize / ip_packet::MAX_IP_SIZE).next_power_of_two();
 
-/// Splits the given TUN read (starting with a [`VirtioNetHdr`]) into individual [`IpPacket`]s.
+/// Splits a frame starting with a [`VirtioNetHdr`] into individual [`IpPacket`]s.
 ///
 /// The returned `SmallVec` holds a super packet of MTU-sized segments inline; only
 /// smaller (and thus more) segments spill to the heap.
