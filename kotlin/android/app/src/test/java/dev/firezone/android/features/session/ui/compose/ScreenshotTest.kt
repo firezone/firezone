@@ -21,6 +21,9 @@ import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.mockResources
+import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.ResourceType
+import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.toModel
 import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.ImmutableList
@@ -100,6 +103,12 @@ class ScreenshotTest {
     fun devicePoolDetails() = captureAfterTapping("device-pool-details", rowText = "Lab hardware")
 
     @Test
+    fun devicePoolDetailsEmpty() =
+        capture("device-pool-details-empty") {
+            DevicePoolScreen(pool = emptyDevicePool, onSelectDevice = {}, onBack = {})
+        }
+
+    @Test
     fun deviceDetails() = captureAfterTapping("device-details", rowText = "Lab hardware", thenText = "bench-controller-01.firezone.network")
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -154,3 +163,17 @@ private fun SessionScreenSample(
 // the galleries and the mock launch cannot drift apart.
 private val sampleResources: ImmutableList<ResourceUiModel> =
     mockResources.map { ResourceUiModel(it.toModel(), ResourceState.ENABLED) }.toImmutableList()
+
+private val emptyDevicePool =
+    ResourceUiModel(
+        Resource(
+            type = ResourceType.DevicePool,
+            id = "2f3e8a61-5b7d-4c09-9e14-6a8d0c2b7f53",
+            address = null,
+            addressDescription = null,
+            sites = emptyList(),
+            name = "Spare hardware",
+            status = StatusEnum.UNKNOWN,
+        ),
+        ResourceState.ENABLED,
+    )
