@@ -72,11 +72,37 @@ fn authenticate(replace: bool) -> Result<()> {
         break SecretString::new(token.into_boxed_str());
     };
 
-    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token.expose_secret())
+    write_token(token.expose_secret())
         .with_context(|| format!("Failed to write to `{ETC_FIREZONE_GATEWAY_TOKEN}`"))?;
 
     println!("Successfully installed token");
     println!("Tip: You can now start the Gateway with `firezone-gateway enable-service`");
+
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn write_token(token: &str) -> Result<()> {
+    use std::io::Write as _;
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(ETC_FIREZONE_GATEWAY_TOKEN)?;
+
+    // `mode` only applies when the file is created.
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.write_all(token.as_bytes())?;
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn write_token(token: &str) -> Result<()> {
+    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token)?;
 
     Ok(())
 }
