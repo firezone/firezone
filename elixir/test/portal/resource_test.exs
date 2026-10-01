@@ -332,11 +332,11 @@ defmodule Portal.ResourceTest do
   end
 
   describe "self_device_pool_attrs/0" do
-    test "is the Your devices pool" do
+    test "is the My devices pool" do
       assert Portal.Resource.self_device_pool_attrs() == %{
                type: :device_pool,
                device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
-               name: "Your devices"
+               name: "My devices"
              }
     end
 
