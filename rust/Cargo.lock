@@ -8879,6 +8879,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "flow-tracker",
+ "foldhash 0.2.0",
  "glob",
  "ip-packet",
  "ip_network",
