@@ -94,8 +94,7 @@ enum DohClient {
 pub struct Input<TId> {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
-    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted
-    /// per peer.
+    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted.
     pub decrypted: Vec<Vec<Received<DecryptedPacket<TId>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
