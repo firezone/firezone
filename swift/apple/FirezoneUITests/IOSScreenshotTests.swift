@@ -115,13 +115,26 @@
       deliver(app, as: "resource-details-internet", in: appearance)
     }
 
+    func testDevicePoolDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
+      try waitFor(app.staticTexts["Connected Devices"], on: "device-pool-details")
+      deliver(app, as: "device-pool-details", in: appearance)
+    }
+
     func testDeviceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-      try open(app.staticTexts["bench-controller-01"], in: app, name: "a connected device")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
+      let device = app.staticTexts["bench-controller-01.firezone.network"]
+      try open(device, in: app, name: "a connected device")
       try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
       deliver(app, as: "device-details", in: appearance)
     }

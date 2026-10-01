@@ -9,7 +9,7 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceList,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -88,10 +88,9 @@ pub enum ClientEvent {
     DeviceDomainBrowsed {
         domain: DomainName,
     },
-    /// The list of resources or connected device peers has changed; UI clients
-    /// may have to be updated.
+    /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: ResourceList,
+        resources: Vec<ResourceView>,
     },
     DnsRecordsChanged {
         records: BTreeSet<DnsResourceRecord>,

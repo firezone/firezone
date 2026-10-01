@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Weak},
     time::Duration,
 };
+use tun_offload::{ChecksumMode, PacketCoalescer, Protocol};
 
 pub struct Io {
     name: String,
@@ -180,11 +181,8 @@ fn send_worker(
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
 
-    let mut tcp_coalescer = packet_coalescer::PacketCoalescer::new(
-        [packet_coalescer::Protocol::Tcp],
-        packet_coalescer::ChecksumMode::Complete,
-    );
-    let mut passthrough = packet_coalescer::PacketCoalescer::passthrough();
+    let mut tcp_coalescer = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+    let mut passthrough = PacketCoalescer::passthrough();
 
     while let Some(mut batch) = packet_rx.blocking_recv() {
         let coalesce_tcp = should_coalesce_tcp();

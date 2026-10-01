@@ -12,7 +12,7 @@ use super::{
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, RelayId, ResourceList};
+use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -56,7 +56,7 @@ pub(crate) struct SimClient {
     pub(crate) search_domain: Option<DomainName>,
 
     /// The latest resource list emitted by connlib.
-    pub(crate) observed_resource_list: ResourceList,
+    pub(crate) observed_resource_list: Vec<ResourceView>,
 
     pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
     pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,

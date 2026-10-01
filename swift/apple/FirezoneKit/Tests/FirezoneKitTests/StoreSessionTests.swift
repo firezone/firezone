@@ -35,14 +35,6 @@
       type: .dns
     )
 
-    private static let benchController = ConnectedDevice(
-      id: "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
-      name: "bench-controller-01",
-      tunIPv4: "100.64.3.18",
-      tunIPv6: "fd00:2021:1111::12",
-      pools: ["Lab hardware", "Shared storage"]
-    )
-
     @Test("signing in starts the tunnel with the token")
     func signingInStartsTheTunnelWithTheToken() async throws {
       let app = try await signedOut()
@@ -63,17 +55,6 @@
       try await app.store.signIn(token: Self.token)
 
       try await waitUntil { app.store.resourceList.asArray() == [Self.engineeringWiki] }
-    }
-
-    @Test("connected devices reach the store")
-    func connectedDevicesReachTheStore() async throws {
-      let app = try await signedOut()
-      app.tunnel.resources = [Self.engineeringWiki]
-      app.tunnel.connectedDevices = [Self.benchController]
-
-      try await app.store.signIn(token: Self.token)
-
-      try await waitUntil { app.store.connectedDevices == [Self.benchController] }
     }
 
     @Test(

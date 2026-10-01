@@ -189,7 +189,7 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
-  Generate a device pool resource holding each actor's own devices, the `Your devices`
+  Generate a device pool resource holding each actor's own devices, the `My devices`
   pool every account gets at sign-up.
   """
   def own_devices_pool_resource_fixture(attrs \\ %{}) do

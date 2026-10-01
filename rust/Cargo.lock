@@ -2596,6 +2596,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tunnel-bypass-resolver",
+ "tunnel-proto",
  "url",
  "uuid",
  "windows",
@@ -5597,15 +5598,6 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
-
-[[package]]
-name = "packet-coalescer"
-version = "0.1.0"
-dependencies = [
- "bufferpool",
- "ingot",
- "ip-packet",
-]
 
 [[package]]
 name = "pango"
@@ -8774,16 +8766,26 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "futures",
- "ingot",
  "ip-packet",
  "libc",
  "opentelemetry",
  "otel-instruments",
- "packet-coalescer",
- "smallvec",
  "tokio",
  "tracing",
  "tun",
+ "tun-offload",
+]
+
+[[package]]
+name = "tun-offload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bufferpool",
+ "ingot",
+ "ip-packet",
+ "smallvec",
+ "tracing",
 ]
 
 [[package]]
@@ -8794,10 +8796,10 @@ dependencies = [
  "ip-packet",
  "opentelemetry",
  "otel-instruments",
- "packet-coalescer",
  "tokio",
  "tracing",
  "tun",
+ "tun-offload",
  "wintun",
 ]
 

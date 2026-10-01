@@ -325,6 +325,10 @@ impl StubPortal {
             .collect()
     }
 
+    pub(crate) fn device_label(&self, id: ClientId) -> String {
+        self.clients[&id].device_label.clone()
+    }
+
     /// The labels of all device pools.
     pub(crate) fn device_pool_labels(&self) -> impl Iterator<Item = String> + '_ {
         self.device_pool_resources

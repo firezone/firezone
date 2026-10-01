@@ -11,7 +11,7 @@ pool_member_ip="100.64.0.2"
 echo "# firezone.network should list the pools the client may use"
 pools=$(client_nslookup "-type=ptr firezone.network")
 grep "ci-pool\.firezone\.network" <<<"$pools"
-grep "your-devices\.firezone\.network" <<<"$pools"
+grep "my-devices\.firezone\.network" <<<"$pools"
 
 echo "# The pool should list its only member"
 readarray -t members < <(client_nslookup "-type=ptr ci-pool.firezone.network" | awk '/name = / { print $NF }')

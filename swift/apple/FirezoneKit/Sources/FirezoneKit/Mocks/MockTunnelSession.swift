@@ -20,7 +20,6 @@
 
     /// What the next poll reports; `nil` resources are a portal that has not sent `init`.
     var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
-    var connectedDevices: [ConnectedDevice]
     var actorName: String?
     var accountSlug: String?
     /// Handed over on the next poll and consumed by it, like the provider's mailbox.
@@ -42,13 +41,11 @@
     init(
       status: NEVPNStatus,
       resources: [Resource]? = nil,  // swiftlint:disable:this discouraged_optional_collection
-      connectedDevices: [ConnectedDevice] = [],
       actorName: String? = nil,
       providerLogFolderSize: Int64 = 0
     ) {
       self.status = status
       self.resources = resources
-      self.connectedDevices = connectedDevices
       self.actorName = actorName
       self.providerLogFolderSize = providerLogFolderSize
     }
@@ -110,7 +107,6 @@
         do {
           let stateChange = try ConnlibState.makeIfChanged(
             resources: resources,
-            connectedDevices: connectedDevices,
             isLogStreamingActive: false,
             accountSlug: accountSlug,
             actorName: actorName,

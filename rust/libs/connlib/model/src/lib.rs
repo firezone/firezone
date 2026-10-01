@@ -12,8 +12,8 @@ mod view;
 pub use boringtun::x25519::PublicKey;
 pub use boringtun::x25519::StaticSecret;
 pub use view::{
-    CidrResourceView, ConnectedDeviceView, DnsResourceView, InternetResourceView, ResourceList,
-    ResourceStatus, ResourceView,
+    CidrResourceView, ConnectedDeviceView, DevicePoolResourceView, DnsResourceView,
+    InternetResourceView, ResourceStatus, ResourceView,
 };
 
 use serde::{Deserialize, Serialize};

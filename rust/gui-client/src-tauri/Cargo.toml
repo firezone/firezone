@@ -69,6 +69,7 @@ tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-bypass-resolver = { workspace = true }
+tunnel-proto = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-package-identity = { workspace = true }

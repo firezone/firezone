@@ -15,8 +15,8 @@ use anyhow::Result;
 use client_ipc as ipc;
 use client_shared::ConnectedAs;
 use connlib_model::{
-    CidrResourceView, ConnectedDeviceView, DnsResourceView, InternetResourceView, ResourceList,
-    ResourceStatus, ResourceView, Site,
+    CidrResourceView, ConnectedDeviceView, DevicePoolResourceView, DnsResourceView,
+    InternetResourceView, ResourceStatus, ResourceView, Site,
 };
 use futures::{SinkExt as _, StreamExt as _};
 use std::{
@@ -114,18 +114,18 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
     Ok(())
 }
 
-/// Canned resources + connected devices served in mock mode.
+/// Canned resources served in mock mode.
 ///
 /// Mirrors the Apple client's "connected" mock scenario
 /// (`swift/apple/FirezoneKit/Sources/FirezoneKit/Mocks/Scenarios/connected.json`) so that
 /// screenshots of every client show the same data.
-fn mock_resource_list() -> ResourceList {
+fn mock_resource_list() -> Vec<ResourceView> {
     let internet = site("1a4f0f4e-8f3f-4a2e-9b6d-3c5e7a1b2d40", "Internet");
     let sydney = site("917e9354-26b3-4704-867c-f84c8688d269", "Sydney Office");
     let production = site("003a5a77-6813-4c21-bd91-94f39efb04c0", "Production Cloud");
     let lab = site("0a93828b-6145-409d-ab6e-92a481ed7b1f", "Hardware Lab");
 
-    let resources = vec![
+    let mut resources = vec![
         ResourceView::Internet(InternetResourceView {
             id: parse("425233f2-a1cb-4b7d-84f3-850367fa122a"),
             name: "Internet Resource".into(),
@@ -203,23 +203,34 @@ fn mock_resource_list() -> ResourceList {
         ("487f8ebe-4b83-4239-8cb9-40d298fe8561", "sensor-hub-02", "100.64.19.90", "fd00:2021:1111::3c5", &[LAB]),
         ("e8dc5d0d-93ac-4e1b-9532-866dda67ce5b", "vision-rig-01", "100.64.19.86", "fd00:2021:1111::3c1", &[LAB]),
         ("46b198aa-fcf6-4640-bb23-b20879c52958", "vision-rig-02", "100.64.19.91", "fd00:2021:1111::3c6", &[LAB]),
-    ]
-    .into_iter()
-    .map(
-        |(id, name, tun_ipv4, tun_ipv6, pools)| ConnectedDeviceView {
-            id: parse(id),
-            name: name.to_owned(),
-            tun_ipv4: parse(tun_ipv4),
-            tun_ipv6: parse(tun_ipv6),
-            pools: pools.iter().map(|pool| (*pool).to_owned()).collect(),
-        },
-    )
-    .collect();
+    ];
 
-    ResourceList {
-        resources,
-        connected_devices,
-    }
+    let pools = [
+        ("c193c2fd-b346-44fb-a7ae-e2b74c492482", BUILD),
+        ("bc643791-3b90-4d41-9cac-753af623f274", LAB),
+        ("4cbe2883-8ed8-4b97-a119-07db08d6aa6c", STORAGE),
+    ]
+    .map(|(id, pool)| {
+        ResourceView::DevicePool(DevicePoolResourceView {
+            id: parse(id),
+            name: pool.to_owned(),
+            devices: connected_devices
+                .iter()
+                .filter(|(.., pools)| pools.contains(&pool))
+                .map(|(id, name, tun_ipv4, tun_ipv6, _)| ConnectedDeviceView {
+                    id: parse(id),
+                    name: (*name).to_owned(),
+                    slug: (*name).to_owned(),
+                    tun_ipv4: parse(tun_ipv4),
+                    tun_ipv6: parse(tun_ipv6),
+                })
+                .collect(),
+        })
+    });
+
+    resources.extend(pools);
+
+    resources
 }
 
 fn site(id: &str, name: &str) -> Site {

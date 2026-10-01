@@ -672,7 +672,7 @@ impl RefClient {
         self.resources
             .iter()
             .cloned()
-            .filter_map(|resource| {
+            .map(|resource| {
                 let status = self.expected_resource_status(&resource);
 
                 resource.into_view(status)
