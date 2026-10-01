@@ -335,6 +335,9 @@ where
 
             c.state
                 .on_upsert(cid, &mut c.agent, c.default_ice_config, now);
+            if c.candidate_timeout.is_some() {
+                c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
+            }
 
             let iceless = c.agent.is_iceless();
 

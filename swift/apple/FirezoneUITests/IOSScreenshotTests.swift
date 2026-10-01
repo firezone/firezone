@@ -126,6 +126,17 @@
       deliver(app, as: "device-pool-details", in: appearance)
     }
 
+    func testDevicePoolDetailsEmpty() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "empty-device-pool")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Spare hardware"], on: "session")
+      try open(app.staticTexts["Spare hardware"], in: app, name: "an empty device pool")
+      try waitFor(app.staticTexts["No connected devices"], on: "device-pool-details-empty")
+      deliver(app, as: "device-pool-details-empty", in: appearance)
+    }
+
     func testDeviceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
