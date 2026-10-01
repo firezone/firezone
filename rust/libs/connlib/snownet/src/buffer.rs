@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 
+use boringtun::noise::PendingSeal;
 use bufferpool::BufferPool;
 use ip_packet::Ecn;
 
@@ -38,6 +39,36 @@ pub trait Reservation {
     /// Keep the bytes written into [`buffer`](Self::buffer); without this the reservation is rolled
     /// back on drop.
     fn commit(self);
+
+    /// Like [`commit`](Self::commit) but the datagram is only complete once `seal` has run.
+    ///
+    /// Providers may defer the seal, e.g. to encrypt many datagrams in parallel, as long as it runs
+    /// before the datagram leaves the provider.
+    fn commit_sealed(mut self, seal: SealJob)
+    where
+        Self: Sized,
+    {
+        seal.run(self.buffer());
+        self.commit();
+    }
+}
+
+/// The deferred encryption of the WireGuard data message inside a [`Reservation`].
+#[must_use = "the datagram is not encrypted until the job runs"]
+pub struct SealJob {
+    offset: usize,
+    seal: PendingSeal,
+}
+
+impl SealJob {
+    pub fn new(offset: usize, seal: PendingSeal) -> Self {
+        Self { offset, seal }
+    }
+
+    /// Encrypts the data message within `datagram`, the bytes of the [`Reservation`] it belongs to.
+    pub fn run(self, datagram: &mut [u8]) {
+        self.seal.seal(&mut datagram[self.offset..]);
+    }
 }
 
 /// Collects datagrams as standalone [`Transmit`]s.

@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
+use crate::buffer::{BufferProvider, Reservation, SealJob, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -1845,12 +1845,12 @@ where
         let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
 
         // On `Err`, `reservation` is dropped without committing and rolls back automatically.
-        let len = self.tunnel.encapsulate_data_at(
+        let seal = self.tunnel.encapsulate_data_deferred_at(
             packet.packet(),
             &mut reservation.buffer()[packet_start..],
             now,
         )?;
-        debug_assert_eq!(packet_start + len, reserve_len);
+        debug_assert_eq!(packet_start + seal.message_len(), reserve_len);
 
         if let Some((peer, allocation)) = relay {
             // A missing channel is an expected part of channel setup (`encode_channel_data_header`
@@ -1863,7 +1863,7 @@ where
             }
         }
 
-        reservation.commit();
+        reservation.commit_sealed(SealJob::new(packet_start, seal));
 
         Ok(Some(EncapsulateInfo { src, dst }))
     }

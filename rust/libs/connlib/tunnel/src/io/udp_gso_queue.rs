@@ -1,9 +1,11 @@
-use std::{collections::VecDeque, net::SocketAddr};
+use std::{collections::VecDeque, mem, net::SocketAddr, ops::Range};
 
 use bufferpool::{Buffer, BufferPool};
 use ip_packet::Ecn;
-use snownet::{BufferProvider, Reservation};
+use snownet::{BufferProvider, Reservation, SealJob};
 use socket_factory::DatagramOut;
+
+use super::parallel;
 
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
@@ -30,6 +32,10 @@ pub struct UdpGsoQueue {
     /// A datagram may only be appended to the most recent batch of its connection,
     /// so per-connection ordering is preserved by construction.
     batches: VecDeque<Batch>,
+    /// Datagrams whose encryption is deferred until the queue is drained, in commit order.
+    ///
+    /// Batches are only ever popped after all seals ran, so the batch indices stay valid.
+    pending_seals: Vec<DeferredSeal>,
     buffer_pool: BufferPool<Vec<u8>>,
 }
 
@@ -37,6 +43,7 @@ impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             batches: VecDeque::new(),
+            pending_seals: Vec::new(),
             buffer_pool: BufferPool::new(GSO_BUFFER_SIZE, "gso-queue"),
         }
     }
@@ -53,11 +60,44 @@ impl UdpGsoQueue {
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
+        self.run_pending_seals();
+
         DrainDatagramsIter { queue: self }
     }
 
     pub fn clear(&mut self) {
-        self.batches.clear()
+        self.batches.clear();
+        self.pending_seals.clear();
+    }
+
+    /// Encrypts all datagrams committed with a [`SealJob`], in parallel if there are enough.
+    fn run_pending_seals(&mut self) {
+        if self.pending_seals.is_empty() {
+            return;
+        }
+
+        self.pending_seals
+            .sort_unstable_by_key(|seal| (seal.batch, seal.range.start));
+
+        let mut pending_seals = self.pending_seals.drain(..).peekable();
+        let mut jobs = Vec::with_capacity(pending_seals.len());
+
+        for (index, batch) in self.batches.iter_mut().enumerate() {
+            let mut rest = &mut batch.buffer[..];
+            let mut rest_start = 0;
+
+            while let Some(seal) = pending_seals.next_if(|seal| seal.batch == index) {
+                let (_, tail) = mem::take(&mut rest).split_at_mut(seal.range.start - rest_start);
+                let (datagram, tail) = tail.split_at_mut(seal.range.len());
+
+                rest = tail;
+                rest_start = seal.range.end;
+                jobs.push((datagram, seal.job));
+            }
+        }
+        debug_assert!(pending_seals.next().is_none(), "Seal for unknown batch");
+
+        parallel::for_each(jobs, |(datagram, job)| job.run(datagram));
     }
 }
 
@@ -121,7 +161,8 @@ impl BufferProvider for UdpGsoQueue {
         };
 
         GsoReservation {
-            batch: &mut self.batches[index],
+            queue: self,
+            index,
             len,
             committed: false,
         }
@@ -155,21 +196,46 @@ impl Batch {
     }
 }
 
+/// A datagram within a [`Batch`] that still needs to be encrypted.
+struct DeferredSeal {
+    batch: usize,
+    range: Range<usize>,
+    job: SealJob,
+}
+
 /// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
 pub struct GsoReservation<'a> {
-    batch: &'a mut Batch,
+    queue: &'a mut UdpGsoQueue,
+    index: usize,
     len: usize,
     committed: bool,
 }
 
+impl GsoReservation<'_> {
+    fn range(&self) -> Range<usize> {
+        let end = self.queue.batches[self.index].buffer.len();
+
+        end - self.len..end
+    }
+}
+
 impl Reservation for GsoReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
-        let offset = self.batch.buffer.len() - self.len;
+        let range = self.range();
 
-        &mut self.batch.buffer[offset..]
+        &mut self.queue.batches[self.index].buffer[range]
     }
 
     fn commit(mut self) {
+        self.committed = true;
+    }
+
+    fn commit_sealed(mut self, job: SealJob) {
+        self.queue.pending_seals.push(DeferredSeal {
+            batch: self.index,
+            range: self.range(),
+            job,
+        });
         self.committed = true;
     }
 }
@@ -177,8 +243,9 @@ impl Reservation for GsoReservation<'_> {
 impl Drop for GsoReservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            let new_len = self.batch.buffer.len().saturating_sub(self.len);
-            self.batch.buffer.truncate(new_len);
+            let batch = &mut self.queue.batches[self.index];
+            let new_len = batch.buffer.len().saturating_sub(self.len);
+            batch.buffer.truncate(new_len);
         }
     }
 }
@@ -226,6 +293,10 @@ impl Iterator for DrainDatagramsIter<'_> {
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
+    use std::time::{Duration, Instant};
+
+    use boringtun::noise::{Index, Tunn, TunnResult};
+    use boringtun::x25519::{PublicKey, StaticSecret};
 
     use super::*;
 
@@ -474,6 +545,117 @@ mod tests {
         assert_eq!(datagrams[0].segment_size, 3);
     }
 
+    #[test]
+    fn sealed_reservations_are_encrypted_before_draining() {
+        let now = Instant::now();
+        let (mut alice, mut bob) = connected_tunnels(now);
+        let mut send_queue = UdpGsoQueue::new();
+        let packets = (0..20u8)
+            .map(|i| ip_packet::make::udp_packet(SRC_IP, DST_IP, 1, 2, &[i; 100]).unwrap())
+            .collect::<Vec<_>>();
+
+        for (i, packet) in packets.iter().enumerate() {
+            let dst = if i % 2 == 0 { DST_1 } else { DST_2 };
+            let mut reservation =
+                send_queue.reserve(None, dst, Ecn::NonEct, packet.packet().len() + 32);
+            let seal = alice
+                .encapsulate_data_deferred_at(packet.packet(), reservation.buffer(), now)
+                .unwrap();
+            reservation.commit_sealed(SealJob::new(0, seal));
+        }
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        let received = datagrams
+            .iter()
+            .flat_map(|d| d.packet.chunks(d.segment_size))
+            .map(|segment| decapsulate(&mut bob, segment, now))
+            .collect::<Vec<_>>();
+        let expected = packets
+            .iter()
+            .step_by(2)
+            .chain(packets.iter().skip(1).step_by(2))
+            .map(|p| p.packet().to_vec())
+            .collect::<Vec<_>>();
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(received, expected);
+    }
+
+    #[test]
+    fn clearing_the_queue_discards_pending_seals() {
+        let now = Instant::now();
+        let (mut alice, _) = connected_tunnels(now);
+        let mut send_queue = UdpGsoQueue::new();
+
+        let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 32);
+        let seal = alice
+            .encapsulate_data_deferred_at(&[], reservation.buffer(), now)
+            .unwrap();
+        reservation.commit_sealed(SealJob::new(0, seal));
+        send_queue.clear();
+        send_queue.enqueue(None, DST_2, b"foobar", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(&datagrams[0].packet[..], b"foobar");
+    }
+
+    fn connected_tunnels(now: Instant) -> (Tunn, Tunn) {
+        let alice_key = StaticSecret::from([1; 32]);
+        let bob_key = StaticSecret::from([2; 32]);
+        let mut alice = tunnel(alice_key.clone(), PublicKey::from(&bob_key), 1, now);
+        let mut bob = tunnel(bob_key, PublicKey::from(&alice_key), 2, now);
+        let mut buf = [0u8; 256];
+
+        let TunnResult::WriteToNetwork(init) =
+            alice.format_handshake_initiation_at(&mut buf, false, now)
+        else {
+            panic!("expected a handshake initiation")
+        };
+        let init = init.to_vec();
+        let TunnResult::WriteToNetwork(response) = bob.decapsulate_at(None, &init, &mut buf, now)
+        else {
+            panic!("expected a handshake response")
+        };
+        let response = response.to_vec();
+        let TunnResult::WriteToNetwork(_keepalive) =
+            alice.decapsulate_at(None, &response, &mut buf, now)
+        else {
+            panic!("expected a keepalive")
+        };
+
+        (alice, bob)
+    }
+
+    fn tunnel(key: StaticSecret, peer: PublicKey, index: u32, now: Instant) -> Tunn {
+        Tunn::new_at(
+            key,
+            peer,
+            None,
+            None,
+            Index::new_local(index),
+            None,
+            0,
+            now,
+            now,
+            Duration::ZERO,
+        )
+    }
+
+    fn decapsulate(tunn: &mut Tunn, datagram: &[u8], now: Instant) -> Vec<u8> {
+        let mut buf = [0u8; 2048];
+
+        let TunnResult::WriteToTunnelV4(packet, _) =
+            tunn.decapsulate_at(None, datagram, &mut buf, now)
+        else {
+            panic!("expected an IPv4 packet")
+        };
+
+        packet.to_vec()
+    }
+
+    const SRC_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
+    const DST_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 2);
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
     const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
 }

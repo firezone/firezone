@@ -192,6 +192,7 @@ quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+rayon = "1.12.0"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
@@ -310,7 +311,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 [patch.crates-io]
 sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
-boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "parallel-encryption" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
