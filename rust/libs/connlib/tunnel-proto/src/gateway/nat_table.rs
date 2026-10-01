@@ -140,12 +140,9 @@ impl NatTable {
 
         tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
 
-        if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-            state.outgoing_rst = true;
-        }
-
-        if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-            state.outgoing_fin = true;
+        if let Some(tcp) = packet.as_tcp() {
+            state.outgoing_rst |= tcp.rst();
+            state.outgoing_fin |= tcp.fin();
         }
 
         state.last_outgoing = now;
@@ -161,7 +158,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
+            if let Some((Inside(inside_proto, inside_dst), _)) =
                 self.translate_incoming_inner(&outside, now)
             {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
@@ -181,15 +178,10 @@ impl NatTable {
 
         let outside = Outside(packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_incoming_inner(&outside, now)
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.incoming_rst = true;
-            }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.incoming_fin = true;
+        if let Some((inside, state)) = self.translate_incoming_inner(&outside, now) {
+            if let Some(tcp) = packet.as_tcp() {
+                state.incoming_rst |= tcp.rst();
+                state.incoming_fin |= tcp.fin();
             }
 
             let (proto, src) = inside.into_inner();
@@ -204,9 +196,13 @@ impl NatTable {
         Ok(TranslateIncomingResult::NoNatSession)
     }
 
-    fn translate_incoming_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
-        let inside = self.table.get_by_right(outside)?;
-        let state = self.state_by_inside.get_mut(inside)?;
+    fn translate_incoming_inner(
+        &mut self,
+        outside: &Outside,
+        now: Instant,
+    ) -> Option<(Inside, &mut EntryState)> {
+        let inside = *self.table.get_by_right(outside)?;
+        let state = self.state_by_inside.get_mut(&inside)?;
 
         tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
 
@@ -215,7 +211,7 @@ impl NatTable {
             tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
-        Some(*inside)
+        Some((inside, state))
     }
 }
 
