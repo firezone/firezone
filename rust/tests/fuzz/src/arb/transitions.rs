@@ -57,8 +57,8 @@ enum TransitionKind {
 /// The transitions that open no connection.
 ///
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
-/// which the reference model does not predict. While every relay is exhausted or recovering,
-/// only these are legal.
+/// which the reference model does not predict. While every relay is exhausted or recovering, or a
+/// node may have no relay left, only these are legal.
 const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
     TransitionKind::RoamClient,
     TransitionKind::DeployNewRelays,
@@ -165,7 +165,10 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .filter(|(kind, _)| healthy_relays > 0 || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
+    .filter(|(kind, _)| {
+        (healthy_relays > 0 && !state.node_may_lack_relays)
+            || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind)
+    })
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.

@@ -25,8 +25,8 @@ use crate::resource as client;
 
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
-/// How long after a relay frees up its ports until every node that ignores it asks for it again:
-/// how long a node ignores a relay that failed its allocation, plus a margin.
+/// How long after a relay frees up its ports until no node ignores it anymore: how long a node
+/// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
 
 /// The reference state machine of the tunnel.
@@ -41,6 +41,8 @@ pub struct ReferenceState {
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
     /// Relays that accept allocations again, and since when, for up to [`RELAY_RECOVERY`].
     pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
+    /// Whether a node may have no relay left because every relay it tried rejected its allocation.
+    pub(crate) node_may_lack_relays: bool,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -85,6 +87,7 @@ impl ReferenceState {
             relays,
             exhausted_relays: Default::default(),
             recovering_relays: Default::default(),
+            node_may_lack_relays: false,
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -385,6 +388,8 @@ impl ReferenceState {
                 dead_window,
                 portal_window,
             } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
                 // out classic ICE flows.
@@ -440,6 +445,8 @@ impl ReferenceState {
             }
             Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
+                self.node_may_lack_relays = !self.has_healthy_relay();
+
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
@@ -523,6 +530,8 @@ impl ReferenceState {
                 self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
                 for (id, client) in &mut self.clients {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
@@ -1466,6 +1475,19 @@ impl ReferenceState {
             .collect()
     }
 
+    fn no_relay_accepts_allocations(&self) -> bool {
+        self.relays
+            .keys()
+            .all(|relay| self.exhausted_relays.contains(relay))
+    }
+
+    /// Whether a relay accepts allocations and no node ignores it.
+    fn has_healthy_relay(&self) -> bool {
+        self.relays.keys().any(|relay| {
+            !self.exhausted_relays.contains(relay) && !self.recovering_relays.contains_key(relay)
+        })
+    }
+
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
         for (_, relay) in self
             .relays
@@ -1490,6 +1512,7 @@ impl ReferenceState {
             self.relays.insert(*rid, new_relay.clone());
             let added = self.network.add_host(*rid, new_relay);
             debug_assert!(added);
+            self.node_may_lack_relays = false;
         }
     }
 
