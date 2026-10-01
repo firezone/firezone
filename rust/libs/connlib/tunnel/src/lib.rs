@@ -335,7 +335,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::default();
+                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
 
                     for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
@@ -372,17 +372,6 @@ impl ClientTunnel {
                         if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
-                    }
-
-                    for (kind, count) in received_counts.non_zero() {
-                        self.packet_counter.add(
-                            count,
-                            &[
-                                otel::attr::network_protocol_name(kind),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
                     }
 
                     tick.want_continue();
@@ -586,7 +575,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::default();
+                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
 
                     for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
@@ -623,17 +612,6 @@ impl GatewayTunnel {
                         if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
-                    }
-
-                    for (kind, count) in received_counts.non_zero() {
-                        self.packet_counter.add(
-                            count,
-                            &[
-                                otel::attr::network_protocol_name(kind),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
                     }
 
                     tick.want_continue();

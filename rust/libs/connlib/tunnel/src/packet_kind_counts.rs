@@ -1,10 +1,32 @@
+use opentelemetry::{KeyValue, metrics::Counter};
 use tunnel_proto::packet_kind::{self, Kind};
 
-/// Counts packets by their [`Kind`].
-#[derive(Default)]
-pub(crate) struct PacketKindCounts([u64; Kind::ALL.len()]);
+use crate::otel;
 
-impl PacketKindCounts {
+/// Counts UDP packets by their [`Kind`] and adds them to `counter` when dropped.
+pub(crate) struct PacketKindCounts<'a> {
+    counter: &'a Counter<u64>,
+    direction: KeyValue,
+    counts: [u64; Kind::ALL.len()],
+}
+
+impl<'a> PacketKindCounts<'a> {
+    pub(crate) fn receive(counter: &'a Counter<u64>) -> Self {
+        Self::new(counter, otel::attr::network_io_direction_receive())
+    }
+
+    pub(crate) fn transmit(counter: &'a Counter<u64>) -> Self {
+        Self::new(counter, otel::attr::network_io_direction_transmit())
+    }
+
+    fn new(counter: &'a Counter<u64>, direction: KeyValue) -> Self {
+        Self {
+            counter,
+            direction,
+            counts: [0; Kind::ALL.len()],
+        }
+    }
+
     pub(crate) fn record(&mut self, packet: &[u8]) {
         self.add(packet_kind::classify(packet));
     }
@@ -19,14 +41,25 @@ impl PacketKindCounts {
     }
 
     fn add(&mut self, kind: Kind) {
-        self.0[kind as usize] += 1;
+        self.counts[kind as usize] += 1;
     }
+}
 
-    /// Returns the non-zero counts.
-    pub(crate) fn non_zero(self) -> impl Iterator<Item = (Kind, u64)> {
-        Kind::ALL
-            .into_iter()
-            .zip(self.0)
-            .filter(|(_, count)| *count > 0)
+impl Drop for PacketKindCounts<'_> {
+    fn drop(&mut self) {
+        for (kind, count) in Kind::ALL.into_iter().zip(self.counts) {
+            if count == 0 {
+                continue;
+            }
+
+            self.counter.add(
+                count,
+                &[
+                    otel::attr::network_protocol_name(kind),
+                    otel::attr::network_transport_udp(),
+                    self.direction.clone(),
+                ],
+            );
+        }
     }
 }

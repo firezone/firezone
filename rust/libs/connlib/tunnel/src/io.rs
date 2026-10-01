@@ -419,35 +419,14 @@ where
     ///
     /// Pending while the socket or the crypto workers are at capacity.
     pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut transmitted_counts = PacketKindCounts::default();
+        let mut transmitted = PacketKindCounts::transmit(&self.packet_counter);
 
-        let result = self.send_queued(&mut transmitted_counts, cx);
-
-        for (kind, count) in transmitted_counts.non_zero() {
-            self.packet_counter.add(
-                count,
-                &[
-                    otel::attr::network_protocol_name(kind),
-                    otel::attr::network_transport_udp(),
-                    otel::attr::network_io_direction_transmit(),
-                ],
-            );
-        }
-
-        result
-    }
-
-    fn send_queued(
-        &mut self,
-        transmitted_counts: &mut PacketKindCounts,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<()>> {
         while !self.control_queue.is_empty() {
             ready!(self.sockets.poll_send_ready(cx)?);
 
             if let Some(datagram) = self.control_queue.pop_front() {
                 for segment in datagram.packet.chunks(datagram.segment_size) {
-                    transmitted_counts.record(segment);
+                    transmitted.record(segment);
                 }
                 self.sockets.send(datagram)?;
             }
@@ -461,7 +440,7 @@ where
             };
 
             for job in datagram.jobs() {
-                transmitted_counts.record_wireguard(job.is_relayed());
+                transmitted.record_wireguard(job.is_relayed());
             }
             let socket = self.sockets.sender(datagram.dst())?;
             self.crypto.seal(datagram, socket)?;
