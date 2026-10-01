@@ -107,7 +107,7 @@ impl PendingTransmit {
     }
 }
 
-/// Collects datagrams as standalone [`Transmit`]s.
+/// Collects datagrams for the network, each as an [`Outgoing`].
 pub struct TransmitBuffer {
     buffer_pool: BufferPool<Vec<u8>>,
     transmits: VecDeque<Outgoing>,

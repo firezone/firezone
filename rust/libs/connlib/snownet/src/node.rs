@@ -1613,7 +1613,7 @@ where
                             };
 
                             if keepalive_due {
-                                self.send_keepalive(allocations, transmits, now);
+                                self.send_keepalive(remote_socket, allocations, transmits, now);
                             }
 
                             // If the WireGuard handshake already completed while we were still
@@ -1711,14 +1711,7 @@ where
                     let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
                 }
                 path_agent::Payload::Keepalive => {
-                    let _ = self.encapsulate_payload(
-                        peer_socket,
-                        &[],
-                        Ecn::NonEct,
-                        now,
-                        allocations,
-                        transmits,
-                    );
+                    self.send_keepalive(peer_socket, allocations, transmits, now);
                 }
             }
         }
@@ -1794,7 +1787,11 @@ where
             TunnResult::Err(e) => {
                 tracing::warn!("boringtun error: {e}");
             }
-            TunnResult::KeepaliveDue => self.send_keepalive(allocations, transmits, now),
+            TunnResult::KeepaliveDue => {
+                if let Some(socket) = self.socket() {
+                    self.send_keepalive(socket, allocations, transmits, now);
+                }
+            }
             TunnResult::WriteToNetwork(b) => {
                 if self.agent.is_iceless() {
                     self.agent.handle_outbound(b.to_vec(), now);
@@ -1852,7 +1849,7 @@ where
                 };
 
                 if keepalive_due {
-                    self.send_keepalive(allocations, transmits, now);
+                    self.send_keepalive(peer_socket, allocations, transmits, now);
                 }
 
                 // The connection only becomes usable now that a socket is
@@ -1915,14 +1912,11 @@ where
     /// A keepalive is a data message like any other, but does not count as activity.
     fn send_keepalive(
         &mut self,
+        socket: PeerSocket,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
     ) {
-        let Some(socket) = self.socket() else {
-            return;
-        };
-
         if let Err(e) =
             self.encapsulate_payload(socket, &[], Ecn::NonEct, now, allocations, transmits)
         {
@@ -2051,8 +2045,8 @@ where
             TunnResult::KeepaliveDue => {
                 if let ConnectionState::Connecting { keepalive_due, .. } = &mut self.state {
                     *keepalive_due = true;
-                } else {
-                    self.send_keepalive(allocations, transmits, now);
+                } else if let Some(socket) = self.socket() {
+                    self.send_keepalive(socket, allocations, transmits, now);
                 }
 
                 ControlFlow::Break(Ok(()))
