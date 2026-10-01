@@ -107,7 +107,7 @@ where
         datagram: PendingDatagram,
         socket: mpsc::Sender<DatagramOut>,
     ) -> Result<(), CryptoWorkersUnavailable> {
-        let index = worker_index(datagram.datagram().dst, self.sealers.len())?;
+        let index = worker_index(datagram.dst(), self.sealers.len())?;
 
         let _ = self.sealers[index].send_item(Seal(datagram, socket));
 
@@ -292,10 +292,10 @@ mod tests {
             .collect::<Vec<_>>();
 
         for packet in &packets {
-            enqueue(&mut queue, &mut alice, DST_1, packet.packet(), now);
+            enqueue(&mut queue, &mut alice, DST_1, packet.clone(), now);
         }
         while let Some(datagram) = queue.pop() {
-            let dst = datagram.datagram().dst;
+            let dst = datagram.dst();
             poll_fn(|cx| crypto.poll_seal_ready(dst, cx)).await.unwrap();
             crypto.seal(datagram, socket.clone()).unwrap();
         }

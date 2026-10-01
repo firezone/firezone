@@ -39,9 +39,6 @@ pub(crate) struct SimGateway {
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
     tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
-
-    /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +84,6 @@ impl SimGateway {
                     (address, server)
                 })
                 .collect(),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -189,22 +185,16 @@ impl SimGateway {
         Ok(packet)
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    /// Drive the SUT's TUN -> network path, sealing the encapsulated datagram (if any) on the
+    /// current thread.
     fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+        let message = self.sut.handle_tun_input(packet, now)?;
 
-        Ok(self
-            .transmit_buffer
-            .poll_transmit()
-            .map(snownet::Outgoing::seal))
+        Ok(message.map(snownet::DataMessage::seal))
     }
 
     pub(crate) fn deploy_new_dns_servers(

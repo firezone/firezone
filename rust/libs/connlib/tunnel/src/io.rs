@@ -429,8 +429,17 @@ where
                 break;
             };
 
-            self.count_transmit(datagram.datagram());
-            let socket = self.sockets.sender(datagram.datagram().dst)?;
+            for job in datagram.jobs() {
+                self.packet_counter.add(
+                    1,
+                    &[
+                        otel::attr::wireguard_protocol_name(job.is_relayed()),
+                        otel::attr::network_transport_udp(),
+                        otel::attr::network_io_direction_transmit(),
+                    ],
+                );
+            }
+            let socket = self.sockets.sender(datagram.dst())?;
             self.crypto.seal(datagram, socket)?;
         }
 
@@ -496,11 +505,6 @@ where
         }
     }
 
-    /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
-        &mut self.gso_queue
-    }
-
     pub fn send_network(&mut self, transmit: Outgoing) {
         match transmit {
             Outgoing::Control(transmit) => self.control_queue.push_back(DatagramOut {
@@ -510,7 +514,7 @@ where
                 packet: transmit.payload,
                 ecn: transmit.ecn,
             }),
-            Outgoing::Data(data) => data.write_into(&mut self.gso_queue),
+            Outgoing::Data(message) => self.gso_queue.push(message),
         }
     }
 

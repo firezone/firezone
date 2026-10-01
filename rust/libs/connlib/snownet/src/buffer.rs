@@ -1,64 +1,107 @@
 use std::collections::VecDeque;
 use std::net::SocketAddr;
+use std::sync::LazyLock;
 
 use boringtun::noise::PendingSeal;
 use bufferpool::BufferPool;
-use ip_packet::Ecn;
+use ip_packet::{Ecn, IpPacket};
 
 use crate::node::Transmit;
 
-/// Provides destination buffers for [`Node::encapsulate`](crate::Node::encapsulate).
-///
-/// Implementers hand out a writable slice into which the encrypted packet is written directly,
-/// avoiding an intermediate copy.
-pub trait BufferProvider {
-    type Reservation<'a>: Reservation
-    where
-        Self: 'a;
+static SEAL_BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
+    LazyLock::new(|| BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "seal"));
 
-    /// Reserve `len` writable bytes for a datagram from `src` to `dst` with the given `ecn`.
-    ///
-    /// The returned [`Reservation`] is rolled back when dropped unless it is
-    /// [committed](Reservation::commit).
-    fn reserve(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        ecn: Ecn,
-        len: usize,
-    ) -> Self::Reservation<'_>;
+/// A WireGuard data message to be sent from `src` to `dst`, not yet sealed.
+#[derive(Debug)]
+#[must_use = "the data message is lost unless it is sealed"]
+pub struct DataMessage {
+    pub src: Option<SocketAddr>,
+    pub dst: SocketAddr,
+    pub ecn: Ecn,
+    pub job: SealJob,
 }
 
-/// A reserved region within a [`BufferProvider`].
-///
-/// Dropping the reservation without [committing](Self::commit) it rolls the reservation back.
-pub trait Reservation {
-    /// The writable bytes reserved for the datagram.
-    fn buffer(&mut self) -> &mut [u8];
+impl DataMessage {
+    /// Returns the datagram ready to be sent, sealing it on the current thread.
+    pub fn seal(self) -> Transmit {
+        let mut payload = SEAL_BUFFER_POOL.pull();
+        payload.resize(self.job.datagram_len(), 0);
+        self.job.seal_into(&mut payload);
 
-    /// Keep the data message written into [`buffer`](Self::buffer); without this the reservation
-    /// is rolled back on drop.
-    ///
-    /// The datagram is only complete once `seal` has run, which the provider must ensure before it
-    /// is sent.
-    fn commit(self, seal: SealJob);
+        Transmit {
+            src: self.src,
+            dst: self.dst,
+            payload,
+            ecn: self.ecn,
+        }
+    }
 }
 
-/// The deferred encryption of the WireGuard data message inside a [`Reservation`].
-#[must_use = "the datagram is not encrypted until the job runs"]
+/// The plaintext of a WireGuard data message and the means to seal it.
+///
+/// Sealing is the only way to get at the bytes, so plaintext never reaches a socket.
+#[derive(derive_more::Debug)]
+#[must_use = "the data message is lost unless it is sealed"]
 pub struct SealJob {
-    offset: usize,
+    channel_data_header: Option<[u8; 4]>,
+    /// `None` for a keepalive.
+    packet: Option<IpPacket>,
+    #[debug(skip)]
     seal: PendingSeal,
 }
 
 impl SealJob {
-    pub fn new(offset: usize, seal: PendingSeal) -> Self {
-        Self { offset, seal }
+    pub fn new(
+        channel_data_header: Option<[u8; 4]>,
+        packet: Option<IpPacket>,
+        seal: PendingSeal,
+    ) -> Self {
+        Self {
+            channel_data_header,
+            packet,
+            seal,
+        }
     }
 
-    /// Encrypts the data message within `datagram`, the bytes of the [`Reservation`] it belongs to.
-    pub fn run(self, datagram: &mut [u8]) {
-        self.seal.seal(&mut datagram[self.offset..]);
+    /// Returns the length of the sealed datagram.
+    pub fn datagram_len(&self) -> usize {
+        self.channel_data_header.map_or(0, |header| header.len())
+            + self.plaintext().len()
+            + ip_packet::WG_OVERHEAD
+    }
+
+    /// Whether the datagram is sent through a TURN channel.
+    pub fn is_relayed(&self) -> bool {
+        self.channel_data_header.is_some()
+    }
+
+    /// Writes the sealed datagram to the start of `dst` and returns its length.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `dst` is shorter than [`SealJob::datagram_len`].
+    pub fn seal_into(self, dst: &mut [u8]) -> usize {
+        let Self {
+            channel_data_header,
+            packet,
+            seal,
+        } = self;
+
+        let header_len = match channel_data_header {
+            Some(header) => {
+                dst[..header.len()].copy_from_slice(&header);
+
+                header.len()
+            }
+            None => 0,
+        };
+        let plaintext = packet.as_ref().map_or(&[][..], IpPacket::packet);
+
+        header_len + seal.seal_into(plaintext, &mut dst[header_len..])
+    }
+
+    fn plaintext(&self) -> &[u8] {
+        self.packet.as_ref().map_or(&[], IpPacket::packet)
     }
 }
 
@@ -67,7 +110,7 @@ pub enum Outgoing {
     /// A control message, e.g. a WireGuard handshake or a STUN/TURN message, final when created.
     Control(Transmit),
     /// A WireGuard data message that still needs to be sealed.
-    Data(PendingTransmit),
+    Data(DataMessage),
 }
 
 impl Outgoing {
@@ -75,55 +118,30 @@ impl Outgoing {
     pub fn seal(self) -> Transmit {
         match self {
             Outgoing::Control(transmit) => transmit,
-            Outgoing::Data(PendingTransmit { mut transmit, seal }) => {
-                seal.run(&mut transmit.payload);
-
-                transmit
-            }
+            Outgoing::Data(message) => message.seal(),
         }
     }
 }
 
-/// A WireGuard data message whose payload still holds the plaintext.
-#[must_use = "the data message is lost unless it is sealed"]
-pub struct PendingTransmit {
-    transmit: Transmit,
-    seal: SealJob,
-}
-
-impl PendingTransmit {
-    /// Moves the data message into `provider`, which seals it.
-    pub fn write_into(self, provider: &mut impl BufferProvider) {
-        let Transmit {
-            src,
-            dst,
-            payload,
-            ecn,
-        } = self.transmit;
-
-        let mut reservation = provider.reserve(src, dst, ecn, payload.len());
-        reservation.buffer().copy_from_slice(&payload);
-        reservation.commit(self.seal);
-    }
-}
-
 /// Collects datagrams for the network, each as an [`Outgoing`].
+#[derive(Default)]
 pub struct TransmitBuffer {
-    buffer_pool: BufferPool<Vec<u8>>,
     transmits: VecDeque<Outgoing>,
 }
 
 impl TransmitBuffer {
     pub fn new() -> Self {
-        Self {
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "transmit-buffer"),
-            transmits: VecDeque::default(),
-        }
+        Self::default()
     }
 
     /// Collect a control message.
     pub fn push(&mut self, transmit: Transmit) {
         self.transmits.push_back(Outgoing::Control(transmit));
+    }
+
+    /// Collect a data message.
+    pub fn push_data(&mut self, message: DataMessage) {
+        self.transmits.push_back(Outgoing::Data(message));
     }
 
     /// Returns the next collected datagram, if any.
@@ -144,77 +162,5 @@ impl Extend<Transmit> for TransmitBuffer {
     fn extend<T: IntoIterator<Item = Transmit>>(&mut self, iter: T) {
         self.transmits
             .extend(iter.into_iter().map(Outgoing::Control));
-    }
-}
-
-impl Default for TransmitBuffer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BufferProvider for TransmitBuffer {
-    type Reservation<'a> = TransmitReservation<'a>;
-
-    fn reserve(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        ecn: Ecn,
-        len: usize,
-    ) -> TransmitReservation<'_> {
-        let mut payload = self.buffer_pool.pull();
-        payload.resize(len, 0);
-
-        TransmitReservation {
-            transmit: Transmit {
-                src,
-                dst,
-                payload,
-                ecn,
-            },
-            transmits: &mut self.transmits,
-        }
-    }
-}
-
-/// A [`Reservation`] into a [`TransmitBuffer`], collected once committed.
-pub struct TransmitReservation<'a> {
-    transmit: Transmit,
-    transmits: &'a mut VecDeque<Outgoing>,
-}
-
-impl Reservation for TransmitReservation<'_> {
-    fn buffer(&mut self) -> &mut [u8] {
-        &mut self.transmit.payload
-    }
-
-    fn commit(self, seal: SealJob) {
-        self.transmits.push_back(Outgoing::Data(PendingTransmit {
-            transmit: self.transmit,
-            seal,
-        }));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::net::{Ipv4Addr, SocketAddrV4};
-
-    use super::*;
-
-    const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
-
-    #[test]
-    fn dropping_a_reservation_without_committing_yields_nothing() {
-        let mut transmits = TransmitBuffer::new();
-
-        {
-            let mut reservation = transmits.reserve(None, DST, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"foobar");
-            // Dropped without committing.
-        }
-
-        assert!(transmits.poll_transmit().is_none());
     }
 }

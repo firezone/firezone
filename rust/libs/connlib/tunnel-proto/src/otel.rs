@@ -9,6 +9,19 @@ pub mod attr {
         KeyValue::new(KEY, crate::packet_kind::classify(payload))
     }
 
+    /// The protocol name of a WireGuard data message, sent through a TURN channel if `relayed`.
+    pub fn wireguard_protocol_name(relayed: bool) -> KeyValue {
+        const KEY: &str = "network.protocol.name";
+
+        let kind = if relayed {
+            crate::packet_kind::Kind::WireguardOverTurn
+        } else {
+            crate::packet_kind::Kind::Wireguard
+        };
+
+        KeyValue::new(KEY, kind)
+    }
+
     /// The transport a DNS query was received / forwarded on.
     pub fn network_transport(transport: crate::dns::Transport) -> KeyValue {
         const KEY: &str = "network.transport";

@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Outgoing, Reservation, SealJob, TransmitBuffer};
+use crate::buffer::{DataMessage, Outgoing, SealJob, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -22,8 +22,8 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
-    HandshakeResponse, Index, Opened, Packet, PacketCookieReply, PacketData, PendingOpen, Tunn,
-    TunnResult,
+    HandshakeResponse, Index, Opened, Packet, PacketCookieReply, PacketData, PendingOpen,
+    PendingSeal, Tunn, TunnResult,
 };
 use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
@@ -471,21 +471,16 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(
-            cid,
-            peer_socket,
-            &goodbye,
-            now,
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-        ) {
-            Ok(Some(_)) => {
+        match connection.encapsulate(cid, peer_socket, goodbye, now, &mut self.allocations) {
+            Ok(Some(message)) => {
+                self.buffered_transmits.push_data(message);
+
                 tracing::info!("Connection closed proactively (sent goodbye)");
             }
             Ok(None) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye)");
             }
-            Err(e) => {
+            Err((_, e)) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye: {e:#})");
             }
         }
@@ -635,38 +630,44 @@ where
         }
     }
 
-    /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
+    /// Encapsulates an outgoing IP packet into a [`DataMessage`], to be sealed on any thread.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    ///
+    /// # Errors
+    ///
+    /// Hands the packet back together with the error, e.g. to buffer it on [`StillConnecting`].
     pub fn encapsulate(
         &mut self,
         cid: TId,
-        packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>> {
+    ) -> Result<Option<DataMessage>, (IpPacket, anyhow::Error)> {
         self.last_now = now;
 
-        let conn = self.connections.get_mut(&cid, now)?;
+        let conn = match self.connections.get_mut(&cid, now) {
+            Ok(conn) => conn,
+            Err(e) => return Err((packet, e)),
+        };
 
         let socket = match &conn.state {
             ConnectionState::Connecting { .. } => {
-                return Err(StillConnecting.into());
+                return Err((packet, StillConnecting.into()));
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
             ConnectionState::Failed => {
-                return Err(anyhow!("Connection {cid} failed"));
+                return Err((packet, anyhow!("Connection {cid} failed")));
             }
         };
 
-        let info = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
-            .with_context(|| format!("cid={cid}"))?;
+        let message = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+            .map_err(|(packet, e)| (packet, e.context(format!("cid={cid}"))))?;
 
-        Ok(info)
+        Ok(message)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -1389,12 +1390,6 @@ impl fmt::Debug for Transmit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EncapsulateInfo {
-    pub src: Option<SocketAddr>,
-    pub dst: SocketAddr,
-}
-
 /// A WireGuard data message received from a peer, ready to be decrypted.
 #[must_use = "the packet is lost unless it is decrypted and handed back to the `Node`"]
 pub struct EncryptedPacket<TId> {
@@ -1430,6 +1425,25 @@ pub struct DecryptedPacket<TId> {
     destination: SocketAddr,
     buffer: IpPacketBuf,
     opened: Opened,
+}
+
+/// A data message whose counter is assigned, waiting for its plaintext.
+struct PreparedDataMessage {
+    src: Option<SocketAddr>,
+    dst: SocketAddr,
+    channel_data_header: Option<[u8; 4]>,
+    seal: PendingSeal,
+}
+
+impl PreparedDataMessage {
+    fn into_message(self, ecn: Ecn, packet: Option<IpPacket>) -> DataMessage {
+        DataMessage {
+            src: self.src,
+            dst: self.dst,
+            ecn,
+            job: SealJob::new(self.channel_data_header, packet, self.seal),
+        }
+    }
 }
 
 #[derive(derive_more::Debug)]
@@ -1710,8 +1724,12 @@ where
                         transmits.push(transmit);
                     }
                 }
-                path_agent::Payload::Plaintext(ref ip) => {
-                    let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
+                path_agent::Payload::Plaintext(ip) => {
+                    if let Ok(Some(message)) =
+                        self.encapsulate(cid, peer_socket, *ip, now, allocations)
+                    {
+                        transmits.push_data(message);
+                    }
                 }
                 path_agent::Payload::Keepalive => {
                     self.send_keepalive(peer_socket, allocations, transmits, now);
@@ -1886,30 +1904,28 @@ where
         }
     }
 
-    /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
         socket: PeerSocket,
-        packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>>
+    ) -> Result<Option<DataMessage>, (IpPacket, anyhow::Error)>
     where
         TId: fmt::Display,
     {
         self.state
-            .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
+            .on_outgoing(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
-        self.encapsulate_payload(
-            socket,
-            packet.packet(),
-            packet.ecn(),
-            now,
-            allocations,
-            provider,
-        )
+        let prepared =
+            match self.prepare_data_message(socket, packet.packet().len(), now, allocations) {
+                Ok(Some(prepared)) => prepared,
+                Ok(None) => return Ok(None),
+                Err(e) => return Err((packet, e)),
+            };
+
+        Ok(Some(prepared.into_message(packet.ecn(), Some(packet))))
     }
 
     /// A keepalive is a data message like any other, but does not count as activity.
@@ -1920,27 +1936,25 @@ where
         transmits: &mut TransmitBuffer,
         now: Instant,
     ) {
-        if let Err(e) =
-            self.encapsulate_payload(socket, &[], Ecn::NonEct, now, allocations, transmits)
-        {
-            tracing::debug!("Failed to send keepalive: {e:#}");
+        match self.prepare_data_message(socket, 0, now, allocations) {
+            Ok(Some(prepared)) => transmits.push_data(prepared.into_message(Ecn::NonEct, None)),
+            Ok(None) => {}
+            Err(e) => tracing::debug!("Failed to send keepalive: {e:#}"),
         }
     }
 
-    fn encapsulate_payload(
+    fn prepare_data_message(
         &mut self,
         socket: PeerSocket,
-        payload: &[u8],
-        ecn: Ecn,
+        payload_len: usize,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>> {
+    ) -> Result<Option<PreparedDataMessage>> {
         let relay_id = self.relay.id;
 
-        let (src, dst, packet_start, relay) = match socket {
+        let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
-                (Some(source), dest, 0, None)
+                (Some(source), dest, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let allocation = allocations
@@ -1950,40 +1964,33 @@ where
                     .active_socket()
                     .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                (
-                    None,
-                    dst,
-                    ip_packet::DATA_CHANNEL_OVERHEAD,
-                    Some((peer, allocation)),
-                )
+                (None, dst, Some((peer, allocation)))
             }
         };
 
-        let reserve_len = packet_start + payload.len() + ip_packet::WG_OVERHEAD;
-        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
+        let seal = self.tunnel.encapsulate_data_deferred_at(payload_len, now)?;
 
-        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
-        let seal = self.tunnel.encapsulate_data_deferred_at(
-            payload,
-            &mut reservation.buffer()[packet_start..],
-            now,
-        )?;
-        debug_assert_eq!(packet_start + seal.message_len(), reserve_len);
+        let channel_data_header = match relay {
+            Some((peer, allocation)) => {
+                let message_len = payload_len + ip_packet::WG_OVERHEAD;
 
-        if let Some((peer, allocation)) = relay {
-            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
-            // logs it and queues a binding), so drop the packet instead of surfacing an error.
-            if allocation
-                .encode_channel_data_header(peer, reservation.buffer(), now)
-                .is_none()
-            {
-                return Ok(None);
+                // A missing channel is an expected part of channel setup (`channel_data_header`
+                // logs it and queues a binding), so drop the packet instead of surfacing an error.
+                let Some(header) = allocation.channel_data_header(peer, message_len, now) else {
+                    return Ok(None);
+                };
+
+                Some(header)
             }
-        }
+            None => None,
+        };
 
-        reservation.commit(SealJob::new(packet_start, seal));
-
-        Ok(Some(EncapsulateInfo { src, dst }))
+        Ok(Some(PreparedDataMessage {
+            src,
+            dst,
+            channel_data_header,
+            seal,
+        }))
     }
 
     fn decapsulate<TId>(

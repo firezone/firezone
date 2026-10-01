@@ -284,10 +284,13 @@ impl ClientTunnel {
                     for packet in packets.drain() {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(()) => {}
+                            Ok(Some(message)) => {
+                                self.io.send_network(snownet::Outgoing::Data(message))
+                            }
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         }
                     }
@@ -510,10 +513,13 @@ impl GatewayTunnel {
                     for packet in packets.drain() {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(()) => {}
+                            Ok(Some(message)) => {
+                                self.io.send_network(snownet::Outgoing::Data(message))
+                            }
+                            Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
                                     .any_downcast_ref::<UnroutablePacket>()
