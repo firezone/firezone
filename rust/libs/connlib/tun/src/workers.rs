@@ -8,18 +8,18 @@ use crate::{InboundRx, InboundTx, OutboundRx, OutboundTx};
 ///
 /// Dropping closes the channels before joining the threads. Platform-specific
 /// blocking IO must be cancelled before these workers are dropped.
-pub struct Workers<Packet = crate::PacketBatch> {
-    state: Option<(OutboundTx<Packet>, InboundRx<Packet>)>,
+pub struct Workers {
+    state: Option<(OutboundTx, InboundRx)>,
     send_thread: Option<JoinHandle<()>>,
     recv_thread: Option<JoinHandle<()>>,
 }
 
-impl<Packet: Send + Sync + 'static> Workers<Packet> {
+impl Workers {
     /// Starts one worker per IO direction, with packet channels and queue metrics.
     pub fn spawn(
         runtime: &tokio::runtime::Handle,
-        send: impl FnOnce(OutboundRx<Packet>) -> anyhow::Result<()> + Send + 'static,
-        recv: impl FnOnce(InboundTx<Packet>) -> anyhow::Result<()> + Send + 'static,
+        send: impl FnOnce(OutboundRx) -> anyhow::Result<()> + Send + 'static,
+        recv: impl FnOnce(InboundTx) -> anyhow::Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
         let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
         let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
@@ -45,15 +45,17 @@ impl<Packet: Send + Sync + 'static> Workers<Packet> {
             recv_thread: None,
         };
 
-        workers.send_thread = Some(spawn_worker("send", move || send(OutboundRx(outbound_rx)))?);
-        workers.recv_thread = Some(spawn_worker("recv", move || recv(InboundTx(inbound_tx)))?);
+        let send_thread = spawn_worker("send", move || send(OutboundRx(outbound_rx)))?;
+        workers.send_thread = Some(send_thread);
+        let recv_thread = spawn_worker("recv", move || recv(InboundTx(inbound_tx)))?;
+        workers.recv_thread = Some(recv_thread);
 
         Ok(workers)
     }
 }
 
-impl<Packet> Workers<Packet> {
-    pub fn sender(&self) -> &OutboundTx<Packet> {
+impl Workers {
+    pub fn sender(&self) -> &OutboundTx {
         &self
             .state
             .as_ref()
@@ -61,7 +63,7 @@ impl<Packet> Workers<Packet> {
             .0
     }
 
-    pub fn receiver(&mut self) -> &mut InboundRx<Packet> {
+    pub fn receiver(&mut self) -> &mut InboundRx {
         &mut self
             .state
             .as_mut()
@@ -70,7 +72,7 @@ impl<Packet> Workers<Packet> {
     }
 }
 
-impl<Packet> Drop for Workers<Packet> {
+impl Drop for Workers {
     fn drop(&mut self) {
         const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
 
@@ -139,7 +141,7 @@ mod tests {
             .unwrap();
         let started = Arc::new(Barrier::new(3));
         let stopped = Arc::new(AtomicUsize::new(0));
-        let workers = Workers::<()>::spawn(
+        let workers = Workers::spawn(
             runtime.handle(),
             {
                 let started = started.clone();
@@ -157,7 +159,10 @@ mod tests {
                 let stopped = stopped.clone();
                 move |inbound_tx| {
                     started.wait();
-                    while inbound_tx.blocking_send(()).is_ok() {}
+                    while inbound_tx
+                        .blocking_send(crate::PacketBatch::default())
+                        .is_ok()
+                    {}
                     stopped.fetch_add(1, Ordering::SeqCst);
 
                     Ok(())

@@ -150,54 +150,62 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 ///
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
-pub struct OutboundTx<Packet = PacketBatch>(mpsc::Sender<Packet>);
+#[derive(Clone)]
+pub struct OutboundTx(mpsc::Sender<PacketBatch>);
 
-impl<Packet> OutboundTx<Packet> {
-    pub fn try_send(&self, batch: Packet) -> Result<(), mpsc::error::TrySendError<Packet>> {
+impl OutboundTx {
+    pub fn try_send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
         self.0.try_send(batch)
     }
 
-    pub async fn send(&self, batch: Packet) -> Result<(), mpsc::error::SendError<Packet>> {
+    pub async fn send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.send(batch).await
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<Packet> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
     }
 }
 
-impl<Packet> Clone for OutboundTx<Packet> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
 /// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx<Packet = PacketBatch>(mpsc::Receiver<Packet>);
+pub struct OutboundRx(mpsc::Receiver<PacketBatch>);
 
-impl<Packet> OutboundRx<Packet> {
-    pub async fn recv(&mut self) -> Option<Packet> {
+impl OutboundRx {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn blocking_recv(&mut self) -> Option<Packet> {
+    pub fn blocking_recv(&mut self) -> Option<PacketBatch> {
         self.0.blocking_recv()
     }
 }
 
 /// The sending half of the channel of packet batches read from the TUN device.
-pub struct InboundTx<Packet = PacketBatch>(mpsc::Sender<Packet>);
+#[derive(Clone)]
+pub struct InboundTx(mpsc::Sender<PacketBatch>);
 
-impl<Packet> InboundTx<Packet> {
-    pub async fn send(&self, batch: Packet) -> Result<(), mpsc::error::SendError<Packet>> {
+impl InboundTx {
+    pub async fn send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.send(batch).await
     }
 
-    pub fn blocking_send(&self, batch: Packet) -> Result<(), mpsc::error::SendError<Packet>> {
+    pub fn blocking_send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.blocking_send(batch)
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<Packet> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
     }
 
@@ -207,28 +215,22 @@ impl<Packet> InboundTx<Packet> {
     }
 }
 
-impl<Packet> Clone for InboundTx<Packet> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
 /// The receiving half of the channel of packet batches read from the TUN device.
-pub struct InboundRx<Packet = PacketBatch>(mpsc::Receiver<Packet>);
+pub struct InboundRx(mpsc::Receiver<PacketBatch>);
 
-impl<Packet> InboundRx<Packet> {
+impl InboundRx {
     pub fn poll_recv(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Packet>> {
+    ) -> std::task::Poll<Option<PacketBatch>> {
         self.0.poll_recv(cx)
     }
 
-    pub async fn recv(&mut self) -> Option<Packet> {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn try_recv(&mut self) -> Result<Packet, mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
         self.0.try_recv()
     }
 }
