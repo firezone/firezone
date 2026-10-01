@@ -90,11 +90,11 @@ fn write_token(token: &str) -> Result<()> {
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
+        .mode(0o400)
         .open(ETC_FIREZONE_GATEWAY_TOKEN)?;
 
     // `mode` only applies when the file is created.
-    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.set_permissions(std::fs::Permissions::from_mode(0o400))?;
     file.write_all(token.as_bytes())?;
 
     Ok(())
