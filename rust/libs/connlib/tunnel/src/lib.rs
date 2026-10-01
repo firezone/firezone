@@ -16,7 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
-use packet_kind_counts::PacketKindCounts;
+use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -30,7 +30,7 @@ use tun::Tun;
 use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
-mod packet_kind_counts;
+mod packet_counts;
 mod sockets;
 mod utils;
 
@@ -243,7 +243,9 @@ impl ClientTunnel {
             }
 
             // Drain all buffered IP packets.
+            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
             while let Some(packet) = self.role_state.poll_packets() {
+                tun_transmitted.record(&packet);
                 self.io.queue_tun(packet);
                 tick.want_continue();
             }
@@ -303,7 +305,8 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
+                    let mut received_counts = UdpPacketCounts::receive(&self.packet_counter);
+                    let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
 
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         received_counts.record(received.packet);
@@ -320,9 +323,12 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
@@ -502,7 +508,8 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
+                    let mut received_counts = UdpPacketCounts::receive(&self.packet_counter);
+                    let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
 
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         received_counts.record(received.packet);
@@ -519,9 +526,12 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
