@@ -8,11 +8,7 @@ mod udp_gso_queue;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{
-    TunnelError, dns,
-    packet_counts::{TunPacketCounts, UdpPacketCounts},
-    sockets::Sockets,
-};
+use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -263,15 +259,7 @@ impl Io {
             error.push(e);
         }
 
-        let device = self.tun.poll_read(cx).map_ok(|batch| {
-            let mut received = TunPacketCounts::receive(&self.packet_counter);
-
-            for packet in batch.iter() {
-                received.record(packet);
-            }
-
-            batch
-        });
+        let device = self.tun.poll_read(cx);
 
         let udp_dns_queries = self
             .udp_dns_server

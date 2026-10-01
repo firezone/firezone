@@ -283,7 +283,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
+                    let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+
                     for packet in packets.drain() {
+                        tun_received.record(&packet);
+
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -473,7 +477,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
+                    let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+
                     for packet in packets.drain() {
+                        tun_received.record(&packet);
+
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
