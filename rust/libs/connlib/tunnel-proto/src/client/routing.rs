@@ -1,15 +1,14 @@
-use std::{cmp::Ordering, hash::RandomState, net::IpAddr};
+use std::{cmp::Ordering, net::IpAddr};
 
 use connlib_model::ResourceId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
-use lru::LruCache;
 
 use crate::{
     dns,
     filter_engine::FilterEngine,
-    routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
+    routing_table::{FilterMode, MatchCache, RouteEntry, RoutingTable},
 };
 
 /// The matching outbound routes for one kind of destination.
@@ -36,26 +35,15 @@ pub(super) struct GatewayRoute {
 pub(super) struct Denied;
 
 /// The client's routing tables, one for each kind of destination.
+#[derive(Default)]
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     device_pool: RoutingTable<DevicePoolEntry>,
-    resolved: LruCache<
+    resolved: MatchCache<
         (IpAddr, Protocol, Option<ResourceId>, FilterMode),
         Result<MatchedRoutes, Denied>,
-        RandomState,
     >,
-}
-
-impl Default for RoutingTables {
-    fn default() -> Self {
-        Self {
-            cidr: RoutingTable::default(),
-            dns: RoutingTable::default(),
-            device_pool: RoutingTable::default(),
-            resolved: LruCache::with_hasher(MAX_CACHE_ENTRIES, RandomState::new()),
-        }
-    }
 }
 
 impl RoutingTables {
@@ -69,7 +57,7 @@ impl RoutingTables {
         let mode = outbound_filter_mode();
 
         self.resolved
-            .get_or_insert((destination, protocol, internet_resource, mode), || {
+            .get_or_insert_with((destination, protocol, internet_resource, mode), || {
                 if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
                     let resources = routes(pools, |entry| entry.resource_id)?;
                     return Ok(MatchedRoutes::DevicePools(resources));
@@ -105,7 +93,7 @@ impl RoutingTables {
     }
 
     pub(super) fn dns_resources(
-        &mut self,
+        &self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> Vec<(ResourceId, DomainName)> {
@@ -117,7 +105,7 @@ impl RoutingTables {
             .collect()
     }
 
-    pub(super) fn has_cidr_route(&mut self, destination: IpAddr, protocol: Protocol) -> bool {
+    pub(super) fn has_cidr_route(&self, destination: IpAddr, protocol: Protocol) -> bool {
         self.cidr
             .matches(destination, Ok(protocol), FilterMode::Apply)
             .is_some()
@@ -181,8 +169,8 @@ impl RoutingTables {
     }
 }
 
-fn routes<T, R>(matches: &[T], to_route: impl Fn(&T) -> R) -> Result<Vec<R>, Denied> {
-    let routes = matches.iter().map(to_route).collect::<Vec<_>>();
+fn routes<T, R>(matches: Vec<&T>, to_route: impl Fn(&T) -> R) -> Result<Vec<R>, Denied> {
+    let routes = matches.into_iter().map(to_route).collect::<Vec<_>>();
     if routes.is_empty() {
         return Err(Denied);
     }

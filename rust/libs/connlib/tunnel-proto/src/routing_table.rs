@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
+    hash::Hash,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     num::NonZeroUsize,
 };
@@ -16,7 +17,7 @@ use lru::LruCache;
 use crate::filter_engine::FilterEngine;
 use flow_tracker::random_foldhash;
 
-/// How many IP + port combinations we will at most cache for fast routing table lookups.
+/// How many IP + port combinations a [`MatchCache`] holds at most.
 ///
 /// 1024 has been chosen as an estimate for making most connections under typical workloads fast.
 /// Both TCP and QUIC - which are likely the predominant workloads - retain a stable 4-tuple
@@ -24,7 +25,34 @@ use flow_tracker::random_foldhash;
 /// in parallel which ought to be enough for most people. Very likely, other packet processing will
 /// be the culprit for low throughput if we have more than 1024 connections, plus the cache uses an LRU
 /// eviction pattern, thus prioritizing the most recently used connections.
-pub(crate) const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+
+/// An LRU cache for the outcome of routing table lookups.
+///
+/// Must be cleared whenever the state the cached values derive from changes.
+pub(crate) struct MatchCache<K, V>(LruCache<K, V, FixedState>);
+
+impl<K, V> Default for MatchCache<K, V>
+where
+    K: Hash + Eq,
+{
+    fn default() -> Self {
+        Self(LruCache::with_hasher(MAX_CACHE_ENTRIES, random_foldhash()))
+    }
+}
+
+impl<K, V> MatchCache<K, V>
+where
+    K: Hash + Eq,
+{
+    pub(crate) fn get_or_insert_with(&mut self, key: K, f: impl FnOnce() -> V) -> &V {
+        self.0.get_or_insert(key, f)
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.0.clear();
+    }
+}
 
 pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
@@ -40,7 +68,6 @@ pub(crate) trait RouteEntry: Ord + Clone {
 
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FixedState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -66,7 +93,7 @@ impl FilterMode {
 
 /// Protocol classes distinguished by the filter engine.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum FilterProtocol {
+pub(crate) enum FilterProtocol {
     Supported(Protocol),
     OtherIcmp,
     OtherIp,
@@ -87,7 +114,6 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, random_foldhash()),
         }
     }
 }
@@ -123,8 +149,6 @@ where
     ///
     /// Returns `true` if the entry was not already present (i.e. it was newly inserted).
     pub(crate) fn upsert(&mut self, network: IpNetwork, entry: T) -> bool {
-        self.match_cache.clear();
-
         match self.inner.exact_match_mut(network) {
             Some(set) => set.insert(entry),
             None => {
@@ -136,8 +160,6 @@ where
 
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
-        self.match_cache.clear();
-
         for (_, entries) in self.inner.iter_mut() {
             for ele in entries.extract_if(.., |e| e.resource_id() == id) {
                 drop(ele)
@@ -152,40 +174,34 @@ where
     /// Entries are ordered by filter breadth, specificity, prefix length and resource ID.
     /// An empty list means that the address is covered but traffic is denied.
     pub(crate) fn matches(
-        &mut self,
+        &self,
         ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
         filter_mode: FilterMode,
-    ) -> Option<&[T]> {
-        self.match_cache
-            .get_or_insert((ip, FilterProtocol::from(&protocol), filter_mode), || {
-                let mut entries = self
-                    .inner
-                    .matches(ip)
-                    .flat_map(|(network, entries)| {
-                        entries.iter().map(move |entry| (network, entry))
-                    })
-                    .peekable();
-                entries.peek()?;
+    ) -> Option<Vec<&T>> {
+        let mut entries = self
+            .inner
+            .matches(ip)
+            .flat_map(|(network, entries)| entries.iter().map(move |entry| (network, entry)))
+            .peekable();
+        entries.peek()?;
 
-                Some(
-                    entries
-                        .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
-                        .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
-                            r_entry
-                                .filter()
-                                .breadth()
-                                .cmp(&l_entry.filter().breadth())
-                                .then(l_entry.specificity(r_entry))
-                                .then(by_netmask(l_net, r_net))
-                                .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
-                                .reverse()
-                        })
-                        .map(|(_, entry)| entry.clone())
-                        .collect(),
-                )
-            })
-            .as_deref()
+        Some(
+            entries
+                .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
+                .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
+                    r_entry
+                        .filter()
+                        .breadth()
+                        .cmp(&l_entry.filter().breadth())
+                        .then(l_entry.specificity(r_entry))
+                        .then(by_netmask(l_net, r_net))
+                        .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
+                        .reverse()
+                })
+                .map(|(_, entry)| entry)
+                .collect(),
+        )
     }
 
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -275,7 +291,7 @@ mod tests {
         table.upsert(net("10.20.0.0/16"), entry(1, R2, FilterEngine::DenyAll));
         table.upsert(net("10.0.0.0/8"), entry(1, R3, permit_tcp(80)));
 
-        let ids = |table: &mut RoutingTable<TestEntry>, mode| {
+        let ids = |table: &RoutingTable<TestEntry>, mode| {
             table
                 .matches(ip("10.20.0.1"), tcp(80), mode)
                 .unwrap()
@@ -283,9 +299,9 @@ mod tests {
                 .map(|entry| entry.id)
                 .collect::<Vec<_>>()
         };
-        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
-        assert_eq!(ids(&mut table, FilterMode::Ignore), vec![R2, R3, R1]);
-        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
+        assert_eq!(ids(&table, FilterMode::Apply), vec![R3, R1]);
+        assert_eq!(ids(&table, FilterMode::Ignore), vec![R2, R3, R1]);
+        assert_eq!(ids(&table, FilterMode::Apply), vec![R3, R1]);
     }
 
     #[test]
@@ -323,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_distinguishes_unsupported_icmp_from_other_ip_protocols() {
+    fn distinguishes_unsupported_icmp_from_other_ip_protocols() {
         use ip_packet::{Icmpv4Type, IpProtocol, icmpv4};
 
         let mut table = RoutingTable::new();
@@ -402,86 +418,6 @@ mod tests {
         );
 
         t.remove_by_id(R2);
-        assert!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn cache_is_cleared_on_upsert() {
-        let mut t = RoutingTable::new();
-
-        // Use an IP that is not covered by any network yet.
-        // Cache the empty result.
-        assert!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .is_none()
-        );
-
-        // Inserting a covering network must evict the cached result.
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R1)
-        );
-    }
-
-    #[test]
-    fn cache_is_cleared_on_upsert_existing_network() {
-        let mut t = RoutingTable::new();
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-
-        // Warm the cache: R1 is the winner for TCP/80.
-        assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R1)
-        );
-
-        // Insert a more-specific entry on the same network; the cached result
-        // must be evicted so the new winner is returned.
-        t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
-        assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R2)
-        );
-    }
-
-    #[test]
-    fn cache_is_cleared_on_remove_by_id() {
-        let mut t = RoutingTable::new();
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_all()));
-
-        // Warm the cache with both matching entries.
-        assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .len(),
-            2
-        );
-
-        // Removing R2 must evict the cached result; R1 should now be returned.
-        t.remove_by_id(R2);
-        assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R1)
-        );
-
-        // Removing the last entry must evict the cache too; expect a miss.
-        t.remove_by_id(R1);
         assert!(
             t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .is_none()

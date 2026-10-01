@@ -15,7 +15,7 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
-use crate::routing_table::{self, RoutingTable};
+use crate::routing_table::{self, FilterMode, FilterProtocol, MatchCache, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
@@ -36,6 +36,8 @@ pub struct ClientOnGateway {
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
+    /// The resources allowed by `routing_table`, cleared whenever it is rebuilt.
+    allowed_resources: MatchCache<(IpAddr, FilterProtocol), Option<ResourceId>>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
@@ -64,6 +66,7 @@ impl ClientOnGateway {
             ingest_tokens: HashMap::default(),
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
+            allowed_resources: MatchCache::default(),
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
@@ -276,6 +279,7 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.routing_table = RoutingTable::new();
+        self.allowed_resources.clear();
         self.recalculate_cidr_filters();
         self.recalculate_dns_filters();
 
@@ -555,18 +559,18 @@ impl ClientOnGateway {
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> anyhow::Result<ResourceId> {
-        let entry = self
-            .routing_table
-            .matches(
-                resource_ip,
-                protocol,
-                crate::routing_table::FilterMode::Apply,
-            )
-            .context(NotAllowedResource(resource_ip))?
-            .first()
-            .context(NotAllowedResource(resource_ip))?;
+        let resource_id = *self.allowed_resources.get_or_insert_with(
+            (resource_ip, FilterProtocol::from(&protocol)),
+            || {
+                let entries =
+                    self.routing_table
+                        .matches(resource_ip, protocol, FilterMode::Apply)?;
 
-        Ok(entry.resource_id)
+                Some(entries.first()?.resource_id)
+            },
+        );
+
+        resource_id.context(NotAllowedResource(resource_ip))
     }
 
     pub fn id(&self) -> ClientId {

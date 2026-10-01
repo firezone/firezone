@@ -2,7 +2,7 @@ use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::messages::{Filter, IngestToken};
-use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::routing_table::{FilterMode, FilterProtocol, MatchCache, RouteEntry, RoutingTable};
 use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
@@ -354,6 +354,7 @@ impl ClientOnClient {
 #[derive(Default)]
 struct InboundResources {
     table: RoutingTable<InboundEntry>,
+    resource_by_protocol: MatchCache<FilterProtocol, Option<ResourceId>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -383,20 +384,24 @@ impl InboundResources {
             });
         }
 
-        Self { table }
+        Self {
+            table,
+            resource_by_protocol: MatchCache::default(),
+        }
     }
 
     fn resource_for(&mut self, packet: &IpPacket) -> Option<ResourceId> {
-        let entry = self
-            .table
-            .matches(
-                packet.destination(),
-                packet.destination_protocol(),
-                crate::routing_table::FilterMode::Apply,
-            )?
-            .first()?;
+        let protocol = packet.destination_protocol();
 
-        Some(entry.resource_id)
+        *self
+            .resource_by_protocol
+            .get_or_insert_with(FilterProtocol::from(&protocol), || {
+                let entries =
+                    self.table
+                        .matches(packet.destination(), protocol, FilterMode::Apply)?;
+
+                Some(entries.first()?.resource_id)
+            })
     }
 }
 
