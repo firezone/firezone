@@ -7,15 +7,14 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use foldhash::fast::FixedState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
 use lru::LruCache;
+use random_state::RandomState;
 
 use crate::filter_engine::FilterEngine;
-use flow_tracker::random_foldhash;
 
 /// How many IP + port combinations a [`MatchCache`] holds at most.
 ///
@@ -30,14 +29,17 @@ const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0
 /// An LRU cache for the outcome of routing table lookups.
 ///
 /// Must be cleared whenever the state the cached values derive from changes.
-pub(crate) struct MatchCache<K, V>(LruCache<K, V, FixedState>);
+pub(crate) struct MatchCache<K, V>(LruCache<K, V, RandomState>);
 
 impl<K, V> Default for MatchCache<K, V>
 where
     K: Hash + Eq,
 {
     fn default() -> Self {
-        Self(LruCache::with_hasher(MAX_CACHE_ENTRIES, random_foldhash()))
+        Self(LruCache::with_hasher(
+            MAX_CACHE_ENTRIES,
+            RandomState::default(),
+        ))
     }
 }
 

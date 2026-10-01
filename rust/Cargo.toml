@@ -51,6 +51,7 @@ members = [
     "libs/known-dirs",
     "libs/logging",
     "libs/otel-attributes",
+    "libs/random-state",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -192,6 +193,7 @@ proptest = "1.9.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
+random-state = { path = "libs/random-state" }
 rangemap = "1.7.1"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }

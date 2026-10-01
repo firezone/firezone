@@ -25,7 +25,6 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 flow-tracker = { workspace = true }
-foldhash = { workspace = true }
 glob = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
@@ -38,6 +37,7 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 rand = { workspace = true }
+random-state = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
