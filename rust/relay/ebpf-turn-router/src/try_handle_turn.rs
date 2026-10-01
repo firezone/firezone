@@ -70,7 +70,8 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     Ok(())
 }
 
-#[inline(always)]
+// Keep packet rewriting on its own BPF stack frame, separate from stats metadata.
+#[inline(never)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
@@ -106,7 +107,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     Err(Error::NotTurn)
 }
 
-#[inline(always)]
+#[inline(never)]
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
