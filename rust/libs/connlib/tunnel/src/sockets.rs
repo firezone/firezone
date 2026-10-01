@@ -66,6 +66,9 @@ pub(crate) struct Sockets {
 
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
+
+    /// Alternates which socket is drained first, so neither starves while the budget is tight.
+    recv_v6_first: bool,
 }
 
 impl Sockets {
@@ -129,15 +132,25 @@ impl Sockets {
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
-    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
+    ///
+    /// Batches still being decrypted count against the same budget as the ones drained here.
+    pub fn poll_recv_from(
+        &mut self,
+        cx: &mut Context<'_>,
+        batches_in_flight: usize,
+    ) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
         let mut batches = BATCHES_POOL.pull();
+        let budget = (2 * UDP_RECV_BATCH_LIMIT).saturating_sub(batches_in_flight);
 
-        if let Some(socket) = self.socket_v4.as_mut() {
-            socket.poll_recv_from(cx, &mut batches);
-        }
+        self.recv_v6_first = !self.recv_v6_first;
+        let sockets = if self.recv_v6_first {
+            [&mut self.socket_v6, &mut self.socket_v4]
+        } else {
+            [&mut self.socket_v4, &mut self.socket_v6]
+        };
 
-        if let Some(socket) = self.socket_v6.as_mut() {
-            socket.poll_recv_from(cx, &mut batches);
+        for socket in sockets.into_iter().flatten() {
+            socket.poll_recv_from(cx, &mut batches, budget);
         }
 
         if batches.is_empty() {
@@ -200,7 +213,8 @@ const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
 ///
 /// Per address family (hence `2 *`), receive batches can be held in three places at once: up to
 /// [`INBOUND_QUEUE_SIZE`] queued in the channel, up to [`UDP_RECV_BATCH_LIMIT`] drained onto the main
-/// thread, and one being filled by the receive task. Each batch pins
+/// thread or, copied into packet buffers of about the same size, being decrypted, and one being
+/// filled by the receive task. Each batch pins
 /// [`socket_factory::MAX_RECV_BATCH_MEMORY`], which on Linux / Android sizes every buffer for a full
 /// 64-datagram GRO batch - the term that dominates here and the reason the depths above are shallow.
 const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
@@ -431,19 +445,26 @@ impl ThreadedUdpSocket {
     }
 
     /// Appends the batches received from the socket thread to `batches`, at most
-    /// [`UDP_RECV_BATCH_LIMIT`] per call.
+    /// [`UDP_RECV_BATCH_LIMIT`] per call and until `batches` holds `budget` of them.
     ///
     /// Appending nothing means the channel is either empty or closed, i.e. the thread
     /// stopped (reported via `poll_error`); no waker is registered on close, since
     /// we'll be shutting down anyway.
-    fn poll_recv_from(&mut self, cx: &mut Context<'_>, batches: &mut Vec<DatagramBatch>) {
-        let Some(channels) = self.channels.as_mut() else {
+    fn poll_recv_from(
+        &mut self,
+        cx: &mut Context<'_>,
+        batches: &mut Vec<DatagramBatch>,
+        budget: usize,
+    ) {
+        let limit = budget
+            .saturating_sub(batches.len())
+            .min(UDP_RECV_BATCH_LIMIT);
+
+        let Some(channels) = self.channels.as_mut().filter(|_| limit > 0) else {
             return;
         };
 
-        let _ = channels
-            .inbound_rx
-            .poll_recv_many(cx, batches, UDP_RECV_BATCH_LIMIT);
+        let _ = channels.inbound_rx.poll_recv_many(cx, batches, limit);
     }
 
     fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {

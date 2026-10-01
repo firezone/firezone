@@ -1,11 +1,12 @@
+mod crypto;
 mod device;
 mod doh;
 mod nameserver_set;
-pub(crate) mod parallel;
 mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
+pub use crypto::Received;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
@@ -13,6 +14,7 @@ use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
+use crypto::Crypto;
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
@@ -23,10 +25,11 @@ use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use snownet::{DecryptedPacket, EncryptedPacket};
+use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io,
+    io, iter,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -35,10 +38,11 @@ use std::{
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
-pub struct Io {
+pub struct Io<TId> {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: UdpGsoQueue,
+    crypto: Crypto<TId>,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -81,20 +85,23 @@ enum DohClient {
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
-pub struct Input {
+pub struct Input<TId> {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted.
+    pub decrypted: Vec<Vec<Received<DecryptedPacket<TId>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
-impl Input {
+impl<TId> Input<TId> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             device: None,
             network: None,
+            decrypted: Vec::new(),
             tcp_dns_queries: Vec::new(),
             udp_dns_queries: Vec::new(),
             dns_response: None,
@@ -128,7 +135,10 @@ where
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 
-impl Io {
+impl<TId> Io<TId>
+where
+    TId: Send + 'static,
+{
     /// Creates a new I/O abstraction
     ///
     /// Must be called within a Tokio runtime context so we can bind the sockets.
@@ -165,6 +175,7 @@ impl Io {
                 10,
             ),
             gso_queue: UdpGsoQueue::new(),
+            crypto: Crypto::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -227,7 +238,7 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input<TId>> {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
@@ -254,7 +265,10 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let decrypted = iter::from_fn(|| self.crypto.pop_opened()).collect::<Vec<_>>();
+        let network = self
+            .sockets
+            .poll_recv_from(cx, self.crypto.opens_in_flight());
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
@@ -352,6 +366,7 @@ impl Io {
 
         if device.is_pending()
             && network.is_pending()
+            && decrypted.is_empty()
             && tcp_dns_queries.is_empty()
             && udp_dns_queries.is_empty()
             && dns_response.is_pending()
@@ -363,6 +378,7 @@ impl Io {
         Poll::Ready(Input {
             device: poll_result_to_option(device, &mut error),
             network: poll_to_option(network),
+            decrypted,
             tcp_dns_queries,
             udp_dns_queries,
             dns_response: poll_to_option(dns_response),
@@ -388,31 +404,61 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
+    /// Hands the queued batches to the crypto workers and sends the sealed ones.
+    ///
+    /// Sealed batches are sent in the order they were queued, so a connection's data messages leave
+    /// in counter order. Batches without data messages skip that order. Pending while the socket or
+    /// the crypto workers are at capacity.
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
+        self.crypto.poll_completed(cx);
 
         loop {
             ready!(self.sockets.poll_send_ready(cx)?);
 
-            let Some(datagram) = datagrams.next() else {
+            if let Some(datagram) = self.crypto.pop_sealed() {
+                self.send_datagram(datagram)?;
+                continue;
+            }
+
+            if !self.crypto.can_seal() {
+                return Poll::Pending;
+            }
+
+            let Some(datagram) = self.gso_queue.pop() else {
                 break;
             };
 
-            for segment in datagram.packet.chunks(datagram.segment_size) {
-                self.packet_counter.add(
-                    1,
-                    &[
-                        otel::attr::network_protocol_name(segment),
-                        otel::attr::network_transport_udp(),
-                        otel::attr::network_io_direction_transmit(),
-                    ],
-                );
+            if datagram.num_seals() == 0 {
+                self.send_datagram(datagram.seal())?;
+                continue;
             }
 
-            self.sockets.send(datagram)?;
+            self.crypto.seal(datagram);
         }
 
         Poll::Ready(Ok(()))
+    }
+
+    fn send_datagram(&mut self, datagram: DatagramOut) -> Result<()> {
+        for segment in datagram.packet.chunks(datagram.segment_size) {
+            self.packet_counter.add(
+                1,
+                &[
+                    otel::attr::network_protocol_name(segment),
+                    otel::attr::network_transport_udp(),
+                    otel::attr::network_io_direction_transmit(),
+                ],
+            );
+        }
+
+        self.sockets.send(datagram)?;
+
+        Ok(())
+    }
+
+    /// Decrypts a batch of packets off the main thread, yielding them via [`Input::decrypted`].
+    pub fn decrypt(&mut self, packets: Vec<Received<EncryptedPacket<TId>>>) {
+        self.crypto.open(packets);
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
@@ -703,8 +749,8 @@ mod tests {
     }
 
     /// Helper functions to make the test more concise.
-    impl Io {
-        fn for_test() -> Io {
+    impl Io<()> {
+        fn for_test() -> Self {
             let mut io = Io::new(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
@@ -715,7 +761,7 @@ mod tests {
             io
         }
 
-        async fn next(&mut self) -> Input {
+        async fn next(&mut self) -> Input<()> {
             poll_fn(|cx| self.poll(cx)).await
         }
     }

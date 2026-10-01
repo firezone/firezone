@@ -42,8 +42,8 @@ pub trait Reservation {
 
     /// Like [`commit`](Self::commit) but the datagram is only complete once `seal` has run.
     ///
-    /// Providers may defer the seal, e.g. to encrypt many datagrams in parallel, as long as it runs
-    /// before the datagram leaves the provider.
+    /// Providers may defer the seal, e.g. to encrypt on another thread, as long as it runs before
+    /// the datagram is sent.
     fn commit_sealed(mut self, seal: SealJob)
     where
         Self: Sized,

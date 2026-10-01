@@ -9,6 +9,7 @@ anyhow = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 bufferpool = { workspace = true }
 connlib-model = { workspace = true }
+crossbeam-channel = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
@@ -22,7 +23,6 @@ logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 rand = { workspace = true }
-rayon = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
