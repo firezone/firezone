@@ -323,7 +323,10 @@ impl SimClient {
         self.sut
             .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(self
+            .transmit_buffer
+            .poll_transmit()
+            .map(snownet::Outgoing::seal))
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {

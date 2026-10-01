@@ -96,7 +96,7 @@ bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
 bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
-boringtun = { version = "0.7.0", default-features = false }
+boringtun = { version = "0.8.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }

@@ -236,8 +236,6 @@ impl<T> ReorderBuffer<T> {
 mod tests {
     use std::{future::poll_fn, time::Instant};
 
-    use snownet::{BufferProvider as _, Reservation as _, SealJob};
-
     use super::super::{UdpGsoQueue, udp_gso_queue::tests::*};
     use super::*;
 
@@ -255,12 +253,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         for packet in &packets {
-            let mut reservation =
-                queue.reserve(None, DST_1, Ecn::NonEct, packet.packet().len() + 32);
-            let seal = alice
-                .encapsulate_data_deferred_at(packet.packet(), reservation.buffer(), now)
-                .unwrap();
-            reservation.commit_sealed(SealJob::new(0, seal));
+            enqueue(&mut queue, &mut alice, DST_1, packet.packet(), now);
         }
         while let Some(datagram) = queue.pop() {
             crypto.seal(datagram);

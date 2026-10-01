@@ -14,7 +14,7 @@ mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use buffer::{BufferProvider, Reservation, SealJob, TransmitBuffer};
+pub use buffer::{BufferProvider, Outgoing, PendingTransmit, Reservation, SealJob, TransmitBuffer};
 pub use node::{
     ConnectionPath, Credentials, DecryptedPacket, EncapsulateInfo, EncryptedPacket, Event,
     IceConfig, IceRole, NoTurnServers, Node, StillConnecting, Transmit, UnknownConnection,

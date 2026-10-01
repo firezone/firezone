@@ -11,6 +11,8 @@ pub struct Transmit {
 pub enum Payload {
     Ciphertext(Vec<u8>),
     Plaintext(Box<ip_packet::IpPacket>),
+    /// An empty WireGuard data message.
+    Keepalive,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

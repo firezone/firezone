@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, net::SocketAddr, ops::Range};
+use std::{collections::VecDeque, net::SocketAddr};
 
 use bufferpool::{Buffer, BufferPool};
 use ip_packet::Ecn;
@@ -19,9 +19,8 @@ const MAX_SEGMENT_SIZE: usize =
 /// the send path's memory footprint.
 pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
 
-/// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
+/// Holds the WireGuard data messages that we need to send, grouped into GSO batches per connection.
 ///
-/// Calling [`Io::send_network`](super::Io::send_network) copies the provided payload into this queue.
 /// Batches are capped at what a single GSO send can carry, so each one is flushed with one syscall
 /// while GSO is available.
 pub struct UdpGsoQueue {
@@ -39,17 +38,6 @@ impl UdpGsoQueue {
             batches: VecDeque::new(),
             buffer_pool: BufferPool::new(GSO_BUFFER_SIZE, "gso-queue"),
         }
-    }
-
-    /// Copy an already-formed datagram into the queue.
-    ///
-    /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
-    /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
-    /// directly into the queue via the [`BufferProvider`] implementation.
-    pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let mut reservation = self.reserve(src, dst, ecn, payload.len());
-        reservation.buffer().copy_from_slice(payload);
-        reservation.commit();
     }
 
     /// Removes the oldest batch from the queue.
@@ -86,13 +74,14 @@ impl UdpGsoQueue {
     }
 }
 
-/// A batch of datagrams whose WireGuard data messages may still hold their plaintext.
+/// A batch of WireGuard data messages that still hold their plaintext.
 ///
 /// [`PendingDatagram::seal`] is the only way to get the [`DatagramOut`], so plaintext never reaches
 /// a socket.
 pub struct PendingDatagram {
     datagram: DatagramOut,
-    seals: Vec<DeferredSeal>,
+    /// One per segment of `datagram`.
+    seals: Vec<SealJob>,
 }
 
 impl PendingDatagram {
@@ -102,8 +91,10 @@ impl PendingDatagram {
 
     /// Encrypts all data messages in the batch, which is then ready to be sent.
     pub fn seal(mut self) -> DatagramOut {
-        for DeferredSeal { range, job } in self.seals {
-            job.run(&mut self.datagram.packet[range]);
+        let segments = self.datagram.packet.chunks_mut(self.datagram.segment_size);
+
+        for (job, segment) in self.seals.into_iter().zip(segments) {
+            job.run(segment);
         }
 
         self.datagram
@@ -186,8 +177,8 @@ struct Batch {
     /// The batch's size limit: as many whole segments as one GSO send can carry to this destination.
     max_len: usize,
     buffer: Buffer<Vec<u8>>,
-    /// The datagrams within `buffer` that still need to be encrypted.
-    seals: Vec<DeferredSeal>,
+    /// One per segment of `buffer`.
+    seals: Vec<SealJob>,
 }
 
 impl Batch {
@@ -207,11 +198,6 @@ impl Batch {
     }
 }
 
-struct DeferredSeal {
-    range: Range<usize>,
-    job: SealJob,
-}
-
 /// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
 pub struct GsoReservation<'a> {
     batch: &'a mut Batch,
@@ -226,17 +212,8 @@ impl Reservation for GsoReservation<'_> {
         &mut self.batch.buffer[offset..]
     }
 
-    fn commit(mut self) {
-        self.committed = true;
-    }
-
-    fn commit_sealed(mut self, job: SealJob) {
-        let end = self.batch.buffer.len();
-
-        self.batch.seals.push(DeferredSeal {
-            range: end - self.len..end,
-            job,
-        });
+    fn commit(mut self, seal: SealJob) {
+        self.batch.seals.push(seal);
         self.committed = true;
     }
 }
@@ -264,115 +241,117 @@ pub(super) mod tests {
 
     use boringtun::noise::{Index, Tunn, TunnResult};
     use boringtun::x25519::{PublicKey, StaticSecret};
+    use ip_packet::WG_OVERHEAD;
 
     use super::*;
 
     #[test]
     fn appends_items_of_same_batch() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobar");
+        send_queue.enqueue(DST_1, b"barbaz");
+        send_queue.enqueue(DST_1, b"foobaz");
+        send_queue.enqueue(DST_1, b"foo");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazfoo");
-        assert_eq!(datagrams[0].segment_size, 6);
+        assert_eq!(
+            send_queue.batches(),
+            [(
+                DST_1,
+                vec![b"foobar".as_slice(), b"barbaz", b"foobaz", b"foo"]
+            )]
+        );
     }
 
     #[test]
     fn starts_new_batch_for_new_dst() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobar");
+        send_queue.enqueue(DST_1, b"barbaz");
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue(DST_2, b"barbarba");
+        send_queue.enqueue(DST_2, b"foofoo");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbaz");
-        assert_eq!(datagrams[0].segment_size, 6);
-        assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
-        assert_eq!(datagrams[1].segment_size, 8);
-        assert_eq!(datagrams[1].dst, DST_2);
+        assert_eq!(
+            send_queue.batches(),
+            [
+                (DST_1, vec![b"foobar".as_slice(), b"barbaz"]),
+                (DST_2, vec![b"barbarba".as_slice(), b"foofoo"]),
+            ]
+        );
     }
 
     #[test]
     fn continues_batch_for_old_dst() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobar");
+        send_queue.enqueue(DST_1, b"barbaz");
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue(DST_2, b"barbarba");
+        send_queue.enqueue(DST_2, b"foofoo");
 
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bazfoo", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobaz");
+        send_queue.enqueue(DST_1, b"bazfoo");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazbazfoo");
-        assert_eq!(datagrams[0].segment_size, 6);
-        assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
-        assert_eq!(datagrams[1].segment_size, 8);
-        assert_eq!(datagrams[1].dst, DST_2);
+        assert_eq!(
+            send_queue.batches(),
+            [
+                (
+                    DST_1,
+                    vec![b"foobar".as_slice(), b"barbaz", b"foobaz", b"bazfoo"]
+                ),
+                (DST_2, vec![b"barbarba".as_slice(), b"foofoo"]),
+            ]
+        );
     }
 
     #[test]
     fn starts_new_batch_after_single_item_less_than_segment_length() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bar", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobar");
+        send_queue.enqueue(DST_1, b"barbaz");
+        send_queue.enqueue(DST_1, b"bar");
 
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"barbaz");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazbar");
-        assert_eq!(datagrams[0].segment_size, 6);
-        assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbaz");
-        assert_eq!(datagrams[1].segment_size, 6);
-        assert_eq!(datagrams[1].dst, DST_1);
+        assert_eq!(
+            send_queue.batches(),
+            [
+                (DST_1, vec![b"foobar".as_slice(), b"barbaz", b"bar"]),
+                (DST_1, vec![b"barbaz".as_slice()]),
+            ]
+        );
     }
 
     #[test]
     fn does_not_append_to_older_batch_of_same_connection() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"aaaa", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bbbbbb", Ecn::NonEct); // Does not fit the first batch's segment size.
-        send_queue.enqueue(None, DST_1, b"ccc", Ecn::NonEct); // Short tail: seals the second batch.
+        send_queue.enqueue(DST_1, b"aaaa");
+        send_queue.enqueue(DST_1, b"bbbbbb"); // Does not fit the first batch's segment size.
+        send_queue.enqueue(DST_1, b"ccc"); // Short tail: seals the second batch.
 
         // The most recent batch is sealed, so this must open a new one;
         // appending to the first batch would overtake the second one.
-        send_queue.enqueue(None, DST_1, b"dd", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"dd");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 3);
-        assert_eq!(&datagrams[0].packet[..], b"aaaa");
-        assert_eq!(&datagrams[1].packet[..], b"bbbbbbccc");
-        assert_eq!(&datagrams[2].packet[..], b"dd");
+        assert_eq!(
+            send_queue.batches(),
+            [
+                (DST_1, vec![b"aaaa".as_slice()]),
+                (DST_1, vec![b"bbbbbb".as_slice(), b"ccc"]),
+                (DST_1, vec![b"dd".as_slice()]),
+            ]
+        );
     }
 
     #[test]
     fn seals_full_size_batch_at_one_gso_send() {
-        let mut send_queue = UdpGsoQueue::new();
-        let segment = [0u8; MAX_SEGMENT_SIZE];
+        let mut send_queue = SendQueue::new();
+        let payload = [0u8; MAX_SEGMENT_SIZE - WG_OVERHEAD];
 
         // Full-size segments are byte-bound: 49 of them fill one GSO send to an IPv4 destination.
         let segments_per_send = 49;
@@ -382,87 +361,66 @@ pub(super) mod tests {
         );
 
         for _ in 0..(segments_per_send + 1) {
-            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+            send_queue.enqueue(DST_1, &payload);
         }
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+        let batches = send_queue.batches();
 
-        assert_eq!(datagrams.len(), 2);
-        assert_eq!(
-            datagrams[0].packet.len(),
-            segments_per_send * MAX_SEGMENT_SIZE
-        );
-        assert_eq!(datagrams[1].packet.len(), MAX_SEGMENT_SIZE);
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].1.len(), segments_per_send);
+        assert_eq!(batches[1].1.len(), 1);
     }
 
     #[test]
     fn seals_small_segment_batch_at_segment_limit() {
-        let mut send_queue = UdpGsoQueue::new();
-        let segment = [0u8; 100];
+        let mut send_queue = SendQueue::new();
+        let payload = [0u8; 100];
 
         // Small segments are count-bound: one GSO send carries at most the kernel's segment limit.
-        let segments_per_send = DatagramOut::max_len(DST_1, segment.len()) / segment.len();
+        let segment_len = payload.len() + WG_OVERHEAD;
+        let segments_per_send = DatagramOut::max_len(DST_1, segment_len) / segment_len;
         assert_eq!(segments_per_send, 64);
 
         for _ in 0..(segments_per_send + 1) {
-            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+            send_queue.enqueue(DST_1, &payload);
         }
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+        let batches = send_queue.batches();
 
-        assert_eq!(datagrams.len(), 2);
-        assert_eq!(datagrams[0].packet.len(), segments_per_send * segment.len());
-        assert_eq!(datagrams[1].packet.len(), segment.len());
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].1.len(), segments_per_send);
+        assert_eq!(batches[1].1.len(), 1);
     }
 
     #[test]
     fn batch_buffers_never_reallocate() {
-        let mut send_queue = UdpGsoQueue::new();
-        let segment = [0u8; MAX_SEGMENT_SIZE];
+        let mut send_queue = SendQueue::new();
+        let payload = [0u8; MAX_SEGMENT_SIZE - WG_OVERHEAD];
 
         for _ in 0..100 {
-            send_queue.enqueue(None, DST_1, &segment, Ecn::NonEct);
+            send_queue.enqueue(DST_1, &payload);
         }
 
-        for datagram in send_queue.datagrams() {
+        for datagram in send_queue.queue.datagrams() {
             assert_eq!(datagram.packet.capacity(), GSO_BUFFER_SIZE);
         }
     }
 
     #[test]
-    fn committing_a_reservation_keeps_the_datagram() {
-        let mut send_queue = UdpGsoQueue::new();
-
-        {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"foobar");
-            reservation.commit();
-        }
-
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
-    }
-
-    #[test]
     fn dropping_a_reservation_without_committing_rolls_it_back() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foobar");
 
         // Reserve a second segment in the same batch but drop it without committing.
         {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
+            let _reservation = send_queue
+                .queue
+                .reserve(None, DST_1, Ecn::NonEct, 6 + WG_OVERHEAD);
         }
 
         // Only the committed datagram remains; the reserved bytes were rolled back.
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
-        assert_eq!(datagrams[0].segment_size, 6);
+        assert_eq!(send_queue.batches(), [(DST_1, vec![b"foobar".as_slice()])]);
     }
 
     #[test]
@@ -470,30 +428,26 @@ pub(super) mod tests {
         let mut send_queue = UdpGsoQueue::new();
 
         {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
+            let _reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
         }
 
         // Rolling back the last segment drops the empty batch.
-        assert_eq!(send_queue.datagrams().count(), 0);
+        assert!(send_queue.pop().is_none());
     }
 
     #[test]
     fn rolled_back_batch_restarts_with_new_segment_size() {
-        let mut send_queue = UdpGsoQueue::new();
+        let mut send_queue = SendQueue::new();
 
         {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
+            let _reservation = send_queue
+                .queue
+                .reserve(None, DST_1, Ecn::NonEct, 6 + WG_OVERHEAD);
         }
 
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        send_queue.enqueue(DST_1, b"foo");
 
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foo");
-        assert_eq!(datagrams[0].segment_size, 3);
+        assert_eq!(send_queue.batches(), [(DST_1, vec![b"foo".as_slice()])]);
     }
 
     #[test]
@@ -507,12 +461,7 @@ pub(super) mod tests {
 
         for (i, packet) in packets.iter().enumerate() {
             let dst = if i % 2 == 0 { DST_1 } else { DST_2 };
-            let mut reservation =
-                send_queue.reserve(None, dst, Ecn::NonEct, packet.packet().len() + 32);
-            let seal = alice
-                .encapsulate_data_deferred_at(packet.packet(), reservation.buffer(), now)
-                .unwrap();
-            reservation.commit_sealed(SealJob::new(0, seal));
+            enqueue(&mut send_queue, &mut alice, dst, packet.packet(), now);
         }
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -529,6 +478,64 @@ pub(super) mod tests {
             .collect::<Vec<_>>();
         assert_eq!(datagrams.len(), 2);
         assert_eq!(received, expected);
+    }
+
+    /// A [`UdpGsoQueue`] fed by a connected [`Tunn`].
+    struct SendQueue {
+        queue: UdpGsoQueue,
+        tunn: Tunn,
+        now: Instant,
+        popped: Vec<PendingDatagram>,
+    }
+
+    impl SendQueue {
+        fn new() -> Self {
+            let now = Instant::now();
+
+            Self {
+                queue: UdpGsoQueue::new(),
+                tunn: connected_tunnels(now).0,
+                now,
+                popped: Vec::new(),
+            }
+        }
+
+        fn enqueue(&mut self, dst: SocketAddr, payload: &[u8]) {
+            enqueue(&mut self.queue, &mut self.tunn, dst, payload, self.now);
+        }
+
+        /// Pops all batches, with the plaintext of each of their data messages.
+        fn batches(&mut self) -> Vec<(SocketAddr, Vec<&[u8]>)> {
+            self.popped = std::iter::from_fn(|| self.queue.pop()).collect();
+
+            self.popped
+                .iter()
+                .map(|PendingDatagram { datagram, .. }| {
+                    let plaintexts = datagram
+                        .packet
+                        .chunks(datagram.segment_size)
+                        // A data message is a 16-byte header, the plaintext and a 16-byte tag.
+                        .map(|message| &message[16..message.len() - 16])
+                        .collect();
+
+                    (datagram.dst, plaintexts)
+                })
+                .collect()
+        }
+    }
+
+    pub(crate) fn enqueue(
+        queue: &mut UdpGsoQueue,
+        tunn: &mut Tunn,
+        dst: SocketAddr,
+        payload: &[u8],
+        now: Instant,
+    ) {
+        let mut reservation = queue.reserve(None, dst, Ecn::NonEct, payload.len() + WG_OVERHEAD);
+        let seal = tunn
+            .encapsulate_data_deferred_at(payload, reservation.buffer(), now)
+            .unwrap();
+        reservation.commit(SealJob::new(0, seal));
     }
 
     pub(crate) fn connected_tunnels(now: Instant) -> (Tunn, Tunn) {
@@ -549,9 +556,7 @@ pub(super) mod tests {
             panic!("expected a handshake response")
         };
         let response = response.to_vec();
-        let TunnResult::WriteToNetwork(_keepalive) =
-            alice.decapsulate_at(None, &response, &mut buf, now)
-        else {
+        let TunnResult::KeepaliveDue = alice.decapsulate_at(None, &response, &mut buf, now) else {
             panic!("expected a keepalive")
         };
 

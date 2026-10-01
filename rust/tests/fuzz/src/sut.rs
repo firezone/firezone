@@ -1115,13 +1115,17 @@ impl TunnelTest {
 
     fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
         for gateway in self.gateways.values_mut() {
-            while let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
+            while let Some(transmit) =
+                gateway.exec_mut(|g| g.sut.poll_transmit().map(snownet::Outgoing::seal))
+            {
                 buffered_transmits.push_from(transmit, gateway, now);
             }
         }
 
         for client in self.clients.values_mut() {
-            while let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) {
+            while let Some(transmit) =
+                client.exec_mut(|g| g.sut.poll_transmit().map(snownet::Outgoing::seal))
+            {
                 buffered_transmits.push_from(transmit, client, now);
             }
         }

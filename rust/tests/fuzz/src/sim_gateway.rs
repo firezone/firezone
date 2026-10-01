@@ -201,7 +201,10 @@ impl SimGateway {
         self.sut
             .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(self
+            .transmit_buffer
+            .poll_transmit()
+            .map(snownet::Outgoing::seal))
     }
 
     pub(crate) fn deploy_new_dns_servers(

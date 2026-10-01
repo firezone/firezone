@@ -23,12 +23,12 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use snownet::{DecryptedPacket, EncryptedPacket};
+use snownet::{DecryptedPacket, EncryptedPacket, Outgoing};
 use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     io, iter,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -41,6 +41,8 @@ use tun::Tun;
 pub struct Io<TId> {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    /// Control messages, sent unbatched and ahead of the data messages.
+    control_queue: VecDeque<DatagramOut>,
     gso_queue: UdpGsoQueue,
     crypto: Crypto<TId>,
 
@@ -174,6 +176,7 @@ where
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
+            control_queue: VecDeque::new(),
             gso_queue: UdpGsoQueue::new(),
             crypto: Crypto::new(),
             tun: Device::new(),
@@ -389,7 +392,7 @@ where
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx)?.is_pending() {
+        if self.flush_network(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -404,18 +407,22 @@ where
         Poll::Ready(Ok(()))
     }
 
-    /// Hands the queued batches to the crypto workers and sends the sealed ones.
+    /// Sends the queued control messages, hands the queued batches to the crypto workers and sends
+    /// the sealed ones.
     ///
     /// Sealed batches are sent in the order they were queued, so a connection's data messages leave
-    /// in counter order. Batches without data messages skip that order. Pending while the socket or
-    /// the crypto workers are at capacity.
-    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    /// in counter order. Pending while the socket or the crypto workers are at capacity.
+    pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         self.crypto.poll_completed(cx);
 
         loop {
             ready!(self.sockets.poll_send_ready(cx)?);
 
-            if let Some(datagram) = self.crypto.pop_sealed() {
+            if let Some(datagram) = self
+                .control_queue
+                .pop_front()
+                .or_else(|| self.crypto.pop_sealed())
+            {
                 self.send_datagram(datagram)?;
                 continue;
             }
@@ -427,11 +434,6 @@ where
             let Some(datagram) = self.gso_queue.pop() else {
                 break;
             };
-
-            if datagram.num_seals() == 0 {
-                self.send_datagram(datagram.seal())?;
-                continue;
-            }
 
             self.crypto.seal(datagram);
         }
@@ -486,6 +488,7 @@ where
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
+        self.control_queue.clear();
         self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
@@ -503,14 +506,17 @@ where
         &mut self.gso_queue
     }
 
-    pub fn send_network(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-    ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+    pub fn send_network(&mut self, transmit: Outgoing) {
+        match transmit {
+            Outgoing::Control(transmit) => self.control_queue.push_back(DatagramOut {
+                src: transmit.src,
+                dst: transmit.dst,
+                segment_size: transmit.payload.len(),
+                packet: transmit.payload,
+                ecn: transmit.ecn,
+            }),
+            Outgoing::Data(data) => data.write_into(&mut self.gso_queue),
+        }
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {

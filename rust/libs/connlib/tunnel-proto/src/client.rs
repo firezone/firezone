@@ -2452,7 +2452,7 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
-    pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<snownet::Outgoing> {
         self.buffered_transmits
             .poll_transmit()
             .or_else(|| self.node.poll_transmit())

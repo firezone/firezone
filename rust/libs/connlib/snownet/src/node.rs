@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Reservation, SealJob, TransmitBuffer};
+use crate::buffer::{BufferProvider, Outgoing, Reservation, SealJob, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -765,18 +765,14 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<Outgoing> {
         if let Some(transmit) = self.allocations.poll_transmit() {
             tracing::trace!(?transmit);
 
-            return Some(transmit);
+            return Some(Outgoing::Control(transmit));
         }
 
-        let transmit = self.buffered_transmits.poll_transmit()?;
-
-        tracing::trace!(?transmit);
-
-        Some(transmit)
+        self.buffered_transmits.poll_transmit()
     }
 
     pub fn update_relays(
@@ -926,6 +922,7 @@ where
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
+                keepalive_due: false,
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
@@ -1590,7 +1587,10 @@ where
                         self.peer_socket_for_tuple(allocations, source, destination);
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting { wg_buffer } => {
+                        ConnectionState::Connecting {
+                            wg_buffer,
+                            keepalive_due,
+                        } => {
                             tracing::debug!(
                                 num_buffered = %wg_buffer.len(),
                                 "Flushing WireGuard packets buffered during ICE"
@@ -1611,6 +1611,10 @@ where
                                 peer_socket: remote_socket,
                                 last_activity: now,
                             };
+
+                            if keepalive_due {
+                                self.send_keepalive(allocations, transmits, now);
+                            }
 
                             // If the WireGuard handshake already completed while we were still
                             // running ICE, the connection only becomes usable now that a socket is
@@ -1706,6 +1710,16 @@ where
                 path_agent::Payload::Plaintext(ref ip) => {
                     let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
                 }
+                path_agent::Payload::Keepalive => {
+                    let _ = self.encapsulate_payload(
+                        peer_socket,
+                        &[],
+                        Ecn::NonEct,
+                        now,
+                        allocations,
+                        transmits,
+                    );
+                }
             }
         }
 
@@ -1780,6 +1794,7 @@ where
             TunnResult::Err(e) => {
                 tracing::warn!("boringtun error: {e}");
             }
+            TunnResult::KeepaliveDue => self.send_keepalive(allocations, transmits, now),
             TunnResult::WriteToNetwork(b) => {
                 if self.agent.is_iceless() {
                     self.agent.handle_outbound(b.to_vec(), now);
@@ -1812,7 +1827,10 @@ where
         TId: Copy + fmt::Display,
     {
         match mem::replace(&mut self.state, ConnectionState::Failed) {
-            ConnectionState::Connecting { wg_buffer } => {
+            ConnectionState::Connecting {
+                wg_buffer,
+                keepalive_due,
+            } => {
                 tracing::debug!(
                     %cid,
                     num_wg = wg_buffer.len(),
@@ -1832,6 +1850,10 @@ where
                     peer_socket,
                     last_activity: now,
                 };
+
+                if keepalive_due {
+                    self.send_keepalive(allocations, transmits, now);
+                }
 
                 // The connection only becomes usable now that a socket is
                 // selected, so this is when we signal establishment if the
@@ -1880,8 +1902,44 @@ where
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
+        self.encapsulate_payload(
+            socket,
+            packet.packet(),
+            packet.ecn(),
+            now,
+            allocations,
+            provider,
+        )
+    }
+
+    /// A keepalive is a data message like any other, but does not count as activity.
+    fn send_keepalive(
+        &mut self,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+        now: Instant,
+    ) {
+        let Some(socket) = self.socket() else {
+            return;
+        };
+
+        if let Err(e) =
+            self.encapsulate_payload(socket, &[], Ecn::NonEct, now, allocations, transmits)
+        {
+            tracing::debug!("Failed to send keepalive: {e:#}");
+        }
+    }
+
+    fn encapsulate_payload(
+        &mut self,
+        socket: PeerSocket,
+        payload: &[u8],
+        ecn: Ecn,
+        now: Instant,
+        allocations: &mut Allocations<RId>,
+        provider: &mut impl BufferProvider,
+    ) -> Result<Option<EncapsulateInfo>> {
         let relay_id = self.relay.id;
-        let ecn = packet.ecn();
 
         let (src, dst, packet_start, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
@@ -1904,12 +1962,12 @@ where
             }
         };
 
-        let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;
+        let reserve_len = packet_start + payload.len() + ip_packet::WG_OVERHEAD;
         let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
 
         // On `Err`, `reservation` is dropped without committing and rolls back automatically.
         let seal = self.tunnel.encapsulate_data_deferred_at(
-            packet.packet(),
+            payload,
             &mut reservation.buffer()[packet_start..],
             now,
         )?;
@@ -1926,7 +1984,7 @@ where
             }
         }
 
-        reservation.commit_sealed(SealJob::new(packet_start, seal));
+        reservation.commit(SealJob::new(packet_start, seal));
 
         Ok(Some(EncapsulateInfo { src, dst }))
     }
@@ -1989,6 +2047,16 @@ where
             TunnResult::WriteToTunnelV6(..) => ControlFlow::Break(Err(anyhow!(
                 "Unexpected IPv6 packet from WireGuard control message"
             ))),
+
+            TunnResult::KeepaliveDue => {
+                if let ConnectionState::Connecting { keepalive_due, .. } = &mut self.state {
+                    *keepalive_due = true;
+                } else {
+                    self.send_keepalive(allocations, transmits, now);
+                }
+
+                ControlFlow::Break(Ok(()))
+            }
 
             // Handshake messages yield a response for the peer.
             // This is rare enough that we just allocate these and return them from `poll_transmit`.
@@ -2091,9 +2159,9 @@ where
                     Err(e) => ControlFlow::Break(Err(e)),
                 }
             }
-            TunnResult::WriteToNetwork(_) => ControlFlow::Break(Err(anyhow!(
-                "Unexpected datagram from WireGuard data message"
-            ))),
+            TunnResult::WriteToNetwork(_) | TunnResult::KeepaliveDue => ControlFlow::Break(Err(
+                anyhow!("Unexpected datagram from WireGuard data message"),
+            )),
         };
 
         match control_flow {

@@ -202,8 +202,7 @@ impl ClientTunnel {
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
-            self.io
-                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+            self.io.send_network(trans);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -253,8 +252,7 @@ impl ClientTunnel {
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
-                self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+                self.io.send_network(trans);
                 tick.want_continue();
             }
 
@@ -297,7 +295,7 @@ impl ClientTunnel {
                     self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
                         error.push(e);
                     }
 
@@ -427,8 +425,7 @@ impl GatewayTunnel {
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
-            self.io
-                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+            self.io.send_network(trans);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -460,8 +457,7 @@ impl GatewayTunnel {
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
-                self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+                self.io.send_network(trans);
 
                 tick.want_continue();
             }
@@ -536,7 +532,7 @@ impl GatewayTunnel {
                     self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
                         error.push(e);
                     }
 

@@ -36,21 +36,12 @@ pub trait Reservation {
     /// The writable bytes reserved for the datagram.
     fn buffer(&mut self) -> &mut [u8];
 
-    /// Keep the bytes written into [`buffer`](Self::buffer); without this the reservation is rolled
-    /// back on drop.
-    fn commit(self);
-
-    /// Like [`commit`](Self::commit) but the datagram is only complete once `seal` has run.
+    /// Keep the data message written into [`buffer`](Self::buffer); without this the reservation
+    /// is rolled back on drop.
     ///
-    /// Providers may defer the seal, e.g. to encrypt on another thread, as long as it runs before
-    /// the datagram is sent.
-    fn commit_sealed(mut self, seal: SealJob)
-    where
-        Self: Sized,
-    {
-        seal.run(self.buffer());
-        self.commit();
-    }
+    /// The datagram is only complete once `seal` has run, which the provider must ensure before it
+    /// is sent.
+    fn commit(self, seal: SealJob);
 }
 
 /// The deferred encryption of the WireGuard data message inside a [`Reservation`].
@@ -71,10 +62,55 @@ impl SealJob {
     }
 }
 
+/// A datagram collected by a [`TransmitBuffer`].
+pub enum Outgoing {
+    /// A control message, e.g. a WireGuard handshake or a STUN/TURN message, final when created.
+    Control(Transmit),
+    /// A WireGuard data message that still needs to be sealed.
+    Data(PendingTransmit),
+}
+
+impl Outgoing {
+    /// Returns the datagram ready to be sent, sealing a data message on the current thread.
+    pub fn seal(self) -> Transmit {
+        match self {
+            Outgoing::Control(transmit) => transmit,
+            Outgoing::Data(PendingTransmit { mut transmit, seal }) => {
+                seal.run(&mut transmit.payload);
+
+                transmit
+            }
+        }
+    }
+}
+
+/// A WireGuard data message whose payload still holds the plaintext.
+#[must_use = "the data message is lost unless it is sealed"]
+pub struct PendingTransmit {
+    transmit: Transmit,
+    seal: SealJob,
+}
+
+impl PendingTransmit {
+    /// Moves the data message into `provider`, which seals it.
+    pub fn write_into(self, provider: &mut impl BufferProvider) {
+        let Transmit {
+            src,
+            dst,
+            payload,
+            ecn,
+        } = self.transmit;
+
+        let mut reservation = provider.reserve(src, dst, ecn, payload.len());
+        reservation.buffer().copy_from_slice(&payload);
+        reservation.commit(self.seal);
+    }
+}
+
 /// Collects datagrams as standalone [`Transmit`]s.
 pub struct TransmitBuffer {
     buffer_pool: BufferPool<Vec<u8>>,
-    transmits: VecDeque<Transmit>,
+    transmits: VecDeque<Outgoing>,
 }
 
 impl TransmitBuffer {
@@ -85,16 +121,13 @@ impl TransmitBuffer {
         }
     }
 
-    /// Collect an already-formed [`Transmit`].
-    ///
-    /// Used for datagrams that were produced elsewhere as a standalone [`Transmit`], e.g. a
-    /// handshake that cannot be encrypted in place because there is no session yet.
+    /// Collect a control message.
     pub fn push(&mut self, transmit: Transmit) {
-        self.transmits.push_back(transmit);
+        self.transmits.push_back(Outgoing::Control(transmit));
     }
 
-    /// Returns the next collected [`Transmit`], if any.
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    /// Returns the next collected datagram, if any.
+    pub fn poll_transmit(&mut self) -> Option<Outgoing> {
         self.transmits.pop_front()
     }
 
@@ -109,7 +142,8 @@ impl TransmitBuffer {
 
 impl Extend<Transmit> for TransmitBuffer {
     fn extend<T: IntoIterator<Item = Transmit>>(&mut self, iter: T) {
-        self.transmits.extend(iter);
+        self.transmits
+            .extend(iter.into_iter().map(Outgoing::Control));
     }
 }
 
@@ -132,46 +166,34 @@ impl BufferProvider for TransmitBuffer {
         let mut payload = self.buffer_pool.pull();
         payload.resize(len, 0);
 
-        self.transmits.push_back(Transmit {
-            src,
-            dst,
-            payload,
-            ecn,
-        });
-
         TransmitReservation {
-            inner: self,
-            committed: false,
+            transmit: Transmit {
+                src,
+                dst,
+                payload,
+                ecn,
+            },
+            transmits: &mut self.transmits,
         }
     }
 }
 
-/// A [`Reservation`] into a [`TransmitBuffer`], backed by a freshly pushed [`Transmit`].
+/// A [`Reservation`] into a [`TransmitBuffer`], collected once committed.
 pub struct TransmitReservation<'a> {
-    inner: &'a mut TransmitBuffer,
-    committed: bool,
+    transmit: Transmit,
+    transmits: &'a mut VecDeque<Outgoing>,
 }
 
 impl Reservation for TransmitReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
-        &mut self
-            .inner
-            .transmits
-            .back_mut()
-            .expect("a transmit to have been reserved")
-            .payload[..]
+        &mut self.transmit.payload
     }
 
-    fn commit(mut self) {
-        self.committed = true;
-    }
-}
-
-impl Drop for TransmitReservation<'_> {
-    fn drop(&mut self) {
-        if !self.committed {
-            self.inner.transmits.pop_back();
-        }
+    fn commit(self, seal: SealJob) {
+        self.transmits.push_back(Outgoing::Data(PendingTransmit {
+            transmit: self.transmit,
+            seal,
+        }));
     }
 }
 
@@ -182,22 +204,6 @@ mod tests {
     use super::*;
 
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
-
-    #[test]
-    fn committing_a_reservation_yields_the_transmit() {
-        let mut transmits = TransmitBuffer::new();
-
-        {
-            let mut reservation = transmits.reserve(None, DST, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"foobar");
-            reservation.commit();
-        }
-
-        let transmit = transmits.poll_transmit().expect("a committed transmit");
-        assert_eq!(transmit.dst, DST);
-        assert_eq!(&transmit.payload[..], b"foobar");
-        assert!(transmits.poll_transmit().is_none());
-    }
 
     #[test]
     fn dropping_a_reservation_without_committing_yields_nothing() {

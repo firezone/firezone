@@ -919,8 +919,8 @@ dependencies = [
 
 [[package]]
 name = "boringtun"
-version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=parallel-encryption#589a3139796b1c399c41c85d70acb8bca3bbb8a6"
+version = "0.8.0"
+source = "git+https://github.com/firezone/boringtun?branch=parallel-encryption#dc3750d0ce14b96b253c9cdfe6bbe49970d0be61"
 dependencies = [
  "aead",
  "blake2",
