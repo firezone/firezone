@@ -227,6 +227,10 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
+            let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
+
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
@@ -243,7 +247,6 @@ impl ClientTunnel {
             }
 
             // Drain all buffered IP packets.
-            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
             while let Some(packet) = self.role_state.poll_packets() {
                 tun_transmitted.record(&packet);
                 self.io.queue_tun(packet);
@@ -283,11 +286,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
-
-                    for packet in packets.drain() {
-                        tun_received.record(&packet);
-
+                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -309,12 +308,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = UdpPacketCounts::receive(&self.packet_counter);
-                    let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
-
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        received_counts.record(received.packet);
-
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
                         match self
                             .role_state
                             .handle_network_input(
@@ -422,6 +420,10 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
+            let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
+
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
@@ -477,11 +479,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
-
-                    for packet in packets.drain() {
-                        tun_received.record(&packet);
-
+                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -516,12 +514,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = UdpPacketCounts::receive(&self.packet_counter);
-                    let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
-
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        received_counts.record(received.packet);
-
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
                         match self
                             .role_state
                             .handle_network_input(
