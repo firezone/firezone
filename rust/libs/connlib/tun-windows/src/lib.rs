@@ -32,11 +32,10 @@ impl Io {
 
         tracing::debug!(%capacity, "Wintun ring buffer capacity");
 
-        let session = Arc::new(
-            adapter
-                .start_session(capacity)
-                .with_context(|| format!("Failed to start session with capacity {capacity}"))?,
-        );
+        let session = adapter
+            .start_session(capacity)
+            .with_context(|| format!("Failed to start session with capacity {capacity}"))?;
+        let session = Arc::new(session);
         let send_session = Arc::downgrade(&session);
         let recv_session = Arc::downgrade(&session);
 

@@ -152,11 +152,9 @@ impl TunDeviceManager {
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
         create_tun_device()?;
-        let tun = Box::new(tun_linux::Io::new(
-            Self::IFACE_NAME,
-            open_tun()?,
-            &tokio::runtime::Handle::current(),
-        )?);
+        let fd = open_tun()?;
+        let io = tun_linux::Io::new(Self::IFACE_NAME, fd, &tokio::runtime::Handle::current())?;
+        let tun = Box::new(io);
 
         // Do this in a separate task because:
         // a) We want it to be infallible.
@@ -874,7 +872,8 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
 }
 
 fn create_tun_device() -> io::Result<()> {
-    let path = Path::new(TUN_FILE.to_str().map_err(io::Error::other)?);
+    let path = TUN_FILE.to_str().map_err(io::Error::other)?;
+    let path = Path::new(path);
 
     if path.exists() {
         return Ok(());
