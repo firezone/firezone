@@ -44,7 +44,7 @@ fun ConnectedDeviceRow(
             modifier = Modifier.weight(1f),
         )
         Icon(
-            painter = painterResource(R.drawable.ic_chevron_right),
+            painter = painterResource(R.drawable.rounded_chevron_right_24dp),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -72,7 +72,7 @@ private fun NoConnectedDevices(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_devices),
+            painter = painterResource(R.drawable.rounded_devices_24dp),
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(48.dp),
