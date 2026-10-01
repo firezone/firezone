@@ -7130,17 +7130,17 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      own_pool = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      own_pool = own_devices_pool_resource_fixture(account: account, name: "My devices")
       policy_fixture(account: account, group: group, resource: own_pool)
       device_pool_resource_fixture(account: account, name: "Hidden Pool")
 
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      push(socket, "resolve_device_domain", %{"domain" => "your-devices.firezone.network"})
+      push(socket, "resolve_device_domain", %{"domain" => "my-devices.firezone.network"})
 
       assert_push "device_domain_resolution_failed", %{
-        domain: "your-devices.firezone.network",
+        domain: "my-devices.firezone.network",
         reason: :not_a_device
       }
 
@@ -7165,7 +7165,7 @@ defmodule PortalAPI.Client.ChannelTest do
         client_fixture(account: account, actor: actor_fixture(account: account), name: "Stranger")
         |> fetch_device!()
 
-      own_pool = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      own_pool = own_devices_pool_resource_fixture(account: account, name: "My devices")
       policy_fixture(account: account, group: group, resource: own_pool)
 
       %{subject: subject, target_client: target_client, stranger: stranger}
@@ -7177,7 +7177,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      for name <- ["Field Workstations", "Your Devices!", "!!!"] do
+      for name <- ["Field Workstations", "My Devices!", "!!!"] do
         pool = all_devices_pool_resource_fixture(account: account, name: name)
         policy_fixture(account: account, group: group, resource: pool)
       end
@@ -7195,7 +7195,7 @@ defmodule PortalAPI.Client.ChannelTest do
                "domain" => "firezone.network",
                "names" => [
                  "field-workstations.firezone.network",
-                 "your-devices.firezone.network"
+                 "my-devices.firezone.network"
                ],
                "ttl" => 30,
                "total" => 2
@@ -7210,7 +7210,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      push(socket, "browse_device_domain", %{"domain" => "your-devices.firezone.network"})
+      push(socket, "browse_device_domain", %{"domain" => "my-devices.firezone.network"})
 
       names = Enum.sort([Portal.Device.fqdn(client), Portal.Device.fqdn(target_client)])
       assert_push "device_domain_browsed", %{names: ^names, ttl: 30, total: 2}
@@ -7224,13 +7224,13 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client: target_client,
       stranger: stranger
     } do
-      pool = device_pool_resource_fixture(account: account, name: "Your Devices!", devices: [stranger])
+      pool = device_pool_resource_fixture(account: account, name: "My Devices!", devices: [stranger])
       policy_fixture(account: account, group: group, resource: pool)
 
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      push(socket, "browse_device_domain", %{"domain" => "your-devices.firezone.network"})
+      push(socket, "browse_device_domain", %{"domain" => "my-devices.firezone.network"})
 
       names =
         Enum.sort([
@@ -7288,7 +7288,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      for label <- ["field-workstations", "your-devices"] do
+      for label <- ["field-workstations", "my-devices"] do
         push(socket, "browse_device_domain", %{"domain" => "#{label}.firezone.network"})
         assert_push "device_domain_browsed", %{names: names}
         assert names != []
@@ -7354,10 +7354,10 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      listed = time_browse(socket, "your-devices.firezone.network", "device_domain_browsed")
+      listed = time_browse(socket, "my-devices.firezone.network", "device_domain_browsed")
       hidden = time_browse(socket, "hidden-pool.firezone.network", "device_domain_browse_failed")
       unknown = time_browse(socket, "ghost.firezone.network", "device_domain_browse_failed")
-      nested = time_browse(socket, "a.your-devices.firezone.network", "device_domain_browse_failed")
+      nested = time_browse(socket, "a.my-devices.firezone.network", "device_domain_browse_failed")
 
       assert listed < 400
       assert hidden >= 450

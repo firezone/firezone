@@ -32,6 +32,7 @@ pub enum ResourceView {
     Dns(DnsResourceView),
     Cidr(CidrResourceView),
     Internet(InternetResourceView),
+    DevicePool(DevicePoolResourceView),
 }
 
 impl ResourceView {
@@ -40,6 +41,7 @@ impl ResourceView {
             ResourceView::Dns(r) => r.address_description.as_deref(),
             ResourceView::Cidr(r) => r.address_description.as_deref(),
             ResourceView::Internet(_) => None,
+            ResourceView::DevicePool(_) => None,
         }
     }
 
@@ -48,6 +50,7 @@ impl ResourceView {
             ResourceView::Dns(r) => &r.name,
             ResourceView::Cidr(r) => &r.name,
             ResourceView::Internet(r) => &r.name,
+            ResourceView::DevicePool(r) => &r.name,
         }
     }
 
@@ -56,6 +59,7 @@ impl ResourceView {
             ResourceView::Dns(r) => r.status,
             ResourceView::Cidr(r) => r.status,
             ResourceView::Internet(r) => r.status,
+            ResourceView::DevicePool(_) => ResourceStatus::Unknown,
         }
     }
 
@@ -64,6 +68,7 @@ impl ResourceView {
             ResourceView::Dns(r) => r.id,
             ResourceView::Cidr(r) => r.id,
             ResourceView::Internet(r) => r.id,
+            ResourceView::DevicePool(r) => r.id,
         }
     }
 
@@ -73,6 +78,7 @@ impl ResourceView {
             ResourceView::Dns(r) => Cow::from(&r.address),
             ResourceView::Cidr(r) => Cow::from(r.address.to_string()),
             ResourceView::Internet(_) => Cow::default(),
+            ResourceView::DevicePool(_) => Cow::default(),
         }
     }
 
@@ -81,6 +87,7 @@ impl ResourceView {
             ResourceView::Dns(r) => &r.sites,
             ResourceView::Cidr(r) => &r.sites,
             ResourceView::Internet(r) => &r.sites,
+            ResourceView::DevicePool(_) => &[],
         }
     }
 
@@ -124,31 +131,27 @@ pub struct CidrResourceView {
     pub status: ResourceStatus,
 }
 
+/// A pool of devices we have access to.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub struct DevicePoolResourceView {
+    pub id: ResourceId,
+    pub name: String,
+    /// The devices of this pool that we currently have a live connection to.
+    pub devices: Vec<ConnectedDeviceView>,
+}
+
 /// A device peer that the client currently has a live snownet connection to.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct ConnectedDeviceView {
     pub id: ClientId,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
-    ///
-    /// Sourced from the live snownet connection state, so it is always known
-    /// for a connected device regardless of pool membership.
     pub tun_ipv4: Ipv4Addr,
     /// Tunnel IPv6 address the device is reachable on.
-    ///
-    /// Sourced from the live snownet connection state, so it is always known
-    /// for a connected device regardless of pool membership.
     pub tun_ipv6: Ipv6Addr,
-    /// Names of the static device pools the device belongs to, sorted.
-    pub pools: Vec<String>,
-}
-
-/// Snapshot of resources and currently-connected device peers.
-#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct ResourceList {
-    pub resources: Vec<ResourceView>,
-    pub connected_devices: Vec<ConnectedDeviceView>,
 }
 
 /// Description of an Internet resource

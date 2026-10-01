@@ -120,7 +120,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources")
 
       assert html =~ "Personal devices"
-      assert html =~ "Your devices"
+      assert html =~ "My devices"
       assert html =~ "Multiple Addresses"
       refute html =~ "&lt;slug&gt;"
       assert html =~ "No Site Needed"
@@ -1059,7 +1059,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Updated Resource Name"
     end
 
-    test "creates a Your devices pool from the members choice", %{
+    test "creates a My devices pool from the members choice", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1110,7 +1110,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "See supported versions"
 
       for {id, label, hint} <- [
-            {"own-devices", "Your devices", "Each actor&#39;s own devices"},
+            {"own-devices", "My devices", "Each actor&#39;s own devices"},
             {"all-devices", "All devices", "Every device in the account"},
             {"actor-group", "A group&#39;s devices", "Devices of a group&#39;s members"},
             {"listed", "Static list", "Explicitly choose the devices in this pool"}
@@ -1312,7 +1312,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
       warning = "expires every active connection through it"
       conn = authorize_conn(conn, actor)
 
@@ -1354,12 +1354,12 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ warning
     end
 
-    test "updates the Your devices pool without a site and keeps its type and rule", %{
+    test "updates the My devices pool without a site and keeps its type and rule", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
 
       {:ok, lv, html} =
         conn

@@ -3,6 +3,7 @@ package dev.firezone.android.tunnel
 
 import uniffi.connlib.CidrResource
 import uniffi.connlib.ConnectedDevice
+import uniffi.connlib.DevicePoolResource
 import uniffi.connlib.DnsResource
 import uniffi.connlib.InternetResource
 import uniffi.connlib.Resource
@@ -102,14 +103,122 @@ private val labTestBench =
         ),
     )
 
-val benchController =
-    ConnectedDevice(
-        id = "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
-        name = "bench-controller-01",
-        tunIpv4 = "100.64.3.18",
-        tunIpv6 = "fd00:2021:1111::12",
-        pools = listOf("Lab hardware", "Shared storage"),
+private const val BUILD_FARM = "Build farm"
+private const val LAB_HARDWARE = "Lab hardware"
+private const val SHARED_STORAGE = "Shared storage"
+
+private val mockDevices =
+    listOf(
+        device(
+            "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
+            "bench-controller-01",
+            "100.64.3.18",
+            "fd00:2021:1111::12",
+            LAB_HARDWARE,
+            SHARED_STORAGE,
+        ),
+        device(
+            "47e9e79b-e4eb-4444-af14-ec24c6a2afc2",
+            "build-runner-02",
+            "100.64.7.41",
+            "fd00:2021:1111::29",
+            BUILD_FARM,
+        ),
+        device(
+            "db8221d1-0277-4f05-b0a8-22b32a5a9a46",
+            "build-runner-03",
+            "100.64.7.42",
+            "fd00:2021:1111::2a",
+            BUILD_FARM,
+        ),
+        device(
+            "f0442658-4fca-4f53-9323-161fa389a659",
+            "build-runner-04",
+            "100.64.7.43",
+            "fd00:2021:1111::2b",
+            BUILD_FARM,
+        ),
+        device(
+            "7392a499-c8f0-4f24-aba0-2f6a00fe3bc0",
+            "build-runner-05",
+            "100.64.7.44",
+            "fd00:2021:1111::2c",
+            BUILD_FARM,
+        ),
+        device(
+            "62f5c6e4-46f5-418a-82ff-7d0e612b29a6",
+            "build-runner-06",
+            "100.64.7.45",
+            "fd00:2021:1111::2d",
+            BUILD_FARM,
+        ),
+        device(
+            "c951f7eb-6fa7-428b-aecf-10b654ecccf7",
+            "design-nas",
+            "100.64.11.5",
+            "fd00:2021:1111::1f5",
+            SHARED_STORAGE,
+        ),
+        device(
+            "4a6f80e6-5322-4202-a1ac-1e897aa826a5",
+            "lab-probe-01",
+            "100.64.19.87",
+            "fd00:2021:1111::3c2",
+            LAB_HARDWARE,
+        ),
+        device(
+            "99fd7f50-02aa-4ebd-aac3-b9b914c4aebb",
+            "lab-probe-02",
+            "100.64.19.88",
+            "fd00:2021:1111::3c3",
+            LAB_HARDWARE,
+        ),
+        device(
+            "3683defa-c0c5-453b-8d06-22fe7f422f05",
+            "media-encoder-01",
+            "100.64.11.6",
+            "fd00:2021:1111::1f6",
+            SHARED_STORAGE,
+        ),
+        device(
+            "cef0ac7a-c103-4e1a-b937-485d6fc8f00c",
+            "render-node-01",
+            "100.64.7.46",
+            "fd00:2021:1111::2e",
+            BUILD_FARM,
+            SHARED_STORAGE,
+        ),
+        device(
+            "ef39322d-65e2-4dea-af50-6fd4c61a72a6",
+            "sensor-hub-01",
+            "100.64.19.89",
+            "fd00:2021:1111::3c4",
+            LAB_HARDWARE,
+        ),
+        device(
+            "487f8ebe-4b83-4239-8cb9-40d298fe8561",
+            "sensor-hub-02",
+            "100.64.19.90",
+            "fd00:2021:1111::3c5",
+            LAB_HARDWARE,
+        ),
+        device(
+            "e8dc5d0d-93ac-4e1b-9532-866dda67ce5b",
+            "vision-rig-01",
+            "100.64.19.86",
+            "fd00:2021:1111::3c1",
+            LAB_HARDWARE,
+        ),
+        device(
+            "46b198aa-fcf6-4640-bb23-b20879c52958",
+            "vision-rig-02",
+            "100.64.19.91",
+            "fd00:2021:1111::3c6",
+            LAB_HARDWARE,
+        ),
     )
+
+val labHardware = devicePool("bc643791-3b90-4d41-9cac-753af623f274", LAB_HARDWARE)
 
 // Every resource kind, and a site in each status, so one launch shows the whole session screen.
 val mockResources =
@@ -121,108 +230,26 @@ val mockResources =
         officeNetwork,
         productionVpc,
         labTestBench,
+        devicePool("c193c2fd-b346-44fb-a7ae-e2b74c492482", BUILD_FARM),
+        labHardware,
+        devicePool("4cbe2883-8ed8-4b97-a119-07db08d6aa6c", SHARED_STORAGE),
     )
 
-// More devices than fit on a screen, so that a scrolled capture has something to scroll.
-val mockConnectedDevices =
-    listOf(
-        benchController,
-        ConnectedDevice(
-            id = "47e9e79b-e4eb-4444-af14-ec24c6a2afc2",
-            name = "build-runner-02",
-            tunIpv4 = "100.64.7.41",
-            tunIpv6 = "fd00:2021:1111::29",
-            pools = listOf("Build farm"),
-        ),
-        ConnectedDevice(
-            id = "db8221d1-0277-4f05-b0a8-22b32a5a9a46",
-            name = "build-runner-03",
-            tunIpv4 = "100.64.7.42",
-            tunIpv6 = "fd00:2021:1111::2a",
-            pools = listOf("Build farm"),
-        ),
-        ConnectedDevice(
-            id = "f0442658-4fca-4f53-9323-161fa389a659",
-            name = "build-runner-04",
-            tunIpv4 = "100.64.7.43",
-            tunIpv6 = "fd00:2021:1111::2b",
-            pools = listOf("Build farm"),
-        ),
-        ConnectedDevice(
-            id = "7392a499-c8f0-4f24-aba0-2f6a00fe3bc0",
-            name = "build-runner-05",
-            tunIpv4 = "100.64.7.44",
-            tunIpv6 = "fd00:2021:1111::2c",
-            pools = listOf("Build farm"),
-        ),
-        ConnectedDevice(
-            id = "62f5c6e4-46f5-418a-82ff-7d0e612b29a6",
-            name = "build-runner-06",
-            tunIpv4 = "100.64.7.45",
-            tunIpv6 = "fd00:2021:1111::2d",
-            pools = listOf("Build farm"),
-        ),
-        ConnectedDevice(
-            id = "c951f7eb-6fa7-428b-aecf-10b654ecccf7",
-            name = "design-nas",
-            tunIpv4 = "100.64.11.5",
-            tunIpv6 = "fd00:2021:1111::1f5",
-            pools = listOf("Shared storage"),
-        ),
-        ConnectedDevice(
-            id = "4a6f80e6-5322-4202-a1ac-1e897aa826a5",
-            name = "lab-probe-01",
-            tunIpv4 = "100.64.19.87",
-            tunIpv6 = "fd00:2021:1111::3c2",
-            pools = listOf("Lab hardware"),
-        ),
-        ConnectedDevice(
-            id = "99fd7f50-02aa-4ebd-aac3-b9b914c4aebb",
-            name = "lab-probe-02",
-            tunIpv4 = "100.64.19.88",
-            tunIpv6 = "fd00:2021:1111::3c3",
-            pools = listOf("Lab hardware"),
-        ),
-        ConnectedDevice(
-            id = "3683defa-c0c5-453b-8d06-22fe7f422f05",
-            name = "media-encoder-01",
-            tunIpv4 = "100.64.11.6",
-            tunIpv6 = "fd00:2021:1111::1f6",
-            pools = listOf("Shared storage"),
-        ),
-        ConnectedDevice(
-            id = "cef0ac7a-c103-4e1a-b937-485d6fc8f00c",
-            name = "render-node-01",
-            tunIpv4 = "100.64.7.46",
-            tunIpv6 = "fd00:2021:1111::2e",
-            pools = listOf("Build farm", "Shared storage"),
-        ),
-        ConnectedDevice(
-            id = "ef39322d-65e2-4dea-af50-6fd4c61a72a6",
-            name = "sensor-hub-01",
-            tunIpv4 = "100.64.19.89",
-            tunIpv6 = "fd00:2021:1111::3c4",
-            pools = listOf("Lab hardware"),
-        ),
-        ConnectedDevice(
-            id = "487f8ebe-4b83-4239-8cb9-40d298fe8561",
-            name = "sensor-hub-02",
-            tunIpv4 = "100.64.19.90",
-            tunIpv6 = "fd00:2021:1111::3c5",
-            pools = listOf("Lab hardware"),
-        ),
-        ConnectedDevice(
-            id = "e8dc5d0d-93ac-4e1b-9532-866dda67ce5b",
-            name = "vision-rig-01",
-            tunIpv4 = "100.64.19.86",
-            tunIpv6 = "fd00:2021:1111::3c1",
-            pools = listOf("Lab hardware"),
-        ),
-        ConnectedDevice(
-            id = "46b198aa-fcf6-4640-bb23-b20879c52958",
-            name = "vision-rig-02",
-            tunIpv4 = "100.64.19.91",
-            tunIpv6 = "fd00:2021:1111::3c6",
-            pools = listOf("Lab hardware"),
-        ),
-    )
+private fun device(
+    id: String,
+    name: String,
+    tunIpv4: String,
+    tunIpv6: String,
+    vararg pools: String,
+) = pools.toList() to ConnectedDevice(id = id, name = name, slug = name, tunIpv4 = tunIpv4, tunIpv6 = tunIpv6)
+
+private fun devicePool(
+    id: String,
+    name: String,
+) = Resource.DevicePool(
+    DevicePoolResource(
+        id = id,
+        name = name,
+        devices = mockDevices.filter { (pools, _) -> name in pools }.map { (_, device) -> device },
+    ),
+)

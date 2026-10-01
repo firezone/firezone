@@ -28,7 +28,7 @@ private class MockSession : TunnelSession {
     init {
         // No `TunInterfaceUpdated`: that is what would have the service establish a TUN device.
         events.trySend(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
-        events.trySend(Event.ResourcesUpdated(resources = mockResources, connectedDevices = mockConnectedDevices))
+        events.trySend(Event.ResourcesUpdated(resources = mockResources))
     }
 
     val eventStream =

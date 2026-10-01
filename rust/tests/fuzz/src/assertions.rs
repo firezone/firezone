@@ -660,7 +660,7 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
 
 fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
     let expected_resources = ref_client.expected_resources();
-    let actual_resources = &sim_client.observed_resource_list.resources;
+    let actual_resources = &sim_client.observed_resource_list;
     let maybe_online_resources = ref_client.maybe_online_resources();
     let expected_ids = expected_resources
         .iter()
@@ -760,6 +760,9 @@ fn assert_resource_definition(expected: &ResourceView, actual: &ResourceView) {
             assert_resource_field(resource, "name", &expected.name, &actual.name);
             assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
         }
+        (DevicePool(expected), DevicePool(actual)) => {
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+        }
         (Dns(_), Cidr(_)) => {
             tracing::error!(target: "assertions", %resource, "DNS resource was emitted as a CIDR resource");
         }
@@ -777,6 +780,24 @@ fn assert_resource_definition(expected: &ResourceView, actual: &ResourceView) {
         }
         (Internet(_), Cidr(_)) => {
             tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a CIDR resource");
+        }
+        (Dns(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as a device pool resource");
+        }
+        (Cidr(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as a device pool resource");
+        }
+        (Internet(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a device pool resource");
+        }
+        (DevicePool(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as a DNS resource");
+        }
+        (DevicePool(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as a CIDR resource");
+        }
+        (DevicePool(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as an Internet resource");
         }
     }
 }

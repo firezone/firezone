@@ -30,7 +30,6 @@ import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.x509.X509Identity
 import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
-import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.isInternetResource
@@ -131,24 +130,17 @@ class TunnelService : VpnService() {
 
     private val _serviceState = MutableStateFlow(State.DOWN)
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
-    private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
-    val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
         set(value) {
             _resourcesState.value = value
-        }
-    var tunnelConnectedDevices: List<ConnectedDevice>
-        get() = _connectedDevicesState.value
-        set(value) {
-            _connectedDevicesState.value = value
         }
     var tunnelActorName: String?
         get() = _actorNameState.value
@@ -781,8 +773,6 @@ class TunnelService : VpnService() {
                             when (event) {
                                 is Event.ResourcesUpdated -> {
                                     tunnelResources = event.resources.map { it.toModel() }
-                                    tunnelConnectedDevices =
-                                        event.connectedDevices.map { it.toModel() }
                                     resourcesUpdated()
                                 }
 

@@ -5,8 +5,8 @@
 //! matching the production event loop and keeping the internal model private.
 
 use connlib_model::{
-    CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
-    ResourceView, Site,
+    CidrResourceView, DevicePoolResourceView, DnsResourceView, InternetResourceView, IpStack,
+    ResourceId, ResourceStatus, ResourceView, Site,
 };
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
@@ -397,31 +397,35 @@ impl Resource {
         }
     }
 
-    pub(crate) fn into_view(self, status: ResourceStatus) -> Option<ResourceView> {
+    pub(crate) fn into_view(self, status: ResourceStatus) -> ResourceView {
         match self {
-            Resource::Dns(r) => Some(ResourceView::Dns(DnsResourceView {
+            Resource::Dns(r) => ResourceView::Dns(DnsResourceView {
                 id: r.id,
                 address: r.address,
                 name: r.name,
                 address_description: r.address_description,
                 sites: r.sites,
                 status,
-            })),
-            Resource::Cidr(r) => Some(ResourceView::Cidr(CidrResourceView {
+            }),
+            Resource::Cidr(r) => ResourceView::Cidr(CidrResourceView {
                 id: r.id,
                 address: r.address,
                 name: r.name,
                 address_description: r.address_description,
                 sites: r.sites,
                 status,
-            })),
-            Resource::Internet(r) => Some(ResourceView::Internet(InternetResourceView {
+            }),
+            Resource::Internet(r) => ResourceView::Internet(InternetResourceView {
                 name: r.name,
                 id: r.id,
                 sites: r.sites,
                 status,
-            })),
-            Resource::DevicePool(_) => None,
+            }),
+            Resource::DevicePool(r) => ResourceView::DevicePool(DevicePoolResourceView {
+                id: r.id,
+                name: r.name,
+                devices: Vec::new(),
+            }),
         }
     }
 }
