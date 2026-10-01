@@ -8774,16 +8774,15 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "futures",
- "ingot",
  "ip-packet",
  "libc",
  "opentelemetry",
  "otel-instruments",
  "packet-coalescer",
- "smallvec",
  "tokio",
  "tracing",
  "tun",
+ "virtio-net",
 ]
 
 [[package]]
@@ -9248,6 +9247,18 @@ checksum = "80a7e511ce1795821207a837b7b1c8d8aca0c648810966ad200446ae58f6667f"
 dependencies = [
  "itertools 0.14.0",
  "nom 8.0.0",
+]
+
+[[package]]
+name = "virtio-net"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "ingot",
+ "ip-packet",
+ "packet-coalescer",
+ "smallvec",
+ "tracing",
 ]
 
 [[package]]

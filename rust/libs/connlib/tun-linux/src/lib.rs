@@ -6,18 +6,12 @@
 //! With offloads enabled, the kernel exchanges "super packets" of up to 64 KiB with us:
 //!
 //! - Reads may return a single TSO / USO packet that we split into MTU-sized [`IpPacket`](ip_packet::IpPacket)s
-//!   before handing them to the main thread ([`split`]).
+//!   before handing them to the main thread ([`virtio_net::split()`]).
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
 //!   kernel's network stack as a single skb ([`packet_coalescer`]).
 //!
 //! Each item on the outbound channel is one batch of packets that arrived together
 //! upstream; coalescing extends across exactly that batch.
-
-mod split;
-mod virtio;
-
-#[cfg(test)]
-mod tests;
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
@@ -29,7 +23,7 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::pin::pin;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
-use virtio::VNET_HDR_LEN;
+use virtio_net::VNET_HDR_LEN;
 
 use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 use tun::{InboundTx, OutboundRx, PacketBatch};
@@ -196,7 +190,7 @@ async fn write<T>(fd: &AsyncFd<T>, outgoing: &CoalescedPacket) -> io::Result<usi
 where
     T: AsRawFd,
 {
-    let hdr = virtio::header_for(outgoing);
+    let hdr = virtio_net::header_for(outgoing);
     let packet = outgoing.packet();
 
     let iov = [
@@ -281,7 +275,7 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    match split::split(&buf[..len]) {
+                    match virtio_net::split(&buf[..len]) {
                         Ok(mut segments) => {
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());

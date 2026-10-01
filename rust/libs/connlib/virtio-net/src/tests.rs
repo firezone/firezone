@@ -7,9 +7,7 @@ use ingot::udp::Udp;
 use ip_packet::{IpPacket, IpPacketBuf, checksum};
 use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
-use super::split::split;
-use super::virtio;
-use super::virtio::*;
+use super::*;
 
 const SRC: [u8; 4] = [10, 0, 0, 1];
 const DST: [u8; 4] = [10, 0, 0, 2];
@@ -32,7 +30,7 @@ fn coalesced_tcp_packet_roundtrips_through_virtio_gso() {
     let [super_packet] = out.as_slice() else {
         panic!("expected one coalesced packet")
     };
-    let buf = tun_write(super_packet);
+    let buf = encode_packet(super_packet);
     let (header, packet) = VirtioNetHdr::parse(&buf).unwrap();
 
     assert_eq!(
@@ -74,7 +72,7 @@ fn coalesced_udp_packet_roundtrips_through_virtio_gso() {
     let [super_packet] = out.as_slice() else {
         panic!("expected one coalesced packet")
     };
-    let buf = tun_write(super_packet);
+    let buf = encode_packet(super_packet);
     let (header, _) = VirtioNetHdr::parse(&buf).unwrap();
 
     assert_eq!(
@@ -125,8 +123,7 @@ fn completes_offloaded_checksum_of_non_gso_packet() {
         IpProtocol::UDP,
         l4_len,
     ));
-    buf[virtio::VNET_HDR_LEN + 26..virtio::VNET_HDR_LEN + 28]
-        .copy_from_slice(&pseudo.to_be_bytes());
+    buf[VNET_HDR_LEN + 26..VNET_HDR_LEN + 28].copy_from_slice(&pseudo.to_be_bytes());
 
     let out = split(&buf).unwrap();
     let [completed] = out.as_slice() else {
@@ -185,9 +182,9 @@ fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u
     packet
 }
 
-fn tun_write(packet: &CoalescedPacket) -> Vec<u8> {
+fn encode_packet(packet: &CoalescedPacket) -> Vec<u8> {
     let mut buf = Vec::with_capacity(VNET_HDR_LEN + packet.packet().len());
-    buf.extend_from_slice(&virtio::header_for(packet));
+    buf.extend_from_slice(&header_for(packet));
     buf.extend_from_slice(packet.packet());
 
     buf

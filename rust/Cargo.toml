@@ -41,6 +41,7 @@ members = [
     "libs/connlib/tun-windows",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
+    "libs/connlib/virtio-net",
     "libs/desktop-notifications",
     "libs/eventloop-budget",
     "libs/flow-log-spool",
@@ -271,6 +272,7 @@ tunnel-proto = { path = "libs/connlib/tunnel-proto" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"
+virtio-net = { path = "libs/connlib/virtio-net" }
 webpki-roots = "1.0.7"
 which = "8.0.5"
 windows = "0.62.2"

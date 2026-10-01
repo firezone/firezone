@@ -1,13 +1,9 @@
-//! The `virtio_net_hdr` exchanged with the kernel on every read / write of a TUN fd
-//! that has `IFF_VNET_HDR` set.
-//!
-//! See `include/uapi/linux/virtio_net.h` and `include/linux/virtio_net.h` in the kernel sources.
+//! The 10-byte legacy `virtio_net_hdr` with native-endian multi-byte fields.
 
 use ip_packet::IpVersion;
 use packet_coalescer::{CoalescedPacket, Protocol};
 
-/// `virtio_net_hdr` is 10 bytes; the TUN driver defaults to this size for `IFF_VNET_HDR`
-/// unless changed via `TUNSETVNETHDRSZ`.
+/// The length of the legacy virtio network header.
 pub const VNET_HDR_LEN: usize = 10;
 
 /// The checksum starting at [`VirtioNetHdr::csum_start`] must be completed by the receiver.
@@ -21,8 +17,7 @@ pub const VIRTIO_NET_HDR_GSO_TCPV4: u8 = 1;
 pub const VIRTIO_NET_HDR_GSO_TCPV6: u8 = 4;
 pub const VIRTIO_NET_HDR_GSO_UDP_L4: u8 = 5;
 
-/// The TUN driver interprets the multi-byte fields as `__virtio16`,
-/// which is native endian for the "legacy" virtio interface the driver defaults to.
+/// Describes checksum and segmentation offloads using the legacy native-endian format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VirtioNetHdr {
     pub flags: u8,
@@ -67,6 +62,7 @@ impl VirtioNetHdr {
     }
 }
 
+/// Encodes the checksum and segmentation metadata of a coalesced packet.
 pub fn header_for(packet: &CoalescedPacket) -> [u8; VNET_HDR_LEN] {
     let Some(offload) = packet.offload_metadata() else {
         return [0; VNET_HDR_LEN];
