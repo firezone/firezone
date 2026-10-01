@@ -19,7 +19,7 @@ public enum Telemetry {
     }
   }
 
-  public static func start(enableAppHangTracking: Bool = true, enableMetricKit: Bool = false) {
+  public static func start(enableAppHangTracking: Bool = true) {
     guard !BundleHelper.noTelemetry else {
       Log.info("Telemetry is switched off for this build")
 
@@ -33,7 +33,7 @@ public enum Telemetry {
       options.releaseName = releaseName()
       options.dist = distributionType()
       options.enableAppHangTracking = enableAppHangTracking
-      options.enableMetricKit = enableMetricKit
+      options.enableMetricKit = true
       options.enableLogs = true
       options.beforeSend = { event in
         retitleWithLocalizedDescription(event)
@@ -54,8 +54,12 @@ public enum Telemetry {
 
     guard let environment
     else {
-      // Disable Sentry in unknown environments
-      SentrySDK.close()
+      // Disable Sentry in unknown environments.
+      // `close()` flushes pending events synchronously on the main queue, so drain them first.
+      Task.detached(priority: .utility) {
+        SentrySDK.flush(timeout: 2)
+        SentrySDK.close()
+      }
 
       return
     }

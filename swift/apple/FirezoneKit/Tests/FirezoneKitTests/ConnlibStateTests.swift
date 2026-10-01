@@ -15,14 +15,12 @@ struct ConnlibStateTests {
   func stateRoundTrip() throws {
     let change = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
-      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
       isLogStreamingActive: true
     )
 
     let decoded = try roundTrip(change.state)
 
     #expect(decoded.resources?.first?.id == "resource-1")
-    #expect(decoded.connectedDevices.first?.id == "device-1")
     #expect(decoded.isLogStreamingActive)
   }
 
@@ -30,7 +28,6 @@ struct ConnlibStateTests {
   func nilResourcesRoundTrip() throws {
     let change = try makeChange(
       resources: nil,
-      connectedDevices: [],
       isLogStreamingActive: false
     )
 
@@ -39,33 +36,32 @@ struct ConnlibStateTests {
     #expect(decoded.resources == nil)
   }
 
-  @Test("Connected-device fields round-trip")
-  func connectedDeviceFieldsRoundTrip() throws {
+  @Test("Device pool fields round-trip")
+  func devicePoolFieldsRoundTrip() throws {
     let change = try makeChange(
-      resources: nil,
-      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      resources: [makeTestDevicePool(devices: [makeTestConnectedDevice(id: "device-1")])],
       isLogStreamingActive: false
     )
 
-    let device = try #require(roundTrip(change.state).connectedDevices.first)
+    let pool = try #require(roundTrip(change.state).resources?.first)
+    let device = try #require(pool.devices.first)
 
+    #expect(pool.type == .devicePool)
     #expect(device.id == "device-1")
     #expect(device.name == "Device device-1")
+    #expect(device.slug == "device-1")
     #expect(device.tunIPv4 == "100.64.0.1")
     #expect(device.tunIPv6 == "fd00:2021:1111::1")
-    #expect(device.pools == ["pool-a"])
   }
 
   @Test("Unchanged state returns nil")
   func unchangedStateReturnsNil() throws {
     let first = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
-      connectedDevices: [],
       isLogStreamingActive: false
     )
     let second = try ConnlibState.makeIfChanged(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
-      connectedDevices: [],
       isLogStreamingActive: false,
       comparedTo: first.hash
     )
@@ -78,12 +74,10 @@ struct ConnlibStateTests {
   func resourceChangeReturnsState() throws {
     let first = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
-      connectedDevices: [],
       isLogStreamingActive: false
     )
     let second = try ConnlibState.makeIfChanged(
       resources: [makeTestResource(id: "resource-2", name: "Resource B")],
-      connectedDevices: [],
       isLogStreamingActive: false,
       comparedTo: first.hash
     )
@@ -91,16 +85,14 @@ struct ConnlibStateTests {
     #expect(second != nil)
   }
 
-  @Test("Connected-device changes return a new state")
-  func connectedDeviceChangeReturnsState() throws {
+  @Test("Device pool changes return a new state")
+  func devicePoolChangeReturnsState() throws {
     let first = try makeChange(
-      resources: nil,
-      connectedDevices: [],
+      resources: [makeTestDevicePool(devices: [])],
       isLogStreamingActive: false
     )
     let second = try ConnlibState.makeIfChanged(
-      resources: nil,
-      connectedDevices: [makeTestConnectedDevice(id: "device-1")],
+      resources: [makeTestDevicePool(devices: [makeTestConnectedDevice(id: "device-1")])],
       isLogStreamingActive: false,
       comparedTo: first.hash
     )
@@ -112,12 +104,10 @@ struct ConnlibStateTests {
   func logStreamingChangeReturnsState() throws {
     let first = try makeChange(
       resources: nil,
-      connectedDevices: [],
       isLogStreamingActive: false
     )
     let second = try ConnlibState.makeIfChanged(
       resources: nil,
-      connectedDevices: [],
       isLogStreamingActive: true,
       comparedTo: first.hash
     )
@@ -129,7 +119,6 @@ struct ConnlibStateTests {
   func pollResponseRoundTrip() throws {
     let change = try makeChange(
       resources: [makeTestResource(id: "resource-1", name: "Resource A")],
-      connectedDevices: [],
       isLogStreamingActive: false
     )
     let response = StatePollResponse(
@@ -165,13 +154,11 @@ struct ConnlibStateTests {
 
   private func makeChange(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
-    connectedDevices: [FirezoneKit.ConnectedDevice],
     isLogStreamingActive: Bool
   ) throws -> ConnlibState.Change {
     try #require(
       try ConnlibState.makeIfChanged(
         resources: resources,
-        connectedDevices: connectedDevices,
         isLogStreamingActive: isLogStreamingActive,
         comparedTo: Data()
       ))
@@ -195,13 +182,26 @@ struct ConnlibStateTests {
     )
   }
 
+  private func makeTestDevicePool(devices: [FirezoneKit.ConnectedDevice]) -> FirezoneKit.Resource {
+    FirezoneKit.Resource(
+      id: "pool-1",
+      name: "Pool A",
+      address: nil,
+      addressDescription: nil,
+      status: .unknown,
+      sites: [],
+      type: .devicePool,
+      devices: devices
+    )
+  }
+
   private func makeTestConnectedDevice(id: String) -> FirezoneKit.ConnectedDevice {
     FirezoneKit.ConnectedDevice(
       id: id,
       name: "Device \(id)",
+      slug: id,
       tunIPv4: "100.64.0.1",
-      tunIPv6: "fd00:2021:1111::1",
-      pools: ["pool-a"]
+      tunIPv6: "fd00:2021:1111::1"
     )
   }
 }

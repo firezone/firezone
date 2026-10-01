@@ -92,7 +92,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
       cacheable = %Cacheable.Resource{
         id: id_bytes,
         type: :device_pool,
-        name: "Your devices",
+        name: "My devices",
         device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
         devices: [],
         filters: [%{protocol: :tcp, ports: ["22"]}]
@@ -103,7 +103,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
       assert rendered == %{
                id: id_string,
                type: :static_device_pool,
-               name: "Your devices",
+               name: "My devices",
                devices: [],
                filters: [%{protocol: :tcp, port_range_start: 22, port_range_end: 22}]
              }

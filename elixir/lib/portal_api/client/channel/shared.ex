@@ -43,6 +43,13 @@ defmodule PortalAPI.Client.Channel.Shared do
   # not anything is behind the name or address. Devices it may reach answer straight away.
   @device_lookup_constant_time 500
 
+  # How long, in seconds, connlib and the resolvers behind it may cache what a PTR query in
+  # the device domain lists.
+  @device_domain_browse_ttl 30
+
+  # The most PTR records a DNS message holds, even with compressed one-character labels.
+  @device_domain_browse_limit 4_096
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -663,8 +670,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, track_presence(socket)}
   end
 
-  def handle_info({:device_domain_resolution_failed, domain}, socket) do
-    push(socket, "device_domain_resolution_failed", %{domain: domain, reason: :not_found})
+  def handle_info({:device_domain_resolution_failed, domain, reason}, socket) do
+    push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:device_domain_browse_failed, domain}, socket) do
+    push(socket, "device_domain_browse_failed", %{domain: domain, reason: :not_found})
 
     {:noreply, socket}
   end
@@ -814,9 +827,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   # Connlib intercepts DNS queries for `<slug>.firezone.network`. A name the client may reach
-  # resolves straight away. Every other name, whether the client may not reach it or nothing
-  # holds it, answers `not_found` after the same delay, so the account's devices cannot be
-  # listed by guessing names.
+  # resolves straight away. Every other name answers after the same delay, so the account's
+  # devices cannot be listed by guessing names: `not_a_device` if it labels a pool the client
+  # may use, `not_found` otherwise.
   def handle_in("resolve_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
     started_at = System.monotonic_time(:millisecond)
 
@@ -828,8 +841,37 @@ defmodule PortalAPI.Client.Channel.Shared do
           ipv6: to_string(:inet.ntoa(device.ipv6.address))
         })
 
-      {:error, _reason} ->
-        schedule_after_constant_time(started_at, {:device_domain_resolution_failed, domain})
+      {:error, reason} ->
+        schedule_after_constant_time(
+          started_at,
+          {:device_domain_resolution_failed, domain, reason}
+        )
+    end
+
+    {:noreply, socket}
+  end
+
+  # Connlib forwards PTR queries for `firezone.network` and every name under it. The domain
+  # itself lists the labels of the pools the client may use, and such a label the devices
+  # in those pools that resolve for the client, most recently seen first. A label that only
+  # names a device the client may reach lists nothing. A listing holds at most
+  # `@device_domain_browse_limit` names and `total` counts those it would hold without that
+  # cap. Every other name answers `not_found` after the same delay as
+  # `resolve_device_domain`, so pool names cannot be discovered by guessing either.
+  def handle_in("browse_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
+    started_at = System.monotonic_time(:millisecond)
+
+    case browse_device_domain(domain, socket) do
+      {:ok, labels, total} ->
+        push(socket, "device_domain_browsed", %{
+          domain: domain,
+          names: Enum.map(labels, &Portal.Device.fqdn_for_slug/1),
+          ttl: @device_domain_browse_ttl,
+          total: total
+        })
+
+      {:error, :not_found} ->
+        schedule_after_constant_time(started_at, {:device_domain_browse_failed, domain})
     end
 
     {:noreply, socket}
@@ -1275,14 +1317,86 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp resolve_device_domain(domain, socket) do
-    domain = String.downcase(domain)
-    slug = domain |> String.split(".") |> hd()
+    with {:ok, label} <- device_domain_label(domain) do
+      resolve_device_label(label, socket)
+    end
+  end
 
-    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found},
-         {:ok, %Portal.Device{} = device} <- Database.get_device_by_slug(slug, socket.assigns.subject),
+  defp resolve_device_label(label, socket) do
+    case fetch_reachable_device(label, socket) do
+      {:ok, device} ->
+        {:ok, device}
+
+      {:error, :not_found} ->
+        if List.keymember?(browsable_device_pools(socket), label, 0),
+          do: {:error, :not_a_device},
+          else: {:error, :not_found}
+    end
+  end
+
+  defp browse_device_domain(domain, socket) do
+    pools = browsable_device_pools(socket)
+
+    if String.downcase(domain) == Portal.Device.domain() do
+      labels = for {label, _pool} <- pools, uniq: true, do: label
+
+      {:ok, labels |> Enum.sort() |> Enum.take(@device_domain_browse_limit), length(labels)}
+    else
+      with {:ok, label} <- device_domain_label(domain) do
+        browse_device_label(label, pools, socket)
+      end
+    end
+  end
+
+  defp browse_device_label(label, pools, socket) do
+    criteria = for {^label, pool} <- pools, do: pool.device_membership_criteria
+
+    case criteria do
+      [] ->
+        with {:ok, _device} <- fetch_reachable_device(label, socket), do: {:ok, [], 0}
+
+      criteria ->
+        {slugs, total} =
+          Database.member_slugs(criteria, @device_domain_browse_limit, socket.assigns.subject)
+
+        {:ok, slugs, total}
+    end
+  end
+
+  defp device_domain_label(domain) do
+    domain = String.downcase(domain)
+    label = domain |> String.split(".") |> hd()
+
+    if domain == Portal.Device.fqdn_for_slug(label),
+      do: {:ok, label},
+      else: {:error, :not_found}
+  end
+
+  defp fetch_reachable_device(slug, socket) do
+    with {:ok, %Portal.Device{} = device} <- Database.get_device_by_slug(slug, socket.assigns.subject),
          true <- reachable_through_any_pool?(device, socket) || {:error, :not_found} do
       {:ok, device}
     end
+  end
+
+  # The pools the client could get access through, each with the DNS label its name gives:
+  # the checks of `pick_device_pool/3` without a target the pool has to hold.
+  defp browsable_device_pools(socket) do
+    %{cache: cache, client: client, subject: subject} = socket.assigns
+
+    pools =
+      for %Cache.Cacheable.Resource{type: :device_pool, id: id} = pool <-
+            cache.connectable_resources,
+          resource_id = Ecto.UUID.load!(id),
+          match?(
+            {:ok, _resource, _membership_id, _policy_id, _expires_at},
+            Cache.Client.authorize_resource(cache, client, resource_id, subject)
+          ),
+          into: %{},
+          do: {resource_id, pool}
+
+    for {resource_id, label} <- Database.device_pool_labels(Map.keys(pools), subject),
+        do: {label, Map.fetch!(pools, resource_id)}
   end
 
   # Whether any pool the client holds admits the device, judged the same way a packet for it
@@ -3075,7 +3189,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?(_reason), do: true
 
   defmodule Database do
-    import Ecto.Query, only: [from: 2]
+    import Ecto.Query, only: [from: 2, dynamic: 1]
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,
@@ -3141,6 +3255,60 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> case do
         %Portal.Device{} = device -> {:ok, device}
         _ -> {:error, :not_found}
+      end
+    end
+
+    @doc """
+      The DNS label of each of the device pools, derived from its name by the rules device
+      slugs are made with. A pool whose name gives no label is left out.
+    """
+    def device_pool_labels([], _subject), do: []
+
+    def device_pool_labels(resource_ids, subject) do
+      from(r in Portal.Resource,
+        where: r.id in ^resource_ids,
+        select: {r.id, fragment("rtrim(left(device_slug_label(?), 63), '-')", r.name)}
+      )
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        labels -> Enum.reject(labels, &match?({_id, ""}, &1))
+      end
+    end
+
+    @doc """
+      The slugs of up to `limit` client devices that pools with any of these criteria hold
+      when `subject` asks, most recently seen first, and how many devices they hold in all.
+    """
+    def member_slugs(criteria, limit, subject) do
+      in_any_pool =
+        Enum.reduce(criteria, dynamic(false), fn criteria, in_any_pool ->
+          scope = Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)
+          dynamic(^in_any_pool or ^Portal.Resource.DeviceMembershipCriteria.members(criteria, scope))
+        end)
+
+      members = from(d in Portal.Device, as: :devices, where: d.type == :client, where: ^in_any_pool)
+
+      slugs =
+        from(d in members,
+          order_by: [desc_nulls_last: d.last_seen_at, asc: d.slug],
+          limit: ^(limit + 1),
+          select: d.slug
+        )
+        |> Portal.Safe.scoped(subject)
+        |> Portal.Safe.all()
+        |> case do
+          {:error, :unauthorized} -> []
+          slugs -> slugs
+        end
+
+      if length(slugs) > limit do
+        total = members |> Portal.Safe.scoped(subject) |> Portal.Safe.aggregate(:count)
+
+        {Enum.take(slugs, limit), total}
+      else
+        {slugs, length(slugs)}
       end
     end
 

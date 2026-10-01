@@ -93,6 +93,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     actors
     external_identities
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
@@ -162,6 +163,7 @@ config :portal, Portal.Changes.Consumer,
     resources
     client_tokens
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
@@ -326,6 +328,15 @@ config :portal, Portal.Google.AuthProvider,
   response_type: "code",
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+config :portal, Portal.GitHub.AuthProvider,
+  # Should match an OAuth App registered under the Firezone GitHub organization
+  client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),
+  client_secret: System.get_env("GITHUB_OAUTH_CLIENT_SECRET"),
+  authorize_endpoint: "https://github.com/login/oauth/authorize",
+  token_endpoint: "https://github.com/login/oauth/access_token",
+  api_endpoint: "https://api.github.com",
+  req_opts: []
 
 config :portal, Portal.Google.SyncAuthorization,
   # Dedicated OAuth client used only to authorize Google Workspace directory setup

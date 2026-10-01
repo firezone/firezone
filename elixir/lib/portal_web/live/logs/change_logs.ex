@@ -425,6 +425,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
       {"External identities", "external_identities"},
       {"Gateway tokens", "gateway_tokens"},
       {"Google auth providers", "google_auth_providers"},
+      {"GitHub auth providers", "github_auth_providers"},
       {"Google directories", "google_directories"},
       {"Groups", "groups"},
       {"Memberships", "memberships"},

@@ -1158,6 +1158,7 @@ defmodule PortalWeb.Components.Core do
     cond do
       String.contains?(issuer, "okta.com") -> "okta"
       String.contains?(issuer, "google.com") -> "google"
+      issuer == Portal.GitHub.AuthProvider.issuer() -> "github"
       String.contains?(issuer, "microsoftonline.com") -> "entra"
       true -> "oidc"
     end
@@ -1239,6 +1240,13 @@ defmodule PortalWeb.Components.Core do
       type: :image,
       src: ~p"/images/logo-google.svg",
       alt: "Google"
+    }
+  end
+
+  defp provider_icon_spec("github") do
+    %{
+      type: :icon,
+      name: "ri-github-fill"
     }
   end
 

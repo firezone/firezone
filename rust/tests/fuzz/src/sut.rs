@@ -1075,7 +1075,7 @@ impl TunnelTest {
                 let Some(transmit) = client.exec_mut(|sim| {
                     sim.on_received_packet(packet, &ref_state.icmp_error_hosts, now)
                 }) else {
-                    continue;
+                    continue 'outer;
                 };
 
                 buffered_transmits.push_from(transmit, client, now);
@@ -1539,6 +1539,7 @@ impl TunnelTest {
                             tunnel_proto::messages::IceRole::Controlled,
                             use_iceless,
                             "initiating client".to_owned(),
+                            portal.device_label(src),
                             None,
                             Some(remote_authorization),
                             test_ingest_token(),
@@ -1566,6 +1567,7 @@ impl TunnelTest {
                             tunnel_proto::messages::IceRole::Controlling,
                             use_iceless,
                             "target client".to_owned(),
+                            portal.device_label(remote_id),
                             Some(pool),
                             None,
                             test_ingest_token(),

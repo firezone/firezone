@@ -14,6 +14,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceUiModel
+import dev.firezone.android.features.session.ui.isDevicePool
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
@@ -32,17 +33,23 @@ fun ResourceRow(
             .padding(16.dp),
     ) {
         Text(text = resource.displayName, style = MaterialTheme.typography.bodyLarge)
-        if (!resource.isInternetResource()) {
-            resource.address?.let { address ->
-                Text(
-                    text = address,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        val subtitle =
+            when {
+                resource.isInternetResource() -> null
+                resource.isDevicePool() -> connectedDevicesSummary(resource.devices.size)
+                else -> resource.address
             }
+        subtitle?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
+
+private fun connectedDevicesSummary(count: Int): String = if (count == 1) "1 connected device" else "$count connected devices"
 
 @Preview(showBackground = true)
 @Composable

@@ -187,6 +187,16 @@ pub enum Resource {
     Dns { resource: DnsResource },
     Cidr { resource: CidrResource },
     Internet { resource: InternetResource },
+    DevicePool { resource: DevicePoolResource },
+}
+
+/// Device pool resource view
+#[derive(uniffi::Record)]
+pub struct DevicePoolResource {
+    pub id: String,
+    pub name: String,
+    /// The devices of this pool we currently have a live connection to.
+    pub devices: Vec<ConnectedDevice>,
 }
 
 /// A device peer that this client currently has a live connection to.
@@ -195,13 +205,12 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
     /// Tunnel IPv6 address the device is reachable on.
     pub tun_ipv6: String,
-    /// Names of the device pools this peer belongs to, sorted (typically one,
-    /// but can be multiple).
-    pub pools: Vec<String>,
 }
 
 #[derive(uniffi::Enum)]
@@ -216,7 +225,6 @@ pub enum Event {
     },
     ResourcesUpdated {
         resources: Vec<Resource>,
-        connected_devices: Vec<ConnectedDevice>,
     },
     ConnectedToPortal {
         account_slug: String,
@@ -341,7 +349,11 @@ pub fn connect_apple(
         udp_socket_factory,
     )?;
 
-    connection.session.set_tun(tun_fd)?;
+    let runtime = connection.session.runtime.as_ref().context("No runtime")?;
+    // SAFETY: NetworkExtension owns the descriptor and keeps it open for the session.
+    let tun = unsafe { platform::Tun::from_fd(tun_fd, runtime.handle()) }
+        .context("Failed to create new Tun")?;
+    connection.session.inner.set_tun(Box::new(tun));
 
     Ok(connection)
 }
@@ -445,15 +457,20 @@ impl Session {
 
         self.inner.reset(reason)
     }
+}
 
+#[cfg(target_os = "android")]
+#[uniffi::export]
+impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        use std::os::fd::{FromRawFd as _, OwnedFd};
+
         tracing::debug!("Received set_tun command");
 
         let runtime = self.runtime.as_ref().context("No runtime")?;
-        // SAFETY: FD must be open.
-        let tun = unsafe {
-            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
-        };
+        // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let tun = platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?;
 
         self.inner.set_tun(Box::new(tun));
 
@@ -498,22 +515,10 @@ impl EventStream {
                     ipv6_routes,
                 })
             }
-            client_shared::Event::ResourcesUpdated(resource_list) => {
-                let resources = resource_list
-                    .resources
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                let connected_devices = resource_list
-                    .connected_devices
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
+            client_shared::Event::ResourcesUpdated(resources) => {
+                let resources = resources.into_iter().map(Into::into).collect();
 
-                Some(Event::ResourcesUpdated {
-                    resources,
-                    connected_devices,
-                })
+                Some(Event::ResourcesUpdated { resources })
             }
             client_shared::Event::ConnectedToPortal(connected) => {
                 telemetry::set_account_slug(connected.account_slug.clone());
@@ -941,6 +946,9 @@ impl From<connlib_model::ResourceView> for Resource {
             connlib_model::ResourceView::Internet(internet) => Resource::Internet {
                 resource: internet.into(),
             },
+            connlib_model::ResourceView::DevicePool(pool) => Resource::DevicePool {
+                resource: pool.into(),
+            },
         }
     }
 }
@@ -982,14 +990,24 @@ impl From<connlib_model::InternetResourceView> for InternetResource {
     }
 }
 
+impl From<connlib_model::DevicePoolResourceView> for DevicePoolResource {
+    fn from(pool: connlib_model::DevicePoolResourceView) -> Self {
+        DevicePoolResource {
+            id: pool.id.to_string(),
+            name: pool.name,
+            devices: pool.devices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
             id: device.id.to_string(),
             name: device.name,
+            slug: device.slug,
             tun_ipv4: device.tun_ipv4.to_string(),
             tun_ipv6: device.tun_ipv6.to_string(),
-            pools: device.pools,
         }
     }
 }

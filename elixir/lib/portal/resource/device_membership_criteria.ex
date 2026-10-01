@@ -121,24 +121,27 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   returned for the subject asking.
   """
   @spec where_members(Ecto.Query.t(), t(), scope()) :: Ecto.Query.t()
-  def where_members(query, %__MODULE__{provider: :device, field: :id, op: :in, value: {:literal, ids}}, _scope) do
-    where(query, [devices: d], d.id in ^ids)
+  def where_members(query, criteria, scope), do: where(query, ^members(criteria, scope))
+
+  @doc "The condition `where_members/3` adds, to combine the members of several pools."
+  @spec members(t(), scope()) :: Ecto.Query.dynamic_expr()
+  def members(%__MODULE__{provider: :device, field: :id, op: :in, value: {:literal, ids}}, _scope) do
+    dynamic([devices: d], d.id in ^ids)
   end
 
-  def where_members(query, %__MODULE__{provider: :device, field: :actor_id, value: {:subject, :actor_id}}, {:actor, actor_id}) do
-    where(query, [devices: d], d.actor_id == ^actor_id)
+  def members(%__MODULE__{provider: :device, field: :actor_id, value: {:subject, :actor_id}}, {:actor, actor_id}) do
+    dynamic([devices: d], d.actor_id == ^actor_id)
   end
 
-  def where_members(query, %__MODULE__{provider: :device, field: :account_id, value: {:subject, :account_id}}, :all) do
-    query
+  def members(%__MODULE__{provider: :device, field: :account_id, value: {:subject, :account_id}}, :all) do
+    dynamic(true)
   end
 
   # The managed `Everyone` group has no membership rows: it holds every actor who signs in,
   # which is what `Cache.Client` synthesises for the client asking. The same rule has to hold
   # here, or a pool on that group would look empty.
-  def where_members(query, %__MODULE__{provider: :actor_group, field: :id, op: :eq, value: {:literal, group_id}}, :all) do
-    where(
-      query,
+  def members(%__MODULE__{provider: :actor_group, field: :id, op: :eq, value: {:literal, group_id}}, :all) do
+    dynamic(
       [devices: d],
       exists(
         from(m in Portal.Membership,

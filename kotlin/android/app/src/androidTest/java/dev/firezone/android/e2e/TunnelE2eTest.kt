@@ -19,13 +19,13 @@ import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
 import dev.firezone.android.tunnel.awaitTextOnScreen
-import dev.firezone.android.tunnel.benchController
 import dev.firezone.android.tunnel.clickTextOnScreen
 import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.internetResource
+import dev.firezone.android.tunnel.labHardware
 import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
@@ -85,7 +85,6 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
             ),
         )
         launchApp()
@@ -95,19 +94,21 @@ class TunnelE2eTest {
     }
 
     @Test
-    fun connectedDevicesReachTheScreen() {
+    fun devicePoolDevicesReachTheScreen() {
         val session = signInAndConnect()
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(engineeringWiki),
-                connectedDevices = listOf(benchController),
+                resources = listOf(labHardware),
             ),
         )
         launchApp()
 
-        awaitText("bench-controller-01")
-        awaitTextOnScreen("Connected Devices")
+        awaitText("Lab hardware")
+        clickTextOnScreen("Lab hardware")
+        awaitText("bench-controller-01.firezone.network")
+        clickTextOnScreen("bench-controller-01.firezone.network")
+        awaitText("100.64.3.18")
     }
 
     @Test
@@ -136,7 +137,6 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
             ),
         )
 
@@ -150,7 +150,6 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(internetResource),
-                connectedDevices = emptyList(),
             ),
         )
         launchApp()
