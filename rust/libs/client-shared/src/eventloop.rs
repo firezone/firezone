@@ -173,7 +173,7 @@ impl Eventloop {
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
-    ) -> Result<Self> {
+    ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
@@ -184,7 +184,7 @@ impl Eventloop {
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
-        )?;
+        );
         tunnel.update_system_resolvers(dns_servers.clone());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
@@ -198,7 +198,7 @@ impl Eventloop {
             dns_servers,
         ));
 
-        Ok(Self {
+        Self {
             clock,
             tunnel: Some(tunnel),
             resolver_bypass,
@@ -213,7 +213,7 @@ impl Eventloop {
             tun_config_sender,
             connected_as_sender,
             user_notification_sender,
-        })
+        }
     }
 }
 
@@ -497,6 +497,7 @@ impl Eventloop {
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
+                || e.any_is::<tunnel::CryptoWorkersUnavailable>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
                 return Err(e);

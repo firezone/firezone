@@ -6,12 +6,12 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
-pub use crypto::Received;
+pub use crypto::{CryptoWorkersUnavailable, Received};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
 use crate::{TunnelError, dns, otel, sockets::Sockets};
-use anyhow::{Context as _, ErrorExt, Result};
+use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
 use crypto::Crypto;
@@ -149,12 +149,11 @@ where
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
-    ) -> Result<Self> {
-        let crypto = Crypto::new().context("Failed to spawn crypto workers")?;
+    ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
-        Ok(Self {
+        Self {
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -180,13 +179,13 @@ where
             ),
             control_queue: VecDeque::new(),
             gso_queue: UdpGsoQueue::new(),
-            crypto,
+            crypto: Crypto::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
-        })
+        }
     }
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
@@ -276,6 +275,10 @@ where
             .poll_recv_from(cx, self.crypto.opens_in_flight());
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
+            error.push(e);
+        }
+
+        if let Some(e) = self.crypto.take_error() {
             error.push(e);
         }
 
@@ -754,8 +757,7 @@ mod tests {
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
-            )
-            .unwrap();
+            );
             io.set_tun(Box::new(DummyTun::new()));
 
             io

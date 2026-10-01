@@ -255,7 +255,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         Arc::new(UdpSocketFactory::default()),
         nameservers,
         clock.now(),
-    )?;
+    );
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 

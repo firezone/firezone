@@ -11,6 +11,7 @@ use std::{
     thread,
 };
 
+use anyhow::Context as _;
 use futures::task::AtomicWaker;
 use ip_packet::Ecn;
 use snownet::{DecryptedPacket, EncryptedPacket};
@@ -41,6 +42,10 @@ pub struct Received<P> {
     pub packet: P,
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("Crypto workers unavailable")]
+pub struct CryptoWorkersUnavailable;
+
 /// Seals and opens batches of WireGuard data messages on dedicated worker threads.
 ///
 /// Each worker runs its jobs in the order they were submitted. The seals and the opens for one peer
@@ -49,6 +54,7 @@ pub struct Received<P> {
 /// socket; opened packets come back over a channel polled by the main thread.
 pub struct Crypto<TId> {
     workers: Vec<crossbeam_channel::Sender<Job<TId>>>,
+    spawn_error: Option<anyhow::Error>,
     seals_in_flight: Arc<SealsInFlight>,
     opens_in_flight: Arc<AtomicUsize>,
     opened_rx: mpsc::UnboundedReceiver<Opened<TId>>,
@@ -58,7 +64,7 @@ impl<TId> Crypto<TId>
 where
     TId: Send + 'static,
 {
-    pub fn new() -> io::Result<Self> {
+    pub fn new() -> Self {
         let (opened_tx, opened_rx) = mpsc::unbounded_channel();
         let seals_in_flight = Arc::new(SealsInFlight::default());
 
@@ -80,14 +86,28 @@ where
 
                 Ok(jobs_tx)
             })
-            .collect::<io::Result<_>>()?;
+            .collect::<io::Result<_>>()
+            .context(CryptoWorkersUnavailable);
 
-        Ok(Self {
+        let (workers, spawn_error) = match workers {
+            Ok(workers) => (workers, None),
+            Err(e) => (Vec::new(), Some(e)),
+        };
+
+        Self {
             workers,
+            spawn_error,
             seals_in_flight,
             opens_in_flight: Arc::default(),
             opened_rx,
-        })
+        }
+    }
+
+    /// Returns the error that prevented the workers from starting, once.
+    ///
+    /// Without workers, all batches are dropped.
+    pub fn take_error(&mut self) -> Option<anyhow::Error> {
+        self.spawn_error.take()
     }
 
     pub fn poll_seal_ready(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -107,7 +127,10 @@ where
     /// Seals `datagram` and sends it to `socket`, after all batches previously submitted to the
     /// same peer.
     pub fn seal(&mut self, datagram: PendingDatagram, socket: mpsc::Sender<DatagramOut>) {
-        let worker = &self.workers[self.worker_index(datagram.datagram().dst, Direction::Seal)];
+        let Some(index) = self.worker_index(datagram.datagram().dst, Direction::Seal) else {
+            return;
+        };
+        let worker = &self.workers[index];
 
         self.seals_in_flight.count.fetch_add(1, Ordering::Relaxed);
 
@@ -128,7 +151,11 @@ where
             .collect::<Vec<_>>();
 
         for received in packets {
-            parts[self.worker_index(received.from, Direction::Open)].push(received);
+            let Some(index) = self.worker_index(received.from, Direction::Open) else {
+                return;
+            };
+
+            parts[index].push(received);
         }
 
         for (worker, part) in self.workers.iter().zip(parts) {
@@ -160,13 +187,14 @@ where
         .collect()
     }
 
-    fn worker_index(&self, peer: SocketAddr, direction: Direction) -> usize {
+    fn worker_index(&self, peer: SocketAddr, direction: Direction) -> Option<usize> {
         let mut hasher = DefaultHasher::new();
         peer.hash(&mut hasher);
 
         let num_workers = self.workers.len();
+        let index = (hasher.finish() as usize).checked_rem(num_workers)?;
 
-        (hasher.finish() as usize % num_workers + direction as usize) % num_workers
+        Some((index + direction as usize) % num_workers)
     }
 }
 
@@ -261,7 +289,7 @@ mod tests {
         let now = Instant::now();
         let (mut alice, mut bob) = connected_tunnels(now);
         let mut queue = UdpGsoQueue::new();
-        let mut crypto = Crypto::<()>::new().unwrap();
+        let mut crypto = Crypto::<()>::new();
         let (socket, mut sent) = mpsc::channel(MAX_SEALS_IN_FLIGHT);
         // A longer segment cannot join the previous batch, so every length starts a new one.
         let packets = [100, 200, 300, 400]

@@ -93,7 +93,7 @@ impl Session {
             |resource_list_sender,
              tun_config_sender,
              connected_as_sender,
-             user_notification_sender| async move {
+             user_notification_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -107,9 +107,8 @@ impl Session {
                     tun_config_sender,
                     connected_as_sender,
                     user_notification_sender,
-                )?
+                )
                 .run()
-                .await
             },
             handle,
         );
