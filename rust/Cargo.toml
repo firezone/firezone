@@ -62,6 +62,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/proto",
     "relay/server",
+    "tests/connlib-profile",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",

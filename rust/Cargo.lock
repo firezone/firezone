@@ -1493,6 +1493,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "connlib-profile"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bufferpool",
+ "clap",
+ "connlib-model",
+ "crossbeam-channel",
+ "flow-tracker",
+ "futures",
+ "ip-packet",
+ "ip_network",
+ "libc",
+ "opentelemetry",
+ "rand 0.10.3",
+ "relay-proto",
+ "secrecy",
+ "serde_json",
+ "snownet",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "tun",
+ "tunnel",
+ "uuid",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

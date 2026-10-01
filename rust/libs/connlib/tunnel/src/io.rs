@@ -6,15 +6,15 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
-pub use crypto::Received;
+pub use crypto::{Crypto, Received};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub(crate) use udp_gso_queue::GSO_BUFFER_SIZE;
+pub use udp_gso_queue::{PendingDatagram, UdpGsoQueue};
 
 use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
-use crypto::Crypto;
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,

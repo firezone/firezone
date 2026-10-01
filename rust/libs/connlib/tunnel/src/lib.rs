@@ -35,6 +35,12 @@ mod utils;
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
+
+/// Main-thread IO building blocks, exposed for the in-memory profiling harness.
+#[doc(hidden)]
+pub mod profiling {
+    pub use crate::io::{Crypto, PendingDatagram, Received, UdpGsoQueue};
+}
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
