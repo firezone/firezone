@@ -166,7 +166,7 @@ impl<S> Tracker<S> {
 ///
 /// `std` draws its keys from `getrandom`, which the fuzzer interposes to stay
 /// deterministic; `foldhash`'s own random seed would bypass it.
-fn random_foldhash() -> FixedState {
+pub fn random_foldhash() -> FixedState {
     FixedState::with_seed(RandomState::new().hash_one(()))
 }
 

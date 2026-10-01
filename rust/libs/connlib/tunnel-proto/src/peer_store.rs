@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
-use crate::hasher::random_foldhash;
+use flow_tracker::random_foldhash;
 
 pub(crate) struct PeerStore<TId, P> {
     id_by_ip: HashMap<IpAddr, TId, FixedState>,

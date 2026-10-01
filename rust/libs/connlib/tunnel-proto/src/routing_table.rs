@@ -14,7 +14,7 @@ use itertools::Itertools as _;
 use lru::LruCache;
 
 use crate::filter_engine::FilterEngine;
-use crate::hasher::random_foldhash;
+use flow_tracker::random_foldhash;
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
