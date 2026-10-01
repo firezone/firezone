@@ -16,17 +16,31 @@
 
     var body: some View {
       Section(header: Text("Connected Devices")) {
-        if devices.isEmpty {
-          Text("No connected devices")
-            .foregroundColor(.secondary)
-        } else {
-          ForEach(devices) { device in
-            NavigationLink(value: device) {
-              deviceLabel(device)
-            }
+        ForEach(devices) { device in
+          NavigationLink(value: device) {
+            deviceLabel(device)
           }
         }
       }
+    }
+  }
+
+  /// Shown in place of the device list while a pool has no connected devices.
+  struct NoConnectedDevicesView: View {
+    var body: some View {
+      VStack(spacing: 8) {
+        Image(systemName: "laptopcomputer.and.iphone")
+          .font(.system(size: 48))
+          .foregroundColor(.secondary)
+          .padding(.bottom, 8)
+        Text("No connected devices")
+          .font(.title2.bold())
+        Text("Devices in this pool will appear here once they're online.")
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+          .multilineTextAlignment(.center)
+      }
+      .padding()
     }
   }
 
