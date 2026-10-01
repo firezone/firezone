@@ -1,6 +1,6 @@
 //! Bulk TUN I/O using Apple's `recvmsg_x` / `sendmsg_x` (see [`super::sys`]).
 //!
-//! These mirror [`crate::unix::tun_send`] / [`crate::unix::tun_recv`] but exchange a
+//! These mirror [`crate::per_packet_io::tun_send`] / [`crate::per_packet_io::tun_recv`] but exchange a
 //! whole batch of packets with the `utun` socket per syscall. The read side is the
 //! bigger win: the kernel dequeues the batch under a single lock and only runs its
 //! flow-control hand-off once per batch instead of once per packet.
@@ -17,7 +17,7 @@ use std::pin::pin;
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::sys;
-use crate::{MAX_BATCH_SIZE, PacketBatch};
+use tun::{MAX_BATCH_SIZE, PacketBatch};
 
 const EMPTY_IOVEC: iovec = iovec {
     iov_base: std::ptr::null_mut(),
@@ -28,7 +28,7 @@ const EMPTY_IOVEC: iovec = iovec {
 pub fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    mut outbound_rx: crate::OutboundRx,
+    mut outbound_rx: tun::OutboundRx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
@@ -96,7 +96,7 @@ pub fn send(
 pub fn recv(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
-    inbound_tx: crate::InboundTx,
+    inbound_tx: tun::InboundTx,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
 
@@ -129,7 +129,7 @@ pub fn recv(
                 };
 
                 // `recvmsg_x` reports "nothing to read" as `-1`/`EWOULDBLOCK` (which `async_io`
-                // parks on); `0` datagrams means EOF — the fd has been closed.
+                // parks on); `0` datagrams means EOF , the fd has been closed.
                 if n == 0 {
                     bail!("TUN file descriptor is closed");
                 }

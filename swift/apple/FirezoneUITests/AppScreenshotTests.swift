@@ -109,10 +109,25 @@
     }
 
     /// The menu bar menu with a resource hovered, so its submenu is open beside it.
+    func testMenuWithResource() throws {
+      try captureMenu(hovering: "Engineering wiki", showing: "Copy address", as: "menu")
+    }
+
+    /// The menu bar menu with a device pool hovered, so its connected devices are
+    /// listed beside it.
+    func testMenuWithDevicePool() throws {
+      try captureMenu(
+        hovering: "Lab hardware", showing: "bench-controller-01", as: "menu-device-pool")
+    }
+
+    /// Photographs the menu with the row titled `title` hovered, together with the
+    /// submenu it opens, which is told apart from the others by carrying `anchor`.
     ///
     /// macOS 26 only: before it, the menu redraws its whole background a few steps
     /// differently on every run once the submenu is open, so there is no picture to keep.
-    func testMenuWithResource() throws {
+    private func captureMenu(
+      hovering title: String, showing anchor: String, as name: String
+    ) throws {
       try XCTSkipIf(
         ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26,
         "the menu does not render repeatably before macOS 26"
@@ -124,7 +139,7 @@
 
         let menu = try openMenu(of: app)
         // The row and the submenu it opens share the title.
-        let row = menu.menuItems["Engineering wiki"].firstMatch
+        let row = menu.menuItems[title].firstMatch
         let menuFrame = menu.frame
         let rowFrame = row.frame
 
@@ -140,15 +155,15 @@
         corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
         corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
 
-        let submenu = try openedSubmenu(of: row)
+        let submenu = try openedSubmenu(of: row, showing: anchor)
 
-        capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+        capture([menuFrame, submenu.frame], as: name, in: appearance)
 
         // Only the pointer resting on the row holds the submenu open, and the
         // capture waits seconds for the screen to hold still. A submenu that
         // closed in that time leaves the plain menu behind, which holds still
         // perfectly and photographs as a screen this test never asked for.
-        guard submenuIsOpen(of: row) else {
+        guard submenuIsOpen(of: row, showing: anchor) else {
           print("The submenu closed while it was photographed; the row presents:")
           print(row.debugDescription)
 
@@ -208,12 +223,12 @@
       return menu
     }
 
-    /// Whether the submenu the hovered `row` opens is on screen.
+    /// Whether the submenu the hovered `row` opens, which carries `anchor`, is on screen.
     ///
     /// Hittable rather than present: every resource carries a submenu and they are
     /// all in the tree before any of them is shown.
-    private func submenuIsOpen(of row: XCUIElement) -> Bool {
-      let item = row.menuItems["Copy address"].firstMatch
+    private func submenuIsOpen(of row: XCUIElement, showing anchor: String) -> Bool {
+      let item = row.menuItems[anchor].firstMatch
 
       return item.exists && item.isHittable
     }
@@ -224,11 +239,13 @@
     /// carries a submenu and they are all in the tree before any of them is shown, so
     /// that handed back menus that were never on screen, whose frame the capture was
     /// then cropped to.
-    private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
+    private func openedSubmenu(
+      of row: XCUIElement, showing anchor: String
+    ) throws -> XCUIElement {
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        if submenuIsOpen(of: row) { return row.menus.firstMatch }
+        if submenuIsOpen(of: row, showing: anchor) { return row.menus.firstMatch }
 
         Thread.sleep(forTimeInterval: 0.5)
       }

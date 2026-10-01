@@ -14,7 +14,7 @@ defmodule Portal.Resource do
           ports: [Portal.Types.Int4Range.t()]
         }
 
-  @self_device_pool_name "Your devices"
+  @self_device_pool_name "My devices"
 
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
@@ -98,7 +98,7 @@ defmodule Portal.Resource do
   end
 
   @doc """
-  Attributes of the `Your devices` pool every account gets at creation: a device
+  Attributes of the `My devices` pool every account gets at creation: a device
   pool holding each actor's own devices, reached at `<slug>.firezone.network`,
   see `Portal.Device.fqdn/1`.
   """

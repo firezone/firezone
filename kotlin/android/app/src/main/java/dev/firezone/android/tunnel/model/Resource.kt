@@ -16,6 +16,7 @@ data class Resource(
     val sites: List<Site>?,
     val name: String,
     val status: StatusEnum,
+    val devices: List<ConnectedDevice> = emptyList(),
 ) : Parcelable
 
 fun Resource.isInternetResource(): Boolean = this.type == ResourceType.Internet
@@ -32,6 +33,9 @@ enum class ResourceType {
 
     @Json(name = "internet")
     Internet,
+
+    @Json(name = "device_pool")
+    DevicePool,
 }
 
 enum class StatusEnum {

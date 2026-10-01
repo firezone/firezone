@@ -47,15 +47,30 @@ internal fun uniffi.connlib.Resource.toModel(): Resource =
                 )
             }
         }
+
+        is uniffi.connlib.Resource.DevicePool -> {
+            resource.let { r ->
+                Resource(
+                    ResourceType.DevicePool,
+                    r.id,
+                    null,
+                    null,
+                    emptyList(),
+                    r.name,
+                    StatusEnum.UNKNOWN,
+                    r.devices.map { it.toModel() },
+                )
+            }
+        }
     }
 
 internal fun uniffi.connlib.ConnectedDevice.toModel(): ConnectedDevice =
     ConnectedDevice(
         id = id,
         name = name,
+        slug = slug,
         tunIpv4 = tunIpv4,
         tunIpv6 = tunIpv6,
-        pools = pools,
     )
 
 private fun uniffi.connlib.Site.toModel() = Site(id = id, name = name)

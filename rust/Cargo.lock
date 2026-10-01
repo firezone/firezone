@@ -775,10 +775,6 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.31.3",
- "opentelemetry",
- "otel-attributes",
- "otel-instruments",
- "packet-coalescer",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -793,6 +789,9 @@ dependencies = [
  "tower",
  "tracing",
  "tun",
+ "tun-ioctl",
+ "tun-linux",
+ "tun-windows",
  "uuid",
  "windows",
  "windows-core",
@@ -1332,7 +1331,6 @@ dependencies = [
  "connlib-model",
  "flow-log-upload",
  "flow-log-writer",
- "ip-packet",
  "ip_network",
  "itertools 0.15.0",
  "libc",
@@ -1340,8 +1338,6 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
- "otel-attributes",
- "otel-instruments",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1352,7 +1348,8 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "tun",
+ "tun-android",
+ "tun-apple",
  "tunnel-bypass-resolver",
  "uniffi",
  "x509-claims-ffi",
@@ -2599,6 +2596,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tunnel-bypass-resolver",
+ "tunnel-proto",
  "url",
  "uuid",
  "windows",
@@ -5600,15 +5598,6 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
-
-[[package]]
-name = "packet-coalescer"
-version = "0.1.0"
-dependencies = [
- "bufferpool",
- "ingot",
- "ip-packet",
-]
 
 [[package]]
 name = "pango"
@@ -8725,16 +8714,93 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bufferpool",
+ "ip-packet",
+ "logging",
+ "otel-attributes",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tun-android"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
  "futures",
- "ingot",
  "ip-packet",
  "libc",
  "opentelemetry",
  "otel-instruments",
- "packet-coalescer",
- "smallvec",
  "tokio",
  "tracing",
+ "tun",
+ "tun-ioctl",
+]
+
+[[package]]
+name = "tun-apple"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "ip-packet",
+ "libc",
+ "opentelemetry",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+ "tun",
+]
+
+[[package]]
+name = "tun-ioctl"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "tun-linux"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "ip-packet",
+ "libc",
+ "opentelemetry",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+ "tun",
+ "tun-offload",
+]
+
+[[package]]
+name = "tun-offload"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bufferpool",
+ "ingot",
+ "ip-packet",
+ "smallvec",
+ "tracing",
+]
+
+[[package]]
+name = "tun-windows"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "ip-packet",
+ "opentelemetry",
+ "otel-instruments",
+ "tokio",
+ "tracing",
+ "tun",
+ "tun-offload",
+ "wintun",
 ]
 
 [[package]]

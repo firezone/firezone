@@ -1,20 +1,17 @@
+#![cfg(target_os = "linux")]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 //! Linux-specific TUN I/O using segmentation offloads (`IFF_VNET_HDR` + `TUNSETOFFLOAD`).
 //!
 //! With offloads enabled, the kernel exchanges "super packets" of up to 64 KiB with us:
 //!
 //! - Reads may return a single TSO / USO packet that we split into MTU-sized [`IpPacket`](ip_packet::IpPacket)s
-//!   before handing them to the main thread ([`split`]).
+//!   before handing them to the main thread ([`tun_offload::virtio::split()`]).
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
-//!   kernel's network stack as a single skb ([`packet_coalescer`]).
+//!   kernel's network stack as a single skb ([`tun_offload::PacketCoalescer`]).
 //!
 //! Each item on the outbound channel is one batch of packets that arrived together
 //! upstream; coalescing extends across exactly that batch.
-
-mod split;
-mod virtio;
-
-#[cfg(test)]
-mod tests;
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
@@ -26,14 +23,51 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::pin::pin;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
-use virtio::VNET_HDR_LEN;
+use tun_offload::virtio::{self, VNET_HDR_LEN};
 
-use crate::{InboundTx, OutboundRx, PacketBatch};
-use packet_coalescer::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
+use tun::{InboundTx, OutboundRx, PacketBatch};
+use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
 /// possible IP packet.
 const READ_BUFFER_SIZE: usize = VNET_HDR_LEN + u16::MAX as usize;
+
+pub struct Io {
+    name: String,
+    workers: tun::Workers,
+}
+
+impl Io {
+    pub fn new(
+        name: impl Into<String>,
+        fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
+        runtime: &tokio::runtime::Handle,
+    ) -> Result<Self> {
+        let send_fd = fd.clone();
+        let workers = tun::Workers::spawn(
+            runtime,
+            move |outbound_rx| tun_send(send_fd, outbound_rx),
+            move |inbound_tx| tun_recv(fd, inbound_tx),
+        )?;
+
+        Ok(Self {
+            name: name.into(),
+            workers,
+        })
+    }
+}
+
+impl tun::Tun for Io {
+    fn sender(&self) -> &tun::OutboundTx {
+        self.workers.sender()
+    }
+    fn receiver(&mut self) -> &mut tun::InboundRx {
+        self.workers.receiver()
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
 
 /// A TUN device file descriptor together with whether segmentation offloads are enabled on it.
 ///
@@ -53,7 +87,7 @@ impl<T> TunFd<T> {
 }
 
 /// Sends packets from `outbound_rx` to the TUN device, coalescing where possible.
-pub fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
+fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
 where
     T: AsRawFd,
 {
@@ -181,7 +215,7 @@ where
 }
 
 /// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`](ip_packet::IpPacket)s.
-pub fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
+fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
 where
     T: AsRawFd,
 {
@@ -241,7 +275,7 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    match split::split(&buf[..len]) {
+                    match virtio::split(&buf[..len]) {
                         Ok(mut segments) => {
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());

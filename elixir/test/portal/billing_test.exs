@@ -753,7 +753,7 @@ defmodule Portal.BillingTest do
       assert {:ok, _resource} = Portal.Billing.Database.fetch_internet_resource(account)
     end
 
-    test "creates the Your devices pool, the Account owner group and the policy", %{
+    test "creates the My devices pool, the Account owner group and the policy", %{
       account: account
     } do
       Portal.Config.put_env_override(Portal.Billing, enabled: false)
@@ -762,7 +762,7 @@ defmodule Portal.BillingTest do
       assert {:ok, ^account} = Portal.Billing.provision_account(account)
 
       pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
-      assert pool.name == "Your devices"
+      assert pool.name == "My devices"
 
       assert pool.device_membership_criteria ==
                Portal.Resource.DeviceMembershipCriteria.own_devices()

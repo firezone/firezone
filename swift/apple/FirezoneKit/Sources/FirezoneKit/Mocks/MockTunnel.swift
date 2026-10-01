@@ -33,7 +33,6 @@
     /// The actor the portal would name on `init`; absent unless the scenario is connected.
     let actorName: String?
     let resources: [Resource]
-    let connectedDevices: [ConnectedDevice]
     let favorites: [String]
     let providerLogFolderSize: Int64
     /// Bytes of random data the app's log directory holds on top of its fixed lines.
@@ -188,7 +187,6 @@
       let session = MockTunnelSession(
         status: scenario.vpnStatus.status,
         resources: scenario.resources,
-        connectedDevices: scenario.connectedDevices,
         actorName: scenario.actorName,
         providerLogFolderSize: scenario.providerLogFolderSize
       )

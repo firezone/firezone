@@ -15,7 +15,7 @@ use bin_shared::{
 };
 use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
-use connlib_model::{ResourceId, ResourceList};
+use connlib_model::{ResourceId, ResourceView};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -108,7 +108,7 @@ pub enum ServerMsg {
     GatewayVersionMismatch {
         resource_id: ResourceId,
     },
-    OnUpdateResources(ResourceList),
+    OnUpdateResources(Vec<ResourceView>),
     /// Connlib connected to the portal, which named the account and actor this session belongs to.
     ConnectedToPortal(ConnectedAs),
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
