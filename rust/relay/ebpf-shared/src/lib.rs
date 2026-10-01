@@ -245,6 +245,8 @@ impl PortAndPeerV6 {
 pub struct StatsEvent {
     relayed_data: u64,
     processing_duration_ns: u64,
+    // Stats are host-native values, not network-order packet fields. The producer and
+    // consumer run on the same host; u64 fields keep the perf record free of padding.
     ip_version: u64,
     ecn: u64,
 }
@@ -269,13 +271,13 @@ impl StatsEvent {
     }
 
     /// Incoming IP version, before address-family translation.
-    pub fn ip_version(&self) -> u64 {
-        self.ip_version
+    pub fn ip_version(&self) -> u8 {
+        self.ip_version as u8
     }
 
     /// Incoming ECN codepoint: Not-ECT (0), ECT(1) (1), ECT(0) (2), or CE (3).
-    pub fn ecn(&self) -> u64 {
-        self.ecn
+    pub fn ecn(&self) -> u8 {
+        self.ecn as u8
     }
 
     /// Time the XDP program spent processing this packet.
@@ -334,6 +336,37 @@ fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
 #[cfg(all(test, feature = "std"))]
 mod stats_event_tests {
     use super::*;
+    use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
+
+    #[test]
+    fn extracts_ecn_from_network_order_headers() {
+        for dscp in 0..=63_u8 {
+            for ecn in 0..=3_u8 {
+                let traffic_class = (dscp << 2) | ecn;
+                let mut ipv4_bytes = [0_u8; Ipv4Hdr::LEN];
+                ipv4_bytes[0] = 0x45;
+                ipv4_bytes[1] = traffic_class;
+                // SAFETY: Ipv4Hdr contains only bytes and byte arrays, with no padding.
+                let ipv4: Ipv4Hdr = unsafe { core::mem::transmute(ipv4_bytes) };
+                assert_eq!(ipv4.ecn(), ecn);
+
+                let mut ipv6_bytes = [0_u8; Ipv6Hdr::LEN];
+                ipv6_bytes[0] = 0x60 | (traffic_class >> 4);
+                ipv6_bytes[1] = (traffic_class << 4) | 0x0f;
+                // SAFETY: Ipv6Hdr contains only bytes and byte arrays, with no padding.
+                let ipv6: Ipv6Hdr = unsafe { core::mem::transmute(ipv6_bytes) };
+                assert_eq!(ipv6.ecn(), ecn);
+                for (version, codepoint) in [(4, ipv4.ecn()), (6, ipv6.ecn())] {
+                    let event = StatsEvent::new(0, core::time::Duration::ZERO, version, codepoint);
+                    // SAFETY: StatsEvent contains only u64 fields and has no padding.
+                    let bytes: [u8; 32] = unsafe { core::mem::transmute(event) };
+                    let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+                    assert_eq!(parsed.ip_version(), version);
+                    assert_eq!(parsed.ecn(), ecn);
+                }
+            }
+        }
+    }
 
     #[test]
     fn from_bytes_roundtrips_the_wire_format() {
@@ -405,6 +438,20 @@ mod stats_event_tests {
     }
 
     #[test]
+    fn converts_u8_metadata_through_native_endian_perf_fields() {
+        for value in u8::MIN..=u8::MAX {
+            let event = StatsEvent::new(0, core::time::Duration::ZERO, value, value);
+            // SAFETY: StatsEvent contains only u64 fields and has no padding.
+            let bytes: [u8; 32] = unsafe { core::mem::transmute(event) };
+            assert_eq!(&bytes[16..24], &u64::from(value).to_ne_bytes());
+            assert_eq!(&bytes[24..32], &u64::from(value).to_ne_bytes());
+            let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+            assert_eq!(parsed.ip_version(), value);
+            assert_eq!(parsed.ecn(), value);
+        }
+    }
+
+    #[test]
     fn preserves_each_ip_version_and_ecn_codepoint() {
         for ip_version in [4, 6] {
             for ecn in 0..=3 {
@@ -413,8 +460,8 @@ mod stats_event_tests {
                 // SAFETY: StatsEvent contains only u64 fields and has no padding.
                 let bytes: [u8; 32] = unsafe { core::mem::transmute(original) };
                 let parsed = StatsEvent::from_bytes(&bytes).unwrap();
-                assert_eq!(parsed.ip_version(), u64::from(ip_version));
-                assert_eq!(parsed.ecn(), u64::from(ecn));
+                assert_eq!(parsed.ip_version(), ip_version);
+                assert_eq!(parsed.ecn(), ecn);
             }
         }
     }

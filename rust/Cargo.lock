@@ -2238,6 +2238,7 @@ version = "0.1.0"
 dependencies = [
  "aya",
  "derive_more",
+ "network-types",
 ]
 
 [[package]]

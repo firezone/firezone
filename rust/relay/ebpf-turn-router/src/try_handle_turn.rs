@@ -50,6 +50,8 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
+    // ECN accessors extract bits from individual header bytes, so the resulting u8
+    // needs no endian conversion. IP versions below are host-native constants.
     let (num_bytes, ip_version, ecn) = match eth.ether_type() {
         Ok(EtherType::Ipv4) => {
             // SAFETY: The offset points to the incoming IPv4 header.

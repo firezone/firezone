@@ -66,10 +66,64 @@ pub fn datapath_xdp() -> KeyValue {
 
 /// Counter of relayed packets by incoming IP version and ECN codepoint.
 /// Includes Not-ECT packets to measure the proportion of ECN-capable traffic.
-pub fn packet_ecn() -> Counter<u64> {
+pub fn packets() -> Counter<u64> {
     opentelemetry::global::meter("relay")
-        .u64_counter("relay.packet.ecn")
-        .with_description("Relayed packets by incoming IP version and ECN codepoint")
+        .u64_counter("relay.packets")
+        .with_description("The number of relayed packets")
         .with_unit("{packet}")
         .build()
+}
+
+/// Incoming OSI network-layer protocol, using OpenTelemetry's `network.type` convention.
+pub fn network_type(ip_version: u8) -> KeyValue {
+    KeyValue::new(
+        "network.type",
+        match ip_version {
+            4 => "ipv4",
+            6 => "ipv6",
+            _ => "unknown",
+        },
+    )
+}
+
+/// Incoming IP ECN codepoint. `network.ecn` is a custom attribute, not an OTel standard.
+pub fn network_ecn(ecn: u8) -> KeyValue {
+    KeyValue::new(
+        "network.ecn",
+        match ecn {
+            0 => "not_ect",
+            1 => "ect1",
+            2 => "ect0",
+            3 => "ce",
+            _ => "unknown",
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_network_types() {
+        for (version, expected) in [(4, "ipv4"), (6, "ipv6"), (0, "unknown")] {
+            assert_eq!(
+                network_type(version),
+                KeyValue::new("network.type", expected)
+            );
+        }
+    }
+
+    #[test]
+    fn maps_ecn_codepoints() {
+        for (ecn, expected) in [
+            (0, "not_ect"),
+            (1, "ect1"),
+            (2, "ect0"),
+            (3, "ce"),
+            (4, "unknown"),
+        ] {
+            assert_eq!(network_ecn(ecn), KeyValue::new("network.ecn", expected));
+        }
+    }
 }
