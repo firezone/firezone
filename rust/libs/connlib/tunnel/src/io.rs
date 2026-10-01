@@ -268,6 +268,7 @@ where
             }
         }
 
+        self.crypto.poll_opened(cx);
         let decrypted = iter::from_fn(|| self.crypto.pop_opened()).collect::<Vec<_>>();
         let network = self
             .sockets
@@ -407,41 +408,36 @@ where
         Poll::Ready(Ok(()))
     }
 
-    /// Sends the queued control messages, hands the queued batches to the crypto workers and sends
-    /// the sealed ones.
+    /// Sends the queued control messages and hands the queued batches to the crypto workers, which
+    /// send them once sealed.
     ///
-    /// Sealed batches are sent in the order they were queued, so a connection's data messages leave
-    /// in counter order. Pending while the socket or the crypto workers are at capacity.
+    /// Pending while the socket or the crypto workers are at capacity.
     pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.crypto.poll_completed(cx);
-
-        loop {
+        while !self.control_queue.is_empty() {
             ready!(self.sockets.poll_send_ready(cx)?);
 
-            if let Some(datagram) = self
-                .control_queue
-                .pop_front()
-                .or_else(|| self.crypto.pop_sealed())
-            {
-                self.send_datagram(datagram)?;
-                continue;
+            if let Some(datagram) = self.control_queue.pop_front() {
+                self.count_transmit(&datagram);
+                self.sockets.send(datagram)?;
             }
+        }
 
-            if !self.crypto.can_seal() {
-                return Poll::Pending;
-            }
+        loop {
+            ready!(self.crypto.poll_seal_ready(cx));
 
             let Some(datagram) = self.gso_queue.pop() else {
                 break;
             };
 
-            self.crypto.seal(datagram);
+            self.count_transmit(datagram.datagram());
+            let socket = self.sockets.sender(datagram.datagram().dst)?;
+            self.crypto.seal(datagram, socket);
         }
 
         Poll::Ready(Ok(()))
     }
 
-    fn send_datagram(&mut self, datagram: DatagramOut) -> Result<()> {
+    fn count_transmit(&self, datagram: &DatagramOut) {
         for segment in datagram.packet.chunks(datagram.segment_size) {
             self.packet_counter.add(
                 1,
@@ -452,10 +448,6 @@ where
                 ],
             );
         }
-
-        self.sockets.send(datagram)?;
-
-        Ok(())
     }
 
     /// Decrypts a batch of packets off the main thread, yielding them via [`Input::decrypted`].

@@ -85,8 +85,9 @@ pub struct PendingDatagram {
 }
 
 impl PendingDatagram {
-    pub fn num_seals(&self) -> usize {
-        self.seals.len()
+    /// The datagram, not yet ready to be sent.
+    pub fn datagram(&self) -> &DatagramOut {
+        &self.datagram
     }
 
     /// Encrypts all data messages in the batch, which is then ready to be sent.

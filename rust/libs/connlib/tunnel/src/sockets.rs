@@ -112,7 +112,24 @@ impl Sockets {
     }
 
     pub fn send(&mut self, datagram: DatagramOut) -> Result<()> {
-        let socket = match datagram.dst {
+        self.socket_for(datagram.dst)?.send(datagram)
+    }
+
+    /// A channel to the socket that sends to `dst`, for sending from another thread.
+    pub fn sender(&mut self, dst: SocketAddr) -> Result<mpsc::Sender<DatagramOut>> {
+        let sender = self
+            .socket_for(dst)?
+            .channels_mut()?
+            .outbound_tx
+            .get_ref()
+            .ok_or(UdpSocketThreadStopped)?
+            .clone();
+
+        Ok(sender)
+    }
+
+    fn socket_for(&mut self, dst: SocketAddr) -> Result<&mut ThreadedUdpSocket> {
+        let socket = match dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotConnected,
@@ -126,9 +143,8 @@ impl Sockets {
                 )
             })?,
         };
-        socket.send(datagram)?;
 
-        Ok(())
+        Ok(socket)
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
