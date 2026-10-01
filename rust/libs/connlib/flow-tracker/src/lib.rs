@@ -27,7 +27,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, hash_map},
     fmt::Debug,
-    hash::{BuildHasher as _, Hash, RandomState},
+    hash::Hash,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -35,7 +35,7 @@ use std::{
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
-use foldhash::fast::FixedState;
+use fast_random_state::FastRandomState;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use smallvec::{SmallVec, smallvec};
 
@@ -90,8 +90,8 @@ impl Scope for (ClientId, ResourceId) {
 /// identifies a flow (see the module docs).
 #[derive(Debug)]
 pub struct Tracker<S> {
-    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FixedState>,
-    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FixedState>,
+    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
+    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
 
     enabled: bool,
     created_at: Instant,
@@ -142,8 +142,8 @@ impl<S> Tracker<S> {
             .unwrap_or(DateTime::UNIX_EPOCH);
 
         Self {
-            active_tcp_flows: HashMap::with_hasher(random_foldhash()),
-            active_udp_flows: HashMap::with_hasher(random_foldhash()),
+            active_tcp_flows: HashMap::default(),
+            active_udp_flows: HashMap::default(),
             enabled: false,
             created_at: now,
             created_at_utc,
@@ -160,14 +160,6 @@ impl<S> Tracker<S> {
 
         self.enabled = enabled;
     }
-}
-
-/// Builds a `foldhash` hasher with a seed drawn from `std`'s [`RandomState`].
-///
-/// `std` draws its keys from `getrandom`, which the fuzzer interposes to stay
-/// deterministic; `foldhash`'s own random seed would bypass it.
-fn random_foldhash() -> FixedState {
-    FixedState::with_seed(RandomState::new().hash_one(()))
 }
 
 impl<S> Tracker<S>
