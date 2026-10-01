@@ -420,7 +420,7 @@ impl ClientOnGateway {
             });
         };
 
-        flow_tracker::record_domain(state.domain.clone());
+        flow_tracker::record_domain(&state.domain);
 
         let existing = self
             .nat_table
@@ -514,7 +514,7 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
         Ok(())
     }
