@@ -633,7 +633,7 @@ impl ClientState {
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
                 let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools),
+                        AuthorizationRequest::device(dst, pools.iter().copied()),
                         packet,
                         now,
                     );
@@ -644,7 +644,7 @@ impl ClientState {
                     self.outbound_authorizations.client_token(resource_id, cid)
                 }) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools),
+                        AuthorizationRequest::device(dst, pools.iter().copied()),
                         packet,
                         now,
                     );
@@ -669,7 +669,7 @@ impl ClientState {
                 }) else {
                     self.pending_authorizations.on_not_authorized(
                         AuthorizationRequest::resources(
-                            routes.into_iter().map(|route| route.resource_id),
+                            routes.iter().map(|route| route.resource_id),
                         ),
                         packet,
                         now,
@@ -1379,7 +1379,8 @@ impl ClientState {
                 );
 
                 let pools = pools
-                    .into_iter()
+                    .iter()
+                    .copied()
                     .filter(|pool| {
                         self.outbound_authorizations
                             .client_token(*pool, cid)
@@ -1395,7 +1396,7 @@ impl ClientState {
             }
             (ClientOrGatewayId::Gateway(gid), MatchedRoutes::Gateways(routes)) => {
                 let resources = routes
-                    .into_iter()
+                    .iter()
                     .map(|route| route.resource_id)
                     .filter(|resource| {
                         self.outbound_authorizations.gateway_by_resource(*resource) == Some(&gid)
