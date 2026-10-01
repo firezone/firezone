@@ -303,7 +303,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::default();
+                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
 
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         received_counts.record(received.packet);
@@ -326,17 +326,6 @@ impl ClientTunnel {
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
-                    }
-
-                    for (kind, count) in received_counts.non_zero() {
-                        self.packet_counter.add(
-                            count,
-                            &[
-                                otel::attr::network_protocol_name(kind),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
                     }
 
                     self.io.flush_tun_batch();
@@ -513,7 +502,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut received_counts = PacketKindCounts::default();
+                    let mut received_counts = PacketKindCounts::receive(&self.packet_counter);
 
                     for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
                         received_counts.record(received.packet);
@@ -536,17 +525,6 @@ impl GatewayTunnel {
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
-                    }
-
-                    for (kind, count) in received_counts.non_zero() {
-                        self.packet_counter.add(
-                            count,
-                            &[
-                                otel::attr::network_protocol_name(kind),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
                     }
 
                     self.io.flush_tun_batch();

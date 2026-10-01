@@ -393,40 +393,21 @@ impl Io {
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
-        let mut transmitted_counts = PacketKindCounts::default();
+        let mut transmitted = PacketKindCounts::transmit(&self.packet_counter);
 
-        let result = loop {
-            match self.sockets.poll_send_ready(cx) {
-                Poll::Ready(Ok(())) => {}
-                Poll::Ready(Err(e)) => break Poll::Ready(Err(e)),
-                Poll::Pending => break Poll::Pending,
-            }
+        loop {
+            ready!(self.sockets.poll_send_ready(cx)?);
 
             let Some(datagram) = datagrams.next() else {
-                break Poll::Ready(Ok(()));
+                break;
             };
 
             for segment in datagram.packet.chunks(datagram.segment_size) {
-                transmitted_counts.record(segment);
+                transmitted.record(segment);
             }
 
-            if let Err(e) = self.sockets.send(datagram) {
-                break Poll::Ready(Err(e));
-            }
-        };
-
-        for (kind, count) in transmitted_counts.non_zero() {
-            self.packet_counter.add(
-                count,
-                &[
-                    otel::attr::network_protocol_name(kind),
-                    otel::attr::network_transport_udp(),
-                    otel::attr::network_io_direction_transmit(),
-                ],
-            );
+            self.sockets.send(datagram)?;
         }
-
-        ready!(result)?;
 
         Poll::Ready(Ok(()))
     }
