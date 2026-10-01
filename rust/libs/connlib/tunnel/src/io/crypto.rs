@@ -69,7 +69,7 @@ where
             let completed = completed_tx.clone();
 
             if let Err(e) = thread::Builder::new()
-                .name(format!("Crypto {i}"))
+                .name(format!("connlib-crypto-{i}"))
                 .spawn(move || work(jobs, completed))
             {
                 tracing::warn!("Failed to spawn crypto worker: {e}");
