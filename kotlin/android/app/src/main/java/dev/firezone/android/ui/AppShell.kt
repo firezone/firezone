@@ -212,11 +212,7 @@ private fun NotificationPermissionRoute(onRequested: () -> Unit) {
     val context = LocalContext.current
 
     // Denying is not a failure: either answer counts as having asked, and the flow moves on.
-    val done = {
-        onRequested()
-        Unit
-    }
-    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { done() }
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onRequested() }
 
     NotificationPermissionScreen(
         onRequestPermission = {
@@ -227,9 +223,9 @@ private fun NotificationPermissionRoute(onRequested: () -> Unit) {
                         Manifest.permission.POST_NOTIFICATIONS,
                     ) == PackageManager.PERMISSION_GRANTED
 
-            if (granted) done() else request.launch(Manifest.permission.POST_NOTIFICATIONS)
+            if (granted) onRequested() else request.launch(Manifest.permission.POST_NOTIFICATIONS)
         },
-        onSkip = done,
+        onSkip = onRequested,
     )
 }
 

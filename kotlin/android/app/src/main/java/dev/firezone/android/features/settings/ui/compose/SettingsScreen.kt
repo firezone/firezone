@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui.compose
 
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
@@ -135,11 +134,11 @@ internal fun SettingsScreen(
             // every page in between across the screen.
             NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
                 pages.forEachIndexed { index, page ->
-                    SettingsTab(
+                    NavigationBarItem(
                         selected = pagerState.currentPage == index,
-                        labelRes = page.labelRes,
-                        iconRes = page.iconRes,
                         onClick = { scope.launch { pagerState.scrollToPage(index) } },
+                        icon = { Icon(painter = painterResource(page.iconRes), contentDescription = null) },
+                        label = { Text(stringResource(page.labelRes)) },
                     )
                 }
             }
@@ -204,19 +203,4 @@ internal fun SettingsScreen(
             },
         )
     }
-}
-
-@Composable
-private fun RowScope.SettingsTab(
-    selected: Boolean,
-    labelRes: Int,
-    iconRes: Int,
-    onClick: () -> Unit,
-) {
-    NavigationBarItem(
-        selected = selected,
-        onClick = onClick,
-        icon = { Icon(painter = painterResource(iconRes), contentDescription = null) },
-        label = { Text(stringResource(labelRes)) },
-    )
 }

@@ -39,8 +39,7 @@ internal fun SessionRoute(
     val serviceStatus by (tunnelService?.serviceState ?: emptyFlow()).collectAsStateWithLifecycle<State?>(null)
     val actorName by (tunnelService?.actorNameState ?: emptyFlow()).collectAsStateWithLifecycle(null)
 
-    // There is no session left to show once the tunnel is down, so hand back to the launch check
-    // to say where the app belongs instead.
+    // There is no session left to show once the tunnel is down.
     LaunchedEffect(serviceStatus) {
         if (serviceStatus == State.DOWN) onSessionEnded()
     }

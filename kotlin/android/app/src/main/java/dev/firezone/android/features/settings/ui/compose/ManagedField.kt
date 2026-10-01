@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
@@ -56,20 +58,24 @@ fun ManagedSwitchRow(
 ) {
     val explanation = stringResource(R.string.managed_setting_info_description)
     val context = LocalContext.current
-    // A disabled switch swallows its own taps, so the explanation hangs off the row instead.
-    val rowModifier =
+    // Inside the toggle, so that a tap on a managed row reaches the explanation first.
+    val explainOnTap =
         if (isManaged) {
-            modifier.clickable { Toast.makeText(context, explanation, Toast.LENGTH_SHORT).show() }
+            Modifier.clickable { Toast.makeText(context, explanation, Toast.LENGTH_SHORT).show() }
         } else {
-            modifier
+            Modifier
         }
 
     Row(
-        rowModifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, enabled = !isManaged, role = Role.Switch, onValueChange = onCheckedChange)
+            .then(explainOnTap)
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = !isManaged)
+        Switch(checked = checked, onCheckedChange = null, enabled = !isManaged)
     }
 }
 

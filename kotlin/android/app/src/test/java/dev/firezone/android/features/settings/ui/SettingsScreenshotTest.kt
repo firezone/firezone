@@ -87,16 +87,6 @@ private val sampleConfig =
         connectOnStart = false,
     )
 
-private val nothingManaged =
-    ManagedConfigStatus(
-        isAuthUrlManaged = false,
-        isApiUrlManaged = false,
-        isLogFilterManaged = false,
-        isAccountSlugManaged = false,
-        isStartOnLoginManaged = false,
-        isConnectOnStartManaged = false,
-    )
-
 // The alias the certificate below is filed under in the system KeyChain.
 private const val CERTIFICATE_ALIAS = "firezone-device"
 
@@ -160,7 +150,7 @@ private fun row(
 private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.UiState) {
     SettingsScreen(
         config = sampleConfig,
-        managedStatus = nothingManaged,
+        managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
         isSaveEnabled = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,

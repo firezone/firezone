@@ -4,6 +4,9 @@ package dev.firezone.android.features.settings.ui
 import android.content.Context
 import android.content.Intent
 import android.webkit.URLUtil
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -39,8 +42,8 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing using immutable copy
-        private var config =
+        // Compose state rather than a flow: a dispatcher hop between keystroke and text field drops input.
+        var config by mutableStateOf(
             Config(
                 authUrl = "",
                 apiUrl = "",
@@ -48,11 +51,9 @@ internal class SettingsViewModel
                 accountSlug = "",
                 startOnLogin = false,
                 connectOnStart = false,
-            )
-
-        // StateFlow that emits config only on load/reset, not during editing
-        private val _configStateFlow = MutableStateFlow(config)
-        val configStateFlow: StateFlow<Config> = _configStateFlow
+            ),
+        )
+            private set
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
@@ -63,7 +64,6 @@ internal class SettingsViewModel
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
-                    _configStateFlow.value = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
                     onFieldUpdated()
                 }
@@ -187,7 +187,6 @@ internal class SettingsViewModel
         fun resetSettingsToDefaults() {
             config = repo.getDefaultConfigSync()
             shouldResetFavoritesOnSave = true
-            _configStateFlow.value = config
             _managedStatusStateFlow.value = repo.getManagedStatus()
             onFieldUpdated()
         }
@@ -230,8 +229,6 @@ internal class SettingsViewModel
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun onFieldUpdated() {
-            // The fields render from this flow, so an edit only shows up once it is published.
-            _configStateFlow.value = config
             _uiState.value =
                 _uiState.value.copy(
                     isSaveButtonEnabled = areFieldsValid(),

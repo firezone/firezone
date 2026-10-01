@@ -15,8 +15,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.x509.CertificateAccess
-import dev.firezone.android.core.x509.KeyChain
+import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
@@ -25,12 +24,7 @@ import javax.inject.Inject
 internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
     private val deviceTrustViewModel: DeviceTrustSettingsViewModel by viewModels()
-
-    @Inject
-    internal lateinit var keyChain: KeyChain
-
-    @Inject
-    internal lateinit var certificateAccess: CertificateAccess
+    private val certificatePermissionViewModel: CertificatePermissionViewModel by viewModels()
 
     @Inject
     internal lateinit var repository: Repository
@@ -45,7 +39,6 @@ internal class SettingsActivity : AppCompatActivity() {
 
         setContent {
             FirezoneTheme {
-                val config by viewModel.configStateFlow.collectAsStateWithLifecycle()
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
@@ -61,8 +54,8 @@ internal class SettingsActivity : AppCompatActivity() {
                 }
 
                 SettingsScreen(
-                    config = config,
-                    managedStatus = managedStatus ?: NOTHING_MANAGED,
+                    config = viewModel.config,
+                    managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
                     isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
@@ -109,27 +102,27 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun chooseCertificate() {
-        // Android answers on a binder thread, where reading the KeyChain back is fine and only
-        // the toast has to hop onto the main thread.
-        keyChain.choosePrivateKeyAlias(this, deviceTrustViewModel.keyChainRequestUri(), null) { alias ->
-            if (alias == null) {
-                toast(getString(R.string.device_trust_no_certificate_selected))
+        certificatePermissionViewModel.chooseCertificate(this) { outcome ->
+            runOnUiThread {
+                when (outcome) {
+                    CertificatePermissionViewModel.Outcome.Selected -> {
+                        deviceTrustViewModel.loadDetails()
+                    }
 
-                return@choosePrivateKeyAlias
+                    CertificatePermissionViewModel.Outcome.NothingSelected -> {
+                        toast(getString(R.string.device_trust_no_certificate_selected))
+                    }
+
+                    is CertificatePermissionViewModel.Outcome.NotADeviceCertificate -> {
+                        toast(getString(R.string.device_trust_not_device_certificate, outcome.alias))
+                    }
+                }
             }
-
-            if (!certificateAccess.holdsDeviceCertificate(alias)) {
-                toast(getString(R.string.device_trust_not_device_certificate, alias))
-
-                return@choosePrivateKeyAlias
-            }
-
-            deviceTrustViewModel.onAliasSelected(alias)
         }
     }
 
     private fun toast(message: String) {
-        runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     companion object {
@@ -143,14 +136,3 @@ internal class SettingsActivity : AppCompatActivity() {
                 .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
     }
 }
-
-// The settings pages render the managed state before the first snapshot arrives.
-private val NOTHING_MANAGED =
-    ManagedConfigStatus(
-        isAuthUrlManaged = false,
-        isApiUrlManaged = false,
-        isLogFilterManaged = false,
-        isAccountSlugManaged = false,
-        isStartOnLoginManaged = false,
-        isConnectOnStartManaged = false,
-    )

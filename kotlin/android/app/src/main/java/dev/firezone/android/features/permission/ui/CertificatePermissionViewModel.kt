@@ -13,7 +13,7 @@ import javax.inject.Inject
 /**
  * Has the user release the device certificate an administrator requires.
  *
- * Reached only when the administrator requires a certificate that the device policy did not hand
+ * Needed only when the administrator requires a certificate that the device policy did not hand
  * over, which is what a work profile on a personally-owned device looks like: the administrator can
  * install the certificate, but only the user can grant an app access to the key. Selecting it once
  * is enough, because the KeyChain remembers the grant and we remember the alias.
