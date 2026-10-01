@@ -7,9 +7,7 @@ use bytes::Bytes;
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
-        iana::ExtendedErrorCode,
-        message_builder::{AnswerBuilder, HashCompressor},
-        name::FlattenInto,
+        iana::ExtendedErrorCode, message_builder::AnswerBuilder, name::FlattenInto,
         opt::exterr::ExtendedError,
     },
     dep::octseq::OctetsInto,
@@ -341,15 +339,14 @@ impl Response {
 }
 
 pub struct ResponseBuilder {
-    inner: AnswerBuilder<HashCompressor<Vec<u8>>>,
+    inner: AnswerBuilder<Vec<u8>>,
     edns: bool,
     note: Option<String>,
 }
 
 impl ResponseBuilder {
     pub fn for_query(query: &Query, code: ResponseCode) -> Self {
-        let inner = MessageBuilder::from_target(HashCompressor::new(Vec::new()))
-            .expect("Vec-backed message builder never fails")
+        let inner = MessageBuilder::new_vec()
             .start_answer(&query.inner, code)
             .expect("Vec-backed message builder never fails");
 

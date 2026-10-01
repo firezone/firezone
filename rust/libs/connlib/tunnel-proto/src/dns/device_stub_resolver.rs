@@ -571,13 +571,11 @@ mod tests {
         let [Event::SendResponse { response, .. }] = events.as_slice() else {
             panic!("unexpected events: {events:?}")
         };
-        let response = dns_types::Response::parse(&response.clone().into_bytes(u16::MAX)).unwrap();
+        let bytes = response.clone().into_bytes(u16::MAX);
+        let response = dns_types::Response::parse(&bytes).unwrap();
         let listed = response.records().count();
         assert!(!response.truncated());
-        assert!(
-            listed > 1_000,
-            "compressed names fit more than 1000 of these"
-        );
+        assert!(bytes.len() > 65_000, "the listing fills the message");
         assert!(
             response
                 .records()
