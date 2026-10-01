@@ -25,7 +25,7 @@
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, hash_map},
+    collections::hash_map,
     fmt::Debug,
     hash::Hash,
     net::{IpAddr, SocketAddr},
@@ -35,6 +35,7 @@ use std::{
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
+use foldhash::HashMap;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use smallvec::{SmallVec, smallvec};
 
