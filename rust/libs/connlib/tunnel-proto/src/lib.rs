@@ -154,6 +154,14 @@ pub(crate) struct NotAllowedResource(IpAddr);
 #[error("Failed to decapsulate '{0}' packet")]
 pub struct FailedToDecapsulate(packet_kind::Kind);
 
+/// A fast hasher seeded from [`std::hash::RandomState`].
+pub(crate) fn seeded_hasher() -> foldhash::fast::FixedState {
+    foldhash::fast::FixedState::with_seed(std::hash::BuildHasher::hash_one(
+        &std::hash::RandomState::new(),
+        (),
+    ))
+}
+
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
