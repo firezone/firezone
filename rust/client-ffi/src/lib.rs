@@ -450,6 +450,17 @@ impl Session {
         tracing::debug!("Received set_tun command");
 
         let runtime = self.runtime.as_ref().context("No runtime")?;
+
+        #[cfg(target_os = "android")]
+        let tun = {
+            use std::os::fd::{FromRawFd as _, OwnedFd};
+
+            // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
+            let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+            platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?
+        };
+
+        #[cfg(not(target_os = "android"))]
         // SAFETY: FD must be open.
         let tun = unsafe {
             platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?

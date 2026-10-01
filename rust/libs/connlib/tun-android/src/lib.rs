@@ -3,7 +3,7 @@
 mod plain_ip;
 
 use ip_packet::{IpPacket, IpPacketBuf};
-use std::os::fd::{AsRawFd as _, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::sync::Arc;
 use std::{io, os::fd::RawFd};
 use tun_ioctl as ioctl;
@@ -28,15 +28,10 @@ impl tun::Tun for Io {
 }
 
 impl Io {
-    /// Create a new [`Io`] from a raw file descriptor.
-    ///
-    /// # Safety
-    ///
-    /// - The file descriptor must be open.
-    /// - The file descriptor must not get closed by anyone else.
-    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
-        let fd = Arc::new(unsafe { OwnedFd::from_raw_fd(fd) });
-        let name = unsafe { interface_name(fd.as_raw_fd())? };
+    /// Starts IO on an owned TUN descriptor.
+    pub fn new(fd: OwnedFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+        let name = interface_name(&fd)?;
+        let fd = Arc::new(fd);
 
         let send_fd = fd.clone();
         let workers = tun::Workers::spawn(
@@ -50,14 +45,17 @@ impl Io {
 }
 
 /// Retrieves the name of the interface pointed to by the provided file descriptor.
-///
-/// # Safety
-///
-/// The file descriptor must be open.
-unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
+fn interface_name(fd: &OwnedFd) -> io::Result<String> {
     let mut request = ioctl::Request::<ioctl::GetInterfaceNamePayload>::new();
 
-    unsafe { ioctl::exec(fd, libc::TUNGETIFF as libc::c_ulong, &mut request)? };
+    // SAFETY: The borrowed descriptor remains open during the ioctl.
+    unsafe {
+        ioctl::exec(
+            fd.as_raw_fd(),
+            libc::TUNGETIFF as libc::c_ulong,
+            &mut request,
+        )?
+    };
 
     Ok(request.name().to_string())
 }
