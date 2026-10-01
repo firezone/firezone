@@ -31,7 +31,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
-tun = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 uniffi = { workspace = true }
 x509-claims-ffi = { workspace = true }

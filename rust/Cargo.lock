@@ -1348,7 +1348,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "tun",
  "tun-android",
  "tun-apple",
  "tunnel-bypass-resolver",
