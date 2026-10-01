@@ -1,5 +1,6 @@
 defmodule Portal.Microsoft.Graph.APIClientTest do
   use ExUnit.Case, async: true
+  import Portal.EntraDirectoryFixtures
   import ExUnit.CaptureLog
 
   alias Portal.Microsoft.Graph.APIClient
@@ -355,7 +356,7 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
 
         Req.Test.json(conn, %{
           "value" => [
-            active_entra_user(%{
+            entra_api_user_fixture(%{
               "@odata.type" => "#microsoft.graph.user",
               "id" => "user1",
               "displayName" => "User One",
@@ -398,13 +399,13 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
           case current_page do
             0 ->
               %{
-                "value" => [active_entra_user(%{"id" => "user1"})],
+                "value" => [entra_api_user_fixture(%{"id" => "user1"})],
                 "@odata.nextLink" =>
                   "https://graph.microsoft.com/v1.0/groups/#{group_id}/members?$skiptoken=xyz"
               }
 
             1 ->
-              %{"value" => [active_entra_user(%{"id" => "user2"})]}
+              %{"value" => [entra_api_user_fixture(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -872,9 +873,5 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
 
       assert :ok = APIClient.test_managed_devices_connection("token")
     end
-  end
-
-  defp active_entra_user(attrs) do
-    Map.put_new(attrs, "accountEnabled", true)
   end
 end

@@ -530,6 +530,49 @@ defmodule PortalWeb.OIDCControllerTest do
               }} = entra_verification_result_from_redirect(redirected_to(conn))
     end
 
+    for {type, client_id, scope} <- [
+          {"entra-auth-provider", "entra-client-id", "openid email profile"},
+          {"entra-directory-sync", "entra-sync-client-id", "openid profile"},
+          {"intune-posture-provider", "entra-client-id", "openid email profile"},
+          {"defender-posture-provider", "entra-client-id", "openid email profile"}
+        ] do
+      test "continues #{type} to the tenant proof when the service principal already exists", %{
+        conn: conn
+      } do
+        verification_ref = Ecto.UUID.generate()
+        config = entra_verification_config(unquote(client_id))
+        lv_pid = pending_verification_process(config, verification_ref)
+        state = entra_verification_state(lv_pid, unquote(type), verification_ref)
+
+        conn =
+          get(conn, ~p"/auth/oidc/callback", %{
+            "state" => state,
+            "error" => "server_error",
+            "error_description" =>
+              "AADSTS650051: Consent action for Application 'bafeb39a-a863-4e13-9dbb-e8d8219f9d2f' failed due to following error: The bafeb39a-a863-4e13-9dbb-e8d8219f9d2f service principal name is already present for the tenant #{@tenant_id} paramName: ServicePrincipalName"
+          })
+
+        assert_tenant_proof_redirect(conn, unquote(scope), "none")
+      end
+    end
+
+    test "still fails AADSTS650051 when the tenant is missing from the message", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "server_error",
+          "error_description" => "AADSTS650051: The service principal name is already present."
+        })
+
+      assert {:ok, %{ok: false, error: "AADSTS650051" <> _}} =
+               entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
     test "falls back to an interactive tenant proof when silent SSO is unavailable", %{
       conn: conn
     } do
@@ -3756,7 +3799,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/sign_up/google"
 
-      identity = get_session(conn, "google_sign_up")
+      identity = get_session(conn, "idp_sign_up")
       assert identity["email"] == "ada@example.com"
       assert identity["issuer"] == "#{Mocks.OIDC.mock_endpoint()}/"
       assert identity["idp_id"] == "353690423699814251281"

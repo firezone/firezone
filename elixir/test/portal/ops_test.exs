@@ -10,7 +10,6 @@ defmodule Portal.OpsTest do
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
-  import Portal.SessionLogFixtures
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
 
@@ -503,12 +502,5 @@ defmodule Portal.OpsTest do
       assert output =~ "No admin recipients found."
       refute output =~ "dormant"
     end
-  end
-
-  defp active_account_fixture(attrs \\ %{}) do
-    account = account_fixture(attrs)
-    session_log_fixture(account: account)
-
-    account
   end
 end

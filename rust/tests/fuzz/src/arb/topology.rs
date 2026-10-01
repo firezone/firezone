@@ -368,6 +368,7 @@ fn arb_client_host(
     let ignore_resource_filters = g.bool();
     let send_untracked_icmp_errors = g.bool();
     let os = arb_simulated_os(g);
+    let ignore_no_authorization_events = g.bool();
 
     let inner = RefClient::new(
         id,
@@ -379,6 +380,7 @@ fn arb_client_host(
         MaliciousBehaviour {
             ignore_resource_filters,
             send_untracked_icmp_errors,
+            ignore_no_authorization_events,
         },
         os,
         resource_selector,
@@ -544,26 +546,17 @@ fn arb_icmp_error_hosts(
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
 ) -> IcmpErrorHosts {
-    let mut ips = records
+    let mut entries = records
         .ips_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .collect::<Vec<_>>();
-    let num_ips = ips.len();
-    let pick = num_ips / 2;
+        .filter_map(|ip| {
+            if !g.bool() {
+                return None;
+            }
 
-    let chosen = (0..pick)
-        .map(|i| {
-            let remaining = num_ips - i;
-            let j = i + g.choose_index(remaining);
-            ips.swap(i, j);
-            ips[i]
+            Some((ip, arb_icmp_error(g)))
         })
-        .collect::<Vec<_>>();
-
-    let mut entries = chosen
-        .into_iter()
-        .map(|ip| (ip, arb_icmp_error(g)))
         .collect::<BTreeMap<_, _>>();
 
     // An upstream DNS resolver may be unreachable from the Gateways' networks;

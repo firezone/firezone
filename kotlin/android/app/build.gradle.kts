@@ -64,7 +64,7 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.15"
+        versionName = "1.5.16"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
@@ -274,7 +274,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // AndroidX
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
 
@@ -287,7 +287,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
@@ -343,13 +343,8 @@ dependencies {
     // UniFFI
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
-    // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
-    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
-    // bundled in the crate source (see settings.gradle.kts).
-    implementation(cargo.rustls.platform.verifier)
-
     // Sentry
-    implementation("io.sentry:sentry-android:8.56.0")
+    implementation("io.sentry:sentry-android:8.57.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")

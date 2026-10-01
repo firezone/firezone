@@ -60,10 +60,6 @@ pub fn stream_logs_active() -> bool {
     !FEATURE_FLAGS.stream_logs.read().directives.is_empty()
 }
 
-pub fn icmp_error_unreachable_prohibited_create_new_flow() -> bool {
-    FEATURE_FLAGS.icmp_error_unreachable_prohibited_create_new_flow()
-}
-
 pub fn stream_metrics() -> bool {
     FEATURE_FLAGS.stream_metrics()
 }
@@ -85,7 +81,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
         stream_logs,
-        icmp_error_unreachable_prohibited_create_new_flow,
         stream_metrics,
         wintun_tcp_coalescing,
     } = &*FEATURE_FLAGS;
@@ -100,10 +95,6 @@ pub(crate) fn current() -> impl IntoIterator<Item = (&'static str, bool)> {
             drop_llmnr_nxdomain_responses.load(Ordering::Relaxed),
         ),
         ("stream_logs", !stream_logs.read().directives.is_empty()),
-        (
-            "icmp_error_unreachable_prohibited_create_new_flow",
-            icmp_error_unreachable_prohibited_create_new_flow.load(Ordering::Relaxed),
-        ),
         ("stream_metrics", stream_metrics.read().enabled),
         (
             "wintun_tcp_coalescing",
@@ -224,8 +215,6 @@ struct FeatureFlagsResponse {
     #[serde(default)]
     stream_logs: bool,
     #[serde(default)]
-    icmp_error_unreachable_prohibited_create_new_flow: bool,
-    #[serde(default)]
     stream_metrics: bool,
     #[serde(default)]
     wintun_tcp_coalescing: bool,
@@ -245,7 +234,6 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: AtomicBool,
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
-    icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
     stream_metrics: RwLock<StreamMetrics>,
     wintun_tcp_coalescing: AtomicBool,
 }
@@ -263,7 +251,6 @@ impl FeatureFlags {
             icmp_unreachable_instead_of_nat64,
             drop_llmnr_nxdomain_responses,
             stream_logs,
-            icmp_error_unreachable_prohibited_create_new_flow,
             stream_metrics,
             wintun_tcp_coalescing,
         }: FeatureFlagsResponse,
@@ -273,11 +260,6 @@ impl FeatureFlags {
             .store(icmp_unreachable_instead_of_nat64, Ordering::Relaxed);
         self.drop_llmnr_nxdomain_responses
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
-        self.icmp_error_unreachable_prohibited_create_new_flow
-            .store(
-                icmp_error_unreachable_prohibited_create_new_flow,
-                Ordering::Relaxed,
-            );
         self.wintun_tcp_coalescing
             .store(wintun_tcp_coalescing, Ordering::Relaxed);
 
@@ -308,11 +290,6 @@ impl FeatureFlags {
         self.stream_logs.read().enabled(metadata)
     }
 
-    fn icmp_error_unreachable_prohibited_create_new_flow(&self) -> bool {
-        self.icmp_error_unreachable_prohibited_create_new_flow
-            .load(Ordering::Relaxed)
-    }
-
     fn stream_metrics(&self) -> bool {
         self.stream_metrics.read().enabled
     }
@@ -337,10 +314,6 @@ fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
             flags.drop_llmnr_nxdomain_responses,
         ),
         stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
-        icmp_error_unreachable_prohibited_create_new_flow: env_or(
-            "FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW",
-            flags.icmp_error_unreachable_prohibited_create_new_flow,
-        ),
         stream_metrics: env_or("FZFF_STREAM_METRICS", flags.stream_metrics),
         wintun_tcp_coalescing: env_or("FZFF_WINTUN_TCP_COALESCING", flags.wintun_tcp_coalescing),
     }

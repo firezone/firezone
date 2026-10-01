@@ -29,6 +29,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "external_identities" => Portal.ExternalIdentity,
     "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
+    "github_auth_providers" => Portal.GitHub.AuthProvider,
     "google_directories" => Portal.Google.Directory,
     "groups" => Portal.Group,
     "memberships" => Portal.Membership,
@@ -56,7 +57,8 @@ defmodule Portal.ChangeLogs.Consumer do
     "iru_posture_providers" => Portal.Iru.PostureProvider,
     "defender_posture_providers" => Portal.Defender.PostureProvider,
     "santa_posture_providers" => Portal.Santa.PostureProvider,
-    "sentinelone_posture_providers" => Portal.SentinelOne.PostureProvider
+    "sentinelone_posture_providers" => Portal.SentinelOne.PostureProvider,
+    "sophos_posture_providers" => Portal.Sophos.PostureProvider
   }
 
   @impl true
@@ -277,16 +279,25 @@ defmodule Portal.ChangeLogs.Consumer do
 
       entries
       |> Enum.chunk_every(@insert_chunk_size)
-      |> Enum.reduce(0, fn chunk, inserted ->
-        {count, _} =
-          Safe.unscoped()
-          |> Safe.insert_all(ChangeLog, chunk,
-            on_conflict: :nothing,
-            conflict_target: [:lsn]
-          )
+      |> Enum.reduce(0, fn chunk, inserted -> inserted + insert_chunk(chunk) end)
+    end
 
-        inserted + count
-      end)
+    defp insert_chunk(chunk) do
+      {:ok, %{rows: [[cutoff]]}} =
+        Safe.unscoped()
+        |> Safe.query("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date - 121", [])
+
+      # Replayed WAL must not stall ingestion after its partition has expired.
+      chunk = Enum.reject(chunk, &(Date.compare(DateTime.to_date(&1.timestamp), cutoff) == :lt))
+
+      {count, _} =
+        Safe.unscoped()
+        |> Safe.insert_all(ChangeLog, chunk,
+          on_conflict: :nothing,
+          conflict_target: [:timestamp, :lsn]
+        )
+
+      count
     end
 
     # Entries for accounts that were hard-deleted since the WAL record was

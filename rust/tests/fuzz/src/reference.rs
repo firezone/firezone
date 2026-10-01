@@ -85,18 +85,32 @@ impl ReferenceState {
         }
     }
 
-    /// Apply the transition to our reference state.
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    pub fn invalidate(&mut self, transition: &Transition, portal: &StubPortal) {
+        self.expected_probes.clear();
+
+        if transition.clears_packets() {
+            for client in self.clients.values_mut() {
+                client.exec_mut(|c| c.clear_packets())
+            }
+        }
+
+        let iceless = portal.iceless();
+        for _ in self.icmp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+        for _ in self.udp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+    }
+
+    /// Applies the transition to the reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub fn apply(
-        mut state: Self,
-        portal: &StubPortal,
-        transition: &Transition,
-        now: Instant,
-    ) -> Self {
+    pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| match resource {
                         client::Resource::Dns(r) => {
                             client.add_dns_resource(r.clone());
@@ -120,27 +134,40 @@ impl ReferenceState {
                 }
             }
             Transition::RemoveResource(id) => {
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.remove_resource(id);
-                    });
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| client.remove_resource(id));
                 }
+                self.expect_gateway_connections_closed(portal, *id);
             }
-            Transition::EditResource(edit) => state.apply_resource_edit(edit),
+            Transition::EditResource(edit) => {
+                self.apply_resource_edit(edit);
+                self.expect_gateway_connections_closed(portal, edit.new.id());
+            }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
                 revoked,
             } => {
                 for authorization in revoked {
-                    if let Some(client) = state.clients.get_mut(&authorization.initiator) {
+                    let filters = portal
+                        .device_pool_filters(authorization.pool)
+                        .unwrap_or_default();
+                    if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.target, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.target,
+                                authorization.pool,
+                                filters.clone(),
+                            )
                         });
                     }
-                    if let Some(client) = state.clients.get_mut(&authorization.target) {
+                    if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.initiator, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.initiator,
+                                authorization.pool,
+                                filters,
+                            )
                         });
                     }
                 }
@@ -148,17 +175,31 @@ impl ReferenceState {
             Transition::SetInternetResourceState {
                 client_id: client,
                 active,
-            } => state.clients.get_mut(client).unwrap().exec_mut(|client| {
+            } => self.clients.get_mut(client).unwrap().exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
-            Transition::SendDnsQuery { client_id, query } => {
+            Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
-                let global_dns_records = &state.global_dns_records;
-                let icmp_error_hosts = &state.icmp_error_hosts;
+                let global_dns_records = &self.global_dns_records;
+                let icmp_error_hosts = &self.icmp_error_hosts;
 
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-                });
+                for (client_id, query) in queries {
+                    let client = self.clients[client_id].inner();
+                    let gateway = client
+                        .is_site_specific_dns_query(query)
+                        .or_else(|| client.dns_query_via_resource(query, upstream_do53))
+                        .and_then(|resource| self.select_gateway(portal, *client_id, resource));
+
+                    self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                        c.on_dns_query(
+                            query,
+                            gateway,
+                            upstream_do53,
+                            global_dns_records,
+                            icmp_error_hosts,
+                        );
+                    });
+                }
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
@@ -167,7 +208,7 @@ impl ReferenceState {
                 transport,
                 ..
             } => {
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
                 });
             }
@@ -180,7 +221,7 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
-                let outcome = state.record_probe(
+                let outcome = self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
@@ -203,7 +244,7 @@ impl ReferenceState {
                             next_seq: Seq(seq.0.wrapping_add(1)),
                             route,
                         };
-                        let previous = state.icmp_flows.insert(*flow_id, flow);
+                        let previous = self.icmp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "ICMP flow IDs must be unique");
                     }
                     ExpectedOutcome::Dropped => {}
@@ -216,7 +257,7 @@ impl ReferenceState {
                 probe_id,
             } => {
                 let flow = {
-                    let flow = state
+                    let flow = self
                         .icmp_flows
                         .get_mut(flow_id)
                         .expect("reused ICMP flow must exist");
@@ -226,11 +267,15 @@ impl ReferenceState {
                     flow.clone()
                 };
 
-                match state.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
+                match self.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused ICMP route must complete a round trip")
                     }
@@ -245,7 +290,7 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let outcome = state.record_probe(
+                let outcome = self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
@@ -268,7 +313,7 @@ impl ReferenceState {
                             dport: *dport,
                             route,
                         };
-                        let previous = state.udp_flows.insert(*flow_id, flow);
+                        let previous = self.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
                     }
                     ExpectedOutcome::Dropped => {}
@@ -276,17 +321,21 @@ impl ReferenceState {
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
-                let flow = state
+                let flow = self
                     .udp_flows
                     .get(flow_id)
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                match state.record_udp_probe(portal, *probe_id, &flow, now) {
+                match self.record_udp_probe(portal, *probe_id, &flow, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused UDP route must complete a round trip")
                     }
@@ -299,18 +348,14 @@ impl ReferenceState {
                 sport,
                 dport,
             } => {
-                let outcome = state.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
+                let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
 
-                state
-                    .clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| {
-                        client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
-                    });
+                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
+                    client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
+                });
             }
             Transition::UpdateSystemDnsServers { servers } => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.set_system_dns_resolvers(servers));
                 }
             }
@@ -330,12 +375,12 @@ impl ReferenceState {
                 // out classic ICE flows.
                 let all_iceless = portal.iceless();
 
-                let client = state.clients.get_mut(client_id).unwrap();
-                state.network.remove_host(client);
+                let client = self.clients.get_mut(client_id).unwrap();
+                self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
-                let added = state.network.add_host(*client_id, client);
+                let added = self.network.add_host(*client_id, client);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -351,7 +396,7 @@ impl ReferenceState {
                 // The peers lose their connections to the roaming client, and their authorizations
                 // towards it with them.
                 if !all_iceless {
-                    for (id, peer) in &mut state.clients {
+                    for (id, peer) in &mut self.clients {
                         if id != client_id {
                             peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
                         }
@@ -361,65 +406,101 @@ impl ReferenceState {
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
-                state
-                    .clients
+                self.clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|c| c.readd_all_resources());
             }
-            Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
+            Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                state.reboot_relays_while_partitioned(new_relays)
+                self.reboot_relays_while_partitioned(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
                 // every pairing that cannot fall back to a direct path.
                 if !portal.iceless() {
-                    let gateway_edges = state
+                    let gateway_edges = self
                         .gateways
                         .iter()
-                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
+                        .map(|(id, g)| (*id, (g.edge_config(), g.ip4.is_some(), g.ip6.is_some())))
+                        .collect::<BTreeMap<_, _>>();
+                    let client_edges = self
+                        .clients
+                        .iter()
+                        .map(|(id, c)| (*id, (c.edge_config(), c.ip4.is_some(), c.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
 
-                    for client in state.clients.values_mut() {
+                    for (client_id, client) in self.clients.iter_mut() {
                         let client_edge = client.edge_config();
+                        let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
                             .iter()
-                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
+                            .filter(|(_, (gateway_edge, gateway_has_ip4, gateway_has_ip6))| {
                                 !direct_path_possible(
                                     client_edge,
                                     *gateway_edge,
+                                    client_has_ip4 && *gateway_has_ip4,
                                     client_has_ip6 && *gateway_has_ip6,
                                 )
                             })
                             .map(|(id, _)| *id)
                             .collect::<BTreeSet<_>>();
 
-                        if unreachable_gateways.is_empty() {
-                            continue;
-                        }
+                        let unreachable_clients = client_edges
+                            .iter()
+                            .filter(|(id, (peer_edge, peer_has_ip4, peer_has_ip6))| {
+                                *id != client_id
+                                    && !direct_path_possible(
+                                        client_edge,
+                                        *peer_edge,
+                                        client_has_ip4 && *peer_has_ip4,
+                                        client_has_ip6 && *peer_has_ip6,
+                                    )
+                            })
+                            .map(|(id, _)| *id);
 
                         client.exec_mut(|c| {
-                            c.reset_connections_to_gateways(
-                                &unreachable_gateways,
-                                |rid| portal.gateway_for_resource(rid).copied(),
-                                now,
-                            )
+                            c.fail_connections_to_gateways(&unreachable_gateways, now);
+                            for peer in unreachable_clients {
+                                c.forget_peer_authorizations(peer);
+                            }
                         });
                     }
                 }
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| client.remove_resource(resource))
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| client.remove_resource(resource));
                 }
+                self.expect_gateway_connections_closed(portal, *resource);
+            }
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            } => {
+                self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                    for pool in pools {
+                        let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                        receiver.revoke_inbound_peer_pool(*client, *pool, filters);
+                    }
+                });
+            }
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                    receiver.reject_peer_pool(*client, *pool, filters);
+                });
+            }
+            Transition::RevokeGatewayAuthorization(resource) => {
+                self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
-                for (id, client) in &mut state.clients {
+                for (id, client) in &mut self.clients {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
                     } else {
@@ -428,13 +509,24 @@ impl ReferenceState {
                 }
             }
             Transition::UpdateDnsRecords { domain, records } => {
-                state
-                    .global_dns_records
+                self.global_dns_records
                     .replace(domain.clone(), records.clone());
             }
         };
 
-        state
+        self
+    }
+
+    /// A Gateway that revoking `resource` left with nothing closes the connection with a
+    /// `goodbye`, so we expect the Client to reset its state for that Gateway.
+    fn expect_gateway_connections_closed(&mut self, portal: &StubPortal, resource: ResourceId) {
+        for closed in portal.gateway_connections_closed_by(resource) {
+            let Some(client) = self.clients.get_mut(&closed.client) else {
+                continue;
+            };
+
+            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
+        }
     }
 
     fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
@@ -484,25 +576,6 @@ impl ReferenceState {
                 }
             });
         }
-    }
-
-    /// Drops the bookkeeping that `transition` makes stale before it is applied.
-    pub fn invalidate(state: &mut ReferenceState, portal: &StubPortal, transition: &Transition) {
-        state.expected_probes.clear();
-
-        if transition.clears_packets() {
-            for client in state.clients.values_mut() {
-                client.exec_mut(|c| c.clear_packets())
-            }
-        }
-
-        let iceless = portal.iceless();
-        for _ in state.icmp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-        for _ in state.udp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
     }
 
     fn record_icmp_probe(
@@ -556,8 +629,8 @@ impl ReferenceState {
         }
 
         self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            if let Route::Resource { resource, .. } = route {
-                client.connect_to_resource(resource, request.destination().clone());
+            if let Route::Resource { resource, gateway } = route {
+                client.connect_to_resource(resource, gateway, request.destination().clone());
             }
             client.note_sent(Some(route.remote()), sent_at);
         });
@@ -634,12 +707,19 @@ impl ReferenceState {
             return ExpectedOutcome::Dropped;
         }
 
+        if dst
+            .ip_addr()
+            .is_some_and(|ip| self.clients[&origin].inner().tunnel_ip_for(ip) == ip)
+        {
+            return ExpectedOutcome::Dropped;
+        }
+
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
+            let client = self.clients[&origin].inner();
             let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
-                self.clients[&origin]
-                    .inner()
+                client
                     .connected_resources()
-                    .any(|resource| self.deployed_gateway_for(portal, resource) == Some(*gateway))
+                    .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
                 return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
@@ -660,13 +740,26 @@ impl ReferenceState {
                 };
             };
 
-            if let Err(outcome) = self.pool_towards_peer(portal, origin, peer, protocol) {
-                return outcome;
-            }
+            let pool = match self.pool_towards_peer(portal, origin, peer, protocol) {
+                Ok(pool) => pool,
+                Err(outcome) => return outcome,
+            };
             if !self.clients[&peer]
                 .inner()
                 .inbound_peer_filter_allows(origin, protocol)
             {
+                let receiver = self.clients[&peer].inner();
+                let no_authorization = !receiver.has_inbound_peer_authorization(origin)
+                    || receiver.rejected_inbound_peer_filter_allows(origin, protocol);
+                if no_authorization
+                    && !self.clients[&origin]
+                        .inner()
+                        .malicious_behaviour
+                        .ignore_no_authorization_events
+                {
+                    self.apply_peer_authorization(origin, peer, pool);
+                }
+
                 return ExpectedOutcome::Rejected {
                     by: RejectionRemote::Client(peer),
                     response: RejectionResponse::Prohibited,
@@ -676,9 +769,12 @@ impl ReferenceState {
             return ExpectedOutcome::RoundTripCompleted(Route::Peer(peer));
         }
 
-        let (resource, gateway) = match self.select_resource(portal, origin, src, dst, protocol) {
-            Ok(selected) => selected,
+        let resource = match self.select_resource(origin, src, dst, protocol) {
+            Ok(resource) => resource,
             Err(outcome) => return outcome,
+        };
+        let Some(gateway) = self.select_gateway(portal, origin, resource) else {
+            return ExpectedOutcome::Dropped;
         };
         if let Destination::DomainName { .. } = dst {
             self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
@@ -690,7 +786,7 @@ impl ReferenceState {
         self.clients
             .get_mut(&origin)
             .unwrap()
-            .exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
+            .exec_mut(|client| client.connect_to_resource(resource, gateway, dst.clone()));
 
         match rejection {
             Some(response) => ExpectedOutcome::Rejected {
@@ -701,15 +797,14 @@ impl ReferenceState {
         }
     }
 
-    /// The resource `origin` sends a packet through and the gateway serving it.
+    /// The resource `origin` sends a packet through.
     fn select_resource(
         &self,
-        portal: &StubPortal,
         origin: ClientId,
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
-    ) -> Result<(ResourceId, GatewayId), ExpectedOutcome> {
+    ) -> Result<ResourceId, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
 
         let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
@@ -723,11 +818,24 @@ impl ReferenceState {
                 response: RejectionResponse::Prohibited,
             });
         }
-        let Some(gateway) = self.deployed_gateway_for(portal, resource) else {
-            return Err(ExpectedOutcome::Dropped);
-        };
 
-        Ok((resource, gateway))
+        Ok(resource)
+    }
+
+    /// The Gateway the portal hands `origin` for `resource`.
+    fn select_gateway(
+        &self,
+        portal: &StubPortal,
+        origin: ClientId,
+        resource: ResourceId,
+    ) -> Option<GatewayId> {
+        let site = portal.site_for_resource(resource)?;
+        let gateway = self.clients[&origin]
+            .inner()
+            .preferred_gateway(site)
+            .unwrap_or_else(|| portal.load_balanced_gateway(origin, site));
+
+        Some(gateway)
     }
 
     /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
@@ -742,6 +850,15 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
+
+        // The Gateway lost its authorization while the client still believes it holds one:
+        // it rejects this packet and tells the client to request a new authorization.
+        if client.connected_resources().contains(&resource)
+            && !portal.holds_gateway_authorization(origin, resource)
+        {
+            return Some(RejectionResponse::Prohibited);
+        }
+
         let is_internet_resource = client.internet_resource() == Some(resource);
 
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
@@ -757,7 +874,7 @@ impl ReferenceState {
         let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
             client
                 .connected_cidr_resources_allowing(ip, protocol)
-                .any(|cidr| self.deployed_gateway_for(portal, cidr) == Some(gateway))
+                .any(|cidr| client.gateway_for_resource(cidr) == Some(gateway))
         });
         if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
             return Some(RejectionResponse::Prohibited);
@@ -815,11 +932,8 @@ impl ReferenceState {
     }
 
     /// Installs the inbound half of a peer authorization on `peer`.
-    ///
-    /// A peer we connect to anew drops its outbound authorizations towards us, as we may have reset.
     fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
         self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
-            peer.forget_outbound_peer_authorizations(origin);
             peer.add_inbound_peer_pool(origin, pool);
         });
     }
@@ -855,13 +969,22 @@ impl ReferenceState {
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Client(client),
                 ..
+            } if self.clients[&client]
+                .inner()
+                .has_reset_connections_within_ice_timeout(sent_at) =>
+            {
+                Some(KnownLoss::ConnectionReset)
+            }
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
             } => self
                 .can_drop_during_rekey(origin, Remote::Client(client), sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
         };
 
         match known_loss {
-            Some(loss) => TraceRequirement::ExactOrSubmissionOnly(loss),
+            Some(loss) => TraceRequirement::ExactOrLoss(loss),
             None => TraceRequirement::Exact,
         }
     }
@@ -910,19 +1033,47 @@ impl ReferenceState {
     pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
         self.removable_resource_ids()
             .into_iter()
-            .filter(|resource| {
-                portal
-                    .gateway_for_resource(*resource)
-                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
-            })
+            .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()
     }
 
-    fn deployed_gateway_for(&self, portal: &StubPortal, resource: ResourceId) -> Option<GatewayId> {
-        portal
-            .gateway_for_resource(resource)
-            .copied()
-            .filter(|gateway| self.gateways.contains_key(gateway))
+    /// Peer authorizations a receiving client can expire while the sender keeps its own.
+    pub(crate) fn expirable_peer_authorizations(
+        &self,
+    ) -> Vec<(ClientId, ClientId, BTreeSet<ResourceId>)> {
+        let mut expirable = Vec::new();
+
+        for (peer, state) in &self.clients {
+            for (client, pools) in state.inner().inbound_peer_pools() {
+                let pools = pools
+                    .into_iter()
+                    .filter(|pool| {
+                        self.clients[&client]
+                            .inner()
+                            .authorized_pools_towards(*peer)
+                            .any(|authorized| authorized == *pool)
+                    })
+                    .collect::<BTreeSet<_>>();
+
+                if pools.is_empty() {
+                    continue;
+                }
+
+                expirable.push((client, *peer, pools));
+            }
+        }
+
+        expirable
+    }
+
+    /// Resources a Gateway currently holds an authorization for.
+    pub(crate) fn revocable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
+        let authorized = portal.authorized_resources();
+
+        self.deauthorizable_resource_ids(portal)
+            .into_iter()
+            .filter(|resource| authorized.contains(resource))
+            .collect()
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
@@ -1069,11 +1220,7 @@ impl ReferenceState {
                         client
                             .inner()
                             .upstream_dns_server_via_resource(server)
-                            .is_none_or(|resource| {
-                                portal
-                                    .gateway_for_resource(resource)
-                                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
-                            })
+                            .is_none_or(|resource| portal.site_for_resource(resource).is_some())
                     })
                     .map(move |server| (*client_id, server))
             })
@@ -1183,10 +1330,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv4_ips(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<(ClientId, Ipv4Network)> {
+    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1194,8 +1338,8 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = portal.gateway_for_resource(r)?;
-                        let gateway_host = self.gateways.get(gateway)?;
+                        let gateway = client.inner().gateway_for_resource(r)?;
+                        let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip4.into()))
                     })
@@ -1204,10 +1348,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv6_ips(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1215,8 +1356,8 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = portal.gateway_for_resource(r)?;
-                        let gateway_host = self.gateways.get(gateway)?;
+                        let gateway = client.inner().gateway_for_resource(r)?;
+                        let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip6.into()))
                     })

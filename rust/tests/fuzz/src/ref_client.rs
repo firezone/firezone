@@ -90,6 +90,10 @@ pub struct RefClient {
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
 
+    /// The Gateway we prefer per site when asking for access, until our connection to it fails.
+    #[debug(skip)]
+    gateways_by_site: BTreeMap<SiteId, GatewayId>,
+
     /// The expected TCP connections.
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
@@ -125,6 +129,8 @@ pub struct RefClient {
     /// Per peer, the pools through which the portal authorised it to reach us.
     #[debug(skip)]
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    #[debug(skip)]
+    rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
 
     resource_selector: u32,
 }
@@ -167,11 +173,13 @@ impl RefClient {
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
+            gateways_by_site: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
             inbound_peer_authorizations: Default::default(),
+            rejected_inbound_peer_authorizations: Default::default(),
         }
     }
 
@@ -218,14 +226,9 @@ impl RefClient {
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
-        self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.remove(resource);
+        self.discard_authorization(resource);
         self.dns_resource_resolutions
             .retain(|(candidate, _), _| candidate != resource);
-
-        if self.internet_resource().is_some_and(|r| r == *resource) {
-            self.connected_internet_resource = false;
-        }
 
         let site = match self.site_for_resource(*resource) {
             Ok(site) => site,
@@ -291,12 +294,83 @@ impl RefClient {
             .entry(peer)
             .or_default()
             .insert(pool);
+        if let Some(rejected) = self.rejected_inbound_peer_authorizations.get_mut(&peer) {
+            rejected.remove(&pool);
+        }
     }
 
     /// Drops a rejected pool in both directions for `peer`.
-    pub(crate) fn reject_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+    pub(crate) fn reject_peer_pool(
+        &mut self,
+        peer: ClientId,
+        pool: ResourceId,
+        filters: Vec<Filter>,
+    ) {
         remove_peer_pool(&mut self.outbound_peer_authorizations, peer, pool);
+        self.revoke_inbound_peer_pool(peer, pool, filters);
+    }
+
+    /// Expires the inbound authorization `peer` holds towards us through `pool`.
+    pub(crate) fn revoke_inbound_peer_pool(
+        &mut self,
+        peer: ClientId,
+        pool: ResourceId,
+        filters: Vec<Filter>,
+    ) {
+        if !self
+            .inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| pools.contains(&pool))
+        {
+            return;
+        }
+
         remove_peer_pool(&mut self.inbound_peer_authorizations, peer, pool);
+        self.rejected_inbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool, filters);
+    }
+
+    pub(crate) fn rejected_inbound_peer_filter_allows(
+        &self,
+        peer: ClientId,
+        protocol: Protocol,
+    ) -> bool {
+        self.rejected_inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| {
+                pools
+                    .values()
+                    .any(|filters| protocol_filter_allows(filters, protocol))
+            })
+    }
+
+    pub(crate) fn rejected_inbound_peer_pools(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, ResourceId, &[Filter])> + '_ {
+        self.rejected_inbound_peer_authorizations
+            .iter()
+            .flat_map(|(peer, pools)| {
+                pools
+                    .iter()
+                    .map(move |(pool, filters)| (*peer, *pool, filters.as_slice()))
+            })
+    }
+
+    /// Whether we hold any authorization at all for `peer` to reach us.
+    pub(crate) fn has_inbound_peer_authorization(&self, peer: ClientId) -> bool {
+        self.inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| !pools.is_empty())
+    }
+
+    pub(crate) fn inbound_peer_pools(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, BTreeSet<ResourceId>)> + '_ {
+        self.inbound_peer_authorizations
+            .iter()
+            .map(|(peer, pools)| (*peer, pools.clone()))
     }
 
     /// Drops all active authorizations through `pool`.
@@ -305,15 +379,11 @@ impl RefClient {
         remove_pool(&mut self.inbound_peer_authorizations, pool);
     }
 
-    /// Drops our outbound authorizations towards `peer` when it connects to us anew.
-    pub(crate) fn forget_outbound_peer_authorizations(&mut self, peer: ClientId) {
-        self.outbound_peer_authorizations.remove(&peer);
-    }
-
     /// Drops every authorization involving `peer`, as the connection to it is gone.
     pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
         self.outbound_peer_authorizations.remove(&peer);
         self.inbound_peer_authorizations.remove(&peer);
+        self.rejected_inbound_peer_authorizations.remove(&peer);
     }
 
     /// Checks whether any active inbound authorization from `peer` permits `protocol`.
@@ -405,6 +475,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
+        self.gateways_by_site.clear();
 
         self.key = key;
 
@@ -412,52 +483,81 @@ impl RefClient {
         self.readd_all_resources();
     }
 
-    /// Resets the connections to the given gateways, as if only they had disconnected.
+    /// Fails the connections to the given gateways, as if only they had disconnected.
     ///
-    /// Resources served by other gateways stay connected.
-    pub(crate) fn reset_connections_to_gateways(
+    /// Resources served by other gateways stay connected. We stop preferring the gateways whose
+    /// connection failed.
+    pub(crate) fn fail_connections_to_gateways(
         &mut self,
         gateways: &BTreeSet<GatewayId>,
-        gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         now: Instant,
     ) {
-        let is_affected =
-            |rid: &ResourceId| gateway_for_resource(*rid).is_some_and(|g| gateways.contains(&g));
-
         for gateway in gateways {
             self.gateway_send_times.remove(gateway);
         }
 
-        let mut affected = self
-            .connected_cidr_resources
-            .iter()
-            .chain(self.connected_dns_resources.iter())
-            .copied()
-            .filter(is_affected)
+        let affected = self
+            .connected_resources()
+            .filter(|rid| {
+                self.gateway_for_resource(*rid)
+                    .is_some_and(|g| gateways.contains(&g))
+            })
             .collect::<Vec<_>>();
-
-        if self.connected_internet_resource
-            && let Some(internet) = self.internet_resource()
-            && is_affected(&internet)
-        {
-            affected.push(internet);
-        }
 
         if affected.is_empty() {
             return;
         }
 
-        self.connection_resets.push(now);
+        let failed = affected
+            .iter()
+            .filter_map(|rid| self.gateway_for_resource(*rid))
+            .collect::<BTreeSet<_>>();
+        for _ in self
+            .gateways_by_site
+            .extract_if(.., |_, gateway| failed.contains(gateway))
+        {}
 
+        self.connection_resets.push(now);
+        self.discard_connections(affected);
+    }
+
+    /// The Gateway we are connected to, or would ask the portal to prefer, for `resource`.
+    pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<GatewayId> {
+        let site = self.site_for_resource(resource).ok()?;
+
+        self.gateways_by_site.get(&site.id).copied()
+    }
+
+    pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
+        self.gateways_by_site.get(&site).copied()
+    }
+
+    /// The Gateway closed the connection, so everything we reached through it is gone.
+    ///
+    /// Only the connection to that Gateway goes; the ICE state towards our peers, which
+    /// `connection_resets` tracks, is untouched.
+    pub(crate) fn close_gateway_connection(
+        &mut self,
+        gateway: GatewayId,
+        resources: &BTreeSet<ResourceId>,
+    ) {
+        self.gateway_send_times.remove(&gateway);
+
+        let connected = self.connected_resources().collect::<BTreeSet<_>>();
+        let affected = resources
+            .iter()
+            .copied()
+            .filter(|resource| connected.contains(resource))
+            .collect();
+
+        self.discard_connections(affected);
+    }
+
+    fn discard_connections(&mut self, affected: Vec<ResourceId>) {
         for resource in affected {
-            self.connected_cidr_resources.remove(&resource);
-            self.connected_dns_resources.remove(&resource);
+            self.discard_authorization(&resource);
             self.dns_resource_resolutions
                 .retain(|(candidate, _), _| *candidate != resource);
-
-            if self.internet_resource().is_some_and(|r| r == resource) {
-                self.connected_internet_resource = false;
-            }
 
             if let Ok(site) = self.site_for_resource(resource)
                 && let Some(status) = self.site_status.get_mut(&site.id)
@@ -483,6 +583,7 @@ impl RefClient {
         // Peer authorizations in both directions go with their connections.
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
+        self.rejected_inbound_peer_authorizations.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -567,7 +668,7 @@ impl RefClient {
         self.resources
             .iter()
             .cloned()
-            .filter_map(|resource| {
+            .map(|resource| {
                 let status = self.expected_resource_status(&resource);
 
                 resource.into_view(status)
@@ -691,7 +792,12 @@ impl RefClient {
         })
     }
 
-    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
+    pub(crate) fn connect_to_resource(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        destination: Destination,
+    ) {
         match destination {
             Destination::DomainName { .. } => {
                 self.connected_dns_resources.insert(resource);
@@ -699,7 +805,26 @@ impl RefClient {
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
 
+        self.connected_through(resource, Some(gateway));
+    }
+
+    /// `resource` is online, and we prefer the Gateway the portal handed us for its site.
+    fn connected_through(&mut self, resource: ResourceId, gateway: Option<GatewayId>) {
+        if let (Ok(site), Some(gateway)) = (self.site_for_resource(resource), gateway) {
+            self.gateways_by_site.insert(site.id, gateway);
+        }
+
         self.set_resource_online(resource);
+    }
+
+    /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
+    fn discard_authorization(&mut self, resource: &ResourceId) {
+        self.connected_cidr_resources.remove(resource);
+        self.connected_dns_resources.remove(resource);
+
+        if self.internet_resource().is_some_and(|r| r == *resource) {
+            self.connected_internet_resource = false;
+        }
     }
 
     fn set_resource_online(&mut self, rid: ResourceId) {
@@ -740,6 +865,7 @@ impl RefClient {
     pub(crate) fn on_dns_query(
         &mut self,
         query: &DnsQuery,
+        gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
@@ -751,11 +877,26 @@ impl RefClient {
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.prepare_dns_resource_connection(resource, global_dns_records);
-            self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
+            self.connected_through(resource, gateway);
             self.expect_dns_response(query);
 
             return;
+        }
+
+        if self.is_local_dns_resource_query(query)
+            && matches!(query.r_type, RecordType::A | RecordType::AAAA)
+        {
+            // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
+            let record_types = global_dns_records.domain_rtypes(&query.domain);
+            for resource in self.dns_resources_by_domain(
+                &query.domain,
+                |r| self.connected_dns_resources.contains(&r.id),
+                |_| true,
+            ) {
+                self.dns_resource_resolutions
+                    .insert((resource.id, query.domain.clone()), record_types.clone());
+            }
         }
 
         if self.is_local_dns_resource_query(query)
@@ -767,29 +908,6 @@ impl RefClient {
 
         if self.local_dns_resource(query).is_some() {
             self.expect_dns_response(query);
-
-            if matches!(query.r_type, RecordType::A | RecordType::AAAA) {
-                let resolved = self
-                    .connected_dns_resources
-                    .iter()
-                    .copied()
-                    .filter(|resource| {
-                        self.dns_resource_serves(
-                            *resource,
-                            &query.domain,
-                            query.r_type == RecordType::A,
-                            query.r_type == RecordType::AAAA,
-                        )
-                    })
-                    .collect_vec();
-
-                let record_types = global_dns_records.domain_rtypes(&query.domain);
-
-                for resource in resolved {
-                    self.dns_resource_resolutions
-                        .insert((resource, query.domain.clone()), record_types.clone());
-                }
-            }
 
             return;
         }
@@ -815,7 +933,7 @@ impl RefClient {
             }
 
             self.connect_to_internet_or_cidr_resource(resource);
-            self.set_resource_online(resource);
+            self.connected_through(resource, gateway);
 
             return;
         }

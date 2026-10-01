@@ -38,9 +38,9 @@ defmodule PortalWeb.OAuthConsent do
 
   def render(assigns) do
     ~H"""
-    <.flash kind={:error} flash={@flash} />
+    <Core.flash kind={:error} flash={@flash} />
 
-    <.oauth_client_header client={@request.client} />
+    <Page.oauth_client_header client={@request.client} />
 
     <p class="text-sm text-body mb-6">
       Select the permissions
@@ -52,7 +52,7 @@ defmodule PortalWeb.OAuthConsent do
     </p>
 
     <.form for={%{}} phx-submit="allow">
-      <.scope_picker
+      <Page.scope_picker
         scopes={@scopes}
         allowed_scopes={@request.requested_scopes}
         field_name="scope[]"

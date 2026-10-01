@@ -2,8 +2,6 @@ use std::{io, time::Duration};
 
 use telemetry::Dsn;
 
-use crate::fd::RawFd;
-
 pub const RELEASE: &str = "";
 pub const VERSION: &str = "";
 pub const COMPONENT: &str = "";
@@ -36,27 +34,5 @@ impl io::Write for DevNull {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
-    }
-}
-
-pub struct Tun;
-
-impl Tun {
-    pub unsafe fn from_fd(_: RawFd, _: &tokio::runtime::Handle) -> io::Result<Self> {
-        Err(io::Error::other("Stub!"))
-    }
-}
-
-impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        todo!()
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        todo!()
-    }
-
-    fn name(&self) -> &str {
-        todo!()
     }
 }

@@ -67,6 +67,8 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Sign up with <strong>Google</strong>"
       assert html =~ "Sign up with <strong>email</strong>"
       assert html =~ ~s(action="/sign_up/google")
+      assert html =~ "Sign up with <strong>GitHub</strong>"
+      assert html =~ ~s(action="/sign_up/github")
       refute html =~ ~s(name="registration[phone]")
     end
 
@@ -264,7 +266,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Google sign-up session is invalid or has expired"
     end
 
-    test "submit_google from the email form is rejected", %{conn: conn} do
+    test "submit_identity from the email form is rejected", %{conn: conn} do
       conn = with_google_identity(conn, email: "attacker@example.com")
       victim = "victim@example.com"
       account = account_fixture(metadata: %{stripe: %{billing_email: victim}})
@@ -272,7 +274,7 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
-        render_submit(lv, "submit_google", %{
+        render_submit(lv, "submit_identity", %{
           "registration" => %{
             "email" => victim,
             "account" => %{"name" => "Hijack Corp"},
@@ -287,7 +289,7 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Actor, email: victim)
     end
 
-    test "submit_google ignores an email smuggled into the form", %{conn: conn} do
+    test "submit_identity ignores an email smuggled into the form", %{conn: conn} do
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -301,7 +303,7 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
 
       html =
-        render_submit(lv, "submit_google", %{
+        render_submit(lv, "submit_identity", %{
           "registration" => %{
             "email" => "victim@example.com",
             "account" => %{"name" => "Honest Corp"},
@@ -358,6 +360,105 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ "Something went wrong"
       assert html =~ "temporary error"
+    end
+  end
+
+  describe "github action" do
+    test "shows the GitHub form with the verified email", %{conn: conn} do
+      conn = with_github_identity(conn)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/github")
+
+      assert html =~ "Almost there"
+      assert html =~ "octocat@example.com"
+      assert html =~ "Verified by GitHub"
+      assert html =~ ~s(id="github-sign-up-form")
+      assert html =~ ~s(value="The Octocat")
+      refute html =~ ~s(name="registration[email]")
+    end
+
+    test "submitting creates the account with GitHub and email providers", %{conn: conn} do
+      Stripe.stub(
+        [
+          {"POST", "/v1/customers", 200,
+           Stripe.customer_object("cus_test", "Octo Corp", "octocat@example.com")}
+        ] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      conn = with_github_identity(conn)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/github")
+
+      html =
+        lv
+        |> form("#github-sign-up-form",
+          registration: %{account: %{name: "Octo Corp"}, actor: %{name: "The Octocat"}, sign_up_survey: @survey}
+        )
+        |> render_submit()
+
+      assert html =~ "Your account has been created!"
+      assert html =~ "Sign In with GitHub"
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Octo Corp")
+
+      github_provider = Portal.Repo.get_by!(Portal.GitHub.AuthProvider, account_id: account.id)
+      assert github_provider.issuer == "https://github.com/login/oauth"
+      assert github_provider.name == "GitHub"
+      assert github_provider.is_default
+      refute github_provider.is_disabled
+      assert html =~ ~s(href="/#{account.slug}/sign_in/github/#{github_provider.id}")
+
+      refute Portal.Repo.get_by(Portal.Google.AuthProvider, account_id: account.id)
+      assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
+
+      actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id)
+      assert actor.email == "octocat@example.com"
+      assert actor.type == :account_admin_user
+
+      identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
+      assert identity.actor_id == actor.id
+      assert identity.issuer == "https://github.com/login/oauth"
+      assert identity.idp_id == "583231"
+      assert identity.email == "octocat@example.com"
+    end
+
+    test "lists existing accounts owned by the GitHub email", %{conn: conn} do
+      email = "owner@example.com"
+      account = account_fixture(metadata: %{stripe: %{billing_email: email}})
+      conn = with_github_identity(conn, email: email)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/github")
+
+      assert html =~ "You already have an account"
+      assert html =~ "Your GitHub email is the owner"
+      assert html =~ account.name
+    end
+
+    test "a Google identity cannot be used on the GitHub step", %{conn: conn} do
+      conn = with_google_identity(conn)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/github")
+
+      assert html =~ "Something went wrong"
+      assert html =~ "GitHub sign-up session is invalid or has expired"
+    end
+
+    test "a GitHub identity cannot be used on the Google step", %{conn: conn} do
+      conn = with_github_identity(conn)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Something went wrong"
+      assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
+    test "an unknown provider in the session is rejected", %{conn: conn} do
+      conn = with_google_identity(conn, provider: "linkedin")
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Google sign-up session is invalid or has expired"
     end
   end
 
@@ -864,7 +965,7 @@ defmodule PortalWeb.SignUpTest do
       pool =
         Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
 
-      assert pool.name == "Your devices"
+      assert pool.name == "My devices"
       assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
       assert is_nil(pool.address)
       assert is_nil(pool.site_id)
@@ -932,14 +1033,25 @@ defmodule PortalWeb.SignUpTest do
   defp expire_google_identity(lv) do
     # Expire the mounted identity without racing the clock during LiveView startup.
     :sys.replace_state(lv.pid, fn state ->
-      put_in(state.socket.assigns.google_identity.expires_at, System.os_time(:second) - 1)
+      put_in(state.socket.assigns.idp_identity.expires_at, System.os_time(:second) - 1)
     end)
+  end
+
+  defp with_github_identity(conn, attrs \\ []) do
+    with_google_identity(conn,
+      provider: "github",
+      email: Keyword.get(attrs, :email, "octocat@example.com"),
+      issuer: "https://github.com/login/oauth",
+      idp_id: "583231",
+      name: "The Octocat"
+    )
   end
 
   defp with_google_identity(conn, attrs \\ []) do
     email = Keyword.get(attrs, :email, "ada@example.com")
 
     identity = %{
+      "provider" => Keyword.get(attrs, :provider, "google"),
       "email" => email,
       "issuer" => Keyword.get(attrs, :issuer, "https://accounts.google.com"),
       "idp_id" => Keyword.get(attrs, :idp_id, "353690423699814251281"),
@@ -949,7 +1061,7 @@ defmodule PortalWeb.SignUpTest do
       "expires_at" => Keyword.get(attrs, :expires_at, System.os_time(:second) + 900)
     }
 
-    Plug.Test.init_test_session(conn, %{"google_sign_up" => identity})
+    Plug.Test.init_test_session(conn, %{"idp_sign_up" => identity})
   end
   defp enable_follow_up_email do
     Portal.Config.put_env_override(:portal, Portal.Workers.SignUpFollowUp,

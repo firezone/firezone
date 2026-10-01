@@ -26,8 +26,7 @@ defmodule PortalWeb.Settings.Account do
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
-        sites_count: Database.count_groups_for_account(subject),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        sites_count: Database.count_groups_for_account(subject)
       )
 
     {:ok, socket}
@@ -36,17 +35,16 @@ defmodule PortalWeb.Settings.Account do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full relative">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
-          <.button phx-click="open_edit_account" size="xs">
-            <.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
-          </.button>
+          <Form.button phx-click="open_edit_account" size="xs">
+            <Core.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
+          </Form.button>
         </:actions>
-      </.settings_nav>
+      </Navigation.settings_nav>
 
       <%!-- Two-column body --%>
       <div class="flex flex-1 bg-surface overflow-hidden">
@@ -67,11 +65,11 @@ defmodule PortalWeb.Settings.Account do
               class="space-y-1.5 pt-2 border-t border-border"
             >
               <dt class="text-[10px] text-subtle">Billing Email</dt>
-              <dd class="text-xs text-heading">
+              <dd class="text-xs text-body font-medium">
                 {@account.metadata.stripe.billing_email}
               </dd>
               <dt class="text-[10px] text-subtle mt-4">Support Type</dt>
-              <dd class="text-xs text-heading capitalize">
+              <dd class="text-xs text-body capitalize font-medium">
                 {billing_support_label(@account.metadata.stripe.support_type)}
               </dd>
             </dl>
@@ -86,9 +84,9 @@ defmodule PortalWeb.Settings.Account do
               class="pt-2 border-t border-border"
             >
               <div class="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex gap-2.5 items-start">
-                <.icon
+                <Core.icon
                   name="ri-customer-service-2-line"
-                  class="w-4 h-4 shrink-0 text-violet-500 dark:text-violet-400 mt-0.5"
+                  class="w-4 h-4 shrink-0 text-link mt-0.5"
                 />
                 <div>
                   <p class="text-xs font-medium text-violet-700 dark:text-violet-300">
@@ -100,14 +98,14 @@ defmodule PortalWeb.Settings.Account do
                 </div>
               </div>
             </div>
-            <.button
+            <Form.button
               :if={@billing_provisioned and @billing_plan_type != :enterprise}
               phx-click="redirect_to_billing_portal"
               size="xs"
               class="w-full mt-1"
             >
               Manage plan
-            </.button>
+            </Form.button>
           </div>
 
           <%!-- Plan features (always shown) --%>
@@ -148,19 +146,19 @@ defmodule PortalWeb.Settings.Account do
             </p>
             <div
               :if={Portal.Billing.paid_plan?(@account)}
-              class="mb-3 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-xs text-amber-800"
+              class="mb-3 px-3 py-2 rounded border border-warning/30 bg-warning-light text-xs text-warning"
             >
               You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
             </div>
-            <.button type="button" phx-click="cancel_account_deletion" size="xs" class="w-full">
+            <Form.button type="button" phx-click="cancel_account_deletion" size="xs" class="w-full">
               Cancel deletion
-            </.button>
-            <.flash :if={@error} kind={:error} class="mt-2">
+            </Form.button>
+            <Core.flash :if={@error} kind={:error} class="mt-2">
               {@error}
-            </.flash>
+            </Core.flash>
           </div>
 
-          <.modal
+          <Form.modal
             :if={@deletion_feedback_form}
             id="deletion-feedback-modal"
             on_close="skip_deletion_feedback"
@@ -176,7 +174,7 @@ defmodule PortalWeb.Settings.Account do
                 phx-submit="submit_deletion_feedback"
               >
                 <.inputs_for :let={metadata} field={@deletion_feedback_form[:metadata]}>
-                  <.input
+                  <Form.input
                     field={metadata[:deletion_feedback]}
                     type="textarea"
                     placeholder="Your feedback (optional)"
@@ -190,12 +188,12 @@ defmodule PortalWeb.Settings.Account do
             <:confirm_button form="deletion-feedback-form" type="submit">
               Send feedback
             </:confirm_button>
-          </.modal>
+          </Form.modal>
 
           <%!-- Danger Zone (active, unlocked accounts only) --%>
           <div :if={Account.active?(@account) and not Account.locked?(@account)} class="mt-6">
             <div class="border-t border-border mb-4"></div>
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
               Danger Zone
             </h3>
 
@@ -205,7 +203,7 @@ defmodule PortalWeb.Settings.Account do
               phx-click="confirm_delete_account"
               class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
             >
-              <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete account
+              <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete account
             </button>
 
             <div
@@ -230,25 +228,25 @@ defmodule PortalWeb.Settings.Account do
                   value={@slug_confirmation}
                   placeholder={@account.slug}
                   autocomplete="off"
-                  class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-error/40"
+                  class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-subtle focus:outline-none focus:ring-1 focus:ring-error/40"
                 />
                 <div class="flex items-center gap-1.5">
-                  <.button type="button" phx-click="cancel_delete_account" size="xs">
+                  <Form.button type="button" phx-click="cancel_delete_account" size="xs">
                     Cancel
-                  </.button>
-                  <.button
+                  </Form.button>
+                  <Form.button
                     type="submit"
                     disabled={@slug_confirmation != @account.slug}
                     style="danger"
                     size="xs"
                   >
                     Delete
-                  </.button>
+                  </Form.button>
                 </div>
               </form>
-              <.flash :if={@error} kind={:error} class="mt-2">
+              <Core.flash :if={@error} kind={:error} class="mt-2">
                 {@error}
-              </.flash>
+              </Core.flash>
             </div>
           </div>
         </div>
@@ -327,12 +325,12 @@ defmodule PortalWeb.Settings.Account do
   defp feature_row(assigns) do
     ~H"""
     <div class="flex items-center gap-2">
-      <.icon
+      <Core.icon
         :if={@enabled}
         name="ri-check-line"
         class="w-3.5 h-3.5 shrink-0 text-success"
       />
-      <.icon
+      <Core.icon
         :if={not @enabled}
         name="ri-subtract-line"
         class="w-3.5 h-3.5 shrink-0 text-subtle"
@@ -367,7 +365,7 @@ defmodule PortalWeb.Settings.Account do
         </div>
         <span class={[
           "text-xs tabular-nums shrink-0 ml-4",
-          @over? && "text-red-500",
+          @over? && "text-danger",
           not @over? && "text-body"
         ]}>
           {@used} / {@limit}
@@ -380,7 +378,7 @@ defmodule PortalWeb.Settings.Account do
           data-pct={bar_pct(@used, @limit)}
           class={[
             "h-full rounded-full transition-all",
-            @over? && "bg-red-500",
+            @over? && "bg-danger",
             not @over? && "bg-brand"
           ]}
         >
@@ -426,7 +424,7 @@ defmodule PortalWeb.Settings.Account do
     ]}>
       <div class="flex items-center justify-between px-5 py-4 border-b border-border">
         <h2 class="text-sm font-semibold text-heading">Edit Account</h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_edit_account" />
+        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_edit_account" />
       </div>
 
       <.form
@@ -438,21 +436,21 @@ defmodule PortalWeb.Settings.Account do
         class="flex flex-col flex-1 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto p-5">
-          <.input
+          <Form.input
             field={@form[:name]}
             label="Account Name"
             phx-debounce="300"
           />
         </div>
 
-        <.panel_footer>
-          <.panel_footer_button type="button" phx-click="close_edit_account">
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="close_edit_account">
             Cancel
-          </.panel_footer_button>
-          <.panel_footer_button type="submit" style="primary" disabled={not @form.source.valid?}>
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary" disabled={not @form.source.valid?}>
             Save
-          </.panel_footer_button>
-        </.panel_footer>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
     </div>
     """

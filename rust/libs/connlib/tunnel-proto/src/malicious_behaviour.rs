@@ -11,10 +11,16 @@ pub fn send_untracked_icmp_errors() -> bool {
     FEATURES.with(|f| f.get().send_untracked_icmp_errors)
 }
 
+/// Returns `true` if the current thread is configured to ignore `no_authorization` events.
+pub fn ignore_no_authorization_events() -> bool {
+    FEATURES.with(|f| f.get().ignore_no_authorization_events)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MaliciousBehaviour {
     pub ignore_resource_filters: bool,
     pub send_untracked_icmp_errors: bool,
+    pub ignore_no_authorization_events: bool,
 }
 
 impl MaliciousBehaviour {

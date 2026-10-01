@@ -93,6 +93,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     actors
     external_identities
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
@@ -117,6 +118,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    sophos_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -161,6 +163,7 @@ config :portal, Portal.Changes.Consumer,
     resources
     client_tokens
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
@@ -175,11 +178,13 @@ config :portal, Portal.Changes.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    sophos_posture_providers
     intune_devices
     iru_devices
     defender_devices
     santa_devices
     sentinelone_devices
+    sophos_devices
     relay_tokens
     portal_sessions
   ],
@@ -284,6 +289,13 @@ config :portal, Portal.SentinelOne.APIClient,
     retry: :safe_transient
   ]
 
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
@@ -309,6 +321,15 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+config :portal, Portal.GitHub.AuthProvider,
+  # Should match an OAuth App registered under the Firezone GitHub organization
+  client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),
+  client_secret: System.get_env("GITHUB_OAUTH_CLIENT_SECRET"),
+  authorize_endpoint: "https://github.com/login/oauth/authorize",
+  token_endpoint: "https://github.com/login/oauth/access_token",
+  api_endpoint: "https://api.github.com",
+  req_opts: []
+
 config :portal, Portal.Google.SyncAuthorization,
   # Dedicated OAuth client used only to authorize Google Workspace directory setup
   client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
@@ -330,6 +351,8 @@ config :portal, Portal.Analytics.PostHog,
   endpoint: "https://e.firezone.dev/i/v0/e/",
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
+
+config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
@@ -608,6 +631,8 @@ config :logger, :default_formatter,
 config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
+
+config :portal, Portal.Mailer.FeedbackEmail, recipient: nil
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,

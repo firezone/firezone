@@ -11,6 +11,8 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+
+use crate::authorization_rejections::AuthorizationRejections;
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::client::client_on_client::InboundResult;
@@ -41,8 +43,8 @@ use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use boringtun::x25519;
 use connlib_model::{
-    ClientId, ClientOrGatewayId, ConnectedDeviceView, GatewayId, IceCandidate, PublicKey, RelayId,
-    ResourceId, ResourceList, ResourceStatus, ResourceView,
+    ClientId, ClientOrGatewayId, ConnectedDeviceView, DevicePoolResourceView, GatewayId,
+    IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
@@ -128,6 +130,7 @@ pub struct ClientState {
 
     /// Tracks the flows tunneled through this Client.
     flow_tracker: flow_tracker::Tracker<ClientOrGatewayId>,
+    authorization_rejections: AuthorizationRejections,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
 
@@ -177,7 +180,7 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     tun_config: TrackedState<TunConfig>,
     /// Cache of the resource list we emitted to the app.
-    resource_list: TrackedState<ResourceList>,
+    resource_list: TrackedState<Vec<ResourceView>>,
 
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
@@ -217,6 +220,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: Node::new(seed, now, unix_ts),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
+            authorization_rejections: Default::default(),
             portal: Default::default(),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
@@ -251,80 +255,55 @@ impl ClientState {
         })
     }
 
+    /// Returns the network path currently selected for `peer`.
+    pub fn connection_path(&self, peer: ClientOrGatewayId) -> Option<snownet::ConnectionPath> {
+        self.node.connection_path(&peer)
+    }
+
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
-            .cloned()
-            .filter_map(|r| {
-                let status = self.resource_status(&r);
-                r.with_status(status)
+            .map(|resource| {
+                let status = self.resource_status(resource);
+
+                match resource.clone() {
+                    Resource::Dns(r) => ResourceView::Dns(r.with_status(status)),
+                    Resource::Cidr(r) => ResourceView::Cidr(r.with_status(status)),
+                    Resource::Internet(r) => ResourceView::Internet(r.with_status(status)),
+                    Resource::DevicePool(r) => ResourceView::DevicePool(DevicePoolResourceView {
+                        id: r.id,
+                        name: r.name,
+                        devices: self.connected_devices_in(r.id),
+                    }),
+                }
             })
             .sorted()
             .collect_vec()
     }
 
-    /// Builds the list of currently-connected device peers. The name and tunnel
-    /// IPs are taken from the live connection state; the pools we reach the device
-    /// through, or it reaches us through, label it.
-    pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
+    /// Returns the connected devices whose flows with us are authorised through the given pool, either way.
+    fn connected_devices_in(&self, pool: ResourceId) -> Vec<ConnectedDeviceView> {
         self.clients
             .iter()
-            .filter_map(|peer| {
-                let client_id = peer.id();
-
-                if !self
-                    .node
-                    .is_connected(&ClientOrGatewayId::Client(client_id))
-                {
-                    return None;
-                }
-
-                let tun_ipv4 = peer.tun_ipv4();
-                let tun_ipv6 = peer.tun_ipv6();
-                let name = peer.remote_name().to_owned();
-
-                let pool_names = self.pool_names_for(peer).sorted().collect_vec();
-
-                if pool_names.is_empty() {
-                    return None;
-                }
-
-                Some(ConnectedDeviceView {
-                    id: client_id,
-                    name,
-                    tun_ipv4,
-                    tun_ipv6,
-                    pools: pool_names,
-                })
+            .filter(|peer| {
+                self.node
+                    .is_connected(&ClientOrGatewayId::Client(peer.id()))
             })
+            .filter(|peer| {
+                self.outbound_authorizations
+                    .client_token(pool, peer.id())
+                    .is_some()
+                    || peer.inbound_resource_ids().contains(&pool)
+            })
+            .map(|peer| ConnectedDeviceView {
+                id: peer.id(),
+                name: peer.remote_name().to_owned(),
+                slug: peer.remote_slug().to_owned(),
+                tun_ipv4: peer.tun_ipv4(),
+                tun_ipv6: peer.tun_ipv6(),
+            })
+            .sorted_by(|a, b| a.slug.cmp(&b.slug))
             .collect_vec()
-    }
-
-    /// The names of the pools that authorise flows between us and `peer`, either way.
-    fn pool_names_for<'a>(&'a self, peer: &'a ClientOnClient) -> impl Iterator<Item = String> + 'a {
-        let inbound = peer.inbound_resource_ids().collect::<BTreeSet<_>>();
-
-        self.resources_by_id
-            .iter()
-            .filter_map(move |(rid, resource)| {
-                let Resource::DevicePool(pool) = resource else {
-                    return None;
-                };
-
-                let outbound = self
-                    .outbound_authorizations
-                    .client_token(*rid, peer.id())
-                    .is_some();
-
-                (outbound || inbound.contains(rid)).then(|| pool.name.clone())
-            })
-    }
-
-    fn resource_list_snapshot(&self) -> ResourceList {
-        ResourceList {
-            resources: self.resources(),
-            connected_devices: self.connected_devices(),
-        }
     }
 
     fn resource_status(&self, resource: &Resource) -> ResourceStatus {
@@ -363,7 +342,7 @@ impl ClientState {
         }
 
         self.on_resource_connection_failed(id, now);
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     /// Handles cases where access to a device is denied.
@@ -804,6 +783,14 @@ impl ClientState {
                         }
                     }
                 }
+                (p2p_control::NO_AUTHORIZATION_EVENT, pid) => {
+                    let event = p2p_control::no_authorization::decode(fz_p2p_control)
+                        .context("Failed to decode `NoAuthorization`")?;
+
+                    if let Err(e) = self.handle_no_authorization(pid, event, now) {
+                        tracing::debug!(%pid, dst = %event.dst, protocol = ?event.protocol, "Ignoring `NoAuthorization` event: {e:#}");
+                    }
+                }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
@@ -832,7 +819,10 @@ impl ClientState {
 
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
-                    InboundResult::Filtered(reply) => {
+                    InboundResult::Filtered {
+                        reply,
+                        no_authorization,
+                    } => {
                         encapsulate_and_queue(
                             reply,
                             ClientOrGatewayId::Client(cid),
@@ -841,6 +831,19 @@ impl ClientState {
                             &mut self.buffered_transmits,
                             &mut self.pending_peer_packets,
                         );
+                        if let Some(event) = no_authorization.and_then(|rejection| {
+                            self.authorization_rejections
+                                .on_rejected(cid, rejection, now)
+                        }) {
+                            encapsulate_and_queue(
+                                event,
+                                cid.into(),
+                                now,
+                                &mut self.node,
+                                &mut self.buffered_transmits,
+                                &mut self.pending_peer_packets,
+                            );
+                        }
                         return Ok(None);
                     }
                 };
@@ -859,38 +862,6 @@ impl ClientState {
                 // To a gateway we are always the one who opened the flow;
                 // this packet is a reply.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-
-                // All facts are recorded; commit the flow so the tracker
-                // borrow is free for the `&mut self` calls below.
-                drop(_guard);
-
-                #[cfg(feature = "telemetry")]
-                if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
-                    && let Ok(Some((failed_packet, error))) = packet.icmp_error()
-                    && error.is_unreachable_prohibited()
-                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
-                    && let Ok(routes) = self.routing_tables.resolve_resource(
-                        failed_packet.dst(),
-                        failed_packet.dst_proto(),
-                        internet_resource,
-                    )
-                    && let resources = routes
-                        .iter()
-                        .map(|route| route.resource_id)
-                        .unique()
-                        .collect_vec()
-                    && !resources.is_empty()
-                {
-                    telemetry::analytics::feature_flag_called(
-                        "icmp-error-unreachable-prohibited-create-new-flow",
-                    );
-
-                    self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Resources(resources),
-                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
-                        now,
-                    );
-                }
             }
         }
 
@@ -1158,6 +1129,7 @@ impl ClientState {
         ice_role: IceRole,
         use_iceless: bool,
         client_name: String,
+        client_slug: String,
         resource_id: Option<ResourceId>,
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         flow_logs_ingest_token: IngestToken,
@@ -1171,10 +1143,14 @@ impl ClientState {
             return Ok(());
         };
 
-        // A peer connecting to us anew may have reset since we were authorized to access it,
-        // taking our inbound authorization with it, so our next flow asks the portal again.
-        if authorization.is_some() {
-            self.forget_outbound_authorizations(cid);
+        if self
+            .node
+            .remote_public_key(&ClientOrGatewayId::Client(cid))
+            .is_some_and(|key| key != client_key)
+        {
+            tracing::debug!(%cid, "Peer reconnected with a new key; forgetting its previous session");
+
+            self.cleanup_connected_client(&cid);
         }
 
         self.node.upsert_connection(
@@ -1198,12 +1174,18 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(cid, local_tun, client_tun, client_name.clone())
+            ClientOnClient::new(
+                cid,
+                local_tun,
+                client_tun,
+                client_name.clone(),
+                client_slug.clone(),
+            )
         });
 
-        if peer.remote_name() != client_name {
-            tracing::debug!(%cid, name = %client_name, "Updated client peer name");
-            peer.set_remote_name(client_name);
+        if peer.remote_name() != client_name || peer.remote_slug() != client_slug {
+            tracing::debug!(%cid, name = %client_name, slug = %client_slug, "Updated client peer identity");
+            peer.set_remote_identity(client_name, client_slug);
         }
 
         // We only add the inbound resource and filters on the *target* side of the connection.
@@ -1365,6 +1347,83 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
+    /// Requests fresh access for matching grants held by the peer reporting a missing authorization.
+    fn handle_no_authorization(
+        &mut self,
+        pid: ClientOrGatewayId,
+        event: p2p_control::no_authorization::NoAuthorization,
+        now: Instant,
+    ) -> Result<()> {
+        #[cfg(any(test, feature = "malicious-behaviour"))]
+        anyhow::ensure!(
+            !crate::malicious_behaviour::ignore_no_authorization_events(),
+            "Malicious client is configured to ignore the event"
+        );
+
+        let internet_resource = self.active_internet_resource().map(|r| r.id);
+        let routes = self
+            .routing_tables
+            .resolve(event.dst, event.protocol.into(), internet_resource)
+            .map_err(|routing::Denied| anyhow::anyhow!("Destination rejected by routing policy"))?;
+        anyhow::ensure!(!routes.is_empty(), "No matching route");
+
+        let request = match (pid, routes) {
+            (ClientOrGatewayId::Client(cid), MatchedRoutes::DevicePools(pools)) => {
+                let peer = self
+                    .clients
+                    .peer_by_id(&cid)
+                    .context("Client peer no longer exists")?;
+                anyhow::ensure!(
+                    peer.remote_tun().is_ip(event.dst),
+                    "Destination does not belong to the client peer"
+                );
+
+                let pools = pools
+                    .into_iter()
+                    .filter(|pool| {
+                        self.outbound_authorizations
+                            .client_token(*pool, cid)
+                            .is_some()
+                    })
+                    .collect_vec();
+                anyhow::ensure!(
+                    !pools.is_empty(),
+                    "No outbound authorization for the client peer"
+                );
+
+                AuthorizationRequest::device(event.dst, pools)
+            }
+            (ClientOrGatewayId::Gateway(gid), MatchedRoutes::Gateways(routes)) => {
+                let resources = routes
+                    .into_iter()
+                    .map(|route| route.resource_id)
+                    .filter(|resource| {
+                        self.outbound_authorizations.gateway_by_resource(*resource) == Some(&gid)
+                    })
+                    .collect_vec();
+                anyhow::ensure!(
+                    !resources.is_empty(),
+                    "No matching resource authorized through the gateway"
+                );
+
+                AuthorizationRequest::resources(resources)
+            }
+            (ClientOrGatewayId::Client(_), MatchedRoutes::Gateways(_)) => {
+                anyhow::bail!("Client reported a destination that routes through a gateway");
+            }
+            (ClientOrGatewayId::Gateway(_), MatchedRoutes::DevicePools(_)) => {
+                anyhow::bail!("Gateway reported a destination that routes to a client");
+            }
+        };
+        self.pending_authorizations.on_not_authorized(
+            request,
+            pending_authorizations::Trigger::NoAuthorization,
+            now,
+        );
+
+        Ok(())
+    }
+
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_authorizations
             .remove_resource_authorizations(resource);
@@ -1500,7 +1559,7 @@ impl ClientState {
         self.forget_outbound_authorizations(*disconnected_client);
 
         if self.clients.remove(disconnected_client).is_some() {
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 
@@ -1617,6 +1676,11 @@ impl ClientState {
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
+                self.authorization_rejections
+                    .poll_timeout()
+                    .map(|instant| (instant, "Authorization rejection expiry")),
+            )
+            .chain(
                 self.udp_dns_client
                     .poll_timeout()
                     .map(|instant| (instant, "UDP DNS client")),
@@ -1665,6 +1729,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.flow_tracker.handle_timeout(now);
+        self.authorization_rejections.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
 
@@ -1845,7 +1910,7 @@ impl ClientState {
         }
 
         if any_reset {
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 
@@ -2134,6 +2199,11 @@ impl ClientState {
             match event {
                 snownet::Event::ConnectionFailed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
+
+                    // Stop preferring it, otherwise the portal hands us the same Gateway again.
+                    for gateways in self.gateways_by_site.values_mut() {
+                        gateways.remove(&id);
+                    }
                 }
                 snownet::Event::ConnectionClosed(ClientOrGatewayId::Gateway(id)) => {
                     self.cleanup_connected_gateway(&id, now);
@@ -2182,7 +2252,7 @@ impl ClientState {
                 }
                 snownet::Event::ConnectionEstablished(ClientOrGatewayId::Client(id)) => {
                     self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
-                    self.resource_list.update(self.resource_list_snapshot());
+                    self.resource_list.update(self.resources());
                 }
                 snownet::Event::NoRelays => {
                     self.buffered_events.push_back(ClientEvent::NoRelays);
@@ -2273,7 +2343,7 @@ impl ClientState {
         };
 
         self.sites_status.insert(*sid, (status, now));
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     pub fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -2284,11 +2354,7 @@ impl ClientState {
         }
 
         if let Some(resources) = self.resource_list.take_pending_update() {
-            tracing::debug!(
-                resources = resources.resources.len(),
-                connected_devices = resources.connected_devices.len(),
-                "Updating resource list"
-            );
+            tracing::debug!(count = %resources.len(), "Updating resource list");
 
             return Some(ClientEvent::ResourcesChanged { resources });
         }
@@ -2410,7 +2476,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     pub fn add_resource(
@@ -2482,7 +2548,7 @@ impl ClientState {
 
         self.drain_resource_stub_resolver_events();
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource added");
     }
 
@@ -2514,7 +2580,7 @@ impl ClientState {
             self.log_activating_resource(&resource);
         }
 
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
     }
 
     fn log_activating_resource(&self, resource: &Resource) {
@@ -2533,7 +2599,7 @@ impl ClientState {
         self.routing_tables.remove_by_id(id);
 
         self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
+        self.resource_list.update(self.resources());
         self.dns_cache.flush("Resource removed");
     }
 
@@ -2590,7 +2656,7 @@ impl ClientState {
                 now,
             );
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown, now);
-            self.resource_list.update(self.resource_list_snapshot());
+            self.resource_list.update(self.resources());
         }
     }
 

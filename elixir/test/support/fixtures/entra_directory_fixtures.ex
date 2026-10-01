@@ -98,4 +98,21 @@ defmodule Portal.EntraDirectoryFixtures do
     |> Map.put_new(:synced_at, DateTime.utc_now())
     |> entra_directory_fixture()
   end
+
+  @doc "Generate an Entra directory with an existing webhook subscription."
+  def subscribed_entra_directory_fixture(attrs \\ %{}) do
+    attrs
+    |> Enum.into(%{
+      webhook_secret: "secret",
+      users_subscription_id: "existing-users",
+      groups_subscription_id: "existing-groups",
+      subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+    })
+    |> entra_directory_fixture()
+  end
+
+  @doc "Build an active Entra user API payload."
+  def entra_api_user_fixture(attrs \\ %{}) do
+    Map.put_new(Enum.into(attrs, %{}), "accountEnabled", true)
+  end
 end

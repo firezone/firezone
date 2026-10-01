@@ -63,7 +63,7 @@ defmodule Portal.ActorFixtures do
 
     {:ok, actor} =
       %Portal.Actor{}
-      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in])
+      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in, :password_hash])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Actor.changeset()
       |> Portal.Repo.insert()
@@ -116,5 +116,14 @@ defmodule Portal.ActorFixtures do
     actor
     |> Ecto.Changeset.change(is_disabled: true)
     |> Portal.Repo.update!()
+  end
+
+  @doc "Mark an actor as created by a directory and preload its account."
+  def mark_created_by_directory(actor_id, directory) do
+    Portal.Actor
+    |> Portal.Repo.get_by!(id: actor_id)
+    |> Ecto.Changeset.change(created_by_directory_id: directory.id)
+    |> Portal.Repo.update!()
+    |> Portal.Repo.preload(:account)
   end
 end

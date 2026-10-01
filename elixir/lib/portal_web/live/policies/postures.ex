@@ -15,7 +15,7 @@ defmodule PortalWeb.Policies.Postures do
   alias Portal.Policies.Postures
 
   @type t :: %{
-          availability: :enabled | :locked | :hidden,
+          availability: :enabled | :locked,
           connected: [atom()],
           trust_anchors?: boolean(),
           tab: :simple | :json,
@@ -25,13 +25,9 @@ defmodule PortalWeb.Policies.Postures do
           json_error: %{message: String.t(), span: {non_neg_integer(), pos_integer()} | nil} | nil
         }
 
-  @spec availability(Portal.Account.t()) :: :enabled | :locked | :hidden
+  @spec availability(Portal.Account.t()) :: :enabled | :locked
   def availability(account) do
-    cond do
-      Portal.Account.device_posture_enabled?(account) -> :enabled
-      Portal.Features.enabled?(:device_posture) -> :locked
-      true -> :hidden
-    end
+    if Portal.Account.device_posture_enabled?(account), do: :enabled, else: :locked
   end
 
   @spec for_account(Portal.Account.t(), Postures.t() | nil) :: t()
@@ -42,7 +38,7 @@ defmodule PortalWeb.Policies.Postures do
     )
   end
 
-  @spec new(:enabled | :locked | :hidden, Postures.t() | nil, keyword()) :: t()
+  @spec new(:enabled | :locked, Postures.t() | nil, keyword()) :: t()
   def new(availability, postures \\ nil, opts \\ []) do
     wire = if(postures, do: Postures.to_map(postures))
 
@@ -255,7 +251,9 @@ defmodule PortalWeb.Policies.Postures do
   defp pad(indent), do: String.duplicate("  ", indent)
 
   defp check_name(wire) do
-    Enum.find_value(Checks.all(), fn check -> check.expansion == wire and check.name end)
+    Enum.find_value(Checks.all(), fn check ->
+      (check.expansion == wire or wire in check.previous) and check.name
+    end)
   end
 
   defp wire_for([]), do: nil
@@ -269,14 +267,15 @@ defmodule PortalWeb.Policies.Postures do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne}
+    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     @providers %{
       "intune" => {Intune.PostureProvider, :intune},
       "iru" => {Iru.PostureProvider, :iru},
       "defender" => {Defender.PostureProvider, :defender},
       "santa" => {Santa.PostureProvider, :santa},
-      "sentinelone" => {SentinelOne.PostureProvider, :sentinelone}
+      "sentinelone" => {SentinelOne.PostureProvider, :sentinelone},
+      "sophos" => {Sophos.PostureProvider, :sophos}
     }
 
     # A `limit` on any branch would apply to the whole union, so the branches

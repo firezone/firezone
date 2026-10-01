@@ -28,8 +28,7 @@
         android:label="@string/app_name"
         android:screenOrientation="portrait"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme.Base"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/AppTheme.Base">
 
         <receiver
             android:name=".core.BootReceiver"

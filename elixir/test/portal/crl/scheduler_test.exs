@@ -1,11 +1,11 @@
 defmodule Portal.Crl.SchedulerTest do
   use Portal.DataCase, async: true
 
+  import Portal.RevocationFixtures
   import Portal.AccountFixtures
   import Portal.DeviceTrustFixtures
 
   alias Portal.Crl.Scheduler
-  alias Portal.Crypto.X509
 
   setup do
     %{account: account_fixture(), pki: pki()}
@@ -13,7 +13,7 @@ defmodule Portal.Crl.SchedulerTest do
 
   describe "perform/1" do
     test "queues a job per issuer whose list is due", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
 
@@ -25,7 +25,7 @@ defmodule Portal.Crl.SchedulerTest do
 
     test "skips an issuer whose cached list is not due yet", %{account: account, pki: pki} do
       not_due = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
-      endpoint_fixture(account, pki.ca_der, crl_next_update: not_due)
+      revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der, crl_next_update: not_due)
 
       assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
       assert all_sync_jobs() == []
@@ -37,7 +37,9 @@ defmodule Portal.Crl.SchedulerTest do
     } do
       # A CA that reissues its list weekly while replacing the delta daily would
       # otherwise have a week of revocations wait on the list's own schedule.
-      endpoint_fixture(account, pki.ca_der,
+      revocation_endpoint_fixture(
+        account: account,
+        issuer_der: pki.ca_der,
         crl_next_update: in_days(7),
         delta_next_update: in_days(-1)
       )
@@ -47,21 +49,26 @@ defmodule Portal.Crl.SchedulerTest do
     end
 
     test "queues an issuer whose last delta check failed", %{account: account, pki: pki} do
-      endpoint_fixture(account, pki.ca_der, crl_next_update: in_days(7), delta_error: "boom")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer_der: pki.ca_der,
+        crl_next_update: in_days(7),
+        delta_error: "boom"
+      )
 
       assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
       assert [_job] = all_sync_jobs()
     end
 
     test "skips an issuer with no CRL address", %{account: account, pki: pki} do
-      endpoint_fixture(account, pki.ca_der, crl_urls: [])
+      revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der, crl_urls: [])
 
       assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
       assert all_sync_jobs() == []
     end
 
     test "skips a disabled account", %{account: account, pki: pki} do
-      endpoint_fixture(account, pki.ca_der)
+      revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.update_all(Portal.Account, set: [is_disabled: true])
 
       assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
@@ -71,23 +78,6 @@ defmodule Portal.Crl.SchedulerTest do
 
   defp all_sync_jobs do
     Repo.all(Oban.Job) |> Enum.filter(&(&1.worker == "Portal.Crl.Sync"))
-  end
-
-  defp endpoint_fixture(account, issuer_der, attrs \\ []) do
-    issuer = X509.subject(issuer_der)
-    crl_urls = Keyword.get(attrs, :crl_urls, ["http://crl.example.test/ca.crl"])
-
-    Repo.insert!(%Portal.RevocationEndpoint{
-      account_id: account.id,
-      issuer: issuer,
-      distribution_point: List.first(crl_urls) || "http://crl.example.test/ca.crl",
-      crl_urls: crl_urls,
-      crl_next_update: Keyword.get(attrs, :crl_next_update),
-      delta_next_update: Keyword.get(attrs, :delta_next_update),
-      delta_error: Keyword.get(attrs, :delta_error),
-      inserted_at: DateTime.utc_now(),
-      updated_at: DateTime.utc_now()
-    })
   end
 
   defp in_days(days) do

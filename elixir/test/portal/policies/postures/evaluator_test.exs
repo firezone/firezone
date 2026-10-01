@@ -389,14 +389,16 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(@jailbroken, device()) == @failed
     end
 
-    test "Defender and SentinelOne name the platform too" do
+    test "Defender, SentinelOne and Sophos name the platform too" do
       defender = struct!(Portal.Defender.Device, os_platform: "WindowsServer2022")
       sentinelone = struct!(Portal.SentinelOne.Device, os_type: "linux")
       santa = struct!(Portal.Santa.Device, os_version: "15.6")
+      sophos = struct!(Portal.Sophos.Device, os_platform: "macOS")
 
       assert Evaluator.platform(device(posture: %{defender: [defender]})) == :windows
       assert Evaluator.platform(device(posture: %{sentinelone: [sentinelone]})) == :linux
       assert Evaluator.platform(device(posture: %{santa: [santa]})) == :macos
+      assert Evaluator.platform(device(posture: %{sophos: [sophos]})) == :macos
     end
   end
 

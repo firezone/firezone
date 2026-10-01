@@ -877,6 +877,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Google.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.GitHub.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.GitHub.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Okta.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.OIDC.AuthProvider, :account_admin_user), do: :ok
@@ -911,6 +913,10 @@ defmodule Portal.Safe do
   def permit(:read, Portal.SentinelOne.PostureProvider, :api_client), do: :ok
   def permit(:read, Portal.SentinelOne.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.SentinelOne.Device, :api_client), do: :ok
+  def permit(_action, Portal.Sophos.PostureProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.Sophos.PostureProvider, :api_client), do: :ok
+  def permit(:read, Portal.Sophos.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Sophos.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok

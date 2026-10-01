@@ -23,7 +23,7 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: apple-client-1.5.21
+      RELEASE_NAME: apple-client-1.5.22
     steps:
       - name: Set release metadata
         id: release-metadata
@@ -77,9 +77,9 @@ jobs:
           fail-on-error: false
 
   # The same build runs on every macOS release, so the app and its UI tests are built
-  # once here and photographed on each release in parallel below.
+  # once here and run on each release in parallel below.
   build-macos-ui-tests:
-    # A release dispatch from main only needs the builds, not the screenshots.
+    # A release dispatch from main only needs the builds, not the UI tests.
     if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
@@ -126,12 +126,13 @@ jobs:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ steps.xcode-build.outputs.key }}
 
-  # Photographs the real app against the mocked backend (see MockTunnel.swift) and
-  # hands the captures to commit-screenshots. Nothing is compared against a reference.
+  # Runs the UI tests against the mocked backend (see MockTunnel.swift) and hands the
+  # screens they photograph to commit-screenshots. Nothing is compared against a
+  # reference.
   # SwiftUI lays a window out with the macOS release it runs on rather than the
   # SDK it was built with, so the screens are drawn on every release CI can run.
-  capture-macos-screenshots:
-    name: capture-macos-${{ matrix.release }}-screenshots
+  macos-ui-tests:
+    name: macos-${{ matrix.release }}-ui-tests
     needs: build-macos-ui-tests
     # Only a pull request has a diff to put the screens in.
     if: github.ref_name != 'main'
@@ -172,11 +173,11 @@ jobs:
         run: |
           mkdir -p "${RUNNER_TEMP}/DerivedData/Build"
           tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/macos-ui-tests-build.tar"
-      - name: Photograph the macOS screens
+      - name: Run the macOS UI tests
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:capture-macos-screenshots
+        run: mise run //swift/apple:macos-ui-tests
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.release }}-screenshots
@@ -185,14 +186,14 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: macos-${{ matrix.release }}-screenshots-xcresult
+          name: macos-${{ matrix.release }}-ui-tests-xcresult
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   # The app target embeds the tunnel extension, which compiles connlib, and the
   # same simulator build runs on every device. So the app and its UI tests are built
-  # once here and photographed on each simulator in parallel below.
+  # once here and run on each simulator in parallel below.
   build-ios-ui-tests:
-    # A release dispatch from main only needs the builds, not the screenshots.
+    # A release dispatch from main only needs the builds, not the UI tests.
     if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
@@ -235,8 +236,8 @@ jobs:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ steps.xcode-build.outputs.key }}
 
-  capture-ios-screenshots:
-    name: capture-ios-${{ matrix.device }}-screenshots
+  ios-ui-tests:
+    name: ios-${{ matrix.device }}-ui-tests
     needs: build-ios-ui-tests
     # Only a pull request has a diff to put the screens in.
     if: github.ref_name != 'main'
@@ -273,11 +274,11 @@ jobs:
           tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/ios-ui-tests-build.tar"
       - name: Boot the simulator
         run: mise run //swift/apple:boot-simulator
-      - name: Photograph the ${{ matrix.device }} screens
+      - name: Run the ${{ matrix.device }} UI tests
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:capture-ios-screenshots
+        run: mise run //swift/apple:ios-ui-tests
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-${{ matrix.device }}-screenshots
@@ -285,7 +286,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: ios-${{ matrix.device }}-screenshots-xcresult
+          name: ios-${{ matrix.device }}-ui-tests-xcresult
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
@@ -326,10 +327,10 @@ jobs:
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
-            artifact-file: "firezone-ios-client-1.5.21.ipa"
+            artifact-file: "firezone-ios-client-1.5.22.ipa"
             platform: iOS
             # mark:next-apple-version
-            release-name: apple-client-1.5.21
+            release-name: apple-client-1.5.22
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -343,11 +344,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.21.dmg"
+            artifact-file: "firezone-macos-client-1.5.22.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.21.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.22.pkg"
             # mark:next-apple-version
-            release-name: apple-client-1.5.21
+            release-name: apple-client-1.5.22
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

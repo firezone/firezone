@@ -16,14 +16,11 @@ client-shared = { workspace = true }
 connlib-model = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
-ip-packet = { workspace = true }
 ip_network = { workspace = true }
 itertools = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true, features = ["telemetry"] }
 opentelemetry = { workspace = true }
-otel-attributes = { workspace = true }
-otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
@@ -34,7 +31,6 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-subscriber = { workspace = true }
-tun = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 uniffi = { workspace = true }
 x509-claims-ffi = { workspace = true }
@@ -42,6 +38,7 @@ x509-credential = { workspace = true }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }
+tun-apple = { workspace = true }
 
 # Everywhere except iOS, where the Network Extension memory cap makes mimalloc's retained pages risky.
 [target.'cfg(not(target_os = "ios"))'.dependencies]
@@ -49,9 +46,8 @@ mimalloc = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"
-jni = { workspace = true }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # The Android `cdylib` is `dlopen`-ed, so it needs the dynamic TLS model.
-rustls-platform-verifier = { workspace = true }
+tun-android = { workspace = true }
 
 [lints]
 workspace = true

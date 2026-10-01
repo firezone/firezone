@@ -9,7 +9,8 @@ defmodule PortalWeb.Policies.PostureComponents do
     "iru" => "Iru",
     "defender" => "Defender",
     "santa" => "Santa",
-    "sentinelone" => "SentinelOne"
+    "sentinelone" => "SentinelOne",
+    "sophos" => "Sophos"
   }
 
   @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"
@@ -18,22 +19,76 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :id, :string, required: true
   attr :account, :any, required: true
   attr :state, :map, required: true
+  slot :inner_block, required: true
+
+  def policy_restrictions(assigns) do
+    assigns = assign(assigns, :conditions_enabled?, Portal.Account.policy_conditions_enabled?(assigns.account))
+
+    ~H"""
+    <div class="space-y-4">
+      <%= if not @conditions_enabled? and @state.availability == :locked do %>
+        <Form.upgrade_locked_section
+          account={@account}
+          message="Upgrade your plan to unlock policy conditions and device posture checks."
+          description="Restrict access by location, identity, time, and device security."
+          data-locked-section="policy-restrictions"
+        >
+          <.conditions_preview />
+          <div class="mt-4 border-t border-border pt-4">
+            <h4 class="mb-3 text-[10px] font-semibold tracking-widest uppercase text-subtle">Device posture</h4>
+            <.postures_preview />
+          </div>
+        </Form.upgrade_locked_section>
+      <% else %>
+        {render_slot(@inner_block)}
+        <.postures_section id={@id} account={@account} state={@state} />
+      <% end %>
+    </div>
+    """
+  end
+
+  def conditions_preview(assigns) do
+    ~H"""
+    <div aria-hidden="true">
+      <h4 class="mb-3 text-[10px] font-semibold tracking-widest uppercase text-subtle">Conditions</h4>
+      <div class="space-y-2">
+        <div :for={{label, value} <- [{"Location", "Allowed countries"}, {"IP range", "10.0.0.0/8"}, {"Time of day", "Monday – Friday, 9:00 – 17:00"}]} class="flex justify-between rounded-lg border border-border bg-raised p-3 text-xs">
+          <span class="font-medium text-body">{label}</span>
+          <span class="text-subtle">{value}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  def postures_preview(assigns) do
+    ~H"""
+    <div aria-hidden="true" class="min-h-52 rounded-lg border border-border overflow-hidden">
+      <div class="bg-raised px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-subtle">Device checks</div>
+      <div :for={label <- ["Client is up to date", "Disk encryption enabled", "Device is compliant", "Endpoint protection enabled"]} class="flex items-center justify-between border-t border-border px-3 py-3 text-xs text-body">
+        <span>{label}</span>
+        <Core.icon name="ri-checkbox-circle-line" class="h-4 w-4 text-subtle" />
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :account, :any, required: true
+  attr :state, :map, required: true
   def postures_section(assigns) do
     ~H"""
-    <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
+    <div id={@id} class="border-t border-border pt-4">
       <div class="flex items-center justify-between gap-2 mb-3">
-        <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-          Device posture
-          <span
-            data-postures-new-badge
-            class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
-          >
-            NEW
-          </span>
-          <span class="ml-1 font-normal normal-case tracking-normal text-muted">
+        <div class="flex items-center gap-2">
+          <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Device posture
+          </h4>
+          <Core.new_badge data-postures-new-badge />
+          <span class="text-[10px] text-subtle">
             (optional)
           </span>
-        </h4>
+        </div>
         <div :if={@state.availability == :enabled} class="flex items-center gap-2">
           <button
             :if={Postures.dirty?(@state)}
@@ -42,7 +97,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             class="flex items-center gap-1 text-[10px] text-body hover:text-heading transition-colors"
             title="Back to the saved rules"
           >
-            <.icon name="ri-arrow-go-back-line" class="w-3 h-3" /> Reset
+            <Core.icon name="ri-arrow-go-back-line" class="w-3 h-3" /> Reset
           </button>
           <div class="inline-flex rounded border border-border overflow-hidden">
             <button type="button" phx-click="postures_tab" phx-value-tab="simple" class={pill_class(@state.tab == :simple)}>
@@ -63,36 +118,34 @@ defmodule PortalWeb.Policies.PostureComponents do
         :if={@state.availability == :enabled and not @state.trust_anchors?}
         class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
       >
-        <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
           No
-          <.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
+          <Navigation.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
             trust anchors
-          </.link>
+          </Navigation.link>
           are defined. Devices will be identified by Firezone-reported attributes only.
-          <.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
+          <Navigation.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
             Learn more
-          </.website_link>
+          </Navigation.website_link>
         </span>
       </div>
       <%= if @state.availability == :locked do %>
-        <.upgrade_locked_section
+        <Form.upgrade_locked_section
           account={@account}
           message="Upgrade your plan to unlock device posture checks."
           description="Require devices to pass MDM and EDR checks before access is granted."
           data-locked-section="device-posture"
         >
-          <p class="text-xs text-body text-center py-4 rounded-lg border border-dashed border-border">
-            No posture checks — any device is allowed
-          </p>
-        </.upgrade_locked_section>
+          <.postures_preview />
+        </Form.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
         <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
         <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
-      <p class="mt-2 text-xs text-subtle">
-        Check the <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> to configure over 300 posture fields.
+      <p :if={@state.availability == :enabled} class="mt-2 text-xs text-subtle">
+        Check the <Navigation.website_link path="/kb/device-posture/grammar">grammar reference</Navigation.website_link> to configure over 300 posture fields.
       </p>
     </div>
     """
@@ -130,14 +183,14 @@ defmodule PortalWeb.Policies.PostureComponents do
         <tbody class="divide-y divide-border bg-surface">
           <tr :for={check <- Checks.all()}>
             <td class="pl-3 py-2.5 align-middle">
-              <.popover placement="right" class="flex">
+              <Core.popover placement="right" class="flex">
                 <:target>
-                  <.icon name="ri-information-line" class="w-4 h-4 text-subtle hover:text-heading cursor-help" />
+                  <Core.icon name="ri-information-line" class="w-4 h-4 text-subtle hover:text-heading cursor-help" />
                 </:target>
                 <:content>
                   <.check_support check={check} />
                 </:content>
-              </.popover>
+              </Core.popover>
             </td>
             <td class="px-3 py-2.5 align-middle">
               <div class="text-xs font-semibold text-body">{check.label}</div>
@@ -145,7 +198,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             </td>
             <td class="px-3 py-2.5 align-middle">
               <span class="flex justify-end" title={toggle_title(@state, check, @enabled)}>
-                <.toggle
+                <Core.toggle
                   id={"#{@id}-#{check.name}"}
                   checked={check.name in @enabled}
                   disabled={@custom? or (check.name not in @enabled and not Postures.check_available?(@state, check))}
@@ -225,7 +278,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         <dd class="space-y-1">
           <div :for={provider <- @check.providers} class="flex items-center gap-2">
             <span class="w-5 shrink-0 flex justify-center">
-              <.provider_icon provider={Atom.to_string(provider)} size="sm" />
+              <Core.provider_icon provider={Atom.to_string(provider)} size="sm" />
             </span>
             <span>{provider_label(Atom.to_string(provider))}</span>
           </div>
@@ -236,7 +289,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         <dd class="space-y-1">
           <div :for={{icon, title} <- platform_icons(@check.platforms)} class="flex items-center gap-2">
             <span class="w-5 shrink-0 flex justify-center">
-              <.icon name={icon} class="w-4 h-4" />
+              <Core.icon name={icon} class="w-4 h-4" />
             </span>
             <span>{title}</span>
           </div>
@@ -265,14 +318,14 @@ defmodule PortalWeb.Policies.PostureComponents do
     ~H"""
     <div class="mt-4">
       <%= if @checks == :custom do %>
-        <.json_view id="policy-postures-rules" value={@wire} label="Device posture" hint="Custom rules" collapsed />
+        <JSONView.json_view id="policy-postures-rules" value={@wire} label="Device posture" hint="Custom rules" collapsed />
       <% else %>
         <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
           Device posture
         </h4>
         <ul class="rounded border border-border bg-raised divide-y divide-border">
           <li :for={check <- @checks} class="flex items-center gap-2 px-3 py-2">
-            <.icon name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
+            <Core.icon name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
             <span class="text-xs font-medium text-heading">{check.label}</span>
             <span class="text-xs text-subtle truncate">{check.description}</span>
           </li>

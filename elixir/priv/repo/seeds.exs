@@ -34,6 +34,7 @@ defmodule Portal.Repo.Seeds do
     Santa,
     SentinelOne,
     SessionLog,
+    Sophos,
     Site,
     ClientToken,
     Userpass,
@@ -223,6 +224,8 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{all_devices.name} - Device Pool - policy: Everyone")
     IO.puts("  #{group_devices.name} - Device Pool - policy: Everyone")
     IO.puts("")
+
+    [all_devices, group_devices]
   end
 
   # Helper function to create gateway directly without context module
@@ -1130,6 +1133,16 @@ defmodule Portal.Repo.Seeds do
         }
       )
 
+    sophos =
+      create_posture_provider(account, :sophos, "Sophos Central", Sophos.PostureProvider, %{
+        client_id: "3f4b1c6e-5a2d-4e8f-9b7a-1c2d3e4f5a6b",
+        client_secret: "sophos_dev_client_secret",
+        tenant_id: "57ca9a6b-885f-4e36-95ec-290548c26059",
+        data_region_url: "https://api-us03.central.sophos.com",
+        is_verified: true,
+        synced_at: DateTime.add(now, -6, :minute)
+      })
+
     # The identifiers the seeded certificates attest. Each is also written into
     # the provider row that should match on it, so the Posture tab of a seeded
     # Client demonstrates one rung of the matching ladder. The Surface also
@@ -1188,7 +1201,7 @@ defmodule Portal.Repo.Seeds do
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
 
     IO.puts("Device posture providers created")
-    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production")
+    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production, Sophos Central")
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
     IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
     IO.puts("  #{iphone.name}: attested with a revoked certificate")
@@ -1197,7 +1210,7 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
     IO.puts("")
 
-    %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone}
+    %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone, sophos: sophos}
   end
 
   # A disabled provider's rows count as absent, so seeded providers stay
@@ -1878,6 +1891,7 @@ defmodule Portal.Repo.Seeds do
       defender: insert_fleet_rows(Defender.Device, members, &fleet_defender_row(&1, account, providers.defender, now)),
       santa: insert_fleet_rows(Santa.Device, members, &fleet_santa_row(&1, account, providers.santa, now)),
       sentinelone: insert_fleet_rows(SentinelOne.Device, members, &fleet_sentinelone_row(&1, account, providers.sentinelone, now)),
+      sophos: insert_fleet_rows(Sophos.Device, members, &fleet_sophos_row(&1, account, providers.sophos, now)),
       clients: members |> Enum.map(&fleet_client(&1, account, now)) |> Enum.count(& &1)
     }
   end
@@ -1955,6 +1969,7 @@ defmodule Portal.Repo.Seeds do
       defender?: fleet_in_defender?(profile, mdm),
       santa?: profile == :mac_laptop and chance(60),
       sentinelone?: fleet_in_sentinelone?(profile),
+      sophos?: fleet_in_sophos?(profile),
       client: fleet_client_kind(profile, mdm),
       last_active_at: DateTime.add(now, -minutes_ago, :minute),
       enrolled_at: DateTime.add(now, -(20 + :rand.uniform(700)), :day),
@@ -1974,6 +1989,12 @@ defmodule Portal.Repo.Seeds do
   defp fleet_in_sentinelone?(:linux_server), do: chance(90)
   defp fleet_in_sentinelone?(:windows_server), do: chance(90)
   defp fleet_in_sentinelone?(_profile), do: false
+
+  defp fleet_in_sophos?(:windows_laptop), do: chance(25)
+  defp fleet_in_sophos?(:mac_laptop), do: chance(25)
+  defp fleet_in_sophos?(:linux_server), do: chance(30)
+  defp fleet_in_sophos?(:windows_server), do: chance(30)
+  defp fleet_in_sophos?(_profile), do: false
 
   defp fleet_client_kind(profile, _mdm) when profile in [:linux_server, :windows_server], do: :none
 
@@ -2397,6 +2418,74 @@ defmodule Portal.Repo.Seeds do
 
   defp fleet_sentinelone_row(_member, _account, _provider, _now), do: []
 
+  # Linux endpoints often report no hardware serial to Sophos.
+  defp fleet_sophos_row(%{sophos?: true} = member, account, provider, now) do
+    {platform, os_name} = fleet_sophos_os(member)
+    [major, minor, build] =
+      (String.split(member.os_version, ".") ++ ["0", "0", "0"])
+      |> Enum.take(3)
+      |> Enum.map(fn part -> part |> Integer.parse() |> elem(0) end)
+
+    threats = weighted([{"good", 96}, {"suspicious", 2}, {"bad", 2}])
+    services = weighted([{"good", 92}, {"bad", 8}])
+
+    overall =
+      cond do
+        "bad" in [threats, services] -> "bad"
+        threats == "suspicious" -> "suspicious"
+        true -> "good"
+      end
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        sophos_id: Ecto.UUID.generate(),
+        type: if(member.server?, do: "server", else: "computer"),
+        sophos_tenant_id: provider.tenant_id,
+        hostname: member.hostname,
+        health_overall: overall,
+        health_threats_status: threats,
+        health_services_status: services,
+        health_service_details: [%{"name" => "Sophos MCS Client", "status" => if(services == "good", do: "running", else: "stopped")}],
+        os_is_server: member.server?,
+        os_platform: platform,
+        os_name: os_name,
+        os_major_version: major,
+        os_minor_version: minor,
+        os_build: build,
+        ipv4_addresses: ["10.50.#{rem(member.index, 250)}.#{30 + rem(member.index * 3, 200)}"],
+        mac_addresses: [posture_mac(9_000 + member.index)],
+        group_id: if(member.server?, do: "7b1e7c5a-2f0a-4a39-9d4e-2a8f8c1e0b01", else: "7b1e7c5a-2f0a-4a39-9d4e-2a8f8c1e0b02"),
+        group_name: if(member.server?, do: "Servers", else: member.person.department),
+        associated_person_name: if(member.server?, do: nil, else: member.person.display_name),
+        associated_person_via_login: if(member.server?, do: nil, else: member.person.login),
+        tamper_protection_supported: true,
+        tamper_protection_enabled: chance(90),
+        assigned_products: [%{"code" => "interceptX", "version" => "2024.3.1.5", "status" => "installed"}, %{"code" => "xdr", "version" => "2024.3.1.5", "status" => "installed"}],
+        last_seen_at: member.last_active_at,
+        last_agent_update_at: DateTime.add(member.last_active_at, -:rand.uniform(14), :day),
+        serial_number: if(platform != "linux" or chance(50), do: member.serial),
+        encryption_overall_status: if(member.encrypted?, do: "encrypted", else: "notEncrypted"),
+        online: DateTime.diff(now, member.last_active_at, :minute) < 60,
+        isolation_status: "notIsolated",
+        isolation_admin_isolated: false,
+        isolation_self_isolated: false,
+        cloned: false,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_sophos_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_sophos_os(%{profile: :mac_laptop}), do: {"macOS", "macOS"}
+  defp fleet_sophos_os(%{profile: :linux_server}), do: {"linux", "Ubuntu"}
+  defp fleet_sophos_os(%{profile: :windows_server}), do: {"windows", "Windows Server"}
+  defp fleet_sophos_os(_member), do: {"windows", "Windows 11 Pro"}
+
   defp fleet_sentinelone_os(%{profile: :windows_laptop}), do: {"windows", "Windows 11 Pro", "laptop"}
   defp fleet_sentinelone_os(%{profile: :windows_server, os_version: version}), do: {"windows", "Windows Server #{if(String.starts_with?(version, "10.0.26100."), do: "2025", else: "2022")}", "server"}
   defp fleet_sentinelone_os(%{profile: :mac_laptop}), do: {"macos", "macOS", "laptop"}
@@ -2503,7 +2592,7 @@ defmodule Portal.Repo.Seeds do
     Repo.query!(
       """
       INSERT INTO features (feature, enabled)
-      VALUES ('x509_auth', true), ('device_posture', true)
+      VALUES ('x509_auth', true)
       ON CONFLICT (feature) DO UPDATE SET enabled = true
       """
     )
@@ -2542,11 +2631,11 @@ defmodule Portal.Repo.Seeds do
         }
       })
       |> put_change(:limits, %{
-        users_count: 100,
+        users_count: nil,
         monthly_active_users_count: 100,
-        service_accounts_count: 10,
-        sites_count: 3,
-        account_admin_users_count: 5,
+        service_accounts_count: nil,
+        sites_count: nil,
+        account_admin_users_count: nil,
         # The OpenAPI fuzzer (scripts/tests/openapi-fuzz.sh) sends hundreds of
         # requests per second at this account.
         api_refill_rate: 10_000,
@@ -2629,28 +2718,31 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    for {seed_account, seed_everyone_group} <- [
-          {account, everyone_group},
-          {other_account, other_everyone_group}
-        ] do
-      self_device_pool =
-        %Resource{account_id: seed_account.id}
-        |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
-        |> Resource.changeset()
+    [self_device_pool, _other_self_device_pool] =
+      for {seed_account, seed_everyone_group} <- [
+            {account, everyone_group},
+            {other_account, other_everyone_group}
+          ] do
+        self_device_pool =
+          %Resource{account_id: seed_account.id}
+          |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+          |> Resource.changeset()
+          |> Repo.insert!()
+
+        %Policy{
+          account_id: seed_account.id,
+          group_id: seed_everyone_group.id,
+          resource_id: self_device_pool.id,
+          description: "Lets every actor reach their own devices."
+        }
         |> Repo.insert!()
 
-      %Policy{
-        account_id: seed_account.id,
-        group_id: seed_everyone_group.id,
-        resource_id: self_device_pool.id,
-        description: "Lets every actor reach their own devices."
-      }
-      |> Repo.insert!()
+        IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
+        IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
+        IO.puts("")
 
-      IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
-      IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
-      IO.puts("")
-    end
+        self_device_pool
+      end
 
     # Create auth providers for main account
     system_subject = %Authentication.Subject{
@@ -2793,11 +2885,11 @@ defmodule Portal.Repo.Seeds do
         allow_email_otp_sign_in: true
       })
 
-    {:ok, service_account_actor} =
+    {:ok, primary_client_actor} =
       Repo.insert(%Actor{
         account_id: account.id,
         type: :service_account,
-        name: "Backup Manager"
+        name: "CI Primary Client"
       })
 
     {:ok, pool_member_actor} =
@@ -3052,11 +3144,11 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_token =
+    primary_client_token =
       %ClientToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
-        account_id: service_account_actor.account_id,
-        actor_id: service_account_actor.id,
+        account_id: primary_client_actor.account_id,
+        actor_id: primary_client_actor.id,
         secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
         secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5",
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
@@ -3086,8 +3178,8 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_actor_encoded_token =
-      "n" <> Authentication.encode_fragment!(service_account_token)
+    primary_client_encoded_token =
+      "n" <> Authentication.encode_fragment!(primary_client_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"
@@ -3105,10 +3197,10 @@ defmodule Portal.Repo.Seeds do
       )
     end
 
-    IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
+    IO.puts("  #{primary_client_actor.name} token: #{primary_client_encoded_token}")
     IO.puts("")
 
-    seed_device_pool_load(account, admin_subject, everyone_group)
+    load_device_pools = seed_device_pool_load(account, admin_subject, everyone_group)
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
@@ -3230,7 +3322,7 @@ defmodule Portal.Repo.Seeds do
           firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
-          # Pinned so the static-device-pool test can target a known tun IP.
+          # Pinned so the device-pool test can target a known tun IP.
           ipv4: "100.64.0.2",
           ipv6: "fd00:2021:1111::2"
         },
@@ -3265,7 +3357,7 @@ defmodule Portal.Repo.Seeds do
     all_actors = [
       unprivileged_actor,
       admin_actor,
-      service_account_actor | other_actors
+      primary_client_actor | other_actors
     ]
 
     actor_ids = Enum.map(all_actors, & &1.id)
@@ -3407,11 +3499,11 @@ defmodule Portal.Repo.Seeds do
     }
     |> Repo.insert!()
 
-    # Add service account (Backup Manager) to synced group
+    # Add service account (CI Primary Client) to synced group
     %Membership{
       group_id: synced_group.id,
-      actor_id: service_account_actor.id,
-      account_id: service_account_actor.account_id
+      actor_id: primary_client_actor.id,
+      account_id: primary_client_actor.account_id
     }
     |> Repo.insert!()
 
@@ -3788,8 +3880,8 @@ defmodule Portal.Repo.Seeds do
       create_resource(
         %{
           type: :device_pool,
-          name: "CI Static Pool",
-          address_description: "CI integration test static device pool",
+          name: "CI Pool",
+          address_description: "CI integration test device pool",
           device_membership_criteria:
             Portal.Resource.DeviceMembershipCriteria.devices([pool_member_device.id]),
           filters: []
@@ -3980,13 +4072,25 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To CI Static Pool",
+          description: "All Access To CI Pool",
           # synced_group, not everyone_group: service accounts don't auto-join Everyone.
           group_id: synced_group.id,
           resource_id: pool_resource.id
         },
         admin_subject
       )
+
+    for resource <- [self_device_pool | load_device_pools] do
+      {:ok, _} =
+        create_policy.(
+          %{
+            description: "Synced Group Access To #{resource.name}",
+            group_id: synced_group.id,
+            resource_id: resource.id
+          },
+          admin_subject
+        )
+    end
 
     IO.puts("Policies Created")
     IO.puts("")
@@ -4099,14 +4203,14 @@ defmodule Portal.Repo.Seeds do
         )
     }
 
-    seed_audit_logs(account, subjects, service_account_actor, api_token_id)
+    seed_audit_logs(account, subjects, primary_client_actor, api_token_id)
 
     # Last, so the fleet's auto-assigned tunnel addresses cannot collide with
     # the hand-picked ones the Clients and Gateways above are seeded with.
     fleet = seed_posture_fleet(account, posture_providers, DateTime.utc_now() |> DateTime.truncate(:microsecond))
 
     IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
-    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}")
+    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}, Sophos #{fleet.sophos}")
     IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
   end
 end

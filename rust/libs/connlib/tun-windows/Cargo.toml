@@ -1,0 +1,21 @@
+[package]
+name = "tun-windows"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+anyhow = { workspace = true }
+ip-packet = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+otel-instruments = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tracing = { workspace = true }
+tun = { workspace = true }
+tun-offload = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies.wintun]
+version = "0.5.1"
+
+[lints]
+workspace = true

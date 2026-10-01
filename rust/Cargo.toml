@@ -28,12 +28,17 @@ members = [
     "libs/connlib/l4-udp-dns-server",
     "libs/connlib/model",
     "libs/connlib/otel-instruments",
-    "libs/connlib/packet-coalescer",
     "libs/connlib/path-agent",
     "libs/connlib/phoenix-channel",
     "libs/connlib/snownet",
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
+    "libs/connlib/tun-android",
+    "libs/connlib/tun-apple",
+    "libs/connlib/tun-ioctl",
+    "libs/connlib/tun-linux",
+    "libs/connlib/tun-offload",
+    "libs/connlib/tun-windows",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
@@ -73,6 +78,7 @@ edition = "2024"
 
 [workspace.dependencies]
 admx-macro = { path = "gui-client/src-admx-macro" }
+afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
@@ -109,7 +115,7 @@ dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
-dirs = "6.0.0"
+dirs = "7.0.0"
 divan = "0.1.21"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
@@ -117,7 +123,7 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
-fd-lock = "4.0.4"
+fastrand = "2.3.0"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
@@ -145,7 +151,6 @@ ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.11.0"
 itertools = "0.15.0"
-jni = "0.22.4"
 jsonschema = { version = "0.56.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
@@ -156,7 +161,6 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
-libfuzzer-sys = "0.4.13"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
 memchr = "2.7.4"
@@ -164,8 +168,8 @@ mimalloc = { version = "0.1.52" }
 mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
-netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.31.0"
+netlink-packet-core = "0.9.0"
+netlink-packet-route = "0.33.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
 nu-ansi-term = "0.50.3"
@@ -178,7 +182,6 @@ os_info = { version = "3.15.0", default-features = false }
 otel-attributes = { path = "libs/otel-attributes" }
 otel-instruments = { path = "libs/connlib/otel-instruments" }
 output_vt100 = "0.1.3"
-packet-coalescer = { path = "libs/connlib/packet-coalescer" }
 parking_lot = "0.12.5"
 path-agent = { path = "libs/connlib/path-agent" }
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
@@ -197,11 +200,10 @@ ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
-rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
@@ -228,13 +230,13 @@ subprocess = "1.1.0"
 subtle = "2.5.0"
 supports-color = "3.0.2"
 syn = "3.0.0"
-tauri = "2.11.2"
-tauri-build = { version = "2.6.0", default-features = false }
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-opener = "2.5.4"
-tauri-runtime = "2.11.0"
+tauri = "2.12.0"
+tauri-build = { version = "2.7.0", default-features = false }
+tauri-plugin-dialog = "2.8.0"
+tauri-plugin-opener = "2.7.0"
+tauri-runtime = "2.12.0"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
-tauri-utils = { version = "2.9.0", default-features = false }
+tauri-utils = { version = "2.10.0", default-features = false }
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.26.0"
 test-case = "3.3.1"
@@ -257,6 +259,12 @@ tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" 
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
+tun-android = { path = "libs/connlib/tun-android" }
+tun-apple = { path = "libs/connlib/tun-apple" }
+tun-ioctl = { path = "libs/connlib/tun-ioctl" }
+tun-linux = { path = "libs/connlib/tun-linux" }
+tun-offload = { path = "libs/connlib/tun-offload" }
+tun-windows = { path = "libs/connlib/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
@@ -265,9 +273,9 @@ url = "2.5.2"
 uuid = "1.23.2"
 webpki-roots = "1.0.7"
 which = "8.0.5"
-windows = "0.61.3"
-windows-core = "0.61.1"
-windows-implement = "0.60.0"
+windows = "0.62.2"
+windows-core = "0.62.2"
+windows-implement = "0.60.2"
 windows-native-keyring-store = "1.1.0"
 windows-package-identity = { path = "gui-client/src-package-identity" }
 windows-security = { path = "libs/windows-security" }
@@ -305,10 +313,8 @@ sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "m
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
-rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

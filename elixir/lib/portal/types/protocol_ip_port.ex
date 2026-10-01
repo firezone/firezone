@@ -37,17 +37,6 @@ defmodule Portal.Types.ProtocolIPPort do
 
   def cast(_), do: :error
 
-  def protocol_name("1"), do: "icmp"
-  def protocol_name("6"), do: "tcp"
-  def protocol_name("2"), do: "udp"
-
-  def protocol_name(binary) do
-    case Integer.parse(binary) do
-      {integer, ""} -> Kernel.to_string(integer)
-      _other -> binary
-    end
-  end
-
   def dump(%__MODULE__{} = ip) do
     {:ok, __MODULE__.to_string(ip)}
   end

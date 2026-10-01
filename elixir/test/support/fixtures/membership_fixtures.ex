@@ -90,34 +90,4 @@ defmodule Portal.MembershipFixtures do
     membership
   end
 
-  @doc """
-  Generate a synced membership (from identity provider).
-  """
-  def synced_membership_fixture(attrs \\ %{}) do
-    membership_fixture(Map.put(attrs, :synced_at, DateTime.utc_now()))
-  end
-
-  @doc """
-  Create multiple memberships for the same actor.
-  """
-  def actor_memberships_fixture(actor, group_count \\ 3, attrs \\ %{}) do
-    account = actor.account || Portal.Repo.preload(actor, :account).account
-
-    for _ <- 1..group_count do
-      group = group_fixture(account: account)
-      membership_fixture(Map.merge(attrs, %{actor: actor, group: group, account: account}))
-    end
-  end
-
-  @doc """
-  Create multiple memberships for the same group.
-  """
-  def group_memberships_fixture(group, actor_count \\ 3, attrs \\ %{}) do
-    account = group.account || Portal.Repo.preload(group, :account).account
-
-    for _ <- 1..actor_count do
-      actor = actor_fixture(account: account)
-      membership_fixture(Map.merge(attrs, %{actor: actor, group: group, account: account}))
-    end
-  end
 end

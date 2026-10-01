@@ -69,10 +69,7 @@ pub enum Transition {
         sport: SPort,
         dport: DPort,
     },
-    SendDnsQuery {
-        client_id: ClientId,
-        query: DnsQuery,
-    },
+    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
         client_id: ClientId,
         record_domain: DomainName,
@@ -105,9 +102,28 @@ pub enum Transition {
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
-    Idle,
+    Idle {
+        duration: Duration,
+    },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
+    ///
+    /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
+    /// The Client recovers through the Gateway's `no_authorization` p2p control event.
+    RevokeGatewayAuthorization(ResourceId),
+    /// Expires inbound authorizations at the receiving client while the sender retains its own.
+    ExpirePeerAuthorizations {
+        client: ClientId,
+        peer: ClientId,
+        pools: BTreeSet<ResourceId>,
+    },
+    /// Revokes one of several peer authorizations on the receiver while the sender retains its own.
+    RevokePeerAuthorization {
+        client: ClientId,
+        peer: ClientId,
+        pool: ResourceId,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -130,7 +146,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => false,
             Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
-            Transition::SendDnsQuery { .. } => false,
+            Transition::SendDnsQueries(_) => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
@@ -141,9 +157,12 @@ impl Transition {
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
+            Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::RevokeGatewayAuthorization(_) => true,
+            Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }
@@ -179,7 +198,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => true,
             Transition::SendUdpPacketOnExistingFlow { .. } => true,
             Transition::ConnectTcp { .. } => true,
-            Transition::SendDnsQuery { .. } => true,
+            Transition::SendDnsQueries(_) => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
             Transition::UpdateSystemDnsServers { .. } => true,
             Transition::UpdateUpstreamDo53Servers(_) => true,
@@ -203,12 +222,33 @@ impl Transition {
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => true,
+            Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
                 Route::Gateway(_) => false,
                 Route::Peer(_) => false,
+            },
+            Transition::RevokeGatewayAuthorization(resource) => match route {
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => true,
+            },
+            Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+            },
+            Transition::RevokePeerAuthorization { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
         }

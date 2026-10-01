@@ -61,24 +61,6 @@ impl RoutingTables {
         Ok(MatchedRoutes::Gateways(routes))
     }
 
-    /// Resolves resources routed through a gateway.
-    #[cfg(feature = "telemetry")]
-    pub(super) fn resolve_resource(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-        internet_resource: Option<ResourceId>,
-    ) -> Result<Vec<GatewayRoute>, Denied> {
-        let routes = self.resolve_filtered_resource(
-            destination,
-            protocol,
-            internet_resource,
-            outbound_filter_mode(),
-        );
-        let routes = routes?;
-        Ok(routes)
-    }
-
     fn resolve_filtered_resource(
         &mut self,
         destination: IpAddr,

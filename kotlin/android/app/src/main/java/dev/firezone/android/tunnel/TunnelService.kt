@@ -30,7 +30,6 @@ import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.x509.X509Identity
 import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
-import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.isInternetResource
@@ -57,6 +56,7 @@ import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
+import uniffi.connlib.EventStream
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.configureLogger
@@ -130,24 +130,17 @@ class TunnelService : VpnService() {
 
     private val _serviceState = MutableStateFlow(State.DOWN)
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
-    private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound session screen catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
-    val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
         set(value) {
             _resourcesState.value = value
-        }
-    var tunnelConnectedDevices: List<ConnectedDevice>
-        get() = _connectedDevicesState.value
-        set(value) {
-            _connectedDevicesState.value = value
         }
     var tunnelActorName: String?
         get() = _actorNameState.value
@@ -480,12 +473,12 @@ class TunnelService : VpnService() {
                                 // The token authenticates the user. A configured certificate attests
                                 // the device, and the portal decides whether to accept it.
                                 tlsIdentity = certificate?.tlsIdentity,
-                            ).use { session ->
+                            ).use { (session, events) ->
                                 startNetworkMonitoring()
                                 startLogCleanup()
                                 startFeatureFlagPoll()
 
-                                val stopReason = eventLoop(session, commandChannel!!)
+                                val stopReason = eventLoop(session, events, commandChannel!!)
 
                                 Log.i(TAG, "Event-loop finished: $stopReason")
 
@@ -714,13 +707,14 @@ class TunnelService : VpnService() {
 
     private suspend fun eventLoop(
         session: SessionInterface,
+        events: EventStream,
         commandChannel: Channel<TunnelCommand>,
     ): StopReason {
         @OptIn(ExperimentalCoroutinesApi::class)
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
-                    send(session.nextEvent())
+                    send(events.next())
                 }
             }
 
@@ -779,8 +773,6 @@ class TunnelService : VpnService() {
                             when (event) {
                                 is Event.ResourcesUpdated -> {
                                     tunnelResources = event.resources.map { it.toModel() }
-                                    tunnelConnectedDevices =
-                                        event.connectedDevices.map { it.toModel() }
                                     resourcesUpdated()
                                 }
 

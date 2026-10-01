@@ -101,7 +101,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> live(~p"/#{account}/settings/log_sinks")
 
       assert html =~ "Log Sinks"
-      assert html =~ "No log sinks configured."
+      assert html =~ "No log sinks yet"
       assert html =~ "Add a log sink"
     end
 
@@ -189,7 +189,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> live(~p"/#{account}/settings/log_sinks")
 
       assert html =~ "Upgrade to Unlock"
-      refute html =~ "No log sinks configured."
+      refute html =~ "No log sinks yet"
     end
   end
 

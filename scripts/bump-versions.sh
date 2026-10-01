@@ -17,20 +17,20 @@ fi
 # (invoked from scripts/open-version-bump-pr.sh during a release) and consumed by
 # the bump (`version`).
 # Keep blank lines between components so concurrent release bumps merge cleanly.
-current_apple_client_version="1.5.20"
-next_apple_client_version="1.5.21"
+current_apple_client_version="1.5.21"
+next_apple_client_version="1.5.22"
 
-current_android_client_version="1.5.14"
-next_android_client_version="1.5.15"
+current_android_client_version="1.5.15"
+next_android_client_version="1.5.16"
 
-current_gui_client_version="1.5.17"
-next_gui_client_version="1.5.18"
+current_gui_client_version="1.5.18"
+next_gui_client_version="1.5.19"
 
-current_headless_client_version="1.5.12"
-next_headless_client_version="1.5.13"
+current_headless_client_version="1.5.13"
+next_headless_client_version="1.5.14"
 
-current_gateway_version="1.6.1"
-next_gateway_version="1.6.2"
+current_gateway_version="1.6.2"
+next_gateway_version="1.6.3"
 
 function cargo_update_workspace() {
     pushd rust >/dev/null

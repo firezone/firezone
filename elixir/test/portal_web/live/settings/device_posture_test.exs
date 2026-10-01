@@ -11,7 +11,10 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.SentinelOneFixtures
 
   setup do
-    enable_device_posture()
+    Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+      recipient: "feedback@example.com"
+    )
+
     account = device_posture_account_fixture()
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
@@ -56,20 +59,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "device_posture feature gate" do
-    test "hides the settings tab when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      {:ok, _lv, html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
-
-      refute html =~ "settings/device_posture"
-    end
-
-    test "shows the settings tab when the global flag is on even without the account feature", %{
+    test "shows the settings tab without the account feature", %{
       conn: conn
     } do
       account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
@@ -82,19 +72,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert html =~ "Device Posture"
     end
 
-    test "redirects away from the page when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      assert {:error, {:live_redirect, %{to: to}}} =
-               conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
-
-      assert to =~ "/settings/account"
-    end
-
     test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
       account = Portal.AccountFixtures.account_fixture()
       actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
@@ -103,9 +80,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert html =~ "Upgrade to Unlock"
-      assert html =~ "Inventory Your Managed Devices"
+      assert html =~ "Device Posture"
       assert html =~
-               "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
+               "Restrict access to resources based on device telemetry provided by MDM and EDR solutions"
 
       assert html =~ "settings/device_posture"
       refute html =~ "Add posture provider"
@@ -126,7 +103,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "toggle", %{"id" => provider.id})
 
@@ -144,7 +121,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> live(~p"/#{account}/settings/device_posture")
 
     assert html =~ "Device Posture"
-    assert html =~ "No posture provider configured."
+    assert html =~ "No posture providers yet"
     assert html =~ "Add posture provider"
     refute html =~ "Upgrade to Unlock"
   end
@@ -157,7 +134,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
     for provider <- [
           "CrowdStrike Falcon",
-          "Sophos XDR",
           "Jamf Pro",
           "Workspace ONE",
           "Mosyle",
@@ -169,11 +145,33 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Coming soon"
 
     assert has_element?(lv, ~s(img[src="/images/logo-crowdstrike.svg"]))
-    assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
+    refute has_element?(lv, "#register-interest-sophos")
     assert has_element?(lv, ~s(img[src="/images/logo-jamf.svg"]))
     assert has_element?(lv, ~s(img[src="/images/logo-workspace-one-uem.png"]))
     assert has_element?(lv, ~s(img[src="/images/logo-mosyle.svg"]))
     assert has_element?(lv, "#register-interest-other .ri-apps-2-add-line")
+  end
+
+  for address <- [nil, "", "   "] do
+    @feedback_address address
+    test "disables interest and feedback when the address is #{inspect(address)}", context do
+      Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+        recipient: @feedback_address
+      )
+
+      {:ok, lv, _html} =
+        context.conn
+        |> authorize_conn(context.actor)
+        |> live(~p"/#{context.account}/settings/device_posture/new")
+
+      assert has_element?(lv, "#register-interest-crowdstrike[disabled]")
+      render_hook(lv, "register_interest", %{"provider" => "crowdstrike"})
+      render_hook(lv, "submit_interest_feedback", %{"feedback" => %{"message" => "Test"}})
+
+      refute has_element?(lv, "#posture-provider-interest")
+      refute has_element?(lv, "#posture-provider-feedback-form")
+      refute_email_sent()
+    end
   end
 
   test "registers interest and sends follow-up feedback", context do
@@ -193,7 +191,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
              "We&#39;ve registered your interest in CrowdStrike Falcon support in Firezone."
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "engineering@firezone.dev"}]
+      assert email.to == [{"", "feedback@example.com"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -213,7 +211,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     refute html =~ "Send feedback"
 
     assert_email_sent(fn email ->
-      assert email.to == [{"", "engineering@firezone.dev"}]
+      assert email.to == [{"", "feedback@example.com"}]
       assert email.subject == "Posture Provider interest"
       assert email.text_body =~ "Actor ID: #{context.actor.id}"
       assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -370,7 +368,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      enable_device_posture()
       other_account = device_posture_account_fixture()
       other_provider = intune_posture_provider_fixture(account: other_account)
 
@@ -400,7 +397,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "sync", %{"id" => provider.id})
 
@@ -793,6 +790,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
                lv,
                ~s|a[href="/#{account.slug}/settings/device_posture/sentinelone/new"]|
              )
+
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/sophos/new"]|)
+      assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
@@ -874,6 +874,110 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert render(lv) =~ "SentinelOne rejected the API token"
       refute has_element?(lv, "#provider-verification-status", "Verified")
       assert Portal.Repo.aggregate(Portal.SentinelOne.PostureProvider, :count) == 0
+    end
+  end
+
+  describe "Sophos providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sophos/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies the tenant and creates the provider", %{lv: lv, account: account} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "tenant",
+            "apiHosts" => %{"dataRegion" => "https://api-eu01.central.sophos.com"}
+          })
+
+        %{request_path: "/endpoint/v1/endpoints"} = conn ->
+          Req.Test.json(conn, %{"items" => [], "pages" => %{"size" => 1}})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      html = render(lv)
+      assert html =~ "GET /endpoint/v1/endpoints"
+      assert html =~ "logo-sophos.svg"
+
+      attrs = %{name: "Production Sophos", client_id: "client-1", client_secret: "secret-1"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "57ca9a6b-885f-4e36-95ec-290548c26059")
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Sophos.PostureProvider, account_id: account.id)
+
+      assert provider_name(provider) == "Production Sophos"
+      assert provider.client_id == "client-1"
+      assert provider.client_secret == "secret-1"
+      assert provider.tenant_id == "57ca9a6b-885f-4e36-95ec-290548c26059"
+      assert provider.data_region_url == "https://api-eu01.central.sophos.com"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Sophos.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses partner credentials and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "partner",
+            "apiHosts" => %{"global" => "https://api.central.sophos.com"}
+          })
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Partner", client_id: "client-1", client_secret: "secret-1"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "These are partner or organization credentials"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Sophos.PostureProvider, :count) == 0
+    end
+
+    test "reports rejected credentials", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "invalidClient"})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Sophos", client_id: "client-1", client_secret: "wrong"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Sophos rejected the client ID or secret"
     end
   end
 
@@ -1159,8 +1263,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     |> form("#device-posture-form", provider: %{name: "Renamed Iru", api_token: ""})
     |> render_submit()
 
-
-
     assert_patch(lv, ~p"/#{account}/settings/device_posture")
 
     reloaded = reload(provider)
@@ -1342,7 +1444,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: true)
     sentinelone_device_fixture(provider: sentinelone_provider, is_active: false)
 
-    {:ok, lv, html} =
+    {:ok, _lv, html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
     assert html =~ "Contoso Intune"

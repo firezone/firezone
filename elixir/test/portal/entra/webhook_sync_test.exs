@@ -4,6 +4,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
   import Ecto.Query
 
+  import Portal.ActorFixtures
   import Portal.AccountFixtures
   import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
@@ -40,7 +41,13 @@ defmodule Portal.Entra.WebhookSyncTest do
 
   describe "user notifications" do
     test "updates an existing identity", %{account: account, directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          email: "old@example.com"
+        )
 
       stub_graph(users: %{"user-1" => graph_user("user-1", "New Name", "new@example.com")})
 
@@ -58,7 +65,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "an older full-sync write does not undo the webhook write",
          %{directory: directory, issuer: issuer} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", name: "Old Name")
       stub_graph(users: %{"user-1" => graph_user("user-1", "Webhook Name", "u1@example.com")})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
@@ -75,7 +82,13 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "updates the actor the directory created when the user changes",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          email: "old@example.com"
+        )
 
       actor =
         identity.actor_id
@@ -94,7 +107,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "removes a disabled user with their memberships and directory actor",
          %{directory: directory, base_directory: base_directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
       group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
       membership_fixture(actor: actor, group: group)
@@ -110,7 +123,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "removes an identity, its memberships, and its actor in one transaction",
          %{directory: directory, base_directory: base_directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
       group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
       membership_fixture(actor: actor, group: group)
@@ -126,7 +139,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     end
 
     test "locks the actor before removing its identity", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       mark_created_by_directory(identity.actor_id, directory)
       stub_graph(users: %{})
 
@@ -140,7 +153,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "leaves other actors of the directory alone when removing a user",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       mark_created_by_directory(identity.actor_id, directory)
       orphan = Portal.ActorFixtures.actor_fixture(account: ctx.account)
       mark_created_by_directory(orphan.id, directory)
@@ -153,7 +166,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     end
 
     test "removes a user Graph no longer returns", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       stub_graph(users: %{})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
@@ -163,7 +176,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "removes a user on a deleted notification once Graph confirms it",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       stub_graph(users: %{})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
@@ -173,7 +186,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "keeps a user Graph restored after a stale deleted notification",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", name: "Old Name")
       stub_graph(users: %{"user-1" => graph_user("user-1", "Restored", "u1@example.com")})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
@@ -182,7 +195,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     end
 
     test "keeps an actor that still has other identities", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
       other = identity_fixture(account: ctx.account, actor: actor)
       stub_graph(users: %{})
@@ -201,7 +214,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     end
 
     test "skips a user whose email is invalid", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", name: "Old Name")
       stub_graph(users: %{"user-1" => graph_user("user-1", "Bad", "not-an-email")})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
@@ -210,7 +223,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     end
 
     test "fails on unexpected Graph errors", %{directory: directory} = ctx do
-      directory_identity(ctx, "user-1")
+      directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
 
       Req.Test.stub(APIClient, fn conn ->
         if String.ends_with?(conn.request_path, "/oauth2/v2.0/token") do
@@ -262,7 +275,7 @@ defmodule Portal.Entra.WebhookSyncTest do
       group =
         group_fixture(account: account, directory: base_directory, idp_id: "group-1", name: "Old")
 
-      carol = directory_identity(ctx, "user-carol")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: group)
 
@@ -326,7 +339,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     test "deletes a group Graph no longer returns",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
-      carol = directory_identity(ctx, "user-carol")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       membership_fixture(actor: Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account), group: group)
       stub_graph(groups: %{})
 
@@ -346,7 +359,7 @@ defmodule Portal.Entra.WebhookSyncTest do
           nested_group_idp_ids: ["child"]
         )
 
-      carol = directory_identity(ctx, "user-carol")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: parent)
 
@@ -498,7 +511,7 @@ defmodule Portal.Entra.WebhookSyncTest do
           nested_group_idp_ids: ["child"]
         )
 
-      carol = directory_identity(ctx, "user-carol")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: parent)
 
@@ -562,7 +575,7 @@ defmodule Portal.Entra.WebhookSyncTest do
   end
 
   test "snoozes while a full sync for the directory is executing", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
+    identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
 
     executing_job(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
@@ -574,16 +587,16 @@ defmodule Portal.Entra.WebhookSyncTest do
   test "skips accounts without directory sync" do
     account = account_fixture(features: %{idp_sync: false})
     directory = entra_directory_fixture(account: account)
-    identity = directory_identity(%{account: account, directory: directory}, "user-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1")
 
     assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
 
     assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
-  test "skips disabled directories", %{account: account} = ctx do
+  test "skips disabled directories", %{account: account} do
     directory = entra_directory_fixture(account: account, is_disabled: true)
-    identity = directory_identity(%{ctx | directory: directory}, "user-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1")
 
     assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
 
@@ -608,26 +621,6 @@ defmodule Portal.Entra.WebhookSyncTest do
       resource_id: id,
       change_type: change_type
     }
-  end
-
-  defp directory_identity(ctx, idp_id, attrs \\ []) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.merge(%{
-      account: ctx.account,
-      directory: Repo.get_by!(Portal.Directory, id: ctx.directory.id),
-      issuer: Sync.issuer(ctx.directory),
-      idp_id: idp_id
-    })
-    |> identity_fixture()
-  end
-
-  defp mark_created_by_directory(actor_id, directory) do
-    Actor
-    |> Repo.get_by!(id: actor_id)
-    |> Ecto.Changeset.change(created_by_directory_id: directory.id)
-    |> Repo.update!()
-    |> Repo.preload(:account)
   end
 
   defp graph_group(id), do: %{"@odata.type" => "#microsoft.graph.group", "id" => id}

@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
@@ -631,6 +631,7 @@ where
                         packet,
                         ClientSocket::new(from),
                         Instant::now(),
+                        SystemTime::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)

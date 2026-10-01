@@ -112,14 +112,6 @@ defmodule Portal.GroupFixtures do
   end
 
   @doc """
-  Generate a static group (manually created).
-  """
-  def static_group_fixture(attrs \\ %{}) do
-    Enum.into(attrs, %{})
-    group_fixture(Map.put(attrs, :type, :static))
-  end
-
-  @doc """
   Generate an organizational unit group.
   """
   def org_unit_group_fixture(attrs \\ %{}) do
@@ -130,17 +122,6 @@ defmodule Portal.GroupFixtures do
       |> Map.put(:type, :managed)
 
     group_fixture(attrs)
-  end
-
-  @doc """
-  Generate a group with a specific IdP identifier.
-  """
-  def group_with_idp_id_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    unique_num = System.unique_integer([:positive, :monotonic])
-    idp_id = "idp_#{unique_num}"
-
-    group_fixture(Map.put(attrs, :idp_id, idp_id))
   end
 
   @doc """

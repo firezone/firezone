@@ -196,8 +196,9 @@ jobs:
         run: |
           set -e
 
-          jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
-          failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
+          # Smaller pages avoid API timeouts on workflows with many jobs.
+          jobs_json=$(gh api --paginate "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=30" --jq '.jobs[] | select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not))')
+          failed_jobs=$(echo "$jobs_json" | jq -s '[.[] | select(.conclusion == "failure")] | length')
 
           if [ "$failed_jobs" -gt 0 ]; then
             echo "At least one job has failed."

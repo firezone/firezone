@@ -2,25 +2,9 @@
 defmodule PortalWeb.Resources do
   use PortalWeb, :live_view
 
-  import PortalWeb.Policies.Components,
-    only: [
-      map_condition_params: 2,
-      maybe_drop_unsupported_conditions: 2
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
-  import PortalWeb.Resources.Components,
-    only: [
-      map_filters_form_attrs: 1,
-      nil_site_label: 1,
-      panel_shell: 1,
-      resource_details_panel: 1,
-      resource_form_panel: 1,
-      resource_status_badge: 1,
-      resource_type_label: 1,
-      lists_devices?: 1,
-      type_badge_class: 1,
-      to_grant_form: 1
-    ]
+  alias PortalWeb.Resources.Components, as: ResourceComponents
 
   alias Portal.Changes.Change
   alias Portal.Presence
@@ -60,7 +44,7 @@ defmodule PortalWeb.Resources do
         internet_resource: nil
       )
       |> assign(resource_state_assigns(socket))
-      |> assign_live_table("resources",
+      |> LiveTable.assign_live_table("resources",
         query_module: Database,
         sortable_fields: [
           {:resources, :name},
@@ -73,7 +57,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_resource(id, socket.assigns.subject) do
       nil ->
@@ -115,7 +99,7 @@ defmodule PortalWeb.Resources do
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     sites = Database.all_sites(socket.assigns.subject)
     changeset = Database.new_resource(socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -124,7 +108,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_resource(id, socket.assigns.subject) do
       nil ->
@@ -154,7 +138,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     filter_site = filter_site_from_params(params, socket.assigns.subject)
 
@@ -313,11 +297,11 @@ defmodule PortalWeb.Resources do
   end
 
   defp parse_show_tab(params, resource) do
-    default = if lists_devices?(resource), do: "devices", else: "groups"
+    default = if ResourceComponents.lists_devices?(resource), do: "devices", else: "groups"
 
     case Map.get(params, "tab", default) do
       "devices" ->
-        if lists_devices?(resource), do: :devices, else: :groups
+        if ResourceComponents.lists_devices?(resource), do: :devices, else: :groups
 
       tab when tab in ~w[groups authorizations] ->
         String.to_existing_atom(tab)
@@ -331,20 +315,20 @@ defmodule PortalWeb.Resources do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   defp resources_index_path(socket),
-    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources")
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources")
 
   defp new_resource_path(socket),
-    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/new")
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/new")
 
   defp resource_show_path(socket, resource_id),
-    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}")
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}")
 
   defp edit_resource_path(socket, resource_id),
-    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit")
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit")
 
   defp cancel_resource_form_path(socket) do
     case socket.assigns.resource_panel.view do
@@ -389,33 +373,33 @@ defmodule PortalWeb.Resources do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-server-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-server-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Resources</:title>
         <:description>
           Network endpoints accessible through Firezone.
         </:description>
         <:action>
-          <.docs_action path="/deploy/resources" />
-          <.button style="primary" icon="ri-add-line" phx-click="open_new_form">
+          <Navigation.docs_action path="/deploy/resources" />
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_form">
             New Resource
-          </.button>
+          </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@resources_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           stale={@stale}
           id="resources"
           rows={@resources}
@@ -445,7 +429,7 @@ defmodule PortalWeb.Resources do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
+                  <Core.icon name="ri-global-line" class="w-5 h-5 text-link" />
                   <div class="font-semibold transition-colors text-heading group-hover:text-brand">
                     Internet Resource
                   </div>
@@ -458,8 +442,8 @@ defmodule PortalWeb.Resources do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <span class={type_badge_class(:internet)}>
-                  {resource_type_label(:internet)}
+                <span class={ResourceType.type_badge_class(:internet)}>
+                  {ResourceType.resource_type_label(:internet)}
                 </span>
               </td>
               <td class="px-4 py-3 hidden lg:table-cell">
@@ -467,34 +451,34 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3">
                 <% count = Map.get(@resource_policy_counts, @internet_resource.id, 0) %>
-                <.link
+                <Navigation.link
                   :if={count > 0}
                   navigate={
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                     {count}
                   </span>
-                </.link>
+                </Navigation.link>
                 <span
                   :if={count == 0}
-                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
                 >
                   0
                 </span>
               </td>
               <td class="px-4 py-3 text-body text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.resource_status_badge resource={@internet_resource} online_site_ids={@online_site_ids} />
+                <ResourceComponents.resource_status_badge resource={@internet_resource} online_site_ids={@online_site_ids} />
               </td>
             </tr>
           </:prepend_rows>
           <:notice :if={@filter_site} type="info">
             Viewing Resources for Site <strong>{@filter_site.name}</strong>.
-            <.link navigate={~p"/#{@account}/resources"} class={link_style()}>
+            <Navigation.link navigate={~p"/#{@account}/resources"}>
               View all resources
-            </.link>
+            </Navigation.link>
           </:notice>
           <:col :let={resource} field={{:resources, :name}} label="Name">
             <div class="font-medium text-heading group-hover:text-brand transition-colors">
@@ -504,15 +488,15 @@ defmodule PortalWeb.Resources do
               "text-xs mt-0.5 truncate max-w-xs",
               if(resource.address_description,
                 do: "text-subtle",
-                else: "text-muted italic"
+                else: "text-subtle italic"
               )
             ]}>
               {resource.address_description || "No Address Description"}
             </div>
           </:col>
           <:col :let={resource} label="Type" class="w-32">
-            <span class={type_badge_class(resource.type)}>
-              {resource_type_label(resource.type)}
+            <span class={ResourceType.type_badge_class(resource.type)}>
+              {ResourceType.resource_type_label(resource.type)}
             </span>
           </:col>
           <:col
@@ -534,13 +518,7 @@ defmodule PortalWeb.Resources do
               0.0.0.0/0, ::/0
             </span>
             <span
-              :if={resource.type == :device_pool and not lists_devices?(resource)}
-              class="font-mono text-xs text-heading"
-            >
-              &lt;slug&gt;.{Portal.Device.domain()}
-            </span>
-            <span
-              :if={lists_devices?(resource)}
+              :if={resource.type == :device_pool}
               class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses
@@ -548,35 +526,35 @@ defmodule PortalWeb.Resources do
           </:col>
           <:col :let={resource} label="Policies" class="w-20">
             <% count = Map.get(@resource_policy_counts, resource.id, 0) %>
-            <.link
+            <Navigation.link
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                 {count}
               </span>
-            </.link>
+            </Navigation.link>
             <span
               :if={count == 0}
-              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
             >
               0
             </span>
           </:col>
           <:col :let={resource} label="Site">
-            <.link
+            <Navigation.link
               :if={resource.site}
               navigate={~p"/#{@account}/sites/#{resource.site}"}
               class="text-xs text-body hover:text-heading transition-colors"
             >
               {resource.site.name}
-            </.link>
-            <span :if={is_nil(resource.site)} class="text-muted italic">
-              {nil_site_label(resource)}
+            </Navigation.link>
+            <span :if={is_nil(resource.site)} class="text-xs text-subtle italic">
+              {ResourceComponents.nil_site_label(resource)}
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.resource_status_badge
+            <ResourceComponents.resource_status_badge
               resource={resource}
               online_site_ids={@online_site_ids}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
@@ -587,7 +565,7 @@ defmodule PortalWeb.Resources do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No resources yet</p>
@@ -595,21 +573,21 @@ defmodule PortalWeb.Resources do
                   Create a Resource to represent an asset or service.
                 </p>
               </div>
-              <.link
-                patch={live_table_path(assigns, ~p"/#{@account}/resources/new")}
+              <Navigation.link
+                patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/resources/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
+              </Navigation.link>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
-      <.panel_shell open={
+      <ResourceComponents.panel_shell open={
         not is_nil(@selected_resource) or @resource_panel.view in [:new_form, :edit_form]
       }>
         <%= if @resource_panel.view in [:new_form, :edit_form] do %>
-          <.resource_form_panel
+          <ResourceComponents.resource_form_panel
             account={@account}
             subject={@subject}
             resource={@selected_resource}
@@ -619,7 +597,7 @@ defmodule PortalWeb.Resources do
         <% end %>
 
         <%= if @selected_resource && @resource_panel.view not in [:new_form, :edit_form] do %>
-          <.resource_details_panel
+          <ResourceComponents.resource_details_panel
             account={@account}
             resource={@selected_resource}
             pool_member_ids={@selected_resource_pool_member_ids}
@@ -639,7 +617,7 @@ defmodule PortalWeb.Resources do
             ui_state={resource_panel_ui_state(assigns)}
           />
         <% end %>
-      </.panel_shell>
+      </ResourceComponents.panel_shell>
     </div>
     """
   end
@@ -653,10 +631,10 @@ defmodule PortalWeb.Resources do
              "table_row_click",
              "change_limit"
            ],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("open_new_form", _params, socket) do
@@ -686,7 +664,7 @@ defmodule PortalWeb.Resources do
         %{"tab" => tab},
         %{assigns: %{selected_resource: %Resource{} = resource}} = socket
       ) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource}", tab: tab))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource}", tab: tab))}
   end
 
   def handle_event(
@@ -700,7 +678,7 @@ defmodule PortalWeb.Resources do
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
     {:noreply,
      push_patch(socket,
-       to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -723,7 +701,7 @@ defmodule PortalWeb.Resources do
       socket.assigns.resource_form.address_description_changed? ||
         payload["_target"] == ["resource", "address_description"]
 
-    attrs = map_filters_form_attrs(attrs)
+    attrs = ResourceComponents.map_filters_form_attrs(attrs)
 
     changeset =
       if socket.assigns.resource_panel.view == :new_form do
@@ -743,7 +721,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("submit_resource_form", %{"resource" => attrs}, socket) do
-    attrs = map_filters_form_attrs(attrs)
+    attrs = ResourceComponents.map_filters_form_attrs(attrs)
 
     if socket.assigns.resource_panel.view == :new_form do
       case Database.create_resource(
@@ -756,8 +734,8 @@ defmodule PortalWeb.Resources do
 
           {:noreply,
            socket
-           |> reload_live_table!("resources")
-           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}"))}
+           |> LiveTable.reload_live_table!("resources")
+           |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -778,8 +756,8 @@ defmodule PortalWeb.Resources do
 
           {:noreply,
            socket
-           |> reload_live_table!("resources")
-           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}"))}
+           |> LiveTable.reload_live_table!("resources")
+           |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -795,7 +773,7 @@ defmodule PortalWeb.Resources do
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_resource) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -910,7 +888,7 @@ defmodule PortalWeb.Resources do
          base_resource_grant(socket,
            available_groups: available,
            providers: providers,
-           grant_form: to_grant_form(resource)
+           grant_form: ResourceComponents.to_grant_form(resource)
          )
      )
      |> assign(resource_ui: base_resource_ui())}
@@ -1103,8 +1081,8 @@ defmodule PortalWeb.Resources do
 
     condition_attrs =
       policy_params
-      |> map_condition_params(empty_values: :drop)
-      |> maybe_drop_unsupported_conditions(socket)
+      |> PolicyComponents.map_condition_params(empty_values: :drop)
+      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
       |> Postures.maybe_drop_unsupported(socket.assigns.resource_grant.postures)
 
     result =
@@ -1131,7 +1109,7 @@ defmodule PortalWeb.Resources do
          |> merge_state(:resource_panel, view: :list)
          |> assign(resource_grant: base_resource_grant(socket))
          |> assign(resource_ui: base_resource_ui())
-         |> reload_live_table!("resources")}
+         |> LiveTable.reload_live_table!("resources")}
 
       {:error, changeset} ->
         {:noreply,
@@ -1198,8 +1176,8 @@ defmodule PortalWeb.Resources do
         {:noreply,
          socket
          |> put_flash(:success, "Resource \"#{resource.name}\" was deleted.")
-         |> reload_live_table!("resources")
-         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
+         |> LiveTable.reload_live_table!("resources")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
 
       {:error, _} ->
         {:noreply,
@@ -1394,7 +1372,7 @@ defmodule PortalWeb.Resources do
       socket
       |> refresh_selected_groups()
       |> merge_state(:resource_ui, confirm_remove_group_id: nil, group_actions_open_id: nil)
-      |> reload_live_table!("resources")
+      |> LiveTable.reload_live_table!("resources")
       |> maybe_put_stale_flash(result, "Group access no longer exists.")
 
     {:noreply, socket}
@@ -1833,6 +1811,7 @@ defmodule PortalWeb.Resources do
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]

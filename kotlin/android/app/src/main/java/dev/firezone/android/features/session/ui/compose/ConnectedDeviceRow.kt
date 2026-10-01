@@ -9,6 +9,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.tunnel.model.ConnectedDevice
@@ -23,10 +27,20 @@ fun ConnectedDeviceRow(
     // The row is a single line, so it needs less vertical padding than the two-line resource rows
     // to avoid looking sparse.
     Text(
-        text = device.name,
+        text = deviceLabel(device),
         style = MaterialTheme.typography.bodyMedium,
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 12.dp),
     )
+}
+
+// A device's slug, followed by the device domain in the secondary text colour.
+@Composable
+fun deviceLabel(device: ConnectedDevice): AnnotatedString {
+    val suffixColor = MaterialTheme.colorScheme.onSurfaceVariant
+    return buildAnnotatedString {
+        append(device.slug)
+        withStyle(SpanStyle(color = suffixColor)) { append(ConnectedDevice.DOMAIN_SUFFIX) }
+    }
 }
 
 @Preview(showBackground = true)
@@ -38,9 +52,9 @@ private fun ConnectedDeviceRowPreview() {
                 ConnectedDevice(
                     "1",
                     "Device 1",
+                    "device-1",
                     "100.96.0.12",
                     "fd00:2021:1111::1",
-                    listOf("engineering"),
                 ),
                 onClick = {},
             )
@@ -48,9 +62,9 @@ private fun ConnectedDeviceRowPreview() {
                 ConnectedDevice(
                     "2",
                     "Device 2",
+                    "device-2",
                     "100.96.0.30",
                     "fd00:2021:1111::2",
-                    listOf("engineering", "ops"),
                 ),
                 onClick = {},
             )
@@ -58,9 +72,9 @@ private fun ConnectedDeviceRowPreview() {
                 ConnectedDevice(
                     "3",
                     "Device 3",
+                    "device-3",
                     "100.96.0.41",
                     "fd00:2021:1111::3",
-                    emptyList(),
                 ),
                 onClick = {},
             )

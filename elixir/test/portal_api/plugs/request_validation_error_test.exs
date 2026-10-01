@@ -37,6 +37,24 @@ defmodule PortalAPI.Plugs.RequestValidationErrorTest do
     end
   end
 
+  test "a value that matches no oneOf schema is invalid" do
+    errors = [
+      %Error{
+        path: [:resource, :device_membership_criteria],
+        reason: :one_of,
+        meta: %{message: "no schemas validate", failed_schemas: [], valid_schemas: []}
+      }
+    ]
+
+    conn = RequestValidationError.call(Plug.Test.conn(:post, "/resources"), errors)
+
+    assert conn.status == 422
+
+    assert Jason.decode!(conn.resp_body)["validation_errors"] == %{
+             "device_membership_criteria" => ["is invalid"]
+           }
+  end
+
   test "preserves nested errors and multiple messages at the same leaf" do
     errors = [
       %Error{path: [:resource, :filters, 0, :ports], reason: :invalid_type},

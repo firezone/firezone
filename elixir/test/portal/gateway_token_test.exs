@@ -1,6 +1,7 @@
 defmodule Portal.GatewayTokenTest do
   use Portal.DataCase, async: true
   import Ecto.Changeset
+  import Portal.TokenFixtures
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
   import Portal.SiteFixtures
@@ -115,7 +116,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "rejects a second active token for the same gateway" do
       gateway = gateway_fixture()
-      insert_token!(gateway)
+      gateway_token_fixture(gateway: gateway)
 
       changeset =
         %GatewayToken{}
@@ -128,7 +129,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "allows one active and one rotated token for the same gateway" do
       gateway = gateway_fixture()
-      insert_token!(gateway, rotated_at: DateTime.utc_now())
+      gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
 
       changeset =
         %GatewayToken{}
@@ -140,7 +141,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "rejects a second rotated token for the same gateway" do
       gateway = gateway_fixture()
-      insert_token!(gateway, rotated_at: DateTime.utc_now())
+      gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
 
       changeset =
         %GatewayToken{}
@@ -159,7 +160,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "deleting the gateway cascades to its tokens" do
       gateway = gateway_fixture()
-      token = insert_token!(gateway)
+      token = gateway_token_fixture(gateway: gateway)
 
       Repo.delete!(gateway)
 
@@ -172,8 +173,8 @@ defmodule Portal.GatewayTokenTest do
       gateway_1 = gateway_fixture(account: account, site: site)
       gateway_2 = gateway_fixture(account: account, site: site)
 
-      assert insert_token!(gateway_1)
-      assert insert_token!(gateway_2)
+      assert gateway_token_fixture(gateway: gateway_1)
+      assert gateway_token_fixture(gateway: gateway_2)
     end
 
     test "multi-owner tokens for the same site are unaffected by the device index" do
@@ -206,19 +207,6 @@ defmodule Portal.GatewayTokenTest do
 
       assert is_nil(device.firezone_id)
     end
-  end
-
-  defp insert_token!(gateway, overrides \\ []) do
-    attrs =
-      Map.merge(
-        %{account_id: gateway.account_id, device_id: gateway.id},
-        Map.new(overrides)
-      )
-
-    %GatewayToken{}
-    |> change(attrs(attrs))
-    |> GatewayToken.changeset()
-    |> Repo.insert!()
   end
 
   defp attrs(overrides) do

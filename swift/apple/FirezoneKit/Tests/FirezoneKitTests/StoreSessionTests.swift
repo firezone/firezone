@@ -35,14 +35,6 @@
       type: .dns
     )
 
-    private static let benchController = ConnectedDevice(
-      id: "a21c9663-4d0e-4f4a-a8fa-48790b1e5cef",
-      name: "bench-controller-01",
-      tunIPv4: "100.64.3.18",
-      tunIPv6: "fd00:2021:1111::12",
-      pools: ["Lab hardware", "Shared storage"]
-    )
-
     @Test("signing in starts the tunnel with the token")
     func signingInStartsTheTunnelWithTheToken() async throws {
       let app = try await signedOut()
@@ -63,17 +55,6 @@
       try await app.store.signIn(token: Self.token)
 
       try await waitUntil { app.store.resourceList.asArray() == [Self.engineeringWiki] }
-    }
-
-    @Test("connected devices reach the store")
-    func connectedDevicesReachTheStore() async throws {
-      let app = try await signedOut()
-      app.tunnel.resources = [Self.engineeringWiki]
-      app.tunnel.connectedDevices = [Self.benchController]
-
-      try await app.store.signIn(token: Self.token)
-
-      try await waitUntil { app.store.connectedDevices == [Self.benchController] }
     }
 
     @Test(
@@ -155,7 +136,9 @@
 
       app.tunnel.disconnect(with: ConnlibError.disconnected("the portal hung up"))
 
-      try await waitUntil { app.notifications.shown.contains(.disconnected("the portal hung up")) }
+      try await waitUntil {
+        app.notifications.shown.contains(.disconnected("the portal hung up", requiresSignIn: false))
+      }
       #expect(app.store.vpnStatus == .disconnected)
       #expect(app.store.resourceList.asArray().isEmpty)
     }
@@ -168,7 +151,10 @@
 
       app.tunnel.disconnect(with: ConnlibError.sessionExpired("your session expired"))
 
-      try await waitUntil { app.notifications.shown.contains(.signedOut("your session expired")) }
+      try await waitUntil {
+        app.notifications.shown.contains(
+          .disconnected("your session expired", requiresSignIn: true))
+      }
       #expect(app.store.vpnStatus == .disconnected)
     }
 
@@ -180,9 +166,22 @@
       try await app.store.signIn(token: Self.token)
 
       try await waitUntil {
-        app.notifications.shown.contains(.disconnected("connlib failed to start"))
+        app.notifications.shown.contains(
+          .disconnected("connlib failed to start", requiresSignIn: false))
       }
       #expect(app.store.vpnStatus == .disconnected)
+    }
+
+    @Test("a disconnect connlib did not word shows nothing")
+    func aDisconnectConnlibDidNotWordShowsNothing() async throws {
+      let app = try await signedOut()
+      try await app.store.signIn(token: Self.token)
+      try await waitUntil { app.store.vpnStatus == .connected }
+
+      app.tunnel.disconnect(with: PacketTunnelProviderError.providerConfigurationIsInvalid)
+
+      try await waitUntil { app.store.vpnStatus == .disconnected }
+      #expect(app.notifications.shown.isEmpty)
     }
 
     @Test("signing out tells the tunnel and stops it without an alert")

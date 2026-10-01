@@ -6,10 +6,10 @@ defmodule PortalWeb.SignUp do
 
   @sign_up_token_salt "sign_up_email_v1"
   @sign_up_token_max_age 86_400
-  @google_sign_up_session_key "google_sign_up"
-  @google_sign_up_max_age 900
+  @idp_sign_up_session_key "idp_sign_up"
+  @idp_sign_up_max_age 900
+  @idp_sign_up_providers ~w[google github]
   @email_domain_error "This email domain is not allowed at this time."
-  @google_session_error "Your Google sign-up session is invalid or has expired. Please try again."
 
   # ── Full registration schema ──────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ defmodule PortalWeb.SignUp do
            step: :verifying,
            account: nil,
            provider: nil,
-           google_provider: nil,
+           idp_provider: nil,
            actor: nil,
            error_message: nil,
            website_attribution: website_attribution,
@@ -115,10 +115,10 @@ defmodule PortalWeb.SignUp do
             form: registration_form(%{}),
             account: nil,
             provider: nil,
-            google_provider: nil,
+            idp_provider: nil,
             actor: nil,
             error_message: nil,
-            google_identity: identity_from_session(session),
+            idp_identity: identity_from_session(session),
             existing_accounts: [],
             website_attribution: website_attribution,
             user_agent: user_agent,
@@ -141,13 +141,20 @@ defmodule PortalWeb.SignUp do
     {:noreply, push_navigate(socket, to: ~p"/sign_up")}
   end
 
-  def handle_params(_params, _uri, %{assigns: %{live_action: :google}} = socket) do
-    identity = socket.assigns.google_identity
+  def handle_params(_params, _uri, %{assigns: %{live_action: action}} = socket)
+      when action in [:google, :github] do
+    provider = Atom.to_string(action)
 
-    if is_nil(identity) or identity_expired?(identity) do
-      {:noreply, sign_up_error(socket, @google_session_error)}
-    else
-      {:noreply, start_google_sign_up(socket, identity)}
+    case socket.assigns.idp_identity do
+      %{provider: ^provider} = identity ->
+        if identity_expired?(identity) do
+          {:noreply, sign_up_error(socket, idp_session_error(provider))}
+        else
+          {:noreply, start_idp_sign_up(socket, identity)}
+        end
+
+      _ ->
+        {:noreply, sign_up_error(socket, idp_session_error(provider))}
     end
   end
 
@@ -157,36 +164,41 @@ defmodule PortalWeb.SignUp do
 
   def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, step: :choose)}
 
-  # ── Google identity session ──────────────────────────────────────────────────
+  # ── Identity provider session ────────────────────────────────────────────────
 
-  def session_key, do: @google_sign_up_session_key
+  @spec session_key() :: String.t()
+  def session_key, do: @idp_sign_up_session_key
 
   # Only what registration needs; the picture URL alone can be 2 KB and the
-  # first Google sign-in fills the rest in through the identity upsert.
-  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t()) :: map()
-  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile) do
+  # first provider sign-in fills the rest in through the identity upsert.
+  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t()) :: map()
+  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile, provider)
+      when provider in @idp_sign_up_providers do
     %{
+      "provider" => provider,
       "email" => profile.email,
       "issuer" => profile.issuer,
       "idp_id" => profile.idp_id,
       "name" => profile.profile_attrs["name"],
       "given_name" => profile.profile_attrs["given_name"],
       "family_name" => profile.profile_attrs["family_name"],
-      "expires_at" => System.os_time(:second) + @google_sign_up_max_age
+      "expires_at" => System.os_time(:second) + @idp_sign_up_max_age
     }
   end
 
   defp identity_from_session(session) do
-    case Map.get(session, @google_sign_up_session_key) do
+    case Map.get(session, @idp_sign_up_session_key) do
       %{
+        "provider" => provider,
         "email" => email,
         "issuer" => issuer,
         "idp_id" => idp_id,
         "expires_at" => expires_at
       } = identity
-      when is_binary(email) and is_binary(issuer) and is_binary(idp_id) and
-             is_integer(expires_at) ->
+      when provider in @idp_sign_up_providers and is_binary(email) and is_binary(issuer) and
+             is_binary(idp_id) and is_integer(expires_at) ->
         identity = %{
+          provider: provider,
           email: email,
           issuer: issuer,
           idp_id: idp_id,
@@ -215,7 +227,7 @@ defmodule PortalWeb.SignUp do
       :if={@step == :account_created}
       account={@account}
       provider={@provider}
-      google_provider={@google_provider}
+      idp_provider={@idp_provider}
       actor={@actor}
     />
     """
@@ -223,24 +235,29 @@ defmodule PortalWeb.SignUp do
 
   def render(assigns) do
     ~H"""
-    <.flash flash={@flash} kind={:error} />
-    <.flash flash={@flash} kind={:info} />
+    <Core.flash flash={@flash} kind={:error} />
+    <Core.flash flash={@flash} kind={:info} />
 
     <.method_chooser :if={@step == :choose} />
     <.sign_up_form :if={@step == :fill_form} form={@form} />
-    <.google_sign_up_form
-      :if={@step == :google_form}
+    <.idp_sign_up_form
+      :if={@step == :idp_form}
       form={@form}
-      email={@google_identity.email}
+      email={@idp_identity.email}
+      provider={@idp_identity.provider}
     />
-    <.existing_accounts :if={@step == :existing_accounts} accounts={@existing_accounts} />
+    <.existing_accounts
+      :if={@step == :existing_accounts}
+      accounts={@existing_accounts}
+      provider={@idp_identity && @idp_identity.provider}
+    />
     <.email_sent :if={@step == :email_sent} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
     <.welcome
       :if={@step == :account_created}
       account={@account}
       provider={@provider}
-      google_provider={@google_provider}
+      idp_provider={@idp_provider}
       actor={@actor}
     />
     """
@@ -251,11 +268,11 @@ defmodule PortalWeb.SignUp do
   defp sign_up_form(assigns) do
     ~H"""
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
-      <.input
+      <Form.input
         field={@form[:email]}
         type="email"
         beside_errors
@@ -267,7 +284,7 @@ defmodule PortalWeb.SignUp do
       />
 
       <.inputs_for :let={account} field={@form[:account]}>
-        <.input
+        <Form.input
           field={account[:name]}
           type="text"
           beside_errors
@@ -279,7 +296,7 @@ defmodule PortalWeb.SignUp do
       </.inputs_for>
 
       <.inputs_for :let={actor} field={@form[:actor]}>
-        <.input
+        <Form.input
           field={actor[:name]}
           type="text"
           beside_errors
@@ -288,13 +305,13 @@ defmodule PortalWeb.SignUp do
           required
           phx-debounce="blur"
         />
-        <.input field={actor[:type]} type="hidden" />
+        <Form.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
       <.survey_fields form={@form} />
 
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
-        <.input
+        <Form.input
           field={@form[:phone]}
           type="text"
           beside_errors
@@ -318,8 +335,8 @@ defmodule PortalWeb.SignUp do
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
-        Prefer to use Google?
-        <.link patch={~p"/sign_up"} class={[link_style()]}>Sign up with Google.</.link>
+        Prefer to use Google or GitHub?
+        <Navigation.link patch={~p"/sign_up"}>Sign up with your account.</Navigation.link>
       </p>
       <.sign_in_links />
     </.footer>
@@ -329,25 +346,33 @@ defmodule PortalWeb.SignUp do
   defp method_chooser(assigns) do
     ~H"""
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
         <button type="submit" class={method_button_style()}>
-          <.provider_icon provider="google" size="md" />
+          <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
-          <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
         </button>
       </.form>
 
-      <.link patch={~p"/sign_up/email"} class={method_button_style()}>
+      <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
+        <button type="submit" class={method_button_style()}>
+          <Core.provider_icon provider="github" size="md" />
+          <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
+          <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+        </button>
+      </.form>
+
+      <Navigation.link patch={~p"/sign_up/email"} class={method_button_style()}>
         <span class="shrink-0 w-6 h-6 flex items-center justify-center">
-          <.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
+          <Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" />
         </span>
         <span class="flex-1 text-left">Sign up with <strong>email</strong></span>
-        <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
-      </.link>
+        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+      </Navigation.link>
     </div>
 
     <.terms_notice />
@@ -360,31 +385,34 @@ defmodule PortalWeb.SignUp do
 
   attr :form, :any, required: true
   attr :email, :string, required: true
+  attr :provider, :string, required: true, values: @idp_sign_up_providers
 
-  defp google_sign_up_form(assigns) do
+  defp idp_sign_up_form(assigns) do
     ~H"""
     <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
-      <:icon><.provider_icon provider="google" size="md" /></:icon>
+      <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
     </.step_header>
 
     <.form
-      id="google-sign-up-form"
+      id={"#{@provider}-sign-up-form"}
       for={@form}
-      phx-submit="submit_google"
+      phx-submit="submit_identity"
       phx-change="validate"
       class="flex flex-col gap-3"
     >
       <div>
         <label class="block text-sm font-medium text-heading mb-1">Work Email</label>
         <div class="w-full px-3 py-2 text-sm rounded border bg-raised border-border text-body flex items-center gap-2">
-          <.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
+          <Core.icon name="ri-checkbox-circle-line" class="w-4 h-4 text-brand shrink-0" />
           <span class="truncate">{@email}</span>
-          <span class="ml-auto text-xs text-subtle shrink-0">Verified by Google</span>
+          <span class="ml-auto text-xs text-subtle shrink-0">
+            Verified by {provider_name(@provider)}
+          </span>
         </div>
       </div>
 
       <.inputs_for :let={account} field={@form[:account]}>
-        <.input
+        <Form.input
           field={account[:name]}
           type="text"
           beside_errors
@@ -397,7 +425,7 @@ defmodule PortalWeb.SignUp do
       </.inputs_for>
 
       <.inputs_for :let={actor} field={@form[:actor]}>
-        <.input
+        <Form.input
           field={actor[:name]}
           type="text"
           beside_errors
@@ -423,8 +451,8 @@ defmodule PortalWeb.SignUp do
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
-        Wrong Google account?
-        <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
+        Wrong {provider_name(@provider)} account?
+        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
     </.footer>
     """
@@ -535,7 +563,7 @@ defmodule PortalWeb.SignUp do
         other_placeholder="E.g. Product Manager"
         other_max_length={@other_max_length}
       />
-      <.input
+      <Form.input
         field={survey[:switching]}
         type="select"
         beside_errors
@@ -568,7 +596,7 @@ defmodule PortalWeb.SignUp do
 
   defp survey_question(assigns) do
     ~H"""
-    <.input
+    <Form.input
       field={@field}
       type="select"
       beside_errors
@@ -577,7 +605,7 @@ defmodule PortalWeb.SignUp do
       options={@options}
       required
     />
-    <.input
+    <Form.input
       :if={@field.value == "other"}
       field={@other_field}
       type="text"
@@ -592,24 +620,28 @@ defmodule PortalWeb.SignUp do
   end
 
   attr :accounts, :list, required: true
+  attr :provider, :string, default: nil
 
   defp existing_accounts(assigns) do
     ~H"""
-    <.step_header title="You already have an account" subtitle="Your Google email is the owner of the organizations below. Sign in to continue.">
-      <:icon><.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
+    <.step_header
+      title="You already have an account"
+      subtitle={"Your #{provider_name(@provider)} email is the owner of the organizations below. Sign in to continue."}
+    >
+      <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
     <div class="flex flex-col gap-2">
-      <.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
+      <Navigation.link :for={account <- @accounts} href={~p"/#{account}/sign_in"} class={method_button_style()}>
         <span class="flex-1 text-left truncate">{account.name}</span>
-        <.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
-      </.link>
+        <Core.icon name="ri-arrow-right-s-line" class={method_button_arrow_style()} />
+      </Navigation.link>
     </div>
 
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Want a separate organization?
-        <.link patch={~p"/sign_up/email"} class={[link_style()]}>Sign up with a different email.</.link>
+        <Navigation.link patch={~p"/sign_up/email"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
     """
@@ -640,16 +672,15 @@ defmodule PortalWeb.SignUp do
   defp step_header_variant("brand"), do: "bg-brand/10 border-brand/20"
 
   defp step_header_variant("error"),
-    do: "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+    do: "bg-danger/10 border-danger/20"
 
   defp terms_notice(assigns) do
     ~H"""
     <div class="mt-2 pt-2 text-center">
       <p class="text-xs text-subtle mt-1.5">
-        By signing up you agree to our <.link
+        By signing up you agree to our <Navigation.link
           href="https://www.firezone.dev/terms"
-          class={link_style()}
-        >Terms of Use</.link>.
+        >Terms of Use</Navigation.link>.
       </p>
     </div>
     """
@@ -669,11 +700,11 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <p class="text-xs text-subtle leading-relaxed">
       Organization already have an account?
-      <.link href={~p"/sign_in"} class={[link_style()]}>Sign in here.</.link>
+      <Navigation.link href={~p"/sign_in"}>Sign in here.</Navigation.link>
     </p>
     <p class="text-xs text-subtle leading-relaxed">
       Not sure where to start?
-      <.link href={~p"/getting_started"} class={[link_style()]}>Let's get started.</.link>
+      <Navigation.link href={~p"/getting_started"}>Let's get started.</Navigation.link>
     </p>
     """
   end
@@ -683,13 +714,13 @@ defmodule PortalWeb.SignUp do
   end
 
   defp method_button_arrow_style do
-    "w-5 h-5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+    "w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
   end
 
   defp email_sent(assigns) do
     ~H"""
     <.step_header title="Check your email" subtitle="We've sent a sign-up link to your inbox.">
-      <:icon><.icon name="ri-mail-line" class="w-5 h-5 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-mail-line" class="w-5 h-5 text-brand" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
@@ -736,7 +767,7 @@ defmodule PortalWeb.SignUp do
     <div class="pt-6 border-t border-border text-center">
       <p class="text-xs text-subtle">
         Wrong address or didn't receive it?
-        <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
+        <Navigation.link href={~p"/sign_up"}>Start over.</Navigation.link>
       </p>
     </div>
     """
@@ -745,25 +776,25 @@ defmodule PortalWeb.SignUp do
   defp welcome(assigns) do
     ~H"""
     <.step_header title="Your account has been created!" subtitle="You're all set. Sign in to get started.">
-      <:icon><.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" /></:icon>
+      <:icon><Core.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-4">
       <dl class="space-y-3">
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Account Name</dt>
-          <dd class="text-sm text-heading">{@account.name}</dd>
+          <dt class="text-xs font-medium text-subtle">Account Name</dt>
+          <dd class="text-sm text-body font-medium">{@account.name}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Account Slug</dt>
-          <dd class="text-sm text-heading">{@account.slug}</dd>
+          <dt class="text-xs font-medium text-subtle">Account Slug</dt>
+          <dd class="text-sm text-body font-medium">{@account.slug}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Sign In URL</dt>
-          <dd class="text-sm">
-            <.link class={[link_style()]} href={~p"/#{@account}"}>
+          <dt class="text-xs font-medium text-subtle">Sign In URL</dt>
+          <dd class="text-sm text-body font-medium">
+            <Navigation.link href={~p"/#{@account}"}>
               {url(~p"/#{@account}")}
-            </.link>
+            </Navigation.link>
           </dd>
         </div>
       </dl>
@@ -779,7 +810,7 @@ defmodule PortalWeb.SignUp do
             1
           </span>
           <span class="text-sm text-body">
-            <.website_link path="/kb/client-apps">Download the Firezone Client</.website_link>
+            <Navigation.website_link path="/kb/client-apps">Download the Firezone Client</Navigation.website_link>
             for your platform
           </span>
         </li>
@@ -788,30 +819,30 @@ defmodule PortalWeb.SignUp do
             2
           </span>
           <span class="text-sm text-body">
-            <.website_link path="/kb/quickstart">View the Quickstart Guide</.website_link>
+            <Navigation.website_link path="/kb/quickstart">View the Quickstart Guide</Navigation.website_link>
             to get started
           </span>
         </li>
       </ul>
     </div>
 
-    <.link
-      :if={@google_provider}
-      href={~p"/#{@account}/sign_in/google/#{@google_provider.id}"}
+    <Navigation.link
+      :if={@idp_provider}
+      href={~p"/#{@account}/sign_in/#{idp_provider_type(@idp_provider)}/#{@idp_provider.id}"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
-      Sign In with Google
-    </.link>
+      Sign In with {provider_name(idp_provider_type(@idp_provider))}
+    </Navigation.link>
 
     <.form
-      :if={is_nil(@google_provider)}
+      :if={is_nil(@idp_provider)}
       for={%{}}
       id="sign-in-form"
       as={:email}
       action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
       method="post"
     >
-      <.input type="hidden" name="email[email]" value={@actor.email} />
+      <Form.input type="hidden" name="email[email]" value={@actor.email} />
       <button
         type="submit"
         class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
@@ -825,7 +856,7 @@ defmodule PortalWeb.SignUp do
   defp verifying(assigns) do
     ~H"""
     <.step_header title="Verifying your sign-up link…" subtitle="This will only take a moment.">
-      <:icon><.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" /></:icon>
+      <:icon><Core.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" /></:icon>
     </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
@@ -840,10 +871,10 @@ defmodule PortalWeb.SignUp do
           <span class="text-sm text-body">Verifying your sign-up link</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-page text-muted rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-page text-subtle rounded-full flex items-center justify-center text-xs font-semibold">
             2
           </span>
-          <span class="text-sm text-muted">Creating your account</span>
+          <span class="text-sm text-subtle">Creating your account</span>
         </li>
       </ol>
     </div>
@@ -853,11 +884,11 @@ defmodule PortalWeb.SignUp do
   defp sign_up_error(assigns) do
     ~H"""
     <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." variant="error">
-      <:icon><.icon name="ri-error-warning-line" class="w-5 h-5 text-rose-500" /></:icon>
+      <:icon><Core.icon name="ri-error-warning-line" class="w-5 h-5 text-danger" /></:icon>
     </.step_header>
 
-    <div class="rounded border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-4 mb-6">
-      <p class="text-sm text-rose-700 dark:text-rose-400">{@error_message}</p>
+    <div class="rounded border border-danger/30 bg-danger-light p-4 mb-6">
+      <p class="text-sm text-danger">{@error_message}</p>
     </div>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
@@ -866,7 +897,7 @@ defmodule PortalWeb.SignUp do
       </p>
       <ul class="space-y-2">
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
@@ -875,34 +906,34 @@ defmodule PortalWeb.SignUp do
           </span>
         </li>
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
           <span class="text-sm text-body">
             If you already have an account,
-            <.link href={~p"/"} class={link_style()}>sign in here.</.link>
+            <Navigation.link href={~p"/"}>sign in here.</Navigation.link>
           </span>
         </li>
         <li class="flex items-start gap-2.5">
-          <.icon
+          <Core.icon
             name="ri-arrow-right-s-line"
             class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
           />
           <span class="text-sm text-body">
             Still having trouble?
-            <a class={link_style()} href="mailto:support@firezone.dev">Contact support.</a>
+            <a class={Core.link_style()} href="mailto:support@firezone.dev">Contact support.</a>
           </span>
         </li>
       </ul>
     </div>
 
-    <.link
+    <Navigation.link
       href={~p"/sign_up"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
       Try again
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -925,16 +956,16 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  # Only the Google step may create an account without an email round trip, and
-  # the email must come from the verified identity. A connected LiveView outlives
-  # the session entry, so the proof expiry is checked again here.
+  # Only the identity provider step may create an account without an email round
+  # trip, and the email must come from the verified identity. A connected
+  # LiveView outlives the session entry, so the proof expiry is checked again here.
   def handle_event(
-        "submit_google",
+        "submit_identity",
         %{"registration" => attrs},
-        %{assigns: %{step: :google_form, google_identity: %{} = identity}} = socket
+        %{assigns: %{step: :idp_form, idp_identity: %{} = identity}} = socket
       ) do
     if identity_expired?(identity) do
-      {:noreply, sign_up_error(socket, @google_session_error)}
+      {:noreply, sign_up_error(socket, idp_session_error(identity.provider))}
     else
       changeset =
         attrs
@@ -942,15 +973,16 @@ defmodule PortalWeb.SignUp do
         |> registration_changeset()
         |> Map.put(:action, :insert)
 
-      {:noreply, apply_google_registration(socket, changeset)}
+      {:noreply, apply_idp_registration(socket, changeset)}
     end
   end
 
-  def handle_event("submit_google", _params, socket) do
-    {:noreply, sign_up_error(socket, @google_session_error)}
+  def handle_event("submit_identity", _params, socket) do
+    provider = socket.assigns[:idp_identity][:provider]
+    {:noreply, sign_up_error(socket, idp_session_error(provider))}
   end
 
-  defp apply_google_registration(socket, %{valid?: true} = changeset) do
+  defp apply_idp_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
 
     case Database.find_accounts_by_owner_email(registration.email) do
@@ -959,7 +991,7 @@ defmodule PortalWeb.SignUp do
           email: registration.email,
           account: %{name: registration.account.name},
           actor: %{name: registration.actor.name},
-          identity: socket.assigns.google_identity,
+          identity: socket.assigns.idp_identity,
           marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"]),
           sign_up_survey: survey_attrs(registration.sign_up_survey)
         }
@@ -975,11 +1007,11 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  defp apply_google_registration(socket, changeset) do
+  defp apply_idp_registration(socket, changeset) do
     assign(socket, form: to_form(changeset, as: :registration))
   end
 
-  defp start_google_sign_up(socket, identity) do
+  defp start_idp_sign_up(socket, identity) do
     changeset =
       registration_changeset(%{
         "email" => identity.email,
@@ -990,7 +1022,7 @@ defmodule PortalWeb.SignUp do
       sign_up_error(socket, @email_domain_error)
     else
       case Database.find_accounts_by_owner_email(identity.email) do
-        [] -> assign(socket, step: :google_form, form: to_form(changeset, as: :registration))
+        [] -> assign(socket, step: :idp_form, form: to_form(changeset, as: :registration))
         accounts -> existing_accounts_step(socket, accounts)
       end
     end
@@ -998,12 +1030,23 @@ defmodule PortalWeb.SignUp do
 
   defp identity_expired?(%{expires_at: expires_at}), do: expires_at <= System.os_time(:second)
 
+  defp idp_session_error(provider) do
+    "Your #{provider_name(provider)} sign-up session is invalid or has expired. Please try again."
+  end
+
+  defp provider_name("google"), do: "Google"
+  defp provider_name("github"), do: "GitHub"
+  defp provider_name(_provider), do: "identity provider"
+
+  defp idp_provider_type(%module{}), do: Portal.AuthProvider.type!(module)
+
   defp existing_accounts_step(socket, accounts) do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
   end
 
-  # Validation on the Google form uses the verified email so domain errors show early.
-  defp registration_changeset(%{assigns: %{step: :google_form, google_identity: identity}}, attrs) do
+  # Validation on the identity provider form uses the verified email so domain
+  # errors show early.
+  defp registration_changeset(%{assigns: %{step: :idp_form, idp_identity: identity}}, attrs) do
     attrs
     |> Map.put("email", identity.email)
     |> registration_changeset()
@@ -1298,7 +1341,7 @@ defmodule PortalWeb.SignUp do
       step: :account_created,
       account: account,
       provider: provider,
-      google_provider: result.google_provider,
+      idp_provider: result.idp_provider,
       actor: actor
     )
   end
@@ -1399,6 +1442,7 @@ defmodule PortalWeb.SignUp do
       AuthProvider,
       EmailOTP,
       ExternalIdentity,
+      GitHub,
       Google,
       Safe,
       X509
@@ -1482,8 +1526,8 @@ defmodule PortalWeb.SignUp do
       |> Ecto.Multi.run(:x509_provider, fn _repo, %{account: account} ->
         create_x509_provider(account)
       end)
-      |> Ecto.Multi.run(:google_provider, fn _repo, %{account: account} ->
-        create_google_provider(account, registration[:identity])
+      |> Ecto.Multi.run(:idp_provider, fn _repo, %{account: account} ->
+        create_idp_provider(account, registration[:identity])
       end)
       |> Ecto.Multi.run(:actor, fn _repo, %{account: account} ->
         create_admin(account, registration.email, registration.actor.name)
@@ -1555,12 +1599,22 @@ defmodule PortalWeb.SignUp do
       })
     end
 
-    @spec create_google_provider(Portal.Account.t(), map() | nil) ::
+    # The provider the admin signed up with becomes the default, so Firezone
+    # Clients go straight to it.
+    @spec create_idp_provider(Portal.Account.t(), map() | nil) ::
             {:ok, map() | nil} | {:error, Ecto.Changeset.t()}
-    def create_google_provider(_account, nil), do: {:ok, nil}
+    def create_idp_provider(_account, nil), do: {:ok, nil}
 
-    def create_google_provider(account, identity) do
+    def create_idp_provider(account, %{provider: "google"} = identity) do
       create_provider(account, :google, Google.AuthProvider, %{
+        issuer: identity.issuer,
+        is_verified: true,
+        is_default: true
+      })
+    end
+
+    def create_idp_provider(account, %{provider: "github"} = identity) do
+      create_provider(account, :github, GitHub.AuthProvider, %{
         issuer: identity.issuer,
         is_verified: true,
         is_default: true

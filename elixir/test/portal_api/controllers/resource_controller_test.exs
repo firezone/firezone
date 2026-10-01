@@ -465,8 +465,7 @@ defmodule PortalAPI.ResourceControllerTest do
 
       assert resp = json_response(conn, 422)
 
-      assert %{"device" => %{"field" => ["is invalid"]}} =
-               resp["validation_errors"]["device_membership_criteria"]
+      assert resp["validation_errors"]["device_membership_criteria"] == ["is invalid"]
     end
 
     test "rejects a field and operator pairing the grammar has no rule for", %{

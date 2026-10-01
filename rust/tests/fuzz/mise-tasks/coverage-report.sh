@@ -8,9 +8,13 @@ cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
 profile="coverage/$target/coverage.profdata"
-binary="../../target/x86_64-unknown-linux-gnu/release/$target"
+# shellcheck source=../helpers.sh
+source ./helpers.sh
+binary="$coverage_binary"
 report_dir="coverage/$target/html"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
 
-"$llvm_cov" show --format=html --output-dir="$report_dir" --instr-profile="$profile" "$binary"
+sources="$(coverage_sources)"
+mapfile -t sources <<<"$sources"
+"$llvm_cov" show --format=html --output-dir="$report_dir" --instr-profile="$profile" "$binary" "${sources[@]}"
 echo "Coverage report: $PWD/$report_dir/index.html"

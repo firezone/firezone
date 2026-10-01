@@ -1,1 +1,1 @@
-docs/AGENT.md
+../docs/AGENT.md

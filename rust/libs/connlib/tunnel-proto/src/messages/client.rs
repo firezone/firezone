@@ -162,6 +162,7 @@ pub struct AuthorizationCreationFailed {
 pub struct ClientDeviceAccessAuthorized {
     pub client_id: ClientId,
     pub client_name: String,
+    pub client_slug: String,
     pub client_public_key: Key,
     pub client_ipv4: Ipv4Addr,
     pub client_ipv6: Ipv6Addr,
@@ -661,7 +662,7 @@ mod tests {
     fn client_device_access_authorized_carries_ingest_token() {
         let token = flow_tracker::TEST_INGEST_TOKEN;
         let json = format!(
-            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
+            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_slug":"test-device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
         );
 
         let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
@@ -670,6 +671,7 @@ mod tests {
             panic!("expected ClientDeviceAccessAuthorized");
         };
         assert_eq!(authorized.flow_logs_ingest_token.as_str(), token);
+        assert_eq!(authorized.client_slug, "test-device");
         assert_eq!(authorized.expires_at, Some(Duration::from_secs(1729813989)));
         assert_eq!(
             authorized.resource,

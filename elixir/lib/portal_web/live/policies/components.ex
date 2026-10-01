@@ -1,8 +1,7 @@
 defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
-  alias Portal.Policies.Condition
   alias PortalWeb.Policies.{Database, Postures}
-  import PortalWeb.Policies.PostureComponents
+  alias PortalWeb.Policies.PostureComponents
 
   @days_of_week [
     {"M", "Monday"},
@@ -13,38 +12,6 @@ defmodule PortalWeb.Policies.Components do
     {"S", "Saturday"},
     {"U", "Sunday"}
   ]
-
-  @all_conditions [
-    :remote_ip_location_region,
-    :remote_ip,
-    :auth_provider_id,
-    :client_verified,
-    :device_attested,
-    :current_utc_datetime
-  ]
-
-  # current_utc_datetime is a condition evaluated at the time of the request,
-  # so we don't need to include it in the list of conditions that can be set
-  # for internet resources, otherwise it would be blocking all the requests.
-  @conditions_by_resource_type %{
-    internet: @all_conditions -- [:current_utc_datetime],
-    dns: @all_conditions,
-    ip: @all_conditions,
-    cidr: @all_conditions,
-    device_pool: @all_conditions
-  }
-
-  attr(:policy, :map, required: true)
-
-  def policy_name(%{policy: %{group: nil}} = assigns) do
-    ~H"""
-    <span class="text-amber-600">(Group deleted)</span> → {@policy.resource.name}
-    """
-  end
-
-  def policy_name(assigns) do
-    ~H"{@policy.group.name} → {@policy.resource.name}"
-  end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
     if Portal.Account.policy_conditions_enabled?(socket.assigns.account) do
@@ -117,39 +84,6 @@ defmodule PortalWeb.Policies.Components do
 
   defp map_condition_values(condition_attrs) do
     condition_attrs
-  end
-
-  defp condition_values_empty?(%{data: %{values: values}}) when values != [] do
-    false
-  end
-
-  defp condition_values_empty?(%{
-         params: %{
-           "operator" => "is_in_day_of_week_time_ranges",
-           "values" => values
-         }
-       }) do
-    values
-    |> Enum.reject(fn value ->
-      case String.split(value, "/") do
-        [_, ranges, _] -> ranges == ""
-        _ -> true
-      end
-    end)
-    |> Enum.empty?()
-  end
-
-  defp condition_values_empty?(%{
-         params: %{"values" => values}
-       }) do
-    values
-    |> List.wrap()
-    |> Enum.reject(fn value -> value in [nil, ""] end)
-    |> Enum.empty?()
-  end
-
-  defp condition_values_empty?(%{}) do
-    true
   end
 
   attr :account, :any, required: true
@@ -235,7 +169,7 @@ defmodule PortalWeb.Policies.Components do
         mode={:edit}
       />
 
-      <.modal
+      <Form.modal
         :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
         id="policy-breaking-change-modal"
         on_close="cancel_policy_breaking_change"
@@ -245,13 +179,12 @@ defmodule PortalWeb.Policies.Components do
         <:title>Save these changes?</:title>
         <:body>
           <p>
-            This change resets all access previously granted by this policy. Sessions using it will
-            be briefly interrupted while the client reconnects.
+            Existing connections using this policy will be reset.
           </p>
         </:body>
         <:cancel_button>Cancel</:cancel_button>
         <:confirm_button>Save Changes</:confirm_button>
-      </.modal>
+      </Form.modal>
 
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
@@ -326,7 +259,7 @@ defmodule PortalWeb.Policies.Components do
         <h2 class="text-sm font-semibold text-heading">
           {if @mode == :new, do: "Add Policy", else: "Edit Policy"}
         </h2>
-        <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
+        <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_policy_form" />
       </div>
     </div>
     """
@@ -356,18 +289,19 @@ defmodule PortalWeb.Policies.Components do
         panel_selected_resource={@panel_selected_resource}
         subject={@subject}
       />
-      <.policy_conditions_section
-        account={@account}
-        mode={@mode}
-        panel_selected_resource={@panel_selected_resource}
-        panel_active_conditions={@panel_active_conditions}
-        panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
-        providers={@providers}
-        x509_auth_provider_id={@x509_auth_provider_id}
-        has_trust_anchors?={@has_trust_anchors?}
-        conditions_state={@conditions_state}
-      />
-      <.postures_section id="policy-postures" account={@account} state={@postures} />
+      <PostureComponents.policy_restrictions id="policy-postures" account={@account} state={@postures}>
+        <.policy_conditions_section
+          account={@account}
+          mode={@mode}
+          panel_selected_resource={@panel_selected_resource}
+          panel_active_conditions={@panel_active_conditions}
+          panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
+          providers={@providers}
+          x509_auth_provider_id={@x509_auth_provider_id}
+          has_trust_anchors?={@has_trust_anchors?}
+          conditions_state={@conditions_state}
+        />
+      </PostureComponents.policy_restrictions>
     </div>
     """
   end
@@ -380,9 +314,9 @@ defmodule PortalWeb.Policies.Components do
       :if={@panel_form.errors[:base]}
       class="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-error/20 bg-error-light"
     >
-      <.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-error" />
+      <Core.icon name="ri-alert-line" class="w-4 h-4 shrink-0 text-error" />
       <p class="text-xs text-error">
-        {translate_error(@panel_form.errors[:base])}
+        {Core.translate_error(@panel_form.errors[:base])}
       </p>
     </div>
     """
@@ -414,7 +348,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_group_field(assigns) do
     ~H"""
     <.live_component
-      module={PortalWeb.Components.FormComponents.SelectWithGroups}
+      module={PortalWeb.Components.Form.SelectWithGroups}
       id={if @mode == :new, do: "panel_new_policy_group_id", else: "panel_policy_group_id"}
       label="Group"
       placeholder="Select Group"
@@ -427,12 +361,12 @@ defmodule PortalWeb.Policies.Components do
       <:options_group :let={options_group}>{options_group}</:options_group>
       <:option :let={row}>
         <div class="flex items-center gap-2">
-          <.provider_icon provider={provider_type_from_group(row)} size="sm" />
+          <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" />
           <span>{row.group.name}</span>
         </div>
       </:option>
       <:no_options :let={name}>
-        <.error data-validation-error-for={name}>No groups available.</.error>
+        <Core.error data-validation-error-for={name}>No groups available.</Core.error>
       </:no_options>
       <:no_search_results>No groups found.</:no_search_results>
     </.live_component>
@@ -446,7 +380,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_resource_field(assigns) do
     ~H"""
     <.live_component
-      module={PortalWeb.Components.FormComponents.SelectWithGroups}
+      module={PortalWeb.Components.Form.SelectWithGroups}
       id={if @mode == :new, do: "panel_new_policy_resource_id", else: "panel_policy_resource_id"}
       label="Resource"
       placeholder="Select Resource"
@@ -469,7 +403,7 @@ defmodule PortalWeb.Policies.Components do
         <% end %>
       </:option>
       <:no_options :let={name}>
-        <.error data-validation-error-for={name}>No resources available.</.error>
+        <Core.error data-validation-error-for={name}>No resources available.</Core.error>
       </:no_options>
       <:no_search_results>No resources found.</:no_search_results>
     </.live_component>
@@ -514,7 +448,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_description_field(assigns) do
     ~H"""
-    <.input
+    <Form.input
       field={@panel_form[:description]}
       label="Description"
       type="textarea"
@@ -559,19 +493,14 @@ defmodule PortalWeb.Policies.Components do
         <div>
           <div class="flex items-center gap-2">
             <p class="text-xs font-semibold text-body">Flow log reporting</p>
-            <span
-              data-flow-logs-new-badge="true"
-              class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-            >
-              NEW
-            </span>
+            <Core.new_badge data-flow-logs-new-badge="true" />
           </div>
           <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
           </p>
         </div>
         <input type="hidden" name={@form[:flow_log_uploads_enabled].name} value="false" />
-        <.toggle
+        <Core.toggle
           id={@form[:flow_log_uploads_enabled].id}
           name={@form[:flow_log_uploads_enabled].name}
           value="true"
@@ -590,7 +519,7 @@ defmodule PortalWeb.Policies.Components do
           if(@checked?, do: "flex", else: "hidden")
         ]}
       >
-        <.icon name="ri-error-warning-line" class="mt-px h-3.5 w-3.5 shrink-0" />
+        <Core.icon name="ri-error-warning-line" class="mt-px h-3.5 w-3.5 shrink-0" />
         <span>
           Enabling flow log collection for the internet resource can result in substantial log volume.
         </span>
@@ -637,14 +566,14 @@ defmodule PortalWeb.Policies.Components do
       />
       <%= cond do %>
         <% @policy_conditions_enabled? == false -> %>
-          <.upgrade_locked_section
+          <Form.upgrade_locked_section
             account={@account}
             message="Upgrade your plan to unlock policy conditions."
             description="Add policy restrictions like IP ranges, identity providers, and time windows."
             data-locked-section="policy-conditions"
           >
-            <.policy_conditions_placeholder />
-          </.upgrade_locked_section>
+            <PostureComponents.conditions_preview />
+          </Form.upgrade_locked_section>
         <% is_nil(@panel_selected_resource) -> %>
           <.policy_conditions_placeholder />
         <% true -> %>
@@ -671,7 +600,7 @@ defmodule PortalWeb.Policies.Components do
     <div class="flex items-center justify-between mb-3">
       <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
         Conditions
-        <span class="ml-1 font-normal normal-case tracking-normal text-muted">
+        <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
           (optional)
         </span>
       </h4>
@@ -691,7 +620,7 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_conditions_placeholder(assigns) do
     ~H"""
-    <p class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border">
+    <p class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border">
       Select a resource above to configure conditions
     </p>
     """
@@ -708,7 +637,7 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <p
       :if={@panel_active_conditions == []}
-      class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border"
+      class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
     >
       No conditions — access is unrestricted
     </p>
@@ -738,7 +667,7 @@ defmodule PortalWeb.Policies.Components do
         phx-click="toggle_conditions_dropdown"
         class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
       >
-        <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+        <Core.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
       </button>
       <div :if={@panel_conditions_dropdown_open}>
         <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
@@ -764,14 +693,14 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_form_actions(assigns) do
     ~H"""
-    <.panel_footer>
-      <.panel_footer_button type="button" phx-click="cancel_policy_form">
+    <Form.panel_footer>
+      <Form.panel_footer_button type="button" phx-click="cancel_policy_form">
         Cancel
-      </.panel_footer_button>
-      <.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
+      </Form.panel_footer_button>
+      <Form.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
-      </.panel_footer_button>
-    </.panel_footer>
+      </Form.panel_footer_button>
+    </Form.panel_footer>
     """
   end
 
@@ -904,7 +833,7 @@ defmodule PortalWeb.Policies.Components do
               <%= if @policy.group do %>
                 {@policy.group.name} — {@policy.resource.name}
               <% else %>
-                <span class="text-amber-600">(Group deleted)</span> — {@policy.resource.name}
+                <span class="text-warning">(Group deleted)</span> — {@policy.resource.name}
               <% end %>
             </h2>
             <.policy_status_badge is_disabled={@policy.is_disabled} />
@@ -913,10 +842,10 @@ defmodule PortalWeb.Policies.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
+          <Form.button phx-click="open_edit_form" size="sm" icon="ri-pencil-line">
             Edit
-          </.button>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </Form.button>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -949,11 +878,11 @@ defmodule PortalWeb.Policies.Components do
   def policy_group_mapping_card(assigns) do
     ~H"""
     <%= if @policy.group do %>
-      <.link
+      <Navigation.link
         navigate={~p"/#{@account}/groups/#{@policy.group}"}
         class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
       >
-        <.provider_icon provider={provider_type_from_group(@policy.group)} size="sm" variant="circle" />
+        <Core.provider_icon provider={Core.provider_type_from_group(@policy.group)} size="sm" variant="circle" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
@@ -962,15 +891,15 @@ defmodule PortalWeb.Policies.Components do
             {@policy.group.name}
           </p>
         </div>
-      </.link>
+      </Navigation.link>
     <% else %>
-      <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/20">
-        <.icon name="ri-error-warning-line" class="w-5 h-5 text-amber-600 shrink-0" />
+      <div class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-warning/30 bg-warning-light">
+        <Core.icon name="ri-error-warning-line" class="w-5 h-5 text-warning shrink-0" />
         <div class="min-w-0">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
             Group
           </p>
-          <p class="text-sm text-amber-600">Group deleted</p>
+          <p class="text-sm text-warning">Group deleted</p>
         </div>
       </div>
     <% end %>
@@ -979,8 +908,8 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_mapping_arrow(assigns) do
     ~H"""
-    <div class="flex items-center shrink-0 text-muted">
-      <.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
+    <div class="flex items-center shrink-0 text-subtle">
+      <Core.icon name="ri-arrow-right-long-line" class="w-5 h-5" />
     </div>
     """
   end
@@ -990,11 +919,11 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_resource_mapping_card(assigns) do
     ~H"""
-    <.link
+    <Navigation.link
       navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
       class="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-emphasis hover:bg-surface transition-colors text-left group"
     >
-      <span class={resource_type_badge_class(@policy.resource.type)}>
+      <span class={ResourceType.type_badge_class(@policy.resource.type)}>
         {@policy.resource.type}
       </span>
       <div class="min-w-0">
@@ -1008,7 +937,7 @@ defmodule PortalWeb.Policies.Components do
           {@policy.resource.address}
         </p>
       </div>
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -1027,7 +956,7 @@ defmodule PortalWeb.Policies.Components do
         </h3>
       </div>
       <%= if @policy.conditions == [] do %>
-        <p class="text-xs text-muted">
+        <p class="text-xs text-subtle">
           No conditions — access is always granted to group members.
         </p>
       <% else %>
@@ -1048,7 +977,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
-      <.postures_summary postures={@policy.postures} />
+      <PostureComponents.postures_summary postures={@policy.postures} />
     </div>
     """
   end
@@ -1101,7 +1030,7 @@ defmodule PortalWeb.Policies.Components do
           </div>
         <% end %>
       </div>
-      <p class="text-[10px] text-muted mt-1">{elem(@tod, 0)}</p>
+      <p class="text-[10px] text-subtle mt-1">{elem(@tod, 0)}</p>
     </div>
     """
   end
@@ -1116,12 +1045,12 @@ defmodule PortalWeb.Policies.Components do
   def policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <.authorization_flow_logs_notice account={@account} />
+      <Authorization.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
-        <.icon name="ri-shield-check-line" class="w-8 h-8" />
+        <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
       </div>
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
@@ -1149,13 +1078,13 @@ defmodule PortalWeb.Policies.Components do
                     {if row.actor, do: row.actor.name, else: "—"}
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.inserted_at} />
+                    <Core.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.expires_at} />
+                    <Core.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.icon
+                    <Core.icon
                       name={
                         if @expanded_id == row.authorization.id,
                           do: "ri-arrow-up-s-line",
@@ -1213,12 +1142,12 @@ defmodule PortalWeb.Policies.Components do
                       </div>
                       <div>
                         <p class="text-subtle font-medium mb-1">Resource</p>
-                        <.link
+                        <Navigation.link
                           navigate={~p"/#{@account}/resources/#{@policy.resource_id}"}
                           class="text-brand hover:underline"
                         >
                           {@policy.resource.name}
-                        </.link>
+                        </Navigation.link>
                       </div>
                     </div>
                   </td>
@@ -1232,18 +1161,18 @@ defmodule PortalWeb.Policies.Components do
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
+            <Core.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
           <span class="text-xs text-subtle">Page {@page}</span>
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
+            Next <Core.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -1283,25 +1212,25 @@ defmodule PortalWeb.Policies.Components do
       <dl class="space-y-2.5">
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Policy ID</dt>
-          <dd class="font-mono text-[11px] text-body break-all">
+          <dd class="font-mono text-[11px] text-body break-all font-medium">
             {@policy.id}
           </dd>
         </div>
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-          <dd class="text-xs text-body">
-            <.relative_datetime datetime={@policy.inserted_at} />
+          <dd class="text-xs text-body font-medium">
+            <Core.relative_datetime datetime={@policy.inserted_at} />
           </dd>
         </div>
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Flow log reporting</dt>
-          <dd class="text-xs text-body">
+          <dd class="text-xs text-body font-medium">
             {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
           </dd>
         </div>
         <div :if={@policy.description}>
           <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
-          <dd class="text-xs text-body">{@policy.description}</dd>
+          <dd class="text-xs text-body font-medium">{@policy.description}</dd>
         </div>
       </dl>
     </section>
@@ -1318,14 +1247,14 @@ defmodule PortalWeb.Policies.Components do
         Actions
       </h3>
       <div class="space-y-2">
-        <.action_button
+        <Form.action_button
           :if={!@policy.is_disabled and not @confirm_disable_policy}
           phx-click="confirm_disable_policy"
           style="warning"
           icon="ri-pause-line"
         >
           Disable policy
-        </.action_button>
+        </Form.action_button>
         <div
           :if={!@policy.is_disabled and @confirm_disable_policy}
           class="px-3 py-2.5 rounded border border-border bg-raised"
@@ -1337,22 +1266,22 @@ defmodule PortalWeb.Policies.Components do
             This will immediately revoke all access granted by it.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_disable_policy" size="xs">
+            <Form.button type="button" phx-click="cancel_disable_policy" size="xs">
               Cancel
-            </.button>
-            <.button type="button" style="primary" phx-click="disable_policy" size="xs">
+            </Form.button>
+            <Form.button type="button" style="primary" phx-click="disable_policy" size="xs">
               Disable
-            </.button>
+            </Form.button>
           </div>
         </div>
-        <.action_button
+        <Form.action_button
           :if={@policy.is_disabled}
           phx-click="enable_policy"
           style="success"
           icon="ri-play-line"
         >
           Enable policy
-        </.action_button>
+        </Form.action_button>
       </div>
     </section>
     """
@@ -1363,7 +1292,7 @@ defmodule PortalWeb.Policies.Components do
   def policy_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
         Danger Zone
       </h3>
       <button
@@ -1372,7 +1301,7 @@ defmodule PortalWeb.Policies.Components do
         phx-click="confirm_delete_policy"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
+        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete policy
       </button>
       <div
         :if={@confirm_delete_policy}
@@ -1385,12 +1314,12 @@ defmodule PortalWeb.Policies.Components do
           All sessions authorized by it will be expired.
         </p>
         <div class="flex items-center gap-1.5">
-          <.button type="button" phx-click="cancel_delete_policy" size="xs">
+          <Form.button type="button" phx-click="cancel_delete_policy" size="xs">
             Cancel
-          </.button>
-          <.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
+          </Form.button>
+          <Form.button type="button" phx-click="delete_policy" style="danger" size="xs" class="font-medium">
             Delete
-          </.button>
+          </Form.button>
         </div>
       </div>
     </section>
@@ -1405,27 +1334,6 @@ defmodule PortalWeb.Policies.Components do
   def condition_short_label(:remote_ip), do: "IP Range"
   def condition_short_label(:current_utc_datetime), do: "Time"
   def condition_short_label(_), do: "Condition"
-
-  @spec resource_type_badge_class(atom()) :: String.t()
-  def resource_type_badge_class(:dns),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
-
-  def resource_type_badge_class(:ip),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
-
-  def resource_type_badge_class(:cidr),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
-
-  def resource_type_badge_class(:internet),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-
-  def resource_type_badge_class(_),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   @spec condition_type_badge_class(atom()) :: String.t()
   defp condition_type_badge_class(:client_verified),
@@ -1555,7 +1463,7 @@ defmodule PortalWeb.Policies.Components do
 
   def conditions(assigns) do
     ~H"""
-    <span :if={@conditions == []} class="text-neutral-500">
+    <span :if={@conditions == []} class="text-subtle">
       There are no conditions defined for this policy.
     </span>
     <span :if={@conditions != []} class="flex flex-wrap">
@@ -1613,18 +1521,18 @@ defmodule PortalWeb.Policies.Components do
       <span>when signed in</span>
       <span :if={@operator == :is_in}>with</span>
       <span :if={@operator == :is_not_in}>not with</span>
-      <.intersperse_blocks>
+      <Core.intersperse_blocks>
         <:separator>,</:separator>
 
         <:item :for={provider <- @providers}>
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/settings/authentication"}
-            class={[link_style(), "font-medium"]}
+            class={[Core.link_style(), "font-medium"]}
           >
             {provider.name}
-          </.link>
+          </Navigation.link>
         </:item>
-      </.intersperse_blocks>
+      </Core.intersperse_blocks>
       <span>provider(s)</span>
     </span>
     """
@@ -1664,7 +1572,7 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <span class="flex flex-wrap space-x-1 mr-1">
       on
-      <.intersperse_blocks>
+      <Core.intersperse_blocks>
         <:separator>,</:separator>
 
         <:item :for={{day_of_week, tz_time_ranges} <- @tz_time_ranges_by_dow}>
@@ -1678,7 +1586,7 @@ defmodule PortalWeb.Policies.Components do
             </span>
           </span>
         </:item>
-      </.intersperse_blocks>
+      </Core.intersperse_blocks>
     </span>
     """
   end
@@ -1696,584 +1604,6 @@ defmodule PortalWeb.Policies.Components do
       range = {starts_at, ends_at}
       Map.update(acc, timezone, [range], fn ranges -> [range | ranges] end)
     end)
-  end
-
-  defp condition_operator_option_name(:contains), do: "contains"
-  defp condition_operator_option_name(:does_not_contain), do: "does not contain"
-  defp condition_operator_option_name(:is_in), do: "is in"
-  defp condition_operator_option_name(:is), do: "is"
-  defp condition_operator_option_name(:is_not_in), do: "is not in"
-  defp condition_operator_option_name(:is_in_day_of_week_time_ranges), do: ""
-  defp condition_operator_option_name(:is_in_cidr), do: "is in"
-  defp condition_operator_option_name(:is_not_in_cidr), do: "is not in"
-
-  def conditions_form(assigns) do
-    assigns =
-      assigns
-      |> assign_new(:policy_conditions_enabled?, fn ->
-        Portal.Account.policy_conditions_enabled?(assigns.account)
-      end)
-      |> assign_new(:enabled_conditions, fn ->
-        Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)
-      end)
-
-    ~H"""
-    <fieldset class="flex flex-col gap-2 mt-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <legend class="text-xl mb-2 text-neutral-900">Conditions</legend>
-          <p class="my-2 text-sm text-neutral-500">
-            All conditions specified below must be met for this policy to be applied.
-          </p>
-        </div>
-      </div>
-
-      <div
-        :if={@policy_conditions_enabled? == false}
-        class="rounded-xl border border-border-strong bg-raised p-4"
-      >
-        <div class="flex items-start gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-elevated text-body">
-            <.icon name="ri-lock-line" class="h-4 w-4" />
-          </div>
-          <div class="space-y-2">
-            <p class="text-sm font-medium text-heading">
-              Upgrade your plan to unlock policy conditions.
-            </p>
-            <p class="text-sm text-body">
-              Starter accounts can view this section, but only higher plans can add policy restrictions like IP ranges, identity providers, and time windows.
-            </p>
-            <.link
-              navigate={~p"/#{@account}/settings/account"}
-              class="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium text-heading transition-colors hover:border-border-emphasis hover:text-heading"
-            >
-              <.icon name="ri-arrow-right-line" class="h-4 w-4" /> Unlock in Account Settings
-            </.link>
-          </div>
-        </div>
-      </div>
-
-      <div class="relative">
-        <div
-          :if={@policy_conditions_enabled? == false}
-          class="pointer-events-none absolute inset-0 z-10 rounded-xl bg-elevated/40"
-        />
-        <div
-          id="policy-conditions-locked-container"
-          class={[
-            @policy_conditions_enabled? == false &&
-              "pointer-events-none select-none blur-[2px] opacity-70",
-            "rounded-xl border border-border bg-surface p-4 transition"
-          ]}
-        >
-          <.remote_ip_location_region_condition_form
-            :if={:remote_ip_location_region in @enabled_conditions}
-            form={@form}
-            disabled={@policy_conditions_enabled? == false}
-          />
-          <.remote_ip_condition_form
-            :if={:remote_ip in @enabled_conditions}
-            form={@form}
-            disabled={@policy_conditions_enabled? == false}
-          />
-          <.provider_id_condition_form
-            :if={:auth_provider_id in @enabled_conditions}
-            form={@form}
-            providers={@providers}
-            disabled={@policy_conditions_enabled? == false}
-          />
-          <.client_verified_condition_form
-            :if={:client_verified in @enabled_conditions}
-            form={@form}
-            disabled={@policy_conditions_enabled? == false}
-          />
-          <.current_utc_datetime_condition_form
-            :if={:current_utc_datetime in @enabled_conditions}
-            form={@form}
-            timezone={@timezone}
-            disabled={@policy_conditions_enabled? == false}
-          />
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp remote_ip_location_region_condition_form(assigns) do
-    ~H"""
-    <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :remote_ip_location_region) %>
-
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][remote_ip_location_region][property]"
-        id="policy_conditions_remote_ip_location_region_property"
-        value="remote_ip_location_region"
-      />
-
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_remote_ip_location_region_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_remote_ip_location_region_chevron"
-          )
-          |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_remote_ip_location_region_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="ri-map-pin-line" class="w-5 h-5 mr-2" /> Client location
-          </span>
-          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_remote_ip_location_region_chevron"
-              name="ri-arrow-down-s-line"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
-
-      <div
-        id="policy_conditions_remote_ip_location_region_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the location of the device meets the criteria specified below.
-        </p>
-        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
-          <.input
-            type="select"
-            name="policy[conditions][remote_ip_location_region][operator]"
-            id="policy_conditions_remote_ip_location_region_operator"
-            field={condition_form[:operator]}
-            disabled={@disabled}
-            options={condition_operator_options(:remote_ip_location_region)}
-            value={get_in(condition_form, [:operator, Access.key!(:value)])}
-          />
-
-          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-              or
-            </div>
-
-            <div class="col-span-4">
-              <.input
-                type="select"
-                field={condition_form[:values]}
-                name="policy[conditions][remote_ip_location_region][values][]"
-                id={"policy_conditions_remote_ip_location_region_values_#{index}"}
-                options={[{"Select Country", nil}] ++ Portal.Geo.all_country_options!()}
-                disabled={@disabled}
-                value_index={index}
-                value={value}
-              />
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp remote_ip_condition_form(assigns) do
-    ~H"""
-    <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :remote_ip) %>
-
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][remote_ip][property]"
-        id="policy_conditions_remote_ip_property"
-        value="remote_ip"
-      />
-
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_remote_ip_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_remote_ip_chevron"
-          )
-          |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_remote_ip_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="ri-global-line" class="w-5 h-5 mr-2" /> IP address
-          </span>
-          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_remote_ip_chevron"
-              name="ri-arrow-down-s-line"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
-
-      <div
-        id="policy_conditions_remote_ip_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the IP of the device meets the criteria specified below.
-        </p>
-        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
-          <.input
-            type="select"
-            name="policy[conditions][remote_ip][operator]"
-            id="policy_conditions_remote_ip_operator"
-            field={condition_form[:operator]}
-            disabled={@disabled}
-            options={condition_operator_options(:remote_ip)}
-            value={get_in(condition_form, [:operator, Access.key!(:value)])}
-          />
-
-          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-              or
-            </div>
-
-            <div class="col-span-4">
-              <.input
-                type="text"
-                field={condition_form[:values]}
-                name="policy[conditions][remote_ip][values][]"
-                id={"policy_conditions_remote_ip_values_#{index}"}
-                placeholder="E.g. 189.172.0.0/24 or 10.10.10.1"
-                disabled={@disabled}
-                value_index={index}
-                value={value}
-              />
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp provider_id_condition_form(assigns) do
-    ~H"""
-    <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :auth_provider_id) %>
-
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][auth_provider_id][property]"
-        id="policy_conditions_auth_provider_id_property"
-        value="auth_provider_id"
-      />
-
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_auth_provider_id_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_auth_provider_id_chevron"
-          )
-          |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_auth_provider_id_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="ri-id-card-line" class="w-5 h-5 mr-2" /> Authentication provider
-          </span>
-          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_auth_provider_id_chevron"
-              name="ri-arrow-down-s-line"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
-
-      <div
-        id="policy_conditions_auth_provider_id_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the provider used to sign in meets the criteria specified below.
-        </p>
-        <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
-          <.input
-            type="select"
-            name="policy[conditions][auth_provider_id][operator]"
-            id="policy_conditions_auth_provider_id_operator"
-            field={condition_form[:operator]}
-            disabled={@disabled}
-            options={condition_operator_options(:auth_provider_id)}
-            value={get_in(condition_form, [:operator, Access.key!(:value)])}
-          />
-
-          <%= for {value, index} <- Enum.with_index((condition_form[:values] && condition_form[:values].value || []) ++ [nil]) do %>
-            <div :if={index > 0} class="text-right mt-3 text-sm text-neutral-900">
-              or
-            </div>
-
-            <div class="col-span-4">
-              <.input
-                type="select"
-                field={condition_form[:values]}
-                name="policy[conditions][auth_provider_id][values][]"
-                id={"policy_conditions_auth_provider_id_values_#{index}"}
-                options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
-                disabled={@disabled}
-                value_index={index}
-                value={value}
-              />
-            </div>
-          <% end %>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp client_verified_condition_form(assigns) do
-    ~H"""
-    <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :client_verified) %>
-
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][client_verified][property]"
-        id="policy_conditions_client_verified_property"
-        value="client_verified"
-      />
-
-      <.input
-        type="hidden"
-        name="policy[conditions][client_verified][operator]"
-        id="policy_conditions_client_verified_operator"
-        field={condition_form[:operator]}
-        value={:is}
-      />
-
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_client_verified_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_client_verified_chevron"
-          )
-          |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_client_verified_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="ri-shield-check-line" class="w-5 h-5 mr-2" /> Client verification
-          </span>
-          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_client_verified_chevron"
-              name="ri-arrow-down-s-line"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
-
-      <div
-        id="policy_conditions_client_verified_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the device is manually verified by the administrator.
-        </p>
-        <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
-          <.toggle
-            label="Require device verification"
-            name="policy[conditions][client_verified][values][]"
-            id="policy_conditions_client_verified_value"
-            value="true"
-            disabled={@disabled}
-            checked={List.first(List.wrap(condition_form[:values].value)) == "true"}
-          />
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp current_utc_datetime_condition_form(assigns) do
-    assigns = assign_new(assigns, :days_of_week, fn -> @days_of_week end)
-
-    ~H"""
-    <fieldset class="mb-2">
-      <% condition_form = find_condition_form(@form[:conditions], :current_utc_datetime) %>
-
-      <.input
-        type="hidden"
-        field={condition_form[:property]}
-        name="policy[conditions][current_utc_datetime][property]"
-        id="policy_conditions_current_utc_datetime_property"
-        value="current_utc_datetime"
-      />
-
-      <.input
-        type="hidden"
-        name="policy[conditions][current_utc_datetime][operator]"
-        id="policy_conditions_current_utc_datetime_operator"
-        field={condition_form[:operator]}
-        value={:is_in_day_of_week_time_ranges}
-      />
-
-      <div
-        class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
-        phx-click={
-          JS.toggle_class("hidden",
-            to: "#policy_conditions_current_utc_datetime_condition"
-          )
-          |> JS.toggle_class("bg-neutral-50")
-          |> JS.toggle_class("ri-arrow-down-s-line",
-            to: "#policy_conditions_current_utc_datetime_chevron"
-          )
-          |> JS.toggle_class("ri-arrow-up-s-line",
-            to: "#policy_conditions_current_utc_datetime_chevron"
-          )
-        }
-      >
-        <legend class="flex justify-between items-center text-neutral-700">
-          <span class="flex items-center">
-            <.icon name="ri-time-line" class="w-5 h-5 mr-2" /> Current time
-          </span>
-          <span class="shadow-sm bg-white w-6 h-6 flex items-center justify-center rounded-full">
-            <.icon
-              id="policy_conditions_current_utc_datetime_chevron"
-              name="ri-arrow-down-s-line"
-              class="w-5 h-5"
-            />
-          </span>
-        </legend>
-      </div>
-
-      <div
-        id="policy_conditions_current_utc_datetime_condition"
-        class={[
-          "p-4 border-neutral-200 border-l border-r border-b rounded-b",
-          condition_values_empty?(condition_form) && "hidden"
-        ]}
-      >
-        <p class="text-sm text-neutral-500 mb-4">
-          Allow access during the time windows specified below. 24hr format and multiple time ranges per day are supported.
-        </p>
-        <div class="space-y-2">
-          <.input
-            type="select"
-            label="Timezone"
-            name="policy[conditions][current_utc_datetime][timezone]"
-            id="policy_conditions_current_utc_datetime_timezone"
-            field={condition_form[:timezone]}
-            options={TzExtra.time_zone_ids(include_aliases: true)}
-            disabled={@disabled}
-            value={condition_form[:timezone].value || @timezone}
-          />
-
-          <div class="space-y-2">
-            <.current_utc_datetime_condition_day_input
-              :for={{code, _name} <- @days_of_week}
-              disabled={@disabled}
-              condition_form={condition_form}
-              day={code}
-            />
-          </div>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  defp find_condition_form(form_field, property) do
-    condition_form =
-      form_field.value
-      |> Enum.find_value(fn
-        %Ecto.Changeset{} = condition ->
-          if Ecto.Changeset.get_field(condition, :property) == property do
-            to_form(condition)
-          end
-
-        condition ->
-          if Map.get(condition, :property) == property do
-            to_form(Condition.changeset(condition, %{}, 0))
-          end
-      end)
-
-    condition_form || to_form(%{})
-  end
-
-  defp current_utc_datetime_condition_day_input(assigns) do
-    ~H"""
-    <.input
-      type="text"
-      label={day_of_week_name(@day)}
-      field={@condition_form[:values]}
-      name={"policy[conditions][current_utc_datetime][values][#{@day}]"}
-      id={"policy_conditions_current_utc_datetime_values_#{@day}"}
-      placeholder="E.g. 9:00-12:00, 13:00-17:00"
-      value={get_datetime_range_for_day_of_week(@day, @condition_form[:values])}
-      disabled={@disabled}
-      value_index={day_of_week_index(@day)}
-    />
-    """
-  end
-
-  defp get_datetime_range_for_day_of_week(day, form_field) do
-    Enum.find_value(form_field.value || [], fn dow_time_ranges ->
-      case String.split(dow_time_ranges, "/", parts: 3) do
-        [^day, ranges, _timezone] -> ranges
-        _other -> false
-      end
-    end)
-  end
-
-  defp condition_operator_options(property) do
-    Portal.Policies.Condition.valid_operators_for_property(property)
-    |> Enum.map(&{condition_operator_option_name(&1), &1})
-  end
-
-  def options_form(assigns) do
-    ~H"""
-    """
   end
 
   @spec available_conditions(map() | nil) :: [atom()]
@@ -2363,12 +1693,7 @@ defmodule PortalWeb.Policies.Components do
 
   defp condition_new_badge(%{type: :device_attested} = assigns) do
     ~H"""
-    <span
-      data-condition-new-badge
-      class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-    >
-      NEW
-    </span>
+    <Core.new_badge class="ml-1.5" data-condition-new-badge />
     """
   end
 
@@ -2390,7 +1715,7 @@ defmodule PortalWeb.Policies.Components do
         class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
         title="Remove condition"
       >
-        <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+        <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
       </button>
     </div>
     """
@@ -2516,7 +1841,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-range={v}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -2529,11 +1854,11 @@ defmodule PortalWeb.Policies.Components do
             phx-change="update_ip_range_input"
             phx-key="Enter"
             phx-keyup="add_ip_range_value"
-            class={[@input_class, "flex-1 font-mono placeholder:text-muted"]}
+            class={[@input_class, "flex-1 font-mono placeholder:text-subtle"]}
           />
-          <.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
+          <Form.button type="button" phx-click="add_ip_range_value" size="xs" class="shrink-0">
             Add
-          </.button>
+          </Form.button>
         </div>
       </div>
     </div>
@@ -2608,7 +1933,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-code={code}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -2619,12 +1944,12 @@ defmodule PortalWeb.Policies.Components do
           phx-change="update_location_search"
           phx-debounce="150"
           name="_location_search"
-          class="w-full px-2.5 py-1.5 text-xs rounded border bg-input border-input-border text-heading placeholder:text-muted outline-none focus:border-border-focus transition-colors mb-1"
+          class="w-full px-2.5 py-1.5 text-xs rounded border bg-input border-input-border text-heading placeholder:text-subtle outline-none focus:border-border-focus transition-colors mb-1"
         />
         <div class="max-h-36 overflow-y-auto rounded border border-border bg-surface">
           <p
             :if={@location_search == ""}
-            class="px-2.5 py-3 text-xs text-muted text-center"
+            class="px-2.5 py-3 text-xs text-subtle text-center"
           >
             Type to search countries
           </p>
@@ -2736,7 +2061,7 @@ defmodule PortalWeb.Policies.Components do
               phx-value-id={p.id}
               class="hover:text-error transition-colors"
             >
-              <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />
             </button>
           </span>
         </div>
@@ -2768,15 +2093,15 @@ defmodule PortalWeb.Policies.Components do
     ~H"""
     <p
       :if={@show?}
-      class="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+      class="flex items-start gap-1.5 rounded border border-warning/30 bg-warning-light px-2.5 py-2 text-xs text-warning"
     >
-      <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
       <span>
         No devices will be able to use this authentication provider until you add one or more
-        <.link
+        <Navigation.link
           navigate={~p"/#{@account}/settings/trust_anchors"}
           class="font-medium underline hover:no-underline"
-        >Trust Anchors</.link>.
+        >Trust Anchors</Navigation.link>.
       </span>
     </p>
     """
@@ -2849,10 +2174,10 @@ defmodule PortalWeb.Policies.Components do
               type="button"
               phx-click="remove_tod_range"
               phx-value-index={idx}
-              class="shrink-0 p-0.5 rounded text-muted hover:text-red-500 transition-colors"
+              class="shrink-0 p-0.5 rounded text-subtle hover:text-red-500 transition-colors"
               title="Remove"
             >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+              <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -2905,9 +2230,9 @@ defmodule PortalWeb.Policies.Components do
                   "focus:ring-1 focus:ring-border-focus/30 transition-colors"
                 ]}
               />
-              <span class="text-[9px] text-muted">on</span>
+              <span class="text-[9px] text-subtle">on</span>
             </div>
-            <span class="text-muted text-xs pt-1">–</span>
+            <span class="text-subtle text-xs pt-1">–</span>
             <div class="flex flex-col items-center gap-0.5">
               <input
                 type="time"
@@ -2921,23 +2246,23 @@ defmodule PortalWeb.Policies.Components do
                   "focus:ring-1 focus:ring-border-focus/30 transition-colors"
                 ]}
               />
-              <span class="text-[9px] text-muted">off</span>
+              <span class="text-[9px] text-subtle">off</span>
             </div>
           </div>
           <p
             :if={@tod_pending_error}
             class="flex items-center gap-1 text-[10px] text-error"
           >
-            <.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
+            <Core.icon name="ri-alert-line" class="w-3 h-3 shrink-0" />
             {@tod_pending_error}
           </p>
           <div class="flex justify-end gap-1.5">
-            <.button type="button" phx-click="cancel_tod_range" size="xs">
+            <Form.button type="button" phx-click="cancel_tod_range" size="xs">
               Cancel
-            </.button>
-            <.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
+            </Form.button>
+            <Form.button type="button" phx-click="confirm_tod_range" style="primary" size="xs">
               Add
-            </.button>
+            </Form.button>
           </div>
         </div>
         <button
@@ -2951,7 +2276,7 @@ defmodule PortalWeb.Policies.Components do
             "transition-colors"
           ]}
         >
-          <.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add range
         </button>
       </div>
     </div>
@@ -2971,48 +2296,7 @@ defmodule PortalWeb.Policies.Components do
   defmodule Database do
     import Ecto.Query
     import Portal.Repo.Query
-    alias Portal.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
-
-    def all_active_providers_for_account(account, subject) do
-      # Query all auth provider types that are not disabled
-      userpass_query =
-        from(p in Userpass.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      email_otp_query =
-        from(p in EmailOTP.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      oidc_query =
-        from(p in OIDC.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      google_query =
-        from(p in Google.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      entra_query =
-        from(p in Entra.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      okta_query =
-        from(p in Okta.AuthProvider,
-          where: p.account_id == ^account.id and not p.is_disabled
-        )
-
-      # Combine all providers from different tables using Safe
-      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
-        (okta_query |> Safe.scoped(subject) |> Safe.all())
-    end
+    alias Portal.Safe
 
     # Inlined from PortalWeb.Groups.Components
     def fetch_group_option(id, subject) do
@@ -3148,265 +2432,15 @@ defmodule PortalWeb.Policies.Components do
     defp group_synced?(group), do: not is_nil(group.directory_id)
     defp group_managed?(group), do: group.type == :managed
 
-    # Inline functions from Portal.PolicyAuthorizations
-    def list_policy_authorizations_for(assoc, subject, opts \\ [])
-
-    def list_policy_authorizations_for(
-          %Portal.Policy{} = policy,
-          %Portal.Authentication.Subject{} = subject,
-          opts
-        ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_policy_id(policy.id)
-      |> list_policy_authorizations(subject, opts)
-    end
-
-    def list_policy_authorizations_for(
-          %Portal.Resource{} = resource,
-          %Portal.Authentication.Subject{} = subject,
-          opts
-        ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_resource_id(resource.id)
-      |> list_policy_authorizations(subject, opts)
-    end
-
-    def list_policy_authorizations_for(
-          %Portal.Device{type: :client} = client,
-          %Portal.Authentication.Subject{} = subject,
-          opts
-        ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_client_id(client.id)
-      |> list_policy_authorizations(subject, opts)
-    end
-
-    def list_policy_authorizations_for(
-          %Portal.Actor{} = actor,
-          %Portal.Authentication.Subject{} = subject,
-          opts
-        ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_actor_id(actor.id)
-      |> list_policy_authorizations(subject, opts)
-    end
-
-    def list_policy_authorizations_for(
-          %Portal.Device{type: :gateway} = gateway,
-          %Portal.Authentication.Subject{} = subject,
-          opts
-        ) do
-      Database.PolicyAuthorizationQuery.all()
-      |> Database.PolicyAuthorizationQuery.by_gateway_id(gateway.id)
-      |> list_policy_authorizations(subject, opts)
-    end
-
-    defp list_policy_authorizations(queryable, subject, opts) do
-      queryable
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.list(Database.PolicyAuthorizationQuery, opts)
-    end
-  end
-
-  defmodule Database.PolicyAuthorizationQuery do
-    import Ecto.Query
-
-    def all do
-      from(policy_authorizations in Portal.PolicyAuthorization, as: :policy_authorizations)
-    end
-
-    def expired(queryable) do
-      now = DateTime.utc_now()
-
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.expires_at <= ^now
-      )
-    end
-
-    def not_expired(queryable) do
-      now = DateTime.utc_now()
-
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.expires_at > ^now
-      )
-    end
-
-    def by_id(queryable, id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.id == ^id
-      )
-    end
-
-    def by_account_id(queryable, account_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.account_id == ^account_id
-      )
-    end
-
-    def by_token_id(queryable, token_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.token_id == ^token_id
-      )
-    end
-
-    def by_policy_id(queryable, policy_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.policy_id == ^policy_id
-      )
-    end
-
-    def for_cache(queryable) do
-      queryable
-      |> select(
-        [policy_authorizations: policy_authorizations],
-        {{policy_authorizations.initiating_device_id, policy_authorizations.resource_id},
-         {policy_authorizations.id, policy_authorizations.expires_at}}
-      )
-    end
-
-    def by_policy_group_id(queryable, group_id) do
-      queryable
-      |> with_joined_policy()
-      |> where([policy: policy], policy.group_id == ^group_id)
-    end
-
-    def by_membership_id(queryable, membership_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.membership_id == ^membership_id
-      )
-    end
-
-    def by_site_id(queryable, site_id) do
-      queryable
-      |> with_joined_site()
-      |> where([site: site], site.id == ^site_id)
-    end
-
-    def by_resource_id(queryable, resource_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.resource_id == ^resource_id
-      )
-    end
-
-    def by_not_in_resource_ids(queryable, resource_ids) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.resource_id not in ^resource_ids
-      )
-    end
-
-    def by_client_id(queryable, client_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.initiating_device_id == ^client_id
-      )
-    end
-
-    def by_actor_id(queryable, actor_id) do
-      queryable
-      |> with_joined_client()
-      |> where([client: client], client.actor_id == ^actor_id)
-    end
-
-    def by_gateway_id(queryable, gateway_id) do
-      where(
-        queryable,
-        [policy_authorizations: policy_authorizations],
-        policy_authorizations.receiving_device_id == ^gateway_id
-      )
-    end
-
-    def with_joined_policy(queryable) do
-      with_policy_authorization_named_binding(queryable, :policy, fn queryable, binding ->
-        join(
-          queryable,
-          :inner,
-          [policy_authorizations: policy_authorizations],
-          policy in assoc(policy_authorizations, ^binding),
-          on: policy.account_id == policy_authorizations.account_id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def with_joined_client(queryable) do
-      with_policy_authorization_named_binding(queryable, :client, fn queryable, binding ->
-        join(
-          queryable,
-          :inner,
-          [policy_authorizations: policy_authorizations],
-          client in assoc(policy_authorizations, ^binding),
-          on: client.account_id == policy_authorizations.account_id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def with_joined_site(queryable) do
-      queryable
-      |> with_joined_gateway()
-      |> with_policy_authorization_named_binding(:site, fn queryable, binding ->
-        join(queryable, :inner, [gateway: gateway], site in assoc(gateway, :site),
-          on: site.account_id == gateway.account_id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def with_joined_gateway(queryable) do
-      with_policy_authorization_named_binding(queryable, :gateway, fn queryable, binding ->
-        join(
-          queryable,
-          :inner,
-          [policy_authorizations: policy_authorizations],
-          gateway in assoc(policy_authorizations, ^binding),
-          on: gateway.account_id == policy_authorizations.account_id,
-          as: ^binding
-        )
-      end)
-    end
-
-    def with_policy_authorization_named_binding(queryable, binding, fun) do
-      if has_named_binding?(queryable, binding) do
-        queryable
-      else
-        fun.(queryable, binding)
-      end
-    end
-
-    # Pagination
-    def cursor_fields,
-      do: [
-        {:policy_authorizations, :desc, :inserted_at},
-        {:policy_authorizations, :asc, :id}
-      ]
   end
 
   attr :is_disabled, :boolean, required: true
 
   def policy_status_badge(assigns) do
     ~H"""
-    <.status_badge style={if @is_disabled, do: :danger, else: :success}>
+    <Core.status_badge style={if @is_disabled, do: :danger, else: :success}>
       {if @is_disabled, do: "Disabled", else: "Active"}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 end

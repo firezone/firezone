@@ -1,6 +1,6 @@
 defmodule PortalWeb.Devices.Components do
   use PortalWeb, :component_library
-  import PortalWeb.CoreComponents
+  alias PortalWeb.Components.Core
   alias Portal.ComponentVersions
 
   def actor_show_url(account, actor, return_to \\ nil)
@@ -24,12 +24,12 @@ defmodule PortalWeb.Devices.Components do
 
   def actor_name_and_role(assigns) do
     ~H"""
-    <.link
+    <Navigation.link
       navigate={actor_show_url(@account, @actor, @return_to)}
       class={["text-brand hover:underline", @class]}
     >
       {@actor.name}
-    </.link>
+    </Navigation.link>
     <span :if={@actor.type == :account_admin_user} class={["text-xs", @class]}>
       (admin)
     </span>
@@ -51,7 +51,7 @@ defmodule PortalWeb.Devices.Components do
 
     ~H"""
     <div class="flex items-center text-xs text-body">
-      <span class="mr-1 mb-1"><.device_os_icon device={@device} /></span>
+      <span class="flex mr-1"><.device_os_icon device={@device} /></span>
       {os_name_and_version(@user_agent)}
     </div>
     """
@@ -61,55 +61,11 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
 
     ~H"""
-    <.icon
+    <Core.icon
       name={os_icon_name(@user_agent)}
       title={os_name_and_version(@user_agent)}
       class="w-5 h-5"
     />
-    """
-  end
-
-  def device_os_name_and_version(assigns) do
-    assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
-
-    ~H"""
-    <span>
-      {os_name_and_version(@user_agent)}
-    </span>
-    """
-  end
-
-  def device_as_icon(assigns) do
-    ~H"""
-    <.popover placement="right">
-      <:target>
-        <.device_os_icon device={@device} />
-      </:target>
-      <:content>
-        <div>
-          {@device.name}
-          <.icon
-            :if={trust_state(@device)}
-            name={trust_state(@device).icon}
-            class="h-2.5 w-2.5 text-neutral-500"
-            title={trust_state(@device).title}
-          />
-        </div>
-        <div>
-          <.device_os_name_and_version device={@device} />
-        </div>
-        <div>
-          <span>Last started:</span>
-          <.relative_datetime
-            datetime={@device.last_seen_at}
-            popover={false}
-          />
-        </div>
-        <div>
-          <.connection_status schema={@device} />
-        </div>
-      </:content>
-    </.popover>
     """
   end
 
@@ -140,7 +96,7 @@ defmodule PortalWeb.Devices.Components do
 
   def version(%{current: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-muted">—</span>
+    <span class="text-xs text-subtle">—</span>
     """
   end
 
@@ -149,7 +105,7 @@ defmodule PortalWeb.Devices.Components do
       assign(assigns, outdated?: outdated_version?(assigns.current, assigns.latest))
 
     ~H"""
-    <.popover>
+    <Core.popover>
       <:target>
         <span class={[
           "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium font-mono",
@@ -158,12 +114,12 @@ defmodule PortalWeb.Devices.Components do
             else: "text-success bg-success-light"
           )
         ]}>
-          <.icon
+          <Core.icon
             :if={@outdated?}
             name="ri-arrow-up-line"
             class="h-2.5 w-2.5 shrink-0"
           />
-          <.icon
+          <Core.icon
             :if={not @outdated?}
             name="ri-check-line"
             class="h-2.5 w-2.5 shrink-0"
@@ -176,10 +132,10 @@ defmodule PortalWeb.Devices.Components do
           This component is up to date.
         </p>
         <p :if={@outdated?}>
-          A newer version <.website_link path="/changelog">{@latest}</.website_link> is available.
+          A newer version <Navigation.website_link path="/changelog">{@latest}</Navigation.website_link> is available.
         </p>
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
@@ -259,7 +215,7 @@ defmodule PortalWeb.Devices.Components do
   def device_edit_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
-      <.panel_header title="Edit Device" close_event="cancel_device_edit_form" />
+      <Form.panel_header title="Edit Device" close_event="cancel_device_edit_form" />
       <.form
         :if={@device_edit_form}
         id="device-edit-form"
@@ -287,7 +243,7 @@ defmodule PortalWeb.Devices.Components do
         >
           Name <span class="text-error">*</span>
         </label>
-        <.input
+        <Form.input
           field={@device_edit_form[:name]}
           type="text"
           placeholder="Device name"
@@ -302,7 +258,7 @@ defmodule PortalWeb.Devices.Components do
         >
           Slug <span class="text-error">*</span>
         </label>
-        <.input
+        <Form.input
           field={@device_edit_form[:slug]}
           type="text"
           placeholder="my-laptop"
@@ -312,7 +268,7 @@ defmodule PortalWeb.Devices.Components do
         />
         <p class="mt-1 text-xs text-subtle">
           Used to reach this device directly through a
-          <.website_link path="/kb/concepts/resources" fragment="device-pools">device pool</.website_link>. Must be unique in the account.
+          <Navigation.website_link path="/kb/concepts/resources" fragment="device-pools">device pool</Navigation.website_link>. Must be unique in the account.
         </p>
       </div>
     </div>
@@ -321,14 +277,14 @@ defmodule PortalWeb.Devices.Components do
 
   def device_edit_actions(assigns) do
     ~H"""
-    <.panel_footer>
-      <.panel_footer_button type="button" phx-click="cancel_device_edit_form">
+    <Form.panel_footer>
+      <Form.panel_footer_button type="button" phx-click="cancel_device_edit_form">
         Cancel
-      </.panel_footer_button>
-      <.panel_footer_button type="submit" style="primary">
+      </Form.panel_footer_button>
+      <Form.panel_footer_button type="submit" style="primary">
         Save
-      </.panel_footer_button>
-    </.panel_footer>
+      </Form.panel_footer_button>
+    </Form.panel_footer>
     """
   end
 
@@ -347,13 +303,6 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_expanded_id, :string, default: nil
 
   def device_details_view(assigns) do
-    posture_tab? = device_posture_enabled?()
-
-    assigns =
-      assigns
-      |> assign(:posture_tab?, posture_tab?)
-      |> assign(:tab, visible_device_tab(assigns.tab, posture_tab?))
-
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.device_details_header device={@device} />
@@ -370,7 +319,6 @@ defmodule PortalWeb.Devices.Components do
               selected={@tab == :authorizations}
             />
             <.device_tab
-              :if={@posture_tab?}
               tab="posture"
               label="Posture"
               selected={@tab == :posture}
@@ -427,12 +375,12 @@ defmodule PortalWeb.Devices.Components do
   def device_policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <.authorization_flow_logs_notice account={@account} />
+      <Authorization.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
-        <.icon name="ri-shield-check-line" class="w-8 h-8" />
+        <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent authorizations</p>
       </div>
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
@@ -464,13 +412,13 @@ defmodule PortalWeb.Devices.Components do
                     {if row.group, do: row.group.name, else: "Everyone"}
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.inserted_at} />
+                    <Core.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.expires_at} />
+                    <Core.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.icon
+                    <Core.icon
                       name={
                         if @expanded_id == row.authorization.id,
                           do: "ri-arrow-up-s-line",
@@ -528,12 +476,12 @@ defmodule PortalWeb.Devices.Components do
                       </div>
                       <div>
                         <p class="text-subtle font-medium mb-1">Policy</p>
-                        <.link
+                        <Navigation.link
                           navigate={~p"/#{@account}/policies/#{row.authorization.policy_id}"}
                           class="text-brand hover:underline"
                         >
                           {if row.group, do: row.group.name, else: "Everyone"} → {row.resource.name}
-                        </.link>
+                        </Navigation.link>
                       </div>
                     </div>
                   </td>
@@ -547,18 +495,18 @@ defmodule PortalWeb.Devices.Components do
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
+            <Core.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
           <span class="text-xs text-subtle">Page {@page}</span>
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
+            Next <Core.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -572,20 +520,20 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="shrink-0 px-5 py-4 border-b border-border bg-elevated">
       <div class="flex items-center gap-4">
-        <%!-- Left: name + status + ID --%>
+        <%!-- Left: slug + status + ID --%>
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <h2 class="text-sm font-semibold text-heading truncate">{@device.name}</h2>
+            <h2 class="text-sm font-semibold text-heading truncate">{@device.slug}</h2>
             <.device_status_badge device={@device} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button phx-click="open_device_edit_form" size="xs">
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </.button>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.button phx-click="open_device_edit_form" size="xs">
+            <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+          </Form.button>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -599,7 +547,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Owner" />
-      <.link
+      <Navigation.link
         navigate={~p"/#{@account}/actors/#{@device.actor.id}"}
         class="flex items-center gap-3 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
       >
@@ -614,7 +562,7 @@ defmodule PortalWeb.Devices.Components do
             {@device.actor.email}
           </p>
         </div>
-      </.link>
+      </Navigation.link>
     </div>
     """
   end
@@ -627,19 +575,19 @@ defmodule PortalWeb.Devices.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Device Pools" />
       <p class="mb-2 text-xs text-subtle">
-        Anyone granted access to these pools can reach this device directly on its tunnel address.
+        Anyone granted access to these pools can reach this device directly on its tunnel address or DNS name.
       </p>
       <ul class="space-y-1">
         <li :for={pool <- @device_pools}>
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/resources/#{pool.id}"}
             class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
           >
-            <.icon name="ri-computer-line" class="w-4 h-4 shrink-0 text-subtle" />
+            <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0 text-subtle" />
             <span class="text-sm text-heading group-hover:text-brand truncate transition-colors">
               {pool.name}
             </span>
-          </.link>
+          </Navigation.link>
         </li>
       </ul>
     </div>
@@ -654,9 +602,9 @@ defmodule PortalWeb.Devices.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Reported by Client">
         <:info>
-          <.popover placement="right">
+          <Core.popover class="flex" placement="right">
             <:target>
-              <.icon name="ri-information-line" class="w-3 h-3" />
+              <Core.icon name="ri-information-line" class="w-3 h-3" />
             </:target>
             <:content>
               <p>
@@ -665,16 +613,16 @@ defmodule PortalWeb.Devices.Components do
               </p>
               <p :if={is_nil(@device.last_attested_at)} class="mt-1">
                 Set up
-                <.link
+                <Navigation.link
                   navigate={~p"/#{@account}/settings/trust_anchors"}
                   class="text-brand hover:underline"
                 >
                   X.509 Device Trust
-                </.link>
+                </Navigation.link>
                 to strongly identify this device and associate it with posture data.
               </p>
             </:content>
-          </.popover>
+          </Core.popover>
         </:info>
       </.section_heading>
       <dl class="space-y-3">
@@ -715,18 +663,17 @@ defmodule PortalWeb.Devices.Components do
       <dl class="space-y-3">
         <.device_detail_row :if={@device.last_seen_remote_ip} label="Remote IP">
           <span class="text-xs text-body">
-            <.last_seen schema={@device} />
+            <Core.last_seen schema={@device} />
           </span>
         </.device_detail_row>
         <.device_detail_row label="Tunnel IPv4">
-          <span class="font-mono text-xs text-body">
-            {@device.ipv4}
-          </span>
+          <.copyable_value id={"device-ipv4-#{@device.id}"} value={to_string(@device.ipv4)} />
         </.device_detail_row>
         <.device_detail_row label="Tunnel IPv6">
-          <span class="font-mono text-xs text-body break-all">
-            {@device.ipv6}
-          </span>
+          <.copyable_value id={"device-ipv6-#{@device.id}"} value={to_string(@device.ipv6)} />
+        </.device_detail_row>
+        <.device_detail_row label="Tunnel DNS Name">
+          <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
         </.device_detail_row>
       </dl>
     </div>
@@ -774,17 +721,17 @@ defmodule PortalWeb.Devices.Components do
         :if={@state in [:no_records, :no_providers]}
         class="flex flex-col items-center justify-center gap-2 px-5 py-16 text-center text-subtle"
       >
-        <.icon name="ri-shield-star-line" class="w-8 h-8" />
+        <Core.icon name="ri-shield-star-line" class="w-8 h-8" />
         <p :if={@state == :no_records} class="text-xs">
           No posture data was found for this device.
         </p>
         <p :if={@state == :no_providers} class="text-xs">
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/settings/device_posture/new"}
             class="text-brand hover:underline"
           >
             Connect a posture provider
-          </.link>
+          </Navigation.link>
           to view posture data for this device.
         </p>
       </div>
@@ -805,7 +752,7 @@ defmodule PortalWeb.Devices.Components do
     <div class="px-5 pt-4 pb-3 border-b border-border">
       <div class="flex items-center justify-between gap-3 mb-3">
         <div class="flex items-center gap-2 min-w-0">
-          <.provider_icon provider={to_string(@entry.type)} size="sm" />
+          <Core.provider_icon provider={to_string(@entry.type)} size="sm" />
           <span class="text-sm font-medium text-heading truncate">{@entry.provider.name}</span>
           <span class="text-xs text-subtle shrink-0">
             {posture_provider_label(@entry.type)}
@@ -820,7 +767,7 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
       </dl>
 
-      <.json_view
+      <JSONView.json_view
         id={@dom_id}
         value={posture_record(@entry.device)}
         label="Raw provider record"
@@ -837,10 +784,10 @@ defmodule PortalWeb.Devices.Components do
 
   def posture_match_badge(%{matched_on: :device_serial} = assigns) do
     ~H"""
-    <.popover placement="left">
+    <Core.popover placement="left">
       <:target>
         <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-warning bg-warning-light">
-          <.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Self-reported serial
+          <Core.icon name="ri-error-warning-line" class="w-2.5 h-2.5" /> Self-reported serial
         </span>
       </:target>
       <:content>
@@ -854,16 +801,16 @@ defmodule PortalWeb.Devices.Components do
         </p>
         <p class="mt-1">
           Set up
-          <.link
+          <Navigation.link
             navigate={~p"/#{@account}/settings/trust_anchors"}
             class="text-brand hover:underline"
           >
             X.509 Device Trust
-          </.link>
+          </Navigation.link>
           so devices prove their identity with an MDM-issued certificate instead.
         </p>
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
@@ -871,10 +818,10 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, :label, posture_match_label(assigns.matched_on))
 
     ~H"""
-    <.popover placement="left">
+    <Core.popover placement="left">
       <:target>
         <span class="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
-          <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" />{@label}
+          <Core.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" />{@label}
         </span>
       </:target>
       <:content>
@@ -884,7 +831,7 @@ defmodule PortalWeb.Devices.Components do
           Entra device ID as this machine.
         </p>
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
@@ -893,7 +840,7 @@ defmodule PortalWeb.Devices.Components do
   def posture_value(%{value: value} = assigns) when is_struct(value, DateTime) do
     ~H"""
     <span class="text-xs text-body">
-      <.relative_datetime datetime={@value} />
+      <Core.relative_datetime datetime={@value} />
     </span>
     """
   end
@@ -914,24 +861,24 @@ defmodule PortalWeb.Devices.Components do
 
   def serial_cell(%{serial: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-muted">—</span>
+    <span class="text-xs text-subtle">—</span>
     """
   end
 
   def serial_cell(assigns) do
     ~H"""
     <div class="flex items-center gap-1.5">
-      <.popover :if={@serial.source != :reported} placement="right">
+      <Core.popover :if={@serial.source != :reported} placement="right">
         <:target>
-          <.provider_icon :if={@serial.provider} provider={to_string(@serial.provider)} size="sm" />
-          <.icon
+          <Core.provider_icon :if={@serial.provider} provider={to_string(@serial.provider)} size="sm" />
+          <Core.icon
             :if={is_nil(@serial.provider)}
             name="ri-shield-keyhole-line"
             class="w-4 h-4 shrink-0 text-success"
           />
         </:target>
         <:content>{serial_source_hint(@serial)}</:content>
-      </.popover>
+      </Core.popover>
       <span class="font-mono text-xs text-body truncate">{@serial.value}</span>
     </div>
     """
@@ -965,7 +912,7 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
         <.device_detail_row :if={@certificate && @certificate.revoked_at} label="Revoked">
           <span class="text-xs text-body">
-            <.relative_datetime datetime={@certificate.revoked_at} />
+            <Core.relative_datetime datetime={@certificate.revoked_at} />
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@certificate && @certificate.reason} label="Revocation Reason">
@@ -973,7 +920,7 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_at} label="Last Attested">
           <span class="text-xs text-body">
-            <.relative_datetime datetime={@device.last_attested_at} />
+            <Core.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
       </dl>
@@ -985,51 +932,51 @@ defmodule PortalWeb.Devices.Components do
 
   def certificate_status_badge(%{certificate: %{state: :revoked}} = assigns) do
     ~H"""
-    <.popover>
+    <Core.popover>
       <:target>
         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-error bg-error-light">
-          <.icon name="ri-close-circle-line" class="w-2.5 h-2.5" /> Revoked
+          <Core.icon name="ri-close-circle-line" class="w-2.5 h-2.5" /> Revoked
         </span>
       </:target>
       <:content>
         {certificate_source_label(@certificate.source)} reports this certificate as revoked.
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
   def certificate_status_badge(%{certificate: %{state: :good}} = assigns) do
     ~H"""
-    <.popover>
+    <Core.popover>
       <:target>
         <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
-          <.icon name="ri-check-line" class="w-2.5 h-2.5" /> Valid
+          <Core.icon name="ri-check-line" class="w-2.5 h-2.5" /> Valid
         </span>
       </:target>
       <:content>
         <p>The issuer's OCSP responder reports this certificate as good.</p>
         <p :if={@certificate.next_update} class="mt-1">
           That answer stands until
-          <.relative_datetime datetime={@certificate.next_update} popover={false} />.
+          <Core.relative_datetime datetime={@certificate.next_update} popover={false} />.
         </p>
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
   def certificate_status_badge(assigns) do
     ~H"""
-    <.popover>
+    <Core.popover>
       <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised">
-          <.icon name="ri-question-line" class="w-2.5 h-2.5" /> Unknown
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised">
+          <Core.icon name="ri-question-line" class="w-2.5 h-2.5" /> Unknown
         </span>
       </:target>
       <:content>
         Neither a published revocation list nor an OCSP responder has said anything about this
         certificate.
       </:content>
-    </.popover>
+    </Core.popover>
     """
   end
 
@@ -1059,8 +1006,8 @@ defmodule PortalWeb.Devices.Components do
         <.device_detail_row label="Device ID">
           <.copyable_value id={"device-id-#{@device.id}"} value={@device.id} />
         </.device_detail_row>
-        <.device_detail_row :if={@device.slug} label="Slug">
-          <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
+        <.device_detail_row label="Name">
+          <span class="text-xs text-body break-all">{@device.name}</span>
         </.device_detail_row>
         <.device_detail_row :if={@device.firezone_id} label="Firezone ID">
           <span class="font-mono text-[11px] text-body break-all">
@@ -1084,18 +1031,18 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
         <.device_detail_row :if={@device.last_attested_at} label="Last Attested">
           <span class="inline-flex items-center gap-1 text-xs text-body">
-            <.icon name="ri-shield-keyhole-line" class="w-3 h-3 text-success" />
-            <.relative_datetime datetime={@device.last_attested_at} />
+            <Core.icon name="ri-shield-keyhole-line" class="w-3 h-3 text-success" />
+            <Core.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
         <.device_detail_row label="Trust level">
           <:info>
-            <.popover placement="left">
+            <Core.popover class="flex" placement="left">
               <:target>
-                <.icon name="ri-information-line" class="w-3 h-3" />
+                <Core.icon name="ri-information-line" class="w-3 h-3" />
               </:target>
               <:content>{trust_hint(@device)}</:content>
-            </.popover>
+            </Core.popover>
           </:info>
           <.device_verified_status device={@device} />
         </.device_detail_row>
@@ -1107,12 +1054,12 @@ defmodule PortalWeb.Devices.Components do
         </.device_detail_row>
         <.device_detail_row label="Last Seen">
           <span class="text-xs text-body">
-            <.relative_datetime datetime={@device.last_seen_at} />
+            <Core.relative_datetime datetime={@device.last_seen_at} />
           </span>
         </.device_detail_row>
         <.device_detail_row label="Created">
           <span class="text-xs text-body">
-            <.relative_datetime datetime={@device.inserted_at} />
+            <Core.relative_datetime datetime={@device.inserted_at} />
           </span>
         </.device_detail_row>
       </dl>
@@ -1130,34 +1077,34 @@ defmodule PortalWeb.Devices.Components do
     <section>
       <.section_heading title="Actions" />
       <div class="space-y-1.5">
-        <.popover :if={@action in [:attested_verify, :attested_unverify]} class="block" placement="left">
+        <Core.popover :if={@action in [:attested_verify, :attested_unverify]} class="block" placement="left">
           <:target>
-            <.action_button
+            <Form.action_button
               icon={attested_action_icon(@action)}
               disabled
               class="opacity-50 cursor-not-allowed"
             >
               {attested_action_label(@action)}
-            </.action_button>
+            </Form.action_button>
           </:target>
           <:content>
             This device is already attested through an X.509 certificate.
           </:content>
-        </.popover>
-        <.action_button
+        </Core.popover>
+        <Form.action_button
           :if={@action == :verify}
           icon="ri-shield-check-line"
           phx-click="verify_device"
         >
           Verify
-        </.action_button>
-        <.action_button
+        </Form.action_button>
+        <Form.action_button
           :if={@action == :unverify}
           icon="ri-prohibited-line"
           phx-click="confirm_unverify_device"
         >
           Revoke verification
-        </.action_button>
+        </Form.action_button>
         <div
           :if={@action == :confirm_unverify}
           class="px-3 py-2.5 rounded border border-border bg-raised"
@@ -1169,12 +1116,12 @@ defmodule PortalWeb.Devices.Components do
             Current authorizations for this device may be revoked.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_unverify_device" size="xs">
+            <Form.button type="button" phx-click="cancel_unverify_device" size="xs">
               Cancel
-            </.button>
-            <.button type="button" phx-click="unverify_device" size="xs">
+            </Form.button>
+            <Form.button type="button" phx-click="unverify_device" size="xs">
               Unverify
-            </.button>
+            </Form.button>
           </div>
         </div>
       </div>
@@ -1187,7 +1134,7 @@ defmodule PortalWeb.Devices.Components do
   def device_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
         Danger Zone
       </h3>
       <button
@@ -1196,7 +1143,7 @@ defmodule PortalWeb.Devices.Components do
         phx-click="confirm_delete_device"
         class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
       >
-        <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete device
+        <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete device
       </button>
       <div
         :if={@confirm_delete_device}
@@ -1209,12 +1156,12 @@ defmodule PortalWeb.Devices.Components do
           This won't prevent the owner from signing in again; to block access, disable the owning actor instead.
         </p>
         <div class="flex items-center gap-1.5">
-          <.button type="button" phx-click="cancel_delete_device" size="xs">
+          <Form.button type="button" phx-click="cancel_delete_device" size="xs">
             Cancel
-          </.button>
-          <.button type="button" phx-click="delete_device" style="danger" size="xs">
+          </Form.button>
+          <Form.button type="button" phx-click="delete_device" style="danger" size="xs">
             Delete
-          </.button>
+          </Form.button>
         </div>
       </div>
     </section>
@@ -1235,7 +1182,7 @@ defmodule PortalWeb.Devices.Components do
       ]}
       title={@trust.title}
     >
-      <.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
+      <Core.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
     </span>
     """
   end
@@ -1254,11 +1201,11 @@ defmodule PortalWeb.Devices.Components do
       ]}
       title={@trust.title}
     >
-      <.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
+      <Core.icon name={@trust.icon} class="w-2.5 h-2.5" />{@trust.label}
     </span>
     <span
       :if={is_nil(@trust)}
-      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
+      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised"
     >
       Unverified
     </span>
@@ -1300,19 +1247,19 @@ defmodule PortalWeb.Devices.Components do
   # for `<id>-success-message` for two seconds.
   defp copyable_value(assigns) do
     ~H"""
-    <div id={@id} phx-hook="CopyClipboard" class="flex items-start gap-1.5 min-w-0">
+    <div id={@id} phx-hook="CopyClipboard" class="flex items-center gap-1.5 min-w-0">
       <span id={"#{@id}-code"} class="font-mono text-[11px] text-body break-all">{@value}</span>
       <button
         type="button"
-        class="shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
+        class="flex shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >
         <span id={"#{@id}-default-message"} class="inline-flex">
-          <.icon name="ri-clipboard-line" class="h-3.5 w-3.5" />
+          <Core.icon name="ri-clipboard-line" class="h-3.5 w-3.5" />
         </span>
         <span id={"#{@id}-success-message"} class="hidden text-success">
-          <.icon name="ri-check-line" class="h-3.5 w-3.5" />
+          <Core.icon name="ri-check-line" class="h-3.5 w-3.5" />
         </span>
       </button>
     </div>
@@ -1329,13 +1276,13 @@ defmodule PortalWeb.Devices.Components do
     assigns = assign(assigns, online?: online?, attested: attested)
 
     ~H"""
-    <.status_badge
+    <Core.status_badge
       style={if @online?, do: :success, else: :neutral}
       icon={if @attested, do: "ri-shield-keyhole-line"}
       icon_title={if @attested, do: "Attested"}
     >
       {if @online?, do: "Online", else: "Offline"}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 
@@ -1389,13 +1336,13 @@ defmodule PortalWeb.Devices.Components do
   defp posture_locked(assigns) do
     ~H"""
     <div class="px-5 py-4">
-      <.upgrade_locked_section
+      <Form.upgrade_locked_section
         account={@account}
         message="Upgrade to unlock Device Posture"
         description="See what your MDM and EDR hold for this device, matched to the identity its certificate proved."
       >
         <.posture_preview />
-      </.upgrade_locked_section>
+      </Form.upgrade_locked_section>
     </div>
     """
   end
@@ -1408,11 +1355,11 @@ defmodule PortalWeb.Devices.Components do
       <div :for={sample <- @samples}>
         <div class="flex items-center justify-between gap-3 mb-3">
           <div class="flex items-center gap-2">
-            <.provider_icon provider={sample.provider} size="sm" />
+            <Core.provider_icon provider={sample.provider} size="sm" />
             <span class="text-sm font-medium text-heading">{sample.name}</span>
           </div>
           <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-success bg-success-light">
-            <.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" /> Attested device ID
+            <Core.icon name="ri-shield-keyhole-line" class="w-2.5 h-2.5" /> Attested device ID
           </span>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
@@ -1442,12 +1389,6 @@ defmodule PortalWeb.Devices.Components do
 
   defp attested_action_label(:attested_verify), do: "Verify"
   defp attested_action_label(_action), do: "Revoke verification"
-
-  # The Posture tab is hidden while the feature is off for the whole
-  # deployment, so a link into it lands on the overview rather than on blank
-  # space.
-  defp visible_device_tab(:posture, false), do: :overview
-  defp visible_device_tab(tab, _posture_tab?), do: tab
 
   defp posture_tab_state(assigns) do
     cond do
@@ -1497,6 +1438,7 @@ defmodule PortalWeb.Devices.Components do
   defp posture_provider_label(:defender), do: "Microsoft Defender"
   defp posture_provider_label(:santa), do: "Santa"
   defp posture_provider_label(:sentinelone), do: "SentinelOne"
+  defp posture_provider_label(:sophos), do: "Sophos XDR"
 
   defp posture_match_label(:mdm_device_id), do: "Attested device ID"
   defp posture_match_label(:attested_serial), do: "Attested serial"
@@ -1594,13 +1536,31 @@ defmodule PortalWeb.Devices.Components do
     ])
   end
 
+  defp posture_attributes(:sophos, device) do
+    drop_empty([
+      {"Hostname", device.hostname},
+      {"Serial number", device.serial_number},
+      {"Operating system", device.os_name},
+      {"Overall health", device.health_overall},
+      {"Threats", device.health_threats_status},
+      {"Services", device.health_services_status},
+      {"Tamper protection", device.tamper_protection_enabled},
+      {"Encryption", device.encryption_overall_status},
+      {"Associated person", device.associated_person_name},
+      {"Group", device.group_name},
+      {"Sophos ID", device.sophos_id},
+      {"Last seen", device.last_seen_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
   # Everything the provider reported about the device, for copying into a
   # ticket. Columns it left empty are dropped rather than rendered as a wall of
   # nulls above the ones it filled in, and the two keys that are Firezone's own
   # bookkeeping rather than the provider's data go with them.
   defp posture_record(device) do
     device
-    |> PortalWeb.JSONComponents.encodable()
+    |> PortalWeb.Components.JSON.encodable()
     |> Map.drop(["account_id", "posture_provider_id"])
     |> Map.reject(fn {_key, value} -> is_nil(value) end)
   end

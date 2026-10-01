@@ -1,33 +1,20 @@
-# Fuzzing runs on a dedicated nightly toolchain, pinned here via
-# `RUSTUP_TOOLCHAIN` so the tasks run plain `cargo` commands without a
-# `rustup run <version>` prefix. It lives here instead of in `rust/mise.toml`
-# so that it only applies to fuzzing.
-#
-# The toolchain is not a `rust` entry in `[tools]` because rustup-managed
-# toolchains have no download URL for mise to pin in `mise.lock`, which strict
-# lockfile mode requires.
-#
-# Every `cargo fuzz` invocation in `mise-tasks/` passes `--sanitizer none`.
-# These targets assert against a reference model rather than hunt for memory
-# errors, and what they drive is safe Rust, so the sanitizer costs 4.6x the
-# execution rate to guard nothing. Keep the flag on all of them: they share a
-# target directory, and a differing sanitizer rebuilds the entire dependency
-# graph.
-
+# Keep fuzzing and source coverage on the same pinned LLVM toolchain.
 [task_config]
 includes = ["mise-tasks"]
 
+[settings.cargo]
+# cargo-afl builds and installs the bundled AFL++ tools alongside its binary.
+binstall = false
+
 [tools]
-# `cargo-fuzz` tags releases without a `v` prefix. Spelling that out keeps mise
-# from guessing `v0.13.2` when it looks up the release for provenance
-# verification, which `provenance_api_failures_fatal` would turn into a hard
-# failure.
-#
-# Upstream only publishes x86_64 binaries, so this does not install on arm64
-# Linux.
-"github:rust-fuzz/cargo-fuzz" = { version = "0.13.2", os = ["linux"], version_prefix = "" }
+rust = { version = "nightly-2026-06-10", profile = "minimal", components = ["rust-src", "llvm-tools"] }
+"cargo:cargo-afl" = { version = "0.18.2", os = ["linux"] }
 
 [env]
+# Cargo tool installation must override the workspace rust-toolchain.toml too.
 RUSTUP_TOOLCHAIN = "nightly-2026-06-10"
-# LTO conflicts with the libFuzzer instrumentation.
 CARGO_PROFILE_RELEASE_LTO = "false"
+# Match the assertions enabled by cargo-afl in the fast replay builds too.
+CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS = "true"
+CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS = "true"
+CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "1"

@@ -207,9 +207,8 @@ defmodule Portal.Device do
   @spec domain() :: String.t()
   def domain, do: @domain
 
-  @doc "The name other clients reach this device at, `nil` until it has a slug."
-  @spec fqdn(t()) :: String.t() | nil
-  def fqdn(%__MODULE__{slug: nil}), do: nil
+  @doc "The name other clients reach this device at."
+  @spec fqdn(t()) :: String.t()
   def fqdn(%__MODULE__{slug: slug}), do: fqdn_for_slug(slug)
 
   @spec fqdn_for_slug(String.t()) :: String.t()

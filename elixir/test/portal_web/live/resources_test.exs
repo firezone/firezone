@@ -107,7 +107,7 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
-    test "shows an own devices pool with the device domain and no site", %{
+    test "shows an own devices pool with multiple addresses and no site", %{
       conn: conn,
       account: account,
       actor: actor
@@ -120,8 +120,9 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources")
 
       assert html =~ "Personal devices"
-      assert html =~ "Your devices"
-      assert html =~ "&lt;slug&gt;.firezone.network"
+      assert html =~ "My devices"
+      assert html =~ "Multiple Addresses"
+      refute html =~ "&lt;slug&gt;"
       assert html =~ "No Site Needed"
     end
 
@@ -523,6 +524,17 @@ defmodule PortalWeb.ResourcesTest do
       assert [%{id: id, online?: true} | _] = results
       assert id == online_device.id
     end
+
+    test "device picker search matches the device slug", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor, slug: "build-box-7")
+      client_fixture(account: account, actor: actor)
+
+      assert [%{id: id}] =
+               PortalWeb.Resources.Components.Database.search_devices("build-box", subject, [])
+
+      assert id == device.id
+    end
   end
 
   describe ":show action" do
@@ -610,7 +622,6 @@ defmodule PortalWeb.ResourcesTest do
     end
 
     test "grants access with device postures", %{conn: conn} do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -725,10 +736,13 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "open_grant_form")
 
-      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade your plan to unlock policy conditions and device posture checks."
+      assert length(Floki.find(Floki.parse_fragment!(html), "[data-locked-section]")) == 1
+      assert [_, _] = String.split(html, "Upgrade to Unlock")
+      assert :binary.match(html, "Flow log reporting") < :binary.match(html, "data-locked-section")
       assert html =~ "Upgrade to Unlock"
       assert html =~ ~s(href="/#{account.slug}/settings/account")
-      assert html =~ ~s(id="resource-grant-conditions-locked-container")
+      assert html =~ ~s(data-locked-section="policy-restrictions")
       assert html =~ "blur-[2px]"
       assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
@@ -801,6 +815,27 @@ defmodule PortalWeb.ResourcesTest do
       html = render_click(lv, "open_grant_form")
 
       refute html =~ "Already Granted Group"
+    end
+
+    test "group row links to the granting policy and menu links to the group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Ops Team")
+      policy = policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "toggle_group_actions", %{"group_id" => group.id})
+
+      assert html =~ ~p"/#{account}/policies/#{policy.id}"
+      assert html =~ "Go to Group"
+      assert html =~ ~p"/#{account}/groups/#{group.id}"
     end
 
     test "disables, enables, and removes group access", %{
@@ -1024,7 +1059,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Updated Resource Name"
     end
 
-    test "creates a Your devices pool from the members choice", %{
+    test "creates a My devices pool from the members choice", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1075,7 +1110,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "See supported versions"
 
       for {id, label, hint} <- [
-            {"own-devices", "Your devices", "Each actor&#39;s own devices"},
+            {"own-devices", "My devices", "Each actor&#39;s own devices"},
             {"all-devices", "All devices", "Every device in the account"},
             {"actor-group", "A group&#39;s devices", "Devices of a group&#39;s members"},
             {"listed", "Static list", "Explicitly choose the devices in this pool"}
@@ -1277,7 +1312,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
       warning = "expires every active connection through it"
       conn = authorize_conn(conn, actor)
 
@@ -1319,12 +1354,12 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ warning
     end
 
-    test "updates the Your devices pool without a site and keeps its type and rule", %{
+    test "updates the My devices pool without a site and keeps its type and rule", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
 
       {:ok, lv, html} =
         conn
@@ -1843,10 +1878,17 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       refute html =~ "Tunnel IPv6"
+      refute html =~ Portal.Device.fqdn(device)
 
       html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       assert html =~ "Tunnel IPv6"
       assert html =~ to_string(device.ipv6)
+
+      assert has_element?(
+               lv,
+               "#pool-member-#{device.id}-detail-dns-name-code",
+               Portal.Device.fqdn(device)
+             )
       assert html =~ "SERIAL-1234"
       assert has_element?(lv, ~s|a[href="/#{account.slug}/devices/#{device.id}"]|)
 

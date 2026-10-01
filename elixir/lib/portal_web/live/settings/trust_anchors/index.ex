@@ -140,7 +140,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> assign(confirm_delete?: false)
       |> assign(revocation: [])
       |> assign(panel_tab: :overview, expanded_endpoint: nil)
-      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
       |> allow_upload(:cert_file,
         accept: ~w(.pem .crt .cer .der .txt),
         max_entries: @max_upload_entries,
@@ -204,10 +203,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -219,13 +217,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <.docs_action path="/device-trust" />
-            <.link
+            <Navigation.docs_action path="/device-trust" />
+            <Navigation.link
               patch={~p"/#{@account}/settings/trust_anchors/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </.link>
+              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </Navigation.link>
           </div>
         </div>
 
@@ -234,7 +232,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <div class="flex items-center justify-center h-full">
               <div class="flex flex-col items-center gap-3 py-16">
                 <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <.icon name="ri-shield-check-line" class="w-3 h-3" />
+                  <Core.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
                 </div>
                 <div class="text-center">
                   <p class="text-sm font-medium text-heading">No trust anchors yet</p>
@@ -242,12 +240,12 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                     Add a CA certificate chain to validate presented certificates against.
                   </p>
                 </div>
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/trust_anchors/new"}
                   class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
                 >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
-                </.link>
+                  <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
+                </Navigation.link>
               </div>
             </div>
           <% else %>
@@ -318,9 +316,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
-                <.docs_action path="/device-trust" />
+                <Navigation.docs_action path="/device-trust" />
               </div>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -335,14 +333,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <.panel_footer>
-              <.panel_footer_button type="button" phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button type="submit" style="primary">
+              </Form.panel_footer_button>
+              <Form.panel_footer_button type="submit" style="primary">
                 Create
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -365,7 +363,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-heading">Edit Trust Anchor</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -380,14 +378,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <.panel_footer>
-              <.panel_footer_button type="button" phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button type="submit" style="primary">
+              </Form.panel_footer_button>
+              <Form.panel_footer_button type="submit" style="primary">
                 Save
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -408,7 +406,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp revocation_warning_icon(%{health: %{state: :disabled}} = assigns) do
     ~H"""
     <span title="Revocation is not being checked for at least one of this CA's addresses.">
-      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-red-600 dark:text-red-400" />
+      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-danger" />
     </span>
     """
   end
@@ -416,7 +414,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp revocation_warning_icon(assigns) do
     ~H"""
     <span title="Firezone is having trouble reaching at least one of this CA's addresses.">
-      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-amber-500 dark:text-amber-400" />
+      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-warning" />
     </span>
     """
   end
@@ -450,7 +448,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </td>
       <td class="px-6 py-3 w-36">
         <span class="text-sm text-body">
-          <.relative_datetime datetime={@trust_anchor.inserted_at} />
+          <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
         </span>
       </td>
     </tr>
@@ -478,10 +476,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       ]}
     >
       {@label}
-      <.icon
+      <Core.icon
         :if={@warn}
         name="ri-error-warning-fill"
-        class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400"
+        class="w-3.5 h-3.5 text-warning"
       />
     </button>
     """
@@ -493,13 +491,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     ~H"""
     <%= cond do %>
       <% @endpoint.is_disabled -> %>
-        <.status_badge style={:danger} dot={false}>Not checked</.status_badge>
+        <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
       <% @endpoint.errored_at -> %>
-        <.status_badge style={:warning} dot={false}>Failing</.status_badge>
+        <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
       <% checked_at(@endpoint) -> %>
-        <.status_badge style={:success} dot={false}>OK</.status_badge>
+        <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
       <% true -> %>
-        <.status_badge style={:neutral} dot={false}>Pending</.status_badge>
+        <Core.status_badge style={:neutral} dot={false}>Pending</Core.status_badge>
     <% end %>
     """
   end
@@ -511,9 +509,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     <div class="space-y-3">
       <p
         :if={@entry.endpoint.is_disabled}
-        class="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
+        class="flex items-start gap-1.5 text-xs text-danger"
       >
-        <.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
           Firezone has stopped checking this address, so certificates this CA has
           revoked are still let on. Edit and Save this trust anchor to start
@@ -523,9 +521,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <p
         :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
-        class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+        class="flex items-start gap-1.5 text-xs text-warning"
       >
-        <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
           Firezone is retrying. Checking stops if this keeps failing for 24 hours.
         </span>
@@ -539,9 +537,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div :for={{label, value} <- group.rows} class="min-w-0">
             <dt class="text-[10px] text-subtle">{label}</dt>
             <dd class={[
-              "text-xs break-all",
+              "text-xs break-all font-medium",
               label == "Error" && "text-danger",
-              label != "Error" && "text-heading"
+              label != "Error" && "text-body"
             ]}>
               <.detail_value value={value} />
             </dd>
@@ -556,7 +554,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   defp detail_value(%{value: %DateTime{}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@value} />
+    <Core.relative_datetime datetime={@value} />
     """
   end
 
@@ -586,13 +584,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <p class="font-mono text-[10px] text-subtle mt-0.5 truncate">{@trust_anchor.id}</p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <.link
+            <Navigation.link
               patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-            </.link>
-            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+            </Navigation.link>
+            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
         </div>
       </div>
@@ -623,13 +621,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <dl class="space-y-2.5">
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-              <dd class="text-xs text-body">
-                <.relative_datetime datetime={@trust_anchor.inserted_at} />
+              <dd class="text-xs text-body font-medium">
+                <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
               </dd>
             </div>
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Certificates</dt>
-              <dd class="text-xs text-body">{cert_count_label(@trust_anchor.certificates)}</dd>
+              <dd class="text-xs text-body font-medium">{cert_count_label(@trust_anchor.certificates)}</dd>
             </div>
           </dl>
         </section>
@@ -672,7 +670,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                     <.endpoint_status_badge endpoint={entry.endpoint} />
                   </td>
                   <td class="px-2 py-2 text-subtle">
-                    <.icon
+                    <Core.icon
                       name={
                         if @expanded_endpoint == endpoint_key(entry.endpoint),
                           do: "ri-arrow-up-s-line",
@@ -710,13 +708,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   download={download_filename(@trust_anchor.name, detail)}
                   class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
                 >
-                  <.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+                  <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
                 </a>
               </div>
               <dl class="space-y-2">
                 <div :for={{label, value} <- certificate_detail_rows(detail)}>
                   <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-                  <dd class="text-xs text-heading font-mono break-all">
+                  <dd class="text-xs text-body font-mono break-all font-medium">
                     <.detail_value value={value} />
                   </dd>
                 </div>
@@ -728,7 +726,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div class="border-t border-border"></div>
 
         <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
             Danger Zone
           </h3>
           <button
@@ -737,7 +735,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             phx-click="confirm_delete_trust_anchor"
             class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
           >
-            <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
+            <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
           </button>
           <div
             :if={@confirm_delete?}
@@ -748,10 +746,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
             </p>
             <div class="flex items-center gap-2">
-              <.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
+              <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 type="button"
                 phx-click="delete_trust_anchor"
                 style="danger"
@@ -759,7 +757,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                 class="font-medium"
               >
                 Delete
-              </.button>
+              </Form.button>
             </div>
           </div>
         </section>
@@ -777,7 +775,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     certs_errors =
       if Phoenix.Component.used_input?(certs_field) do
-        Enum.map(certs_field.errors, &translate_error/1)
+        Enum.map(certs_field.errors, &Core.translate_error/1)
       else
         []
       end
@@ -789,7 +787,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     ~H"""
     <div>
-      <.input
+      <Form.input
         field={@form[:name]}
         label="Name"
         placeholder="E.g. 'Corporate Issuing CA'"
@@ -805,7 +803,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <div class="grid gap-3 grid-cols-2 mb-4">
         <div>
-          <.input
+          <Form.input
             id="trust-anchor-input-mode--paste"
             type="radio_button_group"
             name="trust_anchor[input_mode]"
@@ -822,14 +820,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             ]}
           >
             <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-              <.icon name="ri-clipboard-line" class="w-4 h-4 shrink-0" /> Paste
+              <Core.icon name="ri-clipboard-line" class="w-4 h-4 shrink-0" /> Paste
             </span>
             <span class="text-xs text-body my-auto">Paste PEM or base64 DER text.</span>
           </label>
         </div>
 
         <div>
-          <.input
+          <Form.input
             id="trust-anchor-input-mode--upload"
             type="radio_button_group"
             name="trust_anchor[input_mode]"
@@ -846,7 +844,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             ]}
           >
             <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-              <.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
+              <Core.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
             </span>
             <span class="text-xs text-body my-auto">Upload one or more chain files.</span>
           </label>
@@ -854,7 +852,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </div>
 
       <div :if={@input_mode == :paste}>
-        <.input
+        <Form.input
           type="textarea"
           field={@form[:certs]}
           multiple={true}
@@ -867,42 +865,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         />
       </div>
 
-      <div :if={@input_mode == :upload} class="space-y-2">
-        <.label>Chain file(s)</.label>
-        <.live_file_input
-          upload={@uploads.cert_file}
-          class="block w-full text-xs text-subtle file:mr-3 file:cursor-pointer file:rounded file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-body file:transition-colors hover:file:bg-raised hover:file:text-heading"
-        />
-        <p class="text-xs text-subtle">
+      <Form.file_upload
+        :if={@input_mode == :upload}
+        upload={@uploads.cert_file}
+        label="Chain file(s)"
+        cancel_event="cancel_upload"
+        error_message={&upload_error_to_string/1}
+        errors={@certs_errors}
+      >
+        <:hint>
           Accepts .pem, .crt, .cer, .der, or .txt, up to 1&nbsp;MB each. Select multiple files to upload
           a root and intermediate CA separately; a DER file holds a single certificate.
-        </p>
-        <div
-          :for={entry <- @uploads.cert_file.entries}
-          class="flex flex-col gap-0.5"
-        >
-          <div class="flex items-center gap-2 text-xs text-body">
-            <.icon name="ri-file-line" class="w-3.5 h-3.5 shrink-0" />
-            <span class="truncate">{entry.client_name}</span>
-            <progress value={entry.progress} max="100" class="w-16">{entry.progress}%</progress>
-            <button
-              type="button"
-              phx-click="cancel_upload"
-              phx-value-ref={entry.ref}
-              class="text-error"
-            >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <.error :for={err <- upload_errors(@uploads.cert_file, entry)} inline>
-            {upload_error_to_string(err)}
-          </.error>
-        </div>
-        <.error :for={msg <- @certs_errors}>{msg}</.error>
-        <.error :for={err <- upload_errors(@uploads.cert_file)}>
-          {upload_error_to_string(err)}
-        </.error>
-      </div>
+        </:hint>
+      </Form.file_upload>
     </div>
     """
   end

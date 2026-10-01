@@ -24,6 +24,17 @@ defmodule PortalWeb.Policies.PosturesTest do
     assert state.trust_anchors?
   end
 
+  test "a check saved before Sophos joined it is still recognised and upgraded on toggle" do
+    {:ok, check} = Checks.fetch(:disk_encryption)
+    [previous] = check.previous
+    state = Postures.new(:enabled, cast(%{"and" => [expansion(:compliant), previous]}))
+
+    assert Postures.checks(state) == {:ok, [:compliant, :disk_encryption]}
+
+    state = event(state, "postures_toggle_check", %{"name" => "firewall"})
+    assert state.wire == %{"and" => [expansion(:compliant), expansion(:disk_encryption), expansion(:firewall)]}
+  end
+
   test "toggling checks writes their expansions and reads them back" do
     state = Postures.new(:enabled) |> event("postures_toggle_check", %{"name" => "compliant"})
     assert state.wire == expansion(:compliant)
@@ -81,7 +92,6 @@ defmodule PortalWeb.Policies.PosturesTest do
     attrs = %{"postures" => "{}", "description" => "x"}
     assert Postures.maybe_drop_unsupported(attrs, %{availability: :enabled}) == attrs
     assert Postures.maybe_drop_unsupported(attrs, %{availability: :locked}) == %{"description" => "x"}
-    assert Postures.maybe_drop_unsupported(attrs, %{availability: :hidden}) == %{"description" => "x"}
   end
 
   describe "JSON tab" do

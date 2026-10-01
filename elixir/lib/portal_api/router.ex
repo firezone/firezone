@@ -164,6 +164,7 @@ defmodule PortalAPI.Router do
     get "/x509_auth_provider", X509AuthProviderController, :show
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
+    resources "/github_auth_providers", GitHubAuthProviderController, only: [:index, :show]
     resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]
     resources "/okta_auth_providers", OktaAuthProviderController, only: [:index, :show]
     resources "/google_directories", GoogleDirectoryController, only: [:index, :show]
@@ -194,6 +195,10 @@ defmodule PortalAPI.Router do
 
     resources "/sentinelone_devices", SentinelOneDeviceController, only: [:index]
     get "/sentinelone_devices/:sentinelone_agent", SentinelOneDeviceController, :show
+
+    resources "/sophos_posture_providers", SophosPostureProviderController, only: [:index, :show]
+
+    resources "/sophos_devices", SophosDeviceController, only: [:index, :show]
   end
 
   scope "/integrations", PortalAPI.Integrations do

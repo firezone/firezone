@@ -179,7 +179,6 @@ actor Adapter {
 
   /// Keep track of resources for UI
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
-  private var connectedDevices: [ConnectedDevice] = []
 
   /// The account and actor the portal named in `init`, reported up to the app process.
   private var accountSlug: String?
@@ -260,10 +259,11 @@ actor Adapter {
 
     let tlsIdentity = try resolveTlsIdentity()
 
-    // Create the session
-    let session: Session
+    // Create the session, held only by the handoff so that the command task can own it.
+    let handoff: SessionHandoff
+    let events: EventStream
     do {
-      session = try Session.newApple(
+      let connection = try connectApple(
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
@@ -272,6 +272,8 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
+      events = connection.events
+      handoff = SessionHandoff(connection.session)
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
@@ -290,7 +292,8 @@ actor Adapter {
       }
 
       await runSessionEventLoop(
-        session: session,
+        handoff: handoff,
+        events: events,
         commandReceiver: commandReceiver,
         eventSender: eventSender
       )
@@ -357,9 +360,6 @@ actor Adapter {
 
     sendCommand(.disconnect)
 
-    // Close command channel immediately - ensures event loop sees channel close
-    commandSender = nil
-
     // Cancel path monitoring - triggers CancellableTask.deinit -> Task cancellation
     // -> onTermination -> monitor.cancel()
     pathMonitorTask = nil
@@ -373,6 +373,9 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
+
+    // Closing the command channel drops the session, so only do it once connlib has shut down.
+    commandSender = nil
 
     pendingUnreachableResources.removeAll()
   }
@@ -389,7 +392,6 @@ actor Adapter {
     do {
       let stateChange = try ConnlibState.makeIfChanged(
         resources: self.resources?.map { self.convertResource($0) },
-        connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         isLogStreamingActive: Log.isStreamingActive,
         accountSlug: self.accountSlug,
         actorName: self.actorName,
@@ -539,12 +541,11 @@ actor Adapter {
         accountSlug: accountSlug
       )
 
-    case .resourcesUpdated(let resourceList, let connectedDeviceList):
+    case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
       // Store resource list (actor-isolated, no dispatch needed)
       resources = resourceList
-      connectedDevices = connectedDeviceList
 
       // Update DNS resource addresses to trigger network settings apply when they change
       // This flushes the DNS cache so new DNS resources are immediately resolvable
@@ -571,13 +572,8 @@ actor Adapter {
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
-        // Only a session ended by an unusable token can be restored by signing in again.
-        // Offering it for anything else sends the user somewhere that cannot help them.
-        if requiresSignIn {
-          SessionNotification.showDisconnectedNotificationiOS(userMessage)
-        } else {
-          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(userMessage)
-        }
+        SessionNotification.showDisconnectedNotification(
+          userMessage, requiresSignIn: requiresSignIn)
       #endif
 
       let sendableError = SendableError(userMessage, requiresSignIn: requiresSignIn)
@@ -749,6 +745,11 @@ actor Adapter {
       FirezoneKit.Resource(
         id: resource.id, name: resource.name, address: nil, addressDescription: nil,
         status: .init(resource.status), sites: resource.sites.map { .init($0) }, type: .internet)
+    case .devicePool(let resource):
+      FirezoneKit.Resource(
+        id: resource.id, name: resource.name, address: nil, addressDescription: nil,
+        status: .unknown, sites: [], type: .devicePool,
+        devices: resource.devices.map { .init($0) })
     }
   }
 }
@@ -766,9 +767,9 @@ extension FirezoneKit.ConnectedDevice {
     self.init(
       id: device.id,
       name: device.name,
+      slug: device.slug,
       tunIPv4: device.tunIpv4,
-      tunIPv6: device.tunIpv6,
-      pools: device.pools
+      tunIPv6: device.tunIpv6
     )
   }
 }

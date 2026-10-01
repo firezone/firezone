@@ -6,7 +6,7 @@ defmodule PortalWeb.OIDC do
   Consolidates configuration building, authorization, token exchange, and logout logic.
   """
 
-  alias Portal.{Google, Okta, Entra, OIDC}
+  alias Portal.{Google, GitHub, Okta, Entra, OIDC}
 
   require Logger
 
@@ -32,8 +32,13 @@ defmodule PortalWeb.OIDC do
 
   @doc """
   Builds OpenIDConnect configuration for a provider.
-  Supports Google, Okta, Entra, and generic OIDC providers.
+  Supports Google, Okta, Entra, and generic OIDC providers. GitHub is plain
+  OAuth 2.0; its configuration is handled by `PortalWeb.GitHub`.
   """
+  def config_for_provider(%GitHub.AuthProvider{}) do
+    {:ok, PortalWeb.GitHub.config(callback_url())}
+  end
+
   def config_for_provider(%Google.AuthProvider{}) do
     config = Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
     config = Enum.into(config, %{redirect_uri: callback_url(), req_opts: @discovery_req_opts})
@@ -104,7 +109,23 @@ defmodule PortalWeb.OIDC do
   - :state - Custom state parameter (default: auto-generated)
   - Other params merged into OIDC params
   """
-  def authorization_uri(provider, opts \\ []) do
+  def authorization_uri(provider, opts \\ [])
+
+  # GitHub only understands prompt=select_account. It is always sent, so a
+  # GitHub session is never reused without the user choosing the account; this
+  # is the closest GitHub gets to the prompt=login step-up other providers use.
+  def authorization_uri(%GitHub.AuthProvider{} = provider, opts) do
+    {:ok, config} = config_for_provider(provider)
+    state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
+    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+    with {:ok, uri} <-
+           PortalWeb.GitHub.authorization_uri(config, state, verifier, prompt: "select_account") do
+      {:ok, uri, state, verifier}
+    end
+  end
+
+  def authorization_uri(provider, opts) do
     with {:ok, config} <- config_for_provider(provider),
          :ok <- maybe_validate_public_host(provider, config) do
       state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
@@ -361,6 +382,10 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: config}}
   end
 
+  def setup_verification(type, _opts) when type in ["github", "github_sign_up"] do
+    {:ok, %{config: PortalWeb.GitHub.config(callback_url())}}
+  end
+
   def setup_verification("google_sign_up", _opts) do
     config =
       Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
@@ -409,8 +434,9 @@ defmodule PortalWeb.OIDC do
 
   def verification_state_type("defender_posture_provider"), do: "defender-posture-provider"
   def verification_state_type("google_sign_up"), do: "google-sign-up"
+  def verification_state_type("github_sign_up"), do: "github-sign-up"
 
-  def verification_state_type(type) when type in ["google", "okta", "oidc"],
+  def verification_state_type(type) when type in ["google", "github", "okta", "oidc"],
     do: "oidc-auth-provider"
 
   @serialized_pid_prefix "pid:"
@@ -475,6 +501,13 @@ defmodule PortalWeb.OIDC do
   # Sign-up has no existing session to step up, so an account picker is enough.
   def build_verification_uri("google_sign_up", config, verifier, state_token) do
     code_flow_uri(config, verifier, state_token, "select_account")
+  end
+
+  # GitHub does not support prompt=login, so re-verifying an existing provider
+  # shows the account picker instead.
+  def build_verification_uri(type, config, verifier, state_token)
+      when type in ["github", "github_sign_up"] do
+    PortalWeb.GitHub.authorization_uri(config, state_token, verifier, prompt: "select_account")
   end
 
   def build_verification_uri("google_directory_sync", config, verifier, state_token) do
@@ -599,8 +632,17 @@ defmodule PortalWeb.OIDC do
   @doc """
   Performs the complete OIDC verification flow: exchange code for tokens and verify ID token.
   Returns {:ok, claims, userinfo_result} or {:error, reason}.
+
+  Options:
+  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub
   """
-  def verify_callback(config, code, verifier) do
+  def verify_callback(config, code, verifier, opts \\ [])
+
+  def verify_callback(%{provider: :github} = config, code, verifier, opts) do
+    PortalWeb.GitHub.verify_callback(config, code, verifier, Keyword.get(opts, :iss))
+  end
+
+  def verify_callback(config, code, verifier, _opts) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, claims} <- verify_token_with_config(config, tokens["id_token"], verifier) do
       {:ok, claims, fetch_userinfo_with_config(config, tokens["access_token"])}
@@ -653,6 +695,21 @@ defmodule PortalWeb.OIDC do
       :error -> {:error, :invalid_entra_tenant}
     end
   end
+
+  @doc """
+  Reads the tenant from an admin consent error saying the app's service
+  principal already exists (AADSTS650051). Entra reports that for a repeated or
+  concurrent consent, so the consent still stands and the caller can continue to
+  the tenant proof, which verifies the tenant from a signed ID token.
+  """
+  def entra_service_principal_exists_tenant("AADSTS650051" <> _ = description) do
+    case Regex.run(~r/for the tenant ([0-9a-f-]{36})/i, description, capture: :all_but_first) do
+      [tenant_id] -> {:ok, tenant_id}
+      _ -> :error
+    end
+  end
+
+  def entra_service_principal_exists_tenant(_description), do: :error
 
   @doc """
   Returns whether the verified Entra identity has a tenant-wide role authorized

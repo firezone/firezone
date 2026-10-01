@@ -72,4 +72,73 @@ defmodule Portal.DefenderFixtures do
     |> Portal.Defender.Device.changeset(device_attrs)
     |> Portal.Repo.insert!()
   end
+
+  @doc "Build a defender API response payload for sync tests."
+  def defender_api_machine_fixture(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "id" => "machine-1",
+        "computerDnsName" => "alice.contoso.com",
+        "osPlatform" => "Windows11",
+        "healthStatus" => "Active",
+        "onboardingStatus" => "Onboarded",
+        "riskScore" => "Low"
+      },
+      Enum.into(overrides, %{})
+    )
+  end
+
+  @doc "Build a defender API response payload for sync tests."
+  # The example response from the List machines reference, so the mapping can be
+  # checked against the documented payload.
+  def full_defender_api_machine_fixture do
+    %{
+      "id" => "1e5bc9d7e413ddd7902c2932e418702b84d0cc07",
+      "computerDnsName" => "mymachine1.contoso.com",
+      "firstSeen" => "2018-08-02T14:55:03.7791856Z",
+      "lastSeen" => "2021-01-25T07:27:36.052313Z",
+      "osPlatform" => "Windows10",
+      "version" => "1901",
+      "osProcessor" => "x64",
+      "osArchitecture" => "64-bit",
+      "osBuild" => 19_042,
+      "lastIpAddress" => "10.166.113.46",
+      "lastExternalIpAddress" => "167.220.203.175",
+      "agentVersion" => "10.8040.19041.4046",
+      "healthStatus" => "Active",
+      "onboardingStatus" => "Onboarded",
+      "managedBy" => "Intune",
+      "managedByStatus" => "Managed",
+      "riskScore" => "High",
+      "exposureLevel" => "Low",
+      "deviceValue" => "Normal",
+      "rbacGroupName" => "The-A-Team",
+      "rbacGroupId" => 140,
+      "isAadJoined" => true,
+      "aadDeviceId" => "fd2e4d29-7072-4195-aaa5-1af139b78028",
+      "machineTags" => ["Tag1", "Tag2"],
+      "isPotentialDuplication" => false,
+      "mergedIntoMachineId" => "merged-machine-id",
+      "isExcluded" => false,
+      "exclusionReason" => nil,
+      "ipAddresses" => [
+        %{
+          "ipAddress" => "10.166.113.47",
+          "macAddress" => "8CEC4B897E73",
+          "operationalStatus" => "Up"
+        },
+        %{
+          "ipAddress" => "2a01:110:68:4:59e4:3916:3b3e:4f96",
+          "macAddress" => "8CEC4B897E73",
+          "operationalStatus" => "Up"
+        }
+      ],
+      "vmMetadata" => %{
+        "vmId" => "vm-id-value",
+        "cloudProvider" => "Azure",
+        "resourceId" => "/subscriptions/sub-id/resourceGroups/rg/vm",
+        "subscriptionId" => "sub-id"
+      }
+    }
+  end
 end

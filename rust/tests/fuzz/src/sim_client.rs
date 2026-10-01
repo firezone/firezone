@@ -12,7 +12,7 @@ use super::{
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, RelayId, ResourceList};
+use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -56,7 +56,7 @@ pub(crate) struct SimClient {
     pub(crate) search_domain: Option<DomainName>,
 
     /// The latest resource list emitted by connlib.
-    pub(crate) observed_resource_list: ResourceList,
+    pub(crate) observed_resource_list: Vec<ResourceView>,
 
     pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
     pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
@@ -364,7 +364,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.latest_probe_for(protocol) {
-                            self.record_received_response(id, packet);
+                            self.record_received_response(id, packet, now);
                         } else if dst != 53 {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
                         }
@@ -383,7 +383,7 @@ impl SimClient {
                         };
 
                         if let Some(id) = self.latest_probe_for(protocol) {
-                            self.record_received_response(id, packet);
+                            self.record_received_response(id, packet, now);
                         } else {
                             tracing::error!(
                                 ?protocol,
@@ -432,7 +432,7 @@ impl SimClient {
             };
 
             if self.sent_probes.iter().any(|(sent, _)| *sent == id) {
-                self.record_received_response(id, packet);
+                self.record_received_response(id, packet, now);
                 return None;
             }
 
@@ -488,7 +488,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_received_response(id, packet);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -500,7 +500,7 @@ impl SimClient {
                 return None;
             };
 
-            self.record_received_response(id, packet);
+            self.record_received_response(id, packet, now);
             return None;
         }
 
@@ -592,9 +592,7 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.handle_tun_input(reply, now).unwrap()?;
-
-        Some(transmit)
+        self.encapsulate(reply, now)
     }
 
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
@@ -609,10 +607,11 @@ impl SimClient {
             }));
     }
 
-    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket) {
+    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
             .push(ProbeObservation::ResponseReceived(ReceivedResponse {
                 id,
+                at,
                 client: self.id,
                 packet,
             }));

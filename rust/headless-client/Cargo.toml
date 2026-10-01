@@ -1,7 +1,7 @@
 [package]
 name = "firezone-headless-client"
 # mark:next-headless-version
-version = "1.5.13"
+version = "1.5.14"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]
 license = { workspace = true }
@@ -45,6 +45,9 @@ x509-keystore = { workspace = true }
 mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 sd-notify = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-security = { workspace = true }
 
 [lints]
 workspace = true

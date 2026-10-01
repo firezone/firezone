@@ -113,62 +113,6 @@ defmodule Portal.PolicyFixtures do
   end
 
   @doc """
-  Generate a policy with remote IP CIDR condition.
-  """
-  def policy_with_cidr_condition_fixture(cidrs \\ ["10.0.0.0/8"], attrs \\ %{}) do
-    conditions = [
-      %{
-        property: :remote_ip,
-        operator: :is_in_cidr,
-        values: cidrs
-      }
-    ]
-
-    attrs = Map.put(attrs, :conditions, conditions)
-    policy_fixture(attrs)
-  end
-
-  @doc """
-  Generate a policy with provider condition.
-  """
-  def policy_with_provider_condition_fixture(provider_ids \\ [], attrs \\ %{}) do
-    conditions = [
-      %{
-        property: :auth_provider_id,
-        operator: :is_in,
-        values: provider_ids
-      }
-    ]
-
-    attrs = Map.put(attrs, :conditions, conditions)
-    policy_fixture(attrs)
-  end
-
-  @doc """
-  Create multiple policies for the same group.
-  """
-  def group_policies_fixture(group, resource_count \\ 3, attrs \\ %{}) do
-    account = group.account || Portal.Repo.preload(group, :account).account
-
-    for _ <- 1..resource_count do
-      resource = resource_fixture(account: account)
-      policy_fixture(Map.merge(attrs, %{group: group, resource: resource, account: account}))
-    end
-  end
-
-  @doc """
-  Create multiple policies for the same resource.
-  """
-  def resource_policies_fixture(resource, group_count \\ 3, attrs \\ %{}) do
-    account = resource.account || Portal.Repo.preload(resource, :account).account
-
-    for _ <- 1..group_count do
-      group = group_fixture(account: account)
-      policy_fixture(Map.merge(attrs, %{group: group, resource: resource, account: account}))
-    end
-  end
-
-  @doc """
   Update a policy with the given attributes.
   """
   def update_policy(policy, attrs) do

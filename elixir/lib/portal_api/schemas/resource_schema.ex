@@ -38,52 +38,128 @@ defmodule PortalAPI.Schemas.Resource do
       members, so they are sent the first rule and never the other three.
       """,
       type: :object,
-      minProperties: 1,
-      maxProperties: 1,
       example: %{
         "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
       },
-      additionalProperties: %Schema{
-        title: "DeviceMembershipRule",
-        description: "One comparison against a field of the source the key names",
-        type: :object,
-        properties: %{
-          field: %Schema{
-            example: "actor_id",
-            type: :string,
-            description: "The field to compare",
-            enum: ["id", "actor_id", "account_id"]
+      oneOf: [
+        %Schema{
+          title: "DeviceMembershipListedDevices",
+          description: "Exactly the Clients named",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{
+              "field" => "id",
+              "op" => "in",
+              "value" => [
+                "7cb89288-1fb3-433e-a522-2d087e45988d",
+                "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+              ]
+            }
           },
-          op: %Schema{
-            example: "eq",
-            type: :string,
-            description: "`in` takes a list of IDs, `eq` a single value",
-            enum: ["in", "eq"]
-          },
-          value: %Schema{
-            description:
-              ~s|A list of IDs, one ID, or `{"subject": "actor_id"}` / | <>
-                ~s|`{"subject": "account_id"}` for an attribute of the Actor asking|,
-            oneOf: [
-              %Schema{
-                title: "DeviceMembershipIdList",
-                type: :array,
-                items: %Schema{type: :string, format: :uuid}
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["id"]},
+                op: %Schema{type: :string, enum: ["in"]},
+                value: %Schema{
+                  type: :array,
+                  description: "Client IDs",
+                  items: %Schema{type: :string, format: :uuid}
+                }
               },
-              %Schema{title: "DeviceMembershipId", type: :string, format: :uuid},
-              %Schema{
-                title: "DeviceMembershipSubjectAttribute",
-                type: :object,
-                properties: %{
-                  subject: %Schema{type: :string, enum: ["actor_id", "account_id"]}
-                },
-                required: [:subject]
-              }
-            ]
-          }
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
         },
-        required: [:field, :op, :value]
-      }
+        %Schema{
+          title: "DeviceMembershipOwnDevices",
+          description: "The Clients of the Actor asking for access",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
+          },
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["actor_id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{
+                  type: :object,
+                  additionalProperties: false,
+                  properties: %{subject: %Schema{type: :string, enum: ["actor_id"]}},
+                  required: [:subject]
+                }
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
+        },
+        %Schema{
+          title: "DeviceMembershipAllDevices",
+          description: "Every Client in the Account",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{
+              "field" => "account_id",
+              "op" => "eq",
+              "value" => %{"subject" => "account_id"}
+            }
+          },
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["account_id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{
+                  type: :object,
+                  additionalProperties: false,
+                  properties: %{subject: %Schema{type: :string, enum: ["account_id"]}},
+                  required: [:subject]
+                }
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
+        },
+        %Schema{
+          title: "DeviceMembershipActorGroup",
+          description: "The Clients of every Actor in one Group",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "actor_group" => %{
+              "field" => "id",
+              "op" => "eq",
+              "value" => "b3a1c6e2-5f4d-4e7a-9c8b-1d2e3f4a5b6c"
+            }
+          },
+          properties: %{
+            actor_group: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{type: :string, format: :uuid, description: "Group ID"}
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:actor_group]
+        }
+      ]
     })
   end
 
@@ -216,7 +292,9 @@ defmodule PortalAPI.Schemas.Resource do
             address: %Schema{
               example: "10.0.0.10",
               type: :string,
-              description: "Resource address.",
+              description:
+                "Resource address. Required for `cidr`, `ip` and `dns`. " <>
+                  "`device_pool` and `internet` Resources ignore it.",
               nullable: true
             },
             address_description: %Schema{
@@ -243,8 +321,9 @@ defmodule PortalAPI.Schemas.Resource do
               example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required. " <>
-                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "Site to connect the Resource to. Required for all types except `device_pool`, " <>
+                  "which takes none. The Internet Site is reserved for the Internet Resource " <>
+                  "and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true
@@ -290,7 +369,9 @@ defmodule PortalAPI.Schemas.Resource do
             address: %Schema{
               example: "10.0.0.10",
               type: :string,
-              description: "Resource address.",
+              description:
+                "Resource address. Required for `cidr`, `ip` and `dns`. " <>
+                  "`device_pool` and `internet` Resources ignore it.",
               nullable: true
             },
             address_description: %Schema{
@@ -317,8 +398,9 @@ defmodule PortalAPI.Schemas.Resource do
               example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required. " <>
-                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "Site to connect the Resource to. Required for all types except `device_pool`, " <>
+                  "which takes none. The Internet Site is reserved for the Internet Resource " <>
+                  "and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true

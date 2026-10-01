@@ -10,7 +10,14 @@ import kotlinx.parcelize.Parcelize
 data class ConnectedDevice(
     val id: String,
     val name: String,
+    val slug: String,
     val tunIpv4: String,
     val tunIpv6: String,
-    val pools: List<String>,
-) : Parcelable
+) : Parcelable {
+    val domain: String get() = slug + DOMAIN_SUFFIX
+
+    companion object {
+        // Appended to a device's slug to form the domain it answers DNS at.
+        const val DOMAIN_SUFFIX = ".firezone.network"
+    }
+}

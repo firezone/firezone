@@ -35,7 +35,6 @@ internal fun SessionRoute(
     val tunnelService = rememberTunnelService()
 
     val resourcesState by (tunnelService?.resourcesState ?: emptyFlow()).collectAsStateWithLifecycle(emptyList())
-    val connectedDevicesState by (tunnelService?.connectedDevicesState ?: emptyFlow()).collectAsStateWithLifecycle(emptyList())
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val serviceStatus by (tunnelService?.serviceState ?: emptyFlow()).collectAsStateWithLifecycle<State?>(null)
     val actorName by (tunnelService?.actorNameState ?: emptyFlow()).collectAsStateWithLifecycle(null)
@@ -70,7 +69,6 @@ internal fun SessionRoute(
     SessionScreen(
         actorName = actorName,
         resources = resources,
-        connectedDevices = connectedDevicesState.toImmutableList(),
         favorites = favorites,
         onToggleInternet = {
             val newState = internetState.toggle()

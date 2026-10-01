@@ -137,10 +137,13 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade your plan to unlock policy conditions and device posture checks."
+      assert length(Floki.find(Floki.parse_fragment!(html), "[data-locked-section]")) == 1
+      assert [_, _] = String.split(html, "Upgrade to Unlock")
+      assert :binary.match(html, "Flow log reporting") < :binary.match(html, "data-locked-section")
       assert html =~ "Upgrade to Unlock"
       assert html =~ ~s(href="/#{account.slug}/settings/account")
-      assert html =~ ~s(data-locked-section="policy-conditions")
+      assert html =~ ~s(data-locked-section="policy-restrictions")
       assert html =~ "blur-[2px]"
       assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
@@ -581,7 +584,8 @@ defmodule PortalWeb.PoliciesTest do
         |> render_submit()
 
       assert html =~ "Save these changes?"
-      assert html =~ "resets all access previously granted by this policy"
+      assert html =~ "Existing connections using this policy will be reset."
+      refute lv |> element("#policy-breaking-change-modal") |> render() =~ "reconnect"
       assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
 
       html = render_click(lv, "cancel_policy_breaking_change")
@@ -1455,7 +1459,6 @@ defmodule PortalWeb.PoliciesTest do
 
   describe ":device postures" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)
@@ -1476,19 +1479,6 @@ defmodule PortalWeb.PoliciesTest do
     end
 
     defp toggle(lv, id), do: lv |> element("#policy-postures-checks-#{id}") |> render()
-
-    test "the section is hidden when the feature is off globally", %{conn: conn} do
-      enable_device_posture(false)
-      account = account_fixture()
-      actor = admin_actor_fixture(account: account)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      refute html =~ "Device posture"
-    end
 
     test "the section is locked when the account lacks the feature", %{conn: conn} do
       account = account_fixture()
@@ -1614,7 +1604,7 @@ defmodule PortalWeb.PoliciesTest do
       assert has_element?(lv, "li", "Compliant")
       assert has_element?(lv, "li", "Firezone Client up to date")
 
-      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
       assert toggle(lv, "compliant") =~ "checked"
       assert toggle(lv, "client_up_to_date") =~ "checked"

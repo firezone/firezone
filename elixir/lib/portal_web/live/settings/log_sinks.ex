@@ -74,8 +74,7 @@ defmodule PortalWeb.Settings.LogSinks do
         sentinel_setup_tab: "portal",
         submit_failed?: false,
         sentinel_verification_ref: nil,
-        s3_setup_tab: "console",
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        s3_setup_tab: "console"
       )
 
     {:ok, init(socket, new: true)}
@@ -305,10 +304,9 @@ defmodule PortalWeb.Settings.LogSinks do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.log_sinks_enabled?(@account) do %>
@@ -321,26 +319,36 @@ defmodule PortalWeb.Settings.LogSinks do
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <.docs_action path="/log-sinks" />
-              <.link
+              <Navigation.docs_action path="/log-sinks" />
+              <Navigation.link
                 patch={~p"/#{@account}/settings/log_sinks/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+              </Navigation.link>
             </div>
           </div>
 
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@log_sinks) do %>
-              <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
-                <p class="text-sm">No log sinks configured.</p>
-                <.link
-                  patch={~p"/#{@account}/settings/log_sinks/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
-                </.link>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <Core.icon name="ri-upload-cloud-2-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No log sinks yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      Forward audit logs to an external destination.
+                    </p>
+                  </div>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/log_sinks/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
+                  </Navigation.link>
+                </div>
               </div>
             <% else %>
               <table class="w-full text-sm border-collapse">
@@ -398,7 +406,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <h2 class="text-sm font-semibold text-heading">Select Log Sink Type</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="mb-4 text-xs text-subtle">
@@ -406,116 +414,116 @@ defmodule PortalWeb.Settings.LogSinks do
               </p>
               <ul class="flex flex-col gap-2">
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/splunk/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="splunk" size="xl" />
+                      <Core.provider_icon provider="splunk" size="xl" />
                       <span class="text-sm font-medium text-heading">Splunk</span>
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to a Splunk HTTP Event Collector.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/datadog/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="datadog" size="xl" />
+                      <Core.provider_icon provider="datadog" size="xl" />
                       <span class="text-sm font-medium text-heading">Datadog</span>
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to Datadog Log Management.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/newrelic/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="newrelic" size="xl" />
+                      <Core.provider_icon provider="newrelic" size="xl" />
                       <span class="text-sm font-medium text-heading">New Relic</span>
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to the New Relic Log API.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/elastic/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="elastic" size="xl" />
+                      <Core.provider_icon provider="elastic" size="xl" />
                       <span class="text-sm font-medium text-heading">Elastic</span>
                     </span>
                     <span class="text-xs text-body">
                       Index logs into Elasticsearch or any compatible cluster.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/sentinel/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="sentinel" size="xl" />
+                      <Core.provider_icon provider="sentinel" size="xl" />
                       <span class="text-sm font-medium text-heading">Microsoft Sentinel</span>
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to Microsoft Sentinel via the Azure Monitor Logs Ingestion API.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/s3/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="s3" size="xl" />
+                      <Core.provider_icon provider="s3" size="xl" />
                       <span class="text-sm font-medium text-heading">Amazon S3</span>
                     </span>
                     <span class="text-xs text-body">
                       Archive logs to an Amazon S3 bucket as NDJSON objects.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/qradar/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="qradar" size="xl" />
+                      <Core.provider_icon provider="qradar" size="xl" />
                       <span class="text-sm font-medium text-heading">IBM QRadar</span>
                     </span>
                     <span class="text-xs text-body">
                       Stream logs to an IBM QRadar HTTP Receiver log source.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/log_sinks/http/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="http" size="xl" />
+                      <Core.provider_icon provider="http" size="xl" />
                       <span class="text-sm font-medium text-heading">HTTP</span>
                     </span>
                     <span class="text-xs text-body">
                       POST batches of logs as JSON to any HTTPS endpoint.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
               </ul>
             </div>
@@ -528,42 +536,42 @@ defmodule PortalWeb.Settings.LogSinks do
           >
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/log_sinks/new"}
                   class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                   title="Back"
                 >
-                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
-                </.link>
+                  <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+                </Navigation.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon provider={@type} size="md" />
+                  <Core.provider_icon provider={@type} size="md" />
                   <h2 class="text-sm font-semibold text-heading">
                     Add {titleize(@type)} Log Sink
                   </h2>
-                  <.docs_action path={"/log-sinks/#{@type}"} />
+                  <Navigation.docs_action path={"/log-sinks/#{@type}"} />
                 </div>
               </div>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <.panel_footer>
+            <Form.panel_footer>
               <p :if={@submit_failed?} class="mr-auto text-xs text-error">
                 Errors prevented this form from being saved
               </p>
-              <.panel_footer_button phx-click="close_panel">
+              <Form.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button
+              </Form.panel_footer_button>
+              <Form.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Create
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </div>
         </div>
 
@@ -584,32 +592,32 @@ defmodule PortalWeb.Settings.LogSinks do
             :if={@live_action == :edit and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <.panel_header title={"Edit #{assigns[:sink_name]}"} variant="plain">
-              <:leading><.provider_icon provider={@type} size="md" /></:leading>
-              <:adornment><.docs_action path={"/log-sinks/#{@type}"} /></:adornment>
-            </.panel_header>
+            <Form.panel_header title={"Edit #{assigns[:sink_name]}"} variant="plain">
+              <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
+              <:adornment><Navigation.docs_action path={"/log-sinks/#{@type}"} /></:adornment>
+            </Form.panel_header>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
+              <Core.flash :if={assigns[:sink] && @sink.error_message} kind={:error} class="mb-4">
                 {@sink.error_message}
-              </.flash>
+              </Core.flash>
               <.sink_form form={@form} type={@type} live_action={@live_action} account={@account} sentinel_setup_tab={@sentinel_setup_tab} s3_setup_tab={@s3_setup_tab} />
             </div>
-            <.panel_footer>
+            <Form.panel_footer>
               <p :if={@submit_failed?} class="mr-auto text-xs text-error">
                 Errors prevented this form from being saved
               </p>
-              <.panel_footer_button phx-click="close_panel">
+              <Form.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button
+              </Form.panel_footer_button>
+              <Form.panel_footer_button
                 form="log-sink-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Save
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </div>
         </div>
       <% else %>
@@ -619,7 +627,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <h2 class="text-xs font-semibold text-heading">Log Sinks</h2>
             </div>
             <div class="flex items-center gap-2">
-              <.docs_action path="/log-sinks" />
+              <Navigation.docs_action path="/log-sinks" />
             </div>
           </div>
 
@@ -647,12 +655,12 @@ defmodule PortalWeb.Settings.LogSinks do
                   <tr class="border-b border-border">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon provider="splunk" size="lg" />
+                        <Core.provider_icon provider="splunk" size="lg" />
                         <span class="text-sm font-medium text-heading">SOC Splunk</span>
                       </div>
                     </td>
                     <td class="px-6 py-3 w-28">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success">
                         Active
                       </span>
                     </td>
@@ -668,7 +676,7 @@ defmodule PortalWeb.Settings.LogSinks do
 
             <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
               <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-                <.icon name="ri-upload-cloud-2-line" class="w-8 h-8" />
+                <Core.icon name="ri-upload-cloud-2-line" class="w-8 h-8" />
                 <div class="flex flex-col items-center gap-1 text-center">
                   <p class="text-sm font-medium text-heading">
                     Stream Logs to Your SIEM
@@ -677,13 +685,13 @@ defmodule PortalWeb.Settings.LogSinks do
                     Deliver audit, session, API, and flow logs to destinations like Splunk.
                   </p>
                 </div>
-                <.button
+                <Form.button
                   style="primary"
                   icon="ri-sparkling-fill"
                   navigate={~p"/#{@account}/settings/account"}
                 >
                   Upgrade to Unlock
-                </.button>
+                </Form.button>
               </div>
             </div>
           </div>
@@ -706,7 +714,7 @@ defmodule PortalWeb.Settings.LogSinks do
     <tr class="border-b border-border hover:bg-raised">
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon provider={@type} size="lg" />
+          <Core.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <span class="text-sm font-medium text-heading truncate" title={@sink.name}>
               {@sink.name}
@@ -732,7 +740,7 @@ defmodule PortalWeb.Settings.LogSinks do
       <td class="px-6 py-3 w-40">
         <%= if last_delivery_at(@sink) do %>
           <span class="text-xs text-body">
-            <.relative_datetime datetime={last_delivery_at(@sink)} />
+            <Core.relative_datetime datetime={last_delivery_at(@sink)} />
           </span>
         <% else %>
           <span class="text-xs text-subtle">Never</span>
@@ -740,18 +748,18 @@ defmodule PortalWeb.Settings.LogSinks do
       </td>
       <td class="px-6 py-3 w-14">
         <div class="flex justify-end">
-          <.actions_dropdown
+          <Core.actions_dropdown
             open={@open_sink_actions_id == @sink.id}
             close_event="close_sink_actions"
             phx-click="toggle_sink_actions"
             phx-value-id={@sink.id}
           >
-            <.link
+            <Navigation.link
               patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-            </.link>
+              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+            </Navigation.link>
             <button
               type="button"
               phx-click="sync_sink"
@@ -759,25 +767,25 @@ defmodule PortalWeb.Settings.LogSinks do
               disabled={@sink.is_disabled}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Deliver Now
+              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Deliver Now
             </button>
             <div class="my-1 border-t border-border"></div>
-            <.link
+            <Navigation.link
               :if={@sink.is_disabled and @sink.disabled_reason == "Sync error"}
               patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
-            </.link>
-            <.button_with_confirmation
+            </Navigation.link>
+            <Form.button_with_confirmation
               :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
               id={"toggle-sink-#{@sink.id}"}
               on_confirm="toggle_sink"
               on_confirm_id={@sink.id}
               class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body border-0 bg-transparent"
             >
-              <.icon
+              <Core.icon
                 name={
                   if @sink.is_disabled,
                     do: "ri-checkbox-circle-line",
@@ -806,15 +814,15 @@ defmodule PortalWeb.Settings.LogSinks do
                 {if @sink.is_disabled, do: "Enable", else: "Disable"}
               </:dialog_confirm_button>
               <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </.button_with_confirmation>
+            </Form.button_with_confirmation>
             <div class="my-1 border-t border-border"></div>
-            <.button_with_confirmation
+            <Form.button_with_confirmation
               id={"delete-sink-#{@sink.id}"}
               on_confirm="delete_sink"
               on_confirm_id={@sink.id}
               class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error border-0 bg-transparent"
             >
-              <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+              <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
               <:dialog_title>Delete Log Sink</:dialog_title>
               <:dialog_content>
                 <p>
@@ -824,8 +832,8 @@ defmodule PortalWeb.Settings.LogSinks do
               </:dialog_content>
               <:dialog_confirm_button>Delete</:dialog_confirm_button>
               <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </.button_with_confirmation>
-          </.actions_dropdown>
+            </Form.button_with_confirmation>
+          </Core.actions_dropdown>
         </div>
       </td>
     </tr>
@@ -838,26 +846,26 @@ defmodule PortalWeb.Settings.LogSinks do
     ~H"""
     <%= cond do %>
       <% @sink.is_disabled and @sink.disabled_reason == "Sync error" -> %>
-        <.status_popover id={"sink-status-#{@sink.id}"} label="Error" color="red">
+        <Core.status_popover id={"sink-status-#{@sink.id}"} label="Error" color="red">
           <p class="text-xs text-body break-words">{@sink.error_message}</p>
           <p class="mt-2 text-xs text-subtle">
             Delivery is stopped. Edit and Save this log sink to enable it.
           </p>
-        </.status_popover>
+        </Core.status_popover>
       <% @sink.is_disabled -> %>
         <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-raised text-subtle">
           Disabled
         </span>
       <% @sink.errored_at -> %>
-        <.status_popover id={"sink-status-#{@sink.id}"} label="Warning" color="yellow">
+        <Core.status_popover id={"sink-status-#{@sink.id}"} label="Warning" color="yellow">
           <p class="text-xs text-body break-words">{@sink.error_message}</p>
           <p class="mt-2 text-xs text-subtle">
             Delivery is retried automatically. The sink is disabled if failures
             persist for 24 hours.
           </p>
-        </.status_popover>
+        </Core.status_popover>
       <% true -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-success-light text-success">
           Active
         </span>
     <% end %>
@@ -884,7 +892,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:name].id} class="block text-xs font-medium text-body mb-1.5">
             Name <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:name]}
             type="text"
             autocomplete="off"
@@ -901,7 +909,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:collector_url].id} class="block text-xs font-medium text-body mb-1.5">
             HEC URL <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:collector_url]}
             type="text"
             autocomplete="off"
@@ -919,7 +927,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:hec_token].id} class="block text-xs font-medium text-body mb-1.5">
             HEC Token <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:hec_token]}
             type="password"
             autocomplete="off"
@@ -936,7 +944,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:index].id} class="block text-xs font-medium text-body mb-1.5">
             Index
           </label>
-          <.input
+          <Form.input
             field={@form[:index]}
             type="text"
             autocomplete="off"
@@ -950,7 +958,7 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "datadog"}>
-          <.input
+          <Form.input
             field={@form[:site]}
             type="select"
             label="Site"
@@ -966,7 +974,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
             API Key <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
@@ -983,7 +991,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:tags].id} class="block text-xs font-medium text-body mb-1.5">
             Tags
           </label>
-          <.input
+          <Form.input
             field={@form[:tags]}
             type="text"
             autocomplete="off"
@@ -999,7 +1007,7 @@ defmodule PortalWeb.Settings.LogSinks do
         </div>
 
         <div :if={@type == "newrelic"}>
-          <.input
+          <Form.input
             field={@form[:region]}
             type="select"
             label="Region"
@@ -1015,7 +1023,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:license_key].id} class="block text-xs font-medium text-body mb-1.5">
             License Key <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:license_key]}
             type="password"
             autocomplete="off"
@@ -1032,7 +1040,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
             Endpoint URL <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:endpoint_url]}
             type="text"
             autocomplete="off"
@@ -1051,7 +1059,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
             API Key <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
@@ -1069,7 +1077,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:data_stream].id} class="block text-xs font-medium text-body mb-1.5">
             Data stream <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:data_stream]}
             type="text"
             autocomplete="off"
@@ -1097,7 +1105,7 @@ defmodule PortalWeb.Settings.LogSinks do
             cannot read your directory or your data, and log delivery is authorized only by
             the Monitoring Metrics Publisher role you grant on a single data collection rule.
           </p>
-          <.button
+          <Form.button
             type="button"
             style="primary"
             icon="ri-external-link-line"
@@ -1106,7 +1114,7 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-hook="OpenURL"
           >
             Grant admin consent
-          </.button>
+          </Form.button>
 
           <div class="mt-4 mb-4 flex justify-between items-center">
             <label class="text-xs font-medium text-body">Tenant ID</label>
@@ -1136,7 +1144,7 @@ defmodule PortalWeb.Settings.LogSinks do
                   "border-transparent text-body hover:text-heading hover:border-border-strong"
               ]}
             >
-              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+              <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           </div>
@@ -1196,14 +1204,14 @@ defmodule PortalWeb.Settings.LogSinks do
               do. Set the variables for your environment, then run the script with the Azure
               CLI logged into your subscription. It prints the values for the fields below.
             </p>
-            <.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</.code_block>
+            <Core.code_block id="sentinel-setup-cli" class="rounded text-xs">{sentinel_cli_snippet()}</Core.code_block>
           </div>
           <div :if={@sentinel_setup_tab == "terraform"}>
             <p class="text-xs text-subtle mb-2">
               Assumes an existing Log Analytics workspace and requires the azurerm, azuread,
               and azapi providers. The outputs are the values for the fields below.
             </p>
-            <.code_block id="sentinel-setup-terraform" class="rounded text-xs">{sentinel_terraform_snippet()}</.code_block>
+            <Core.code_block id="sentinel-setup-terraform" class="rounded text-xs">{sentinel_terraform_snippet()}</Core.code_block>
           </div>
         </div>
 
@@ -1215,7 +1223,7 @@ defmodule PortalWeb.Settings.LogSinks do
           >
             Ingestion Endpoint <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:ingestion_endpoint]}
             type="text"
             autocomplete="off"
@@ -1237,7 +1245,7 @@ defmodule PortalWeb.Settings.LogSinks do
           >
             DCR Immutable ID <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:dcr_immutable_id]}
             type="text"
             autocomplete="off"
@@ -1256,7 +1264,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:stream_name].id} class="block text-xs font-medium text-body mb-1.5">
             Stream Name <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:stream_name]}
             type="text"
             autocomplete="off"
@@ -1293,7 +1301,7 @@ defmodule PortalWeb.Settings.LogSinks do
                   "border-transparent text-body hover:text-heading hover:border-border-strong"
               ]}
             >
-              <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+              <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
               {label}
             </button>
           </div>
@@ -1309,7 +1317,7 @@ defmodule PortalWeb.Settings.LogSinks do
               In IAM under <strong>Roles</strong>, choose
               <strong>Create role &rarr; Custom trust policy</strong> and paste:
               <div class="mt-2 mb-1">
-                <.json_view id="s3-trust-policy" value={trust_policy(@form)} />
+                <JSONView.json_view id="s3-trust-policy" value={trust_policy(@form)} />
               </div>
               Continue without adding permissions and give the role a name, e.g.
               <code class="text-xs">firezone-logs</code>.
@@ -1319,7 +1327,7 @@ defmodule PortalWeb.Settings.LogSinks do
               <strong>Add permissions &rarr; Create inline policy &rarr; JSON</strong>
               and paste:
               <div class="mt-2 mb-1">
-                <.json_view id="s3-permission-policy" value={s3_permission_policy(@form)} />
+                <JSONView.json_view id="s3-permission-policy" value={s3_permission_policy(@form)} />
               </div>
             </li>
             <li>
@@ -1332,14 +1340,14 @@ defmodule PortalWeb.Settings.LogSinks do
               Set the variables, then run the script with the AWS CLI logged into your
               account. It prints the Role ARN for the field below.
             </p>
-            <.code_block id="s3-setup-cli" class="rounded text-xs">{s3_cli_snippet(@form)}</.code_block>
+            <Core.code_block id="s3-setup-cli" class="rounded text-xs">{s3_cli_snippet(@form)}</Core.code_block>
           </div>
           <div :if={@s3_setup_tab == "terraform"}>
             <p class="text-xs text-subtle mb-2">
               Requires the aws provider; the bucket is created in the provider's region.
               The output is the Role ARN for the field below.
             </p>
-            <.code_block id="s3-setup-terraform" class="rounded text-xs">{s3_terraform_snippet(@form)}</.code_block>
+            <Core.code_block id="s3-setup-terraform" class="rounded text-xs">{s3_terraform_snippet(@form)}</Core.code_block>
           </div>
         </div>
 
@@ -1347,7 +1355,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:bucket].id} class="block text-xs font-medium text-body mb-1.5">
             Bucket <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:bucket]}
             type="text"
             autocomplete="off"
@@ -1364,7 +1372,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:region].id} class="block text-xs font-medium text-body mb-1.5">
             Region <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:region]}
             type="text"
             autocomplete="off"
@@ -1381,7 +1389,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:role_arn].id} class="block text-xs font-medium text-body mb-1.5">
             Role ARN <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:role_arn]}
             type="text"
             autocomplete="off"
@@ -1399,7 +1407,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:key_prefix].id} class="block text-xs font-medium text-body mb-1.5">
             Key Prefix
           </label>
-          <.input
+          <Form.input
             field={@form[:key_prefix]}
             type="text"
             autocomplete="off"
@@ -1458,7 +1466,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
             Endpoint URL <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:endpoint_url]}
             type="text"
             autocomplete="off"
@@ -1476,7 +1484,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:auth_header].id} class="block text-xs font-medium text-body mb-1.5">
             Authorization Header
           </label>
-          <.input
+          <Form.input
             field={@form[:auth_header]}
             type="password"
             autocomplete="off"
@@ -1495,7 +1503,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:endpoint_url].id} class="block text-xs font-medium text-body mb-1.5">
             Endpoint URL <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:endpoint_url]}
             type="text"
             autocomplete="off"
@@ -1513,7 +1521,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:bearer_token].id} class="block text-xs font-medium text-body mb-1.5">
             Bearer Token
           </label>
-          <.input
+          <Form.input
             field={@form[:bearer_token]}
             type="password"
             autocomplete="off"
@@ -1530,7 +1538,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <label for={@form[:batch_max_events].id} class="block text-xs font-medium text-body mb-1.5">
             Batch Size <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:batch_max_events]}
             type="number"
             min="1"
@@ -1585,7 +1593,7 @@ defmodule PortalWeb.Settings.LogSinks do
             </p>
           </div>
           <input type="hidden" name={@form[:retroactive].name} value="false" />
-          <.toggle
+          <Core.toggle
             id={@form[:retroactive].id}
             name={@form[:retroactive].name}
             value="true"

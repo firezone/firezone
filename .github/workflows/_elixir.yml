@@ -118,6 +118,9 @@ jobs:
       - name: Check Formatting
         run: mix format --check-formatted
 
+      - name: Check Elixir dead-code exceptions
+        run: bash ../mise-tasks/elixir/dead-code.sh --check
+
       - name: Check For Retired Packages
         run: mix hex.audit
 

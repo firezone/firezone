@@ -54,21 +54,22 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   The authz durability timer is our fail-closed guarantee: if a queue crashes
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
-  has no DB row backing it. The client recovers by tripping ICMP
-  prohibited and requesting a fresh authorization through the normal portal
-  path — closing the loop.
+  has no DB row backing it. The gateway rejects the client's packets with
+  a `no_authorization` p2p control event, upon which the client
+  requests a fresh authorization through the normal portal path, closing
+  the loop.
 
   This function is the manual version of that fail-closed signal. If the
   gateway's local cache ever desyncs from production state (a bug, a
   partial flush we didn't anticipate, an ops mistake), this lets us
-  trigger the same fail-closed → ICMP → re-authorize recovery without
-  waiting for a queue to crash or for the authz durability timer to time out.
+  trigger the same fail-closed → no-authorization → re-authorize
+  recovery without waiting for a queue to crash or for the authz
+  durability timer to time out.
 
-  Integration tests use it to exercise the
-  `icmp_error_unreachable_prohibited_create_new_flow` recovery path
-  end-to-end: the test asserts that even when the gateway is forced into
-  a fail-closed state for a pair, the client correctly recovers and
-  re-authorizes via the portal.
+  Integration tests use it to exercise that recovery path end-to-end:
+  the test asserts that even when the gateway is forced into a fail-closed
+  state for a pair, the client correctly recovers and re-authorizes via
+  the portal.
 
   Do not call from production code paths.
   """
@@ -705,8 +706,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
   end
 
-  def handle_in("no_relays", _payload, socket) do
-    {:ok, relays} = select_relays(socket)
+  def handle_in("no_relays", payload, socket) do
+    {:ok, relays} = select_relays(socket, excluded_relay_ids(payload))
     socket = cache_relays(socket, relays)
 
     push(socket, "relays_presence", %{
@@ -789,6 +790,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
+
+  defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do
+    Enum.flat_map(ids, fn id ->
+      case Ecto.UUID.cast(id) do
+        {:ok, id} -> [id]
+        :error -> []
+      end
+    end)
+  end
+
+  defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, account, relays) do
     push(socket, "init", %{

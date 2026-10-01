@@ -5,6 +5,8 @@ import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.connlib.Event
+import uniffi.connlib.EventStream
+import uniffi.connlib.NoHandle
 
 /**
  * Plays connlib for a debug launch: it reports the deployment the screenshot fixtures describe and
@@ -17,7 +19,7 @@ object MockSessionFactory : SessionFactory {
     override fun open(
         config: AndroidSessionConfig,
         tlsIdentity: ClientTlsIdentity?,
-    ): TunnelSession = MockSession()
+    ): TunnelConnection = MockSession().let { TunnelConnection(it, it.eventStream) }
 }
 
 private class MockSession : TunnelSession {
@@ -26,10 +28,13 @@ private class MockSession : TunnelSession {
     init {
         // No `TunInterfaceUpdated`: that is what would have the service establish a TUN device.
         events.trySend(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
-        events.trySend(Event.ResourcesUpdated(resources = mockResources, connectedDevices = mockConnectedDevices))
+        events.trySend(Event.ResourcesUpdated(resources = mockResources))
     }
 
-    override suspend fun nextEvent(): Event? = events.receiveCatching().getOrNull()
+    val eventStream =
+        object : EventStream(NoHandle) {
+            override suspend fun next(): Event? = events.receiveCatching().getOrNull()
+        }
 
     override fun disconnect() {
         events.close()

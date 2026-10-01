@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.Authentication do
     OIDC,
     Entra,
     Google,
+    GitHub,
     Okta
   }
 
@@ -32,7 +33,7 @@ defmodule PortalWeb.Settings.Authentication do
     "hover:bg-raised hover:border-border-emphasis"
   ]
 
-  @new_types ~w[google entra okta oidc]
+  @new_types ~w[google github entra okta oidc]
   @edit_types @new_types ++ ~w[userpass email_otp]
 
   @common_fields ~w[name context is_disabled issuer client_session_lifetime_secs portal_session_lifetime_secs]a
@@ -41,6 +42,7 @@ defmodule PortalWeb.Settings.Authentication do
     EmailOTP.AuthProvider => @common_fields,
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
+    GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
     Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
@@ -52,8 +54,7 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        x509_auth_enabled?: Portal.Features.enabled?(:x509_auth),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        x509_auth_enabled?: Portal.Features.enabled?(:x509_auth)
       )
 
     if connected?(socket) do
@@ -584,7 +585,7 @@ defmodule PortalWeb.Settings.Authentication do
     # Provider-specific trigger fields:
     # - Okta: okta_domain is user-editable, discovery_document_uri is computed from it
     # - OIDC: discovery_document_uri is user-editable
-    # - Google/Entra: no user-editable OIDC config fields
+    # - Google/GitHub/Entra: no user-editable OIDC config fields
     case schema do
       Okta.AuthProvider ->
         [:client_id, :client_secret, :okta_domain]
@@ -624,10 +625,9 @@ defmodule PortalWeb.Settings.Authentication do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
@@ -637,13 +637,13 @@ defmodule PortalWeb.Settings.Authentication do
             <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
           </div>
           <div class="flex items-center gap-2">
-            <.docs_action path="/authenticate" />
-            <.link
+            <Navigation.docs_action path="/authenticate" />
+            <Navigation.link
               patch={~p"/#{@account}/settings/authentication/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </.link>
+              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </Navigation.link>
           </div>
         </div>
 
@@ -703,7 +703,7 @@ defmodule PortalWeb.Settings.Authentication do
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <h2 class="text-sm font-semibold text-heading">Select Provider Type</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="mb-4 text-xs text-subtle">
@@ -711,60 +711,74 @@ defmodule PortalWeb.Settings.Authentication do
               </p>
               <ul class="flex flex-col gap-2">
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/authentication/google/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="google" size="xl" />
+                      <Core.provider_icon provider="google" size="xl" />
                       <span class="text-sm font-medium text-heading">Google</span>
                     </span>
                     <span class="text-xs text-body">
                       Authenticate users against a Google account.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/authentication/github/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <Core.provider_icon provider="github" size="xl" />
+                      <span class="text-sm font-medium text-heading">GitHub</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Authenticate users against a GitHub account.
+                    </span>
+                  </Navigation.link>
+                </li>
+                <li>
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/authentication/entra/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="entra" size="xl" />
+                      <Core.provider_icon provider="entra" size="xl" />
                       <span class="text-sm font-medium text-heading">Entra</span>
                     </span>
                     <span class="text-xs text-body">
                       Authenticate users against a Microsoft Entra account.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/authentication/okta/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="okta" size="xl" />
+                      <Core.provider_icon provider="okta" size="xl" />
                       <span class="text-sm font-medium text-heading">Okta</span>
                     </span>
                     <span class="text-xs text-body">
                       Authenticate users against an Okta account.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/authentication/oidc/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="oidc" size="xl" />
+                      <Core.provider_icon provider="oidc" size="xl" />
                       <span class="text-sm font-medium text-heading">OIDC</span>
                     </span>
                     <span class="text-xs text-body">
                       Authenticate users against any OpenID Connect compliant identity provider.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
               </ul>
             </div>
@@ -777,22 +791,22 @@ defmodule PortalWeb.Settings.Authentication do
           >
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/authentication/new"}
                   class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                   title="Back"
                 >
-                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
-                </.link>
+                  <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+                </Navigation.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon provider={@type} size="md" />
+                  <Core.provider_icon provider={@type} size="md" />
                   <h2 class="text-sm font-semibold text-heading">
                     Add {titleize(@type)} Provider
                   </h2>
-                  <.docs_action path={"/authenticate/#{@type}"} />
+                  <Navigation.docs_action path={"/authenticate/#{@type}"} />
                 </div>
               </div>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.provider_form
@@ -803,19 +817,19 @@ defmodule PortalWeb.Settings.Authentication do
                 submit_event="submit_provider"
               />
             </div>
-            <.panel_footer>
-              <.panel_footer_button phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button
+              </Form.panel_footer_button>
+              <Form.panel_footer_button
                 form="auth-provider-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Create
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </div>
         </div>
       </div>
@@ -837,15 +851,15 @@ defmodule PortalWeb.Settings.Authentication do
           :if={@live_action == :edit and assigns[:form] != nil}
           class="flex flex-col h-full overflow-hidden"
         >
-          <.panel_header title={"Edit #{@provider_name}"} variant="plain">
-            <:leading><.provider_icon provider={@type} size="md" /></:leading>
-            <:adornment><.docs_action path={"/authenticate/#{@type}"} /></:adornment>
-          </.panel_header>
+          <Form.panel_header title={"Edit #{@provider_name}"} variant="plain">
+            <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
+            <:adornment><Navigation.docs_action path={"/authenticate/#{@type}"} /></:adornment>
+          </Form.panel_header>
           <div class="flex-1 overflow-y-auto px-5 py-4">
-            <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
+            <Core.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
               This provider uses legacy configuration. We recommend setting up a new authentication
               provider for your identity service to take advantage of improved security and features.
-            </.flash>
+            </Core.flash>
             <.provider_form
               account_id={@account.id}
               verification_error={@verification_error}
@@ -855,11 +869,11 @@ defmodule PortalWeb.Settings.Authentication do
               is_legacy={assigns[:is_legacy]}
             />
           </div>
-          <.panel_footer>
-            <.panel_footer_button phx-click="close_panel">
+          <Form.panel_footer>
+            <Form.panel_footer_button phx-click="close_panel">
               Cancel
-            </.panel_footer_button>
-            <.panel_footer_button
+            </Form.panel_footer_button>
+            <Form.panel_footer_button
               form="auth-provider-form"
               type="submit"
               style="primary"
@@ -868,8 +882,8 @@ defmodule PortalWeb.Settings.Authentication do
               }
             >
               Save
-            </.panel_footer_button>
-          </.panel_footer>
+            </Form.panel_footer_button>
+          </Form.panel_footer>
         </div>
       </div>
     </div>
@@ -884,9 +898,9 @@ defmodule PortalWeb.Settings.Authentication do
     <%!-- Dim the cells, not the row: opacity on the row also dims the actions menu. --%>
     <tr class={[
       "border-b transition-colors",
-      @is_pending_toggle && "border-amber-200 bg-amber-50",
-      @is_pending_delete && "border-red-200 bg-red-50",
-      @is_pending_revoke && "border-orange-200 bg-orange-50",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      @is_pending_revoke && "border-warning/30 bg-warning-light",
       !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
         "border-border hover:bg-raised",
       @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
@@ -894,14 +908,14 @@ defmodule PortalWeb.Settings.Authentication do
     ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon provider={@type} size="lg" />
+          <Core.provider_icon provider={@type} size="lg" />
           <div>
             <div class="flex items-center gap-1.5">
               <span class={[
                 "text-sm font-medium",
-                @is_pending_toggle && "text-amber-900",
-                @is_pending_delete && "text-red-900",
-                @is_pending_revoke && "text-orange-900",
+                @is_pending_toggle && "text-warning",
+                @is_pending_delete && "text-danger",
+                @is_pending_revoke && "text-warning",
                 !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
                   "text-heading"
               ]}>
@@ -927,7 +941,7 @@ defmodule PortalWeb.Settings.Authentication do
                   Map.get(@provider, :is_legacy) && !@is_pending_toggle && !@is_pending_delete &&
                     !@is_pending_revoke
                 }
-                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700"
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-warning-light text-warning"
               >
                 Legacy
               </span>
@@ -935,15 +949,15 @@ defmodule PortalWeb.Settings.Authentication do
             <div class="font-mono text-[10px] text-subtle mt-0.5">{@provider.id}</div>
             <p
               :if={@type == "x509" and not @has_trust_anchors?}
-              class="flex items-start gap-1.5 mt-1.5 max-w-md text-xs text-amber-600 dark:text-amber-400"
+              class="flex items-start gap-1.5 mt-1.5 max-w-md text-xs text-warning"
             >
-              <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>
                 No devices will be able to use this authentication provider until you add one or more
-                <.link
+                <Navigation.link
                   navigate={~p"/#{@account}/settings/trust_anchors"}
                   class="underline hover:no-underline"
-                >Trust Anchors</.link>.
+                >Trust Anchors</Navigation.link>.
               </span>
             </p>
           </div>
@@ -956,20 +970,20 @@ defmodule PortalWeb.Settings.Authentication do
               Revoke all sessions for this provider? This will immediately sign out all users authenticated this provider.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <.button
+              <Form.button
                 phx-click="cancel_confirm"
                 size="xs"
               >
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 phx-click="revoke_sessions"
                 phx-value-id={@provider.id}
                 size="xs"
                 style="warning"
               >
                 Revoke sessions
-              </.button>
+              </Form.button>
             </div>
           </div>
         </td>
@@ -984,20 +998,20 @@ defmodule PortalWeb.Settings.Authentication do
                     "Disable this provider? Users will not be able to sign in while it is disabled."}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <.button
+                <Form.button
                   phx-click="cancel_confirm"
                   size="xs"
                 >
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   phx-click="toggle_provider"
                   phx-value-id={@provider.id}
                   size="xs"
                   style="warning"
                 >
                   {if @provider.is_disabled, do: "Enable", else: "Disable"}
-                </.button>
+                </Form.button>
               </div>
             </div>
           </td>
@@ -1009,20 +1023,20 @@ defmodule PortalWeb.Settings.Authentication do
                   Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
                 </span>
                 <div class="flex items-center gap-2 ml-auto shrink-0">
-                  <.button
+                  <Form.button
                     phx-click="cancel_confirm"
                     size="xs"
                   >
                     Cancel
-                  </.button>
-                  <.button
+                  </Form.button>
+                  <Form.button
                     phx-click="delete_provider"
                     phx-value-id={@provider.id}
                     size="xs"
                     style="danger"
                   >
                     Delete
-                  </.button>
+                  </Form.button>
                 </div>
               </div>
             </td>
@@ -1060,7 +1074,7 @@ defmodule PortalWeb.Settings.Authentication do
             </td>
             <td class="px-6 py-3">
               <div class="flex justify-end">
-                <.actions_dropdown
+                <Core.actions_dropdown
                   open={@open_provider_actions_id == @provider.id}
                   close_event="close_provider_actions"
                   phx-click="toggle_provider_actions"
@@ -1072,30 +1086,30 @@ defmodule PortalWeb.Settings.Authentication do
                     phx-value-id={@provider.id}
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
-                    <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                    <Core.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                   </button>
                   <button
                     :if={@can_be_default and @is_default}
                     phx-click="clear_default_provider"
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
-                    <.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
+                    <Core.icon name="ri-star-fill" class="w-3.5 h-3.5 shrink-0" /> Remove default
                   </button>
                   <button
                     :if={@show_default_action and not @can_be_default}
                     disabled
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-subtle cursor-default"
                   >
-                    <.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
+                    <Core.icon name="ri-star-line" class="w-3.5 h-3.5 shrink-0" /> Make default
                   </button>
                   <div :if={@show_default_action} class="my-1 border-t border-border"></div>
-                  <.link
+                  <Navigation.link
                     :if={@can_be_edited}
                     patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
-                    <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-                  </.link>
+                    <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                  </Navigation.link>
                   <div class="my-1 border-t border-border"></div>
                   <button
                     :if={@has_sessions}
@@ -1104,7 +1118,7 @@ defmodule PortalWeb.Settings.Authentication do
                     phx-value-action="revoke"
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
-                    <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                    <Core.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                     Revoke sessions
                   </button>
                   <button
@@ -1112,7 +1126,7 @@ defmodule PortalWeb.Settings.Authentication do
                     disabled
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left text-subtle cursor-default"
                   >
-                    <.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
+                    <Core.icon name="ri-logout-box-r-line" class="w-3.5 h-3.5 shrink-0" />
                     Revoke sessions
                   </button>
                   <div class="my-1 border-t border-border"></div>
@@ -1122,7 +1136,7 @@ defmodule PortalWeb.Settings.Authentication do
                     phx-value-action="toggle"
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                   >
-                    <.icon
+                    <Core.icon
                       name={
                         if @provider.is_disabled,
                           do: "ri-checkbox-circle-line",
@@ -1139,9 +1153,9 @@ defmodule PortalWeb.Settings.Authentication do
                     phx-value-action="delete"
                     class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
                   >
-                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                    <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                   </button>
-                </.actions_dropdown>
+                </Core.actions_dropdown>
               </div>
             </td>
           <% end %>
@@ -1241,7 +1255,7 @@ defmodule PortalWeb.Settings.Authentication do
             >
               Name <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:name]}
               type="text"
               autocomplete="off"
@@ -1257,7 +1271,7 @@ defmodule PortalWeb.Settings.Authentication do
             >
               Context <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:context]}
               type="select"
               options={context_options()}
@@ -1279,7 +1293,7 @@ defmodule PortalWeb.Settings.Authentication do
               >
                 Portal (seconds)
               </label>
-              <.input
+              <Form.input
                 field={@form[:portal_session_lifetime_secs]}
                 type="number"
                 placeholder="28800"
@@ -1296,7 +1310,7 @@ defmodule PortalWeb.Settings.Authentication do
               >
                 Client (seconds)
               </label>
-              <.input
+              <Form.input
                 field={@form[:client_session_lifetime_secs]}
                 type="number"
                 placeholder="604800"
@@ -1322,7 +1336,7 @@ defmodule PortalWeb.Settings.Authentication do
             >
               Email Claim <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:email_claim]}
               type="select"
               options={[
@@ -1338,6 +1352,69 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
         </div>
 
+        <%!-- GitHub-specific config --%>
+        <div :if={@type == "github"} class="pt-4 border-t border-border space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Provider Configuration
+          </p>
+          <fieldset>
+            <legend class="block text-xs font-medium text-body mb-3">
+              Email Verification <span class="text-error">*</span>
+            </legend>
+            <% email_verification_method = get_field(@form.source, :email_verification_method) %>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :proof,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="proof"
+                  checked={email_verification_method == :proof}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  Proof
+                </span>
+                <span class="text-xs text-body">
+                  Send a one-time passcode to the user's email before linking their GitHub account for the first time.
+                  <strong class="block mt-1">Default.</strong>
+                </span>
+              </label>
+
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :none,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="none"
+                  checked={email_verification_method == :none}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  None
+                </span>
+                <span class="text-xs text-body">
+                  Link a GitHub account to the user with the same email, as long as GitHub has verified that email.
+                  GitHub does not re-check addresses, so a former owner of an email can still sign in as its current user.
+                  <strong class="block mt-1">Not recommended.</strong>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
         <%!-- Provider-specific config (Okta / OIDC) --%>
         <div :if={@type in ["okta", "oidc"]} class="pt-4 border-t border-border space-y-4">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
@@ -1351,7 +1428,7 @@ defmodule PortalWeb.Settings.Authentication do
             >
               Okta Domain <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:okta_domain]}
               type="text"
               placeholder="example.okta.com"
@@ -1369,7 +1446,7 @@ defmodule PortalWeb.Settings.Authentication do
             >
               Discovery Document URI <span class="text-error">*</span>
             </label>
-            <.input
+            <Form.input
               field={@form[:discovery_document_uri]}
               type="text"
               placeholder="https://example.com/.well-known/openid-configuration"
@@ -1388,7 +1465,7 @@ defmodule PortalWeb.Settings.Authentication do
               >
                 Client ID <span class="text-error">*</span>
               </label>
-              <.input
+              <Form.input
                 field={@form[:client_id]}
                 type="text"
                 autocomplete="off"
@@ -1404,7 +1481,7 @@ defmodule PortalWeb.Settings.Authentication do
               >
                 Client Secret <span class="text-error">*</span>
               </label>
-              <.input
+              <Form.input
                 field={@form[:client_secret]}
                 type="password"
                 autocomplete="off"
@@ -1518,10 +1595,10 @@ defmodule PortalWeb.Settings.Authentication do
                 class="shrink-0 text-subtle hover:text-heading transition-colors"
               >
                 <span id="redirect-uri-default-message">
-                  <.icon name="ri-clipboard-line" class="w-4 h-4" />
+                  <Core.icon name="ri-clipboard-line" class="w-4 h-4" />
                 </span>
                 <span id="redirect-uri-success-message" class="hidden">
-                  <.icon name="ri-check-line" class="w-4 h-4 text-success" />
+                  <Core.icon name="ri-check-line" class="w-4 h-4 text-success" />
                 </span>
               </button>
             </div>
@@ -1533,15 +1610,15 @@ defmodule PortalWeb.Settings.Authentication do
 
         <%!-- Verification --%>
         <div
-          :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
+          :if={@type in ["entra", "google", "github", "okta", "oidc"] and not @is_legacy}
           class="pt-4 border-t border-border"
         >
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Verification
           </p>
-          <.flash :if={@verification_error} kind={:error} class="mb-3">
+          <Core.flash :if={@verification_error} kind={:error} class="mb-3">
             {@verification_error}
-          </.flash>
+          </Core.flash>
           <div class="rounded border border-border overflow-hidden">
             <div class="flex items-center justify-between px-4 py-3">
               <p class="text-sm text-body">
@@ -1561,13 +1638,13 @@ defmodule PortalWeb.Settings.Authentication do
                   {get_field(@form.source, :issuer)}
                 </span>
               </div>
-              <.button
+              <Form.button
                 type="button"
                 phx-click="reset_verification"
                 size="xs"
               >
                 Reset
-              </.button>
+              </Form.button>
             </div>
           </div>
         </div>
@@ -1590,9 +1667,9 @@ defmodule PortalWeb.Settings.Authentication do
       :if={verified?(@form)}
       class="flex items-center gap-1.5 text-xs font-medium text-success bg-success-light px-2.5 py-1 rounded"
     >
-      <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
+      <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
     </div>
-    <.button
+    <Form.button
       :if={not verified?(@form) and ready_to_verify?(@form)}
       type="button"
       id="verify-button"
@@ -1602,8 +1679,8 @@ defmodule PortalWeb.Settings.Authentication do
       phx-hook="OpenURL"
     >
       Verify Now
-    </.button>
-    <.button
+    </Form.button>
+    <Form.button
       :if={not verified?(@form) and not ready_to_verify?(@form)}
       type="button"
       style="primary"
@@ -1611,7 +1688,7 @@ defmodule PortalWeb.Settings.Authentication do
       disabled
     >
       Verify Now
-    </.button>
+    </Form.button>
     """
   end
 
@@ -1685,6 +1762,7 @@ defmodule PortalWeb.Settings.Authentication do
   defp select_type_classes, do: @select_type_classes
 
   defp titleize("google"), do: "Google"
+  defp titleize("github"), do: "GitHub"
   defp titleize("entra"), do: "Microsoft Entra"
   defp titleize("okta"), do: "Okta"
   defp titleize("oidc"), do: "OpenID Connect"
@@ -1843,7 +1921,7 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defmodule Database do
-    alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, Okta, Safe}
+    alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, GitHub, Okta, Safe}
     import Ecto.Query
     import Ecto.Changeset
 
@@ -1852,6 +1930,7 @@ defmodule PortalWeb.Settings.Authentication do
         EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        GitHub.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()

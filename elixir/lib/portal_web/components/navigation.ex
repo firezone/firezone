@@ -1,0 +1,814 @@
+defmodule PortalWeb.Components.Navigation do
+  use Phoenix.Component
+  import Phoenix.Component, except: [link: 1]
+  use PortalWeb, :verified_routes
+  alias PortalWeb.Components.Core
+
+  @doc """
+  Renders a Phoenix link with the default text-link styling.
+
+  Supply `class` to replace the default styling for buttons, navigation items,
+  or other custom links. All navigation, method, and CSRF behavior is delegated
+  to `Phoenix.Component.link/1`.
+  """
+  attr :href, :any, default: nil
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :replace, :boolean, default: false
+  attr :method, :string, default: "get"
+  attr :csrf_token, :any, default: true
+  attr :class, :any, default: ["text-link", "hover:underline"]
+  attr :rest, :global, include: ~w(download hreflang referrerpolicy rel target type)
+
+  slot :inner_block, required: true
+
+  def link(assigns) do
+    ~H"""
+    <Phoenix.Component.link
+      href={@href}
+      navigate={@navigate}
+      patch={@patch}
+      replace={@replace}
+      method={@method}
+      csrf_token={@csrf_token}
+      class={@class}
+      {@rest}
+    >{render_slot(@inner_block)}</Phoenix.Component.link>
+    """
+  end
+
+  @doc """
+  Renders the top navigation bar.
+  """
+  attr :subject, :any, required: true
+
+  def topbar(assigns) do
+    ~H"""
+    <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
+      <div class="flex items-center gap-2 text-sm text-body"></div>
+      <div class="flex items-center gap-3">
+        <.live_component module={PortalWeb.SupportForm} id="support" subject={@subject} />
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
+        <a
+          target="_blank"
+          href="https://www.firezone.dev/kb?utm_source=product"
+          rel="noopener noreferrer"
+          class="text-sm text-body hover:text-heading hidden md:block"
+        >
+          Docs
+        </a>
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
+        <a
+          target="_blank"
+          href="https://firezone.statuspage.io"
+          rel="noopener noreferrer"
+          class="text-sm text-body hover:text-heading hidden md:block"
+        >
+          Status
+        </a>
+        <div id="theme-toggle" phx-hook="ThemeToggle" class="relative">
+          <button
+            type="button"
+            id="theme-toggle-button"
+            phx-hook="Popover"
+            data-popover-target-id="theme-dropdown"
+            data-popover-trigger="click"
+            data-popover-placement="bottom"
+            class="flex items-center justify-center p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
+            aria-label="Change theme"
+          >
+            <Core.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
+            <Core.icon name="ri-moon-line" class="theme-icon-dark w-4 h-4" />
+            <Core.icon name="ri-computer-line" class="theme-icon-system w-4 h-4" />
+          </button>
+          <div
+            id="theme-dropdown"
+            class="invisible opacity-0 fixed z-50 w-36 text-sm bg-elevated rounded shadow-sm border border-border"
+          >
+            <ul class="py-1" role="listbox" aria-label="Theme">
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="system"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
+                >
+                  <Core.icon name="ri-computer-line" class="w-4 h-4 shrink-0" />
+                  <span>System</span>
+                  <Core.icon name="ri-check-line" class="theme-check-system w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="light"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
+                >
+                  <Core.icon name="ri-sun-line" class="w-4 h-4 shrink-0" />
+                  <span>Light</span>
+                  <Core.icon name="ri-check-line" class="theme-check-light w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  role="option"
+                  data-theme-option="dark"
+                  class="flex items-center gap-2 w-full px-3 py-2 text-heading hover:bg-raised transition-colors"
+                >
+                  <Core.icon name="ri-moon-line" class="w-4 h-4 shrink-0" />
+                  <span>Dark</span>
+                  <Core.icon name="ri-check-line" class="theme-check-dark w-3 h-3 ml-auto shrink-0" />
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <.dropdown id="user-menu">
+          <:button>
+            <span class="sr-only">Open user menu</span>
+            <Core.avatar actor={@subject.actor} size={25} class="rounded-full" />
+          </:button>
+          <:dropdown>
+            <.subject_dropdown subject={@subject} />
+          </:dropdown>
+        </.dropdown>
+      </div>
+    </header>
+    """
+  end
+
+  @doc """
+  Renders the user dropdown contents.
+  """
+  attr :subject, :any, required: true
+
+  def subject_dropdown(assigns) do
+    ~H"""
+    <div class="py-3 px-4">
+      <span class="block text-sm font-medium text-heading">
+        {@subject.actor.name}
+      </span>
+      <span class="block text-sm text-body truncate">
+        {@subject.actor.email}
+      </span>
+    </div>
+    <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
+      <li>
+        <.link
+          navigate={~p"/#{@subject.account}/settings/profile"}
+          class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+        >
+          Your settings
+        </.link>
+      </li>
+    </ul>
+    <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
+      <li>
+        <form id="sign-out-form" action={~p"/#{@subject.account}/sign_out"} method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+          <button
+            type="submit"
+            class="block w-full text-left py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+          >
+            Sign out
+          </button>
+        </form>
+      </li>
+    </ul>
+    """
+  end
+
+  @doc """
+  Renders the collapsible sidebar with grouped navigation.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+  attr :subject, :any, required: true
+
+  def sidebar(assigns) do
+    ~H"""
+    <aside
+      id="sidebar"
+      class="flex flex-col shrink-0 border-r border-border bg-surface overflow-hidden transition-[width] duration-200 ease-in-out w-56 z-20"
+    >
+      <%!-- Wordmark --%>
+      <div
+        data-sidebar-wordmark
+        class="flex items-center h-14 px-3 border-b border-border shrink-0"
+      >
+        <a
+          href={PortalWeb.Session.Redirector.default_portal_path(@account, @subject.actor)}
+          class="flex items-center gap-2.5 min-w-0"
+        >
+          <img src={~p"/images/logo.svg"} class="h-6 w-auto shrink-0" alt="Firezone Logo" />
+          <span
+            data-sidebar-label
+            class="font-semibold text-heading whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          >
+            Firezone
+          </span>
+        </a>
+        <span
+          :if={@subject.actor.type == :account_admin_user}
+          data-sidebar-label
+          class="ml-auto shrink-0 text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-badge-admin text-primary-800 transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+        >
+          ADMIN
+        </span>
+      </div>
+
+      <%!-- Navigation groups --%>
+      <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
+        <%!-- Access Control --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
+          >
+            Access Control
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/resources"}
+              icon="ri-server-line"
+            >
+              Resources
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/groups"}
+              icon="ri-team-line"
+            >
+              Groups
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/policies"}
+              icon="ri-shield-line"
+            >
+              Policies
+            </.sidebar_item>
+          </ul>
+        </div>
+
+        <%!-- Infrastructure --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
+          >
+            Infrastructure
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/sites"}
+              icon="ri-map-pin-line"
+            >
+              Sites
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/devices"}
+              icon="ri-computer-line"
+              badge="NEW"
+            >
+              Devices
+            </.sidebar_item>
+          </ul>
+        </div>
+
+        <%!-- Actors --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
+          >
+            Actors
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/actors"}
+              icon="ri-user-line"
+            >
+              People
+            </.sidebar_item>
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/service_accounts"}
+              icon="ri-robot-3-line"
+            >
+              Service Accounts
+            </.sidebar_item>
+          </ul>
+        </div>
+
+        <%!-- Audit --%>
+        <div>
+          <p
+            data-sidebar-group-label
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
+          >
+            Audit
+          </p>
+          <ul class="space-y-0.5">
+            <.sidebar_item
+              current_path={@current_path}
+              navigate={~p"/#{@account}/logs/change_logs"}
+              match="/#{@account.slug}/logs"
+              icon="ri-file-list-3-line"
+            >
+              Logs
+            </.sidebar_item>
+          </ul>
+        </div>
+      </nav>
+
+      <%!-- Settings --%>
+      <div class="border-t border-border py-2 px-2 shrink-0">
+        <% settings_active? = String.contains?(@current_path, "/settings") %>
+        <.link
+          navigate={~p"/#{@account}/settings/account"}
+          data-sidebar-nav-item
+          class={[
+            "relative flex items-center gap-2.5 px-2 py-1.5 rounded overflow-hidden text-sm transition-colors",
+            settings_active? && "bg-brand-wash text-heading font-medium",
+            not settings_active? &&
+              "text-body hover:text-heading hover:bg-raised"
+          ]}
+        >
+          <span
+            :if={settings_active?}
+            class="absolute inset-y-0 left-0 w-[3px] bg-brand"
+            aria-hidden="true"
+          >
+          </span>
+          <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
+          <span
+            data-sidebar-label
+            class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
+          >
+            Settings
+          </span>
+          <Core.new_badge class="ml-auto" data-sidebar-badge />
+        </.link>
+      </div>
+
+      <%!-- Footer: collapse toggle --%>
+      <div class="border-t border-border p-2 space-y-0.5 shrink-0">
+        <button
+          id="sidebar-toggle"
+          phx-hook="SidebarCollapse"
+          data-sidebar-nav-item
+          type="button"
+          class="flex items-center gap-2 w-full px-2 py-1.5 rounded text-sm text-body hover:text-heading hover:bg-raised transition-colors"
+          title="Toggle sidebar"
+        >
+          <Core.icon
+            name="ri-arrow-left-s-fill"
+            data-sidebar-chevron
+            class="w-4 h-4 shrink-0 transition-transform duration-200"
+          />
+          <span
+            data-sidebar-label
+            class="text-sm whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          >
+            Collapse
+          </span>
+        </button>
+      </div>
+    </aside>
+    """
+  end
+
+  @doc """
+  Renders a sidebar navigation item.
+  """
+  attr :icon, :string, required: true
+  attr :navigate, :string, required: true
+  slot :inner_block, required: true
+  attr :current_path, :string, required: true
+  attr :badge, :string, default: nil
+  attr :match, :string, default: nil, doc: "Prefix used for the active-state check; defaults to navigate. Set to a shared parent when one sidebar item covers multiple sibling routes."
+
+  def sidebar_item(assigns) do
+    active? = sidebar_item_active?(assigns.current_path, assigns.match || assigns.navigate)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <li>
+      <.link
+        navigate={@navigate}
+        data-sidebar-nav-item
+        class={[
+          "relative flex items-center gap-2.5 px-2 py-1.5 rounded overflow-hidden text-sm transition-colors",
+          @active? && "bg-brand-wash text-heading font-medium",
+          not @active? &&
+            "text-body hover:text-heading hover:bg-raised"
+        ]}
+      >
+        <span
+          :if={@active?}
+          class="absolute inset-y-0 left-0 w-[3px] bg-brand"
+          aria-hidden="true"
+        >
+        </span>
+        <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
+        <span
+          data-sidebar-label
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
+        >
+          {render_slot(@inner_block)}
+        </span>
+        <Core.new_badge :if={@badge} label={@badge} class="ml-auto" data-sidebar-badge />
+      </.link>
+    </li>
+    """
+  end
+
+  @doc """
+  Renders the settings page header (account info) and tab strip.
+  Used at the top of each settings sub-page in place of breadcrumbs.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+  slot :actions
+
+  def settings_nav(assigns) do
+    ~H"""
+    <div class="flex flex-col bg-surface">
+      <%!-- Page header --%>
+      <div class="relative overflow-hidden px-6 pt-6 pb-5 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
+        <div class="flex items-center gap-5">
+          <Core.icon name="ri-settings-3-line" class="shrink-0 w-16 h-16 text-brand" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-heading">{@account.name}</h1>
+                <p class="mt-0.5 text-sm text-body">{@account.legal_name}</p>
+              </div>
+              <div :if={@actions != []} class="shrink-0">
+                {render_slot(@actions)}
+              </div>
+            </div>
+            <div class="flex items-start gap-6 md:gap-12 mt-4">
+              <div class="flex flex-col gap-0.5">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
+                  Slug
+                </span>
+                <span class="font-mono text-xs text-heading">{@account.slug}</span>
+              </div>
+              <div class="hidden md:flex flex-col gap-0.5">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
+                  Key
+                </span>
+                <span class="font-mono text-xs text-heading">{@account.key}</span>
+              </div>
+              <div class="hidden md:flex flex-col gap-0.5">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
+                  ID
+                </span>
+                <span class="font-mono text-xs text-heading">{@account.id}</span>
+              </div>
+              <div class="flex flex-col gap-0.5">
+                <span class="text-[10px] text-subtle uppercase tracking-widest font-semibold">
+                  Member Since
+                </span>
+                <span class="text-xs text-heading">
+                  {format_member_since(@account.inserted_at)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <%!-- Tab strip --%>
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/account"}
+          tab_path="settings/account"
+          icon="ri-building-fill"
+        >
+          Account
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/notifications"}
+          tab_path="settings/notifications"
+          icon="ri-notification-fill"
+        >
+          Notifications
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/authentication"}
+          tab_path="settings/authentication"
+          icon="ri-key-fill"
+        >
+          Authentication
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/directory_sync"}
+          tab_path="settings/directory_sync"
+          icon="ri-loop-left-fill"
+        >
+          Directory Sync
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/device_posture"}
+          tab_path="settings/device_posture"
+          icon="ri-shield-star-fill"
+          badge="NEW"
+        >
+          Device Posture
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/log_sinks"}
+          tab_path="settings/log_sinks"
+          icon="ri-upload-cloud-2-fill"
+        >
+          Log Sinks
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/dns"}
+          tab_path="settings/dns"
+          icon="ri-global-fill"
+        >
+          DNS
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/api_clients"}
+          tab_path="settings/api_clients"
+          icon="ri-code-s-slash-fill"
+        >
+          REST API
+        </.settings_tab>
+        <.settings_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          tab_path="settings/trust_anchors"
+          icon="ri-shield-check-fill"
+          badge="NEW"
+        >
+          Trust Anchors
+        </.settings_tab>
+      </div>
+    </div>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :tab_path, :string, required: true
+  attr :icon, :string, required: true
+  attr :badge, :string, default: nil
+  slot :inner_block, required: true
+
+  defp settings_tab(assigns) do
+    active? = settings_tab_active?(assigns.current_path, assigns.tab_path)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+        @active? && "border-brand text-brand",
+        not @active? &&
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
+      ]}
+    >
+      <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
+      {render_slot(@inner_block)}
+      <Core.new_badge :if={@badge} label={@badge} data-settings-tab-badge />
+    </.link>
+    """
+  end
+
+  defp settings_tab_active?(current_path, tab_path) do
+    [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
+    String.starts_with?(current_subpath, tab_path)
+  end
+
+  @doc """
+  Renders the Logs page header and tab strip.
+  Shared across the four log LiveViews so they read as one destination.
+  """
+  attr :account, :any, required: true
+  attr :current_path, :string, required: true
+
+  def logs_nav(assigns) do
+    ~H"""
+    <div class="flex flex-col bg-surface shrink-0">
+      <div class="relative overflow-hidden px-4 pt-4 pb-3 md:px-6 md:pt-6 md:pb-4 border-b border-border">
+        <div class="absolute inset-x-0 top-0 h-[2px] bg-brand opacity-50"></div>
+        <div class="flex items-start gap-5">
+          <div class="hidden md:block shrink-0 mt-0.5">
+            <Core.icon name="ri-file-list-3-line" class="w-16 h-16 text-brand" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div class="min-w-0">
+                <h1 class="text-base font-semibold text-heading">Logs</h1>
+                <p class="hidden md:block mt-0.5 text-sm text-body">
+                  Structured, immutable records of every configuration change, session, connection, and API call in your account.
+                </p>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <.docs_action path="/audit-logs" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex overflow-x-auto overflow-y-hidden border-b border-border px-6 shrink-0 bg-surface">
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/change_logs"}
+          tab_path="logs/change_logs"
+          icon="ri-history-line"
+        >
+          Change Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/session_logs"}
+          tab_path="logs/session_logs"
+          icon="ri-login-circle-line"
+        >
+          Session Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/flow_logs"}
+          tab_path="logs/flow_logs"
+          icon="ri-exchange-line"
+        >
+          Flow Logs
+        </.logs_tab>
+        <.logs_tab
+          current_path={@current_path}
+          navigate={~p"/#{@account}/logs/api_request_logs"}
+          tab_path="logs/api_request_logs"
+          icon="ri-terminal-box-line"
+        >
+          API Request Logs
+        </.logs_tab>
+      </div>
+    </div>
+    """
+  end
+
+  attr :navigate, :string, required: true
+  attr :current_path, :string, required: true
+  attr :tab_path, :string, required: true
+  attr :icon, :string, required: true
+  slot :inner_block, required: true
+
+  defp logs_tab(assigns) do
+    active? = settings_tab_active?(assigns.current_path, assigns.tab_path)
+    assigns = assign(assigns, :active?, active?)
+
+    ~H"""
+    <.link
+      navigate={@navigate}
+      class={[
+        "flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+        @active? && "border-brand text-brand",
+        not @active? &&
+          "border-transparent text-body hover:text-heading hover:border-border-strong"
+      ]}
+    >
+      <Core.icon name={@icon} class="w-4 h-4 shrink-0" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  defp format_member_since(nil), do: "—"
+
+  defp format_member_since(dt) do
+    date = DateTime.to_date(dt)
+    month = Enum.at(~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec), date.month - 1)
+    "#{month} #{date.day}, #{date.year}"
+  end
+
+  defp sidebar_item_active?(current_path, destination_path) do
+    [_, _slug_or_id, current_subpath] = String.split(current_path, "/", parts: 3)
+    [_, _slug_or_id, destination_subpath] = String.split(destination_path, "/", parts: 3)
+    String.starts_with?(current_subpath, destination_subpath)
+  end
+
+  attr :id, :string, required: true, doc: "ID of the nav group container"
+  slot :button, required: true
+  slot :dropdown, required: true
+
+  def dropdown(assigns) do
+    ~H"""
+    <button
+      type="button"
+      class="flex mx-3 text-sm bg-neutral-800 rounded-full md:mr-0"
+      id={"#{@id}-button"}
+      phx-hook="Popover"
+      data-popover-target-id={"#{@id}-dropdown"}
+      data-popover-trigger="click"
+      data-popover-placement="bottom"
+    >
+      {render_slot(@button)}
+    </button>
+    <div
+      class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-elevated rounded-sm divide-y divide-border shadow-sm"
+      id={"#{@id}-dropdown"}
+    >
+      {render_slot(@dropdown)}
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a back navigation link.
+
+  ## Examples
+
+      <Navigation.back navigate={~p"/posts"}>Back to posts</Navigation.back>
+  """
+  attr :navigate, :any, required: true
+  slot :inner_block, required: true
+
+  def back(assigns) do
+    ~H"""
+    <div class="mt-16">
+      <.link
+        navigate={@navigate}
+        class="text-sm font-semibold leading-6 text-heading hover:text-body"
+      >
+        <Core.icon name="ri-arrow-left-fill" class="h-3 w-3" />
+        {render_slot(@inner_block)}
+      </.link>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders links based off our website path.
+
+  ## Examples
+
+    <Navigation.website_link path="/pricing">Pricing</Navigation.website_link>
+    <Navigation.website_link path="/kb/deploy/gateways">Deploy Gateway(s)</Navigation.website_link>
+    <Navigation.website_link path="/contact/sales">Contact Sales</Navigation.website_link>
+  """
+  attr :path, :string, required: true
+  attr :fragment, :string, required: false, default: ""
+  attr :class, :string, default: nil
+  slot :inner_block, required: true
+  attr :rest, :global
+
+  def website_link(assigns) do
+    ~H"""
+    <.link
+      href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
+      class={@class || Core.link_style()}
+      target="_blank"
+      rel="noopener noreferrer"
+      {@rest}
+    >{render_slot(@inner_block)}</.link>
+    """
+  end
+
+  @doc """
+  Renders links to the docs based off documentation portal path.
+
+  ## Examples
+
+    <Navigation.docs_action path="/kb/deploy/gateways">Deploy Gateway(s)</Navigation.docs_action>
+  """
+  attr :path, :string, required: true
+  attr :fragment, :string, required: false, default: ""
+  attr :rest, :global
+
+  def docs_action(assigns) do
+    ~H"""
+    <.link
+      title="View documentation for this page"
+      href={"https://www.firezone.dev/kb#{@path}?utm_source=product##{@fragment}"}
+      target="_blank"
+      rel="noopener noreferrer"
+      {@rest}
+    >
+      <Core.icon name="ri-question-line" class="mr-2 w-5 h-5 text-body hover:text-heading" />
+    </.link>
+    """
+  end
+end

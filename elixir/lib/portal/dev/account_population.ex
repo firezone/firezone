@@ -250,17 +250,6 @@ defmodule Portal.Dev.AccountPopulation do
     run(plan, level, opts)
   end
 
-  def runtime_argv do
-    system_argv = System.argv()
-    plain_argv = Enum.map(:init.get_plain_arguments(), &List.to_string/1)
-
-    cond do
-      option_argv?(system_argv) -> system_argv
-      option_argv?(plain_argv) -> plain_argv
-      true -> system_argv
-    end
-  end
-
   def ensure_runtime_started do
     for app <- [:crypto, :ssl, :postgrex, :ecto, :ecto_sql] do
       {:ok, _} = Application.ensure_all_started(app)
@@ -299,10 +288,6 @@ defmodule Portal.Dev.AccountPopulation do
 
   defp normalize_level!(level) when level in [:empty, :light, :heavy], do: level
   defp normalize_level!(level), do: raise(ArgumentError, "unknown level #{inspect(level)}")
-
-  defp option_argv?(argv) when is_list(argv) do
-    Enum.any?(argv, &String.starts_with?(&1, "--"))
-  end
 
   defp normalize_slug(slug) do
     slug

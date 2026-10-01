@@ -56,6 +56,8 @@ defmodule Portal.Account do
     has_many :santa_devices, Portal.Santa.Device
     has_many :sentinelone_posture_providers, Portal.SentinelOne.PostureProvider
     has_many :sentinelone_devices, Portal.SentinelOne.Device
+    has_many :sophos_posture_providers, Portal.Sophos.PostureProvider
+    has_many :sophos_devices, Portal.Sophos.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
@@ -66,6 +68,7 @@ defmodule Portal.Account do
 
     has_many :google_directories, Portal.Google.Directory
     has_many :google_auth_providers, Portal.Google.AuthProvider
+    has_many :github_auth_providers, Portal.GitHub.AuthProvider
     has_many :okta_directories, Portal.Okta.Directory
     has_many :okta_auth_providers, Portal.Okta.AuthProvider
     has_many :entra_directories, Portal.Entra.Directory
@@ -147,18 +150,11 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
-  # All plan entitlements except device posture are account-local. Device posture
-  # additionally has a deployment-wide rollout flag in the features table.
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :device_posture do
+  for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
       account_feature_enabled?(account, unquote(feature))
     end
-  end
-
-  def device_posture_enabled?(account) do
-    Portal.Features.enabled?(:device_posture) and
-      account_feature_enabled?(account, :device_posture)
   end
 
   defp account_feature_enabled?(account, feature) do

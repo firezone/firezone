@@ -1,5 +1,7 @@
 import Config
 
+config :sentry, test_mode: true
+
 ###############################
 ##### Portal ##################
 ###############################
@@ -206,6 +208,12 @@ config :portal, Portal.SentinelOne.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Sophos.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
@@ -290,6 +298,17 @@ config :portal, Portal.Google.AuthProvider,
   req_opts: [
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.GitHub.AuthProvider,
+  client_id: "test_github_client_id",
+  client_secret: "test_github_client_secret",
+  authorize_endpoint: "https://github.test/login/oauth/authorize",
+  token_endpoint: "https://github.test/login/oauth/access_token",
+  api_endpoint: "https://api.github.test",
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.GitHub}
   ]
 
 config :portal, Portal.Google.SyncAuthorization,

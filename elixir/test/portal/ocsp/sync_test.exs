@@ -1,6 +1,8 @@
 defmodule Portal.Ocsp.SyncTest do
   use Portal.DataCase, async: true
 
+  import Portal.RevocationFixtures
+  import Portal.DeviceFixtures
   import Portal.AccountFixtures
   import Portal.TrustAnchorFixtures
   import Portal.DeviceTrustFixtures
@@ -8,8 +10,6 @@ defmodule Portal.Ocsp.SyncTest do
 
   alias Portal.Ocsp.Sync
   alias Portal.Crypto.X509
-
-  @ocsp_url "http://ocsp.example.test"
 
   setup do
     account = account_fixture()
@@ -22,8 +22,8 @@ defmodule Portal.Ocsp.SyncTest do
   describe "perform/1" do
     test "caches a good answer", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :good))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -37,8 +37,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "caches a revoked answer with its reason", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :revoked, reason: :keyCompromise))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -51,8 +51,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "accepts an answer from a responder the CA delegated to", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :good, delegate: true))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -61,8 +61,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "refuses an answer signed by anyone else", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :good, signer: pki.untrusted_ca))
 
       assert failure(endpoint) =~ "untrusted_signer"
@@ -74,8 +74,8 @@ defmodule Portal.Ocsp.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :unknown))
 
       # Our bug, not the responder's, so it is logged loudly, but it is about one
@@ -90,8 +90,8 @@ defmodule Portal.Ocsp.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub(ocsp_response(pki.ca, leaf, status: :good))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -103,8 +103,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "asks again once the answer has expired", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub(ocsp_response(pki.ca, leaf, status: :good, next_update: nil))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -118,7 +118,7 @@ defmodule Portal.Ocsp.SyncTest do
       account: account,
       pki: pki
     } do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -130,8 +130,8 @@ defmodule Portal.Ocsp.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      device = attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       Portal.PG.register(device.id)
       stub(ocsp_response(pki.ca, leaf, status: :revoked))
@@ -145,8 +145,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "does not cut a session twice for the same revocation", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      device = attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub(ocsp_response(pki.ca, leaf, status: :revoked, next_update: nil))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -160,8 +160,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "keeps a revocation when an older answer is replayed", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub(ocsp_response(pki.ca, leaf, status: :revoked, next_update: nil))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -176,8 +176,8 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "refuses an answer from an expired delegated responder", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub(ocsp_response(pki.ca, leaf, status: :good, delegate: true, delegate_validity: {-30, -1}))
 
       assert failure(endpoint) =~ "untrusted_signer"
@@ -186,10 +186,10 @@ defmodule Portal.Ocsp.SyncTest do
 
     test "stops asking once the responder stops answering", %{account: account, pki: pki} do
       for _ <- 1..3 do
-        attested_device(account, pki, leaf(pki, :rsa))
+        attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
       end
 
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
@@ -210,9 +210,9 @@ defmodule Portal.Ocsp.SyncTest do
       pki: pki
     } do
       known = leaf(pki, :rsa)
-      attested_device(account, pki, known)
-      attested_device(account, pki, leaf(pki, :ec))
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: known)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :ec))
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       Req.Test.stub(Sync, fn conn ->
         Plug.Conn.send_resp(conn, 200, ocsp_response(pki.ca, known, status: :unknown))
@@ -224,7 +224,7 @@ defmodule Portal.Ocsp.SyncTest do
     end
 
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)
 
       assert perform(endpoint) == {:ok, :deleted}
@@ -245,28 +245,6 @@ defmodule Portal.Ocsp.SyncTest do
     log = capture_log(fn -> assert perform(endpoint) == {:ok, :failed} end)
     assert Repo.one!(Portal.RevocationEndpoint).ocsp_error
     log
-  end
-
-  defp attested_device(account, pki, leaf) do
-    Portal.DeviceFixtures.client_fixture(
-      account: account,
-      last_attested_cert_issuer: X509.subject(pki.ca_der),
-      last_attested_cert_serial: cert_serial_hex(leaf)
-    )
-  end
-
-  defp endpoint_fixture(account, issuer_der) do
-    issuer = X509.subject(issuer_der)
-
-    Repo.insert!(%Portal.RevocationEndpoint{
-      account_id: account.id,
-      issuer: issuer,
-      distribution_point: @ocsp_url,
-      crl_urls: [],
-      ocsp_urls: [@ocsp_url],
-      inserted_at: DateTime.utc_now(),
-      updated_at: DateTime.utc_now()
-    })
   end
 
   defp stub(body) do

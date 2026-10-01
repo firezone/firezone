@@ -1,21 +1,10 @@
 defmodule PortalWeb.Resources.Components do
   use PortalWeb, :component_library
-  import PortalWeb.Policies.PostureComponents
+  alias PortalWeb.Policies.PostureComponents
 
-  import PortalWeb.Policies.Components,
-    only: [
-      grant_condition_card: 1,
-      available_conditions: 1,
-      condition_type_label: 1,
-      flow_log_uploads_toggle: 1
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
-  import PortalWeb.Devices.Components,
-    only: [
-      device_status_badge: 1,
-      device_verified_badge: 1,
-      device_os: 1
-    ]
+  alias PortalWeb.Devices.Components, as: DeviceComponents
 
   alias __MODULE__.Database
 
@@ -99,232 +88,6 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :form, :any, required: true
-
-  def filters_form(assigns) do
-    # Code is taken from https://github.com/phoenixframework/phoenix_live_view/blob/v0.19.5/lib/phoenix_component.ex#L2356
-    %Phoenix.HTML.FormField{field: field_name, form: parent_form} = assigns.form
-    options = assigns |> Map.take([:id, :as, :default, :append, :prepend]) |> Keyword.new()
-    options = Keyword.merge(parent_form.options, options)
-    forms = parent_form.impl.to_form(parent_form.source, parent_form, field_name, options)
-
-    forms_by_protocol =
-      for %Phoenix.HTML.Form{params: params, hidden: hidden} = form <- forms, into: %{} do
-        id = Ecto.Changeset.apply_changes(form.source).protocol
-        form_id = "#{parent_form.id}_#{field_name}_#{id}"
-        new_params = Map.put(params, :protocol, id)
-        new_hidden = [{:protocol, id} | hidden]
-        new_form = %Phoenix.HTML.Form{form | id: form_id, params: new_params, hidden: new_hidden}
-        {id, new_form}
-      end
-
-    assigns = Map.put(assigns, :forms_by_protocol, forms_by_protocol)
-
-    ~H"""
-    <fieldset class="flex flex-col gap-2">
-      <div class="mb-1 flex items-center justify-between">
-        <legend class="text-xl">Traffic Restriction</legend>
-      </div>
-
-      <p class="text-sm text-neutral-500">
-        Restrict access to the specified protocols and ports. By default, <strong>all</strong>
-        protocols and ports are accessible.
-      </p>
-
-      <div class="mt-4">
-        <div class="flex items-top mb-4">
-          <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
-          <div class="mt-2.5 w-24" phx-update="ignore" id="tcp-filter-checkbox">
-            <.toggle
-              id="tcp-filter-toggle"
-              title="Restrict traffic to TCP traffic"
-              name={"#{@form.name}[tcp][enabled]"}
-              value="true"
-              checked={Map.has_key?(@forms_by_protocol, :tcp)}
-              label="TCP"
-            />
-          </div>
-
-          <div class="flex-none">
-            <% ports = (@forms_by_protocol[:tcp] || %{ports: %{value: []}})[:ports] %>
-            <.input
-              type="text"
-              inline_errors={true}
-              field={ports}
-              name={"#{@form.name}[tcp][ports]"}
-              value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!Map.has_key?(@forms_by_protocol, :tcp)}
-              placeholder="E.g. 80, 443, 8080-8090"
-              class="w-96"
-            />
-            <p class="mt-2 text-xs text-neutral-500">
-              List of comma-separated port range(s), Matches all ports if empty.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-top mb-4">
-          <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
-          <div class="mt-2.5 w-24" phx-update="ignore" id="udp-filter-checkbox">
-            <.toggle
-              id="udp-filter-toggle"
-              name={"#{@form.name}[udp][enabled]"}
-              value="true"
-              checked={Map.has_key?(@forms_by_protocol, :udp)}
-              label="UDP"
-            />
-          </div>
-
-          <div class="flex-none">
-            <% ports = (@forms_by_protocol[:udp] || %{ports: %{value: []}})[:ports] %>
-            <.input
-              type="text"
-              inline_errors={true}
-              field={ports}
-              name={"#{@form.name}[udp][ports]"}
-              value={Enum.any?(ports.value) && pretty_print_ports(ports.value)}
-              disabled={!Map.has_key?(@forms_by_protocol, :udp)}
-              placeholder="E.g. 53, 60000-61000"
-              class="w-96"
-            />
-            <p class="mt-2 text-xs text-neutral-500">
-              List of comma-separated port range(s), Matches all ports if empty.
-            </p>
-          </div>
-        </div>
-
-        <div class="flex items-top mb-4">
-          <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
-
-          <div class="mt-2.5 w-24" phx-update="ignore" id="icmp-filter-checkbox">
-            <.toggle
-              id="icmp-filter-toggle"
-              title="Allow ICMP echo requests/replies"
-              name={"#{@form.name}[icmp][enabled]"}
-              value="true"
-              checked={Map.has_key?(@forms_by_protocol, :icmp)}
-              label="ICMP echo"
-            />
-          </div>
-        </div>
-      </div>
-    </fieldset>
-    """
-  end
-
-  attr :form, :any, required: true
-
-  def ip_stack_form(assigns) do
-    ~H"""
-    <div>
-      <legend class="text-xl mb-4">IP Stack</legend>
-      <p class="text-sm text-neutral-500 mb-4">
-        Determines what
-        <.website_link path="/kb/deploy/resources" fragment="ip-stack">record types</.website_link>
-        are generated by the stub resolver. If unsure, leave this unchanged.
-      </p>
-      <div class="mb-2">
-        <.input
-          id="resource-ip-stack--dual"
-          type="radio"
-          field={@form[:ip_stack]}
-          value="dual"
-          checked={"#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual"}
-        >
-          <label>
-            <span class="font-medium">Dual-stack:</span>
-            <.code class="text-xs">A</.code>
-            and
-            <.code class="text-xs">AAAA</.code>
-            records
-            <span :if={ip_stack_recommendation(@form) == "dual"}>
-              <.badge type="info">Recommended for this Resource</.badge>
-            </span>
-          </label>
-        </.input>
-      </div>
-      <div class="mb-2">
-        <.input
-          id="resource-ip-stack--ipv4-only"
-          type="radio"
-          field={@form[:ip_stack]}
-          value="ipv4_only"
-          checked={"#{@form[:ip_stack].value}" == "ipv4_only"}
-        >
-          <label>
-            <span class="font-medium">IPv4:</span>
-            <.code class="text-xs">A</.code>
-            records only
-            <span :if={ip_stack_recommendation(@form) == "ipv4_only"}>
-              <.badge type="info">Recommended for this Resource</.badge>
-            </span>
-          </label>
-        </.input>
-      </div>
-      <div class="mb-2">
-        <.input
-          id="resource-ip-stack--ipv6-only"
-          type="radio"
-          field={@form[:ip_stack]}
-          value="ipv6_only"
-          checked={"#{@form[:ip_stack].value}" == "ipv6_only"}
-        >
-          <label>
-            <span class="font-medium">IPv6:</span>
-            <.code class="text-xs">AAAA</.code>
-            records only
-            <span :if={ip_stack_recommendation(@form) == "ipv6_only"}>
-              <.badge type="info">Recommended for this Resource</.badge>
-            </span>
-          </label>
-        </.input>
-      </div>
-    </div>
-    """
-  end
-
-  attr :filter, :any, required: true
-
-  def filter_description(assigns) do
-    ~H"""
-    <code>{pretty_print_filter(@filter)}</code>
-    """
-  end
-
-  defp pretty_print_filter(%{protocol: :icmp}),
-    do: "ICMP: Allowed"
-
-  defp pretty_print_filter(%{protocol: :tcp, ports: ports}),
-    do: "TCP: #{pretty_print_ports(ports)}"
-
-  defp pretty_print_filter(%{protocol: :udp, ports: ports}),
-    do: "UDP: #{pretty_print_ports(ports)}"
-
-  defp pretty_print_ports([]), do: "All ports allowed"
-  defp pretty_print_ports(ports), do: Enum.join(ports, ", ")
-
-  attr :form, :any, required: true
-  attr :sites, :list, required: true
-  attr :rest, :global
-
-  def site_form(assigns) do
-    ~H"""
-    <.input
-      field={@form[:site_id]}
-      type="select"
-      label="Site"
-      options={
-        Enum.map(@sites, fn site ->
-          {site.name, site.id}
-        end)
-      }
-      placeholder="Select a Site"
-      required
-      {@rest}
-    />
-    """
-  end
-
-  attr :form, :any, required: true
   attr :resource, :any, default: nil
 
   def resource_type_picker(assigns) do
@@ -335,7 +98,7 @@ defmodule PortalWeb.Resources.Components do
       </span>
       <ul class="grid w-full gap-3 grid-cols-4">
         <li>
-          <.input
+          <Form.input
             id="resource-form-type--dns"
             type="radio_button_group"
             field={@form[:type]}
@@ -349,7 +112,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
+                <Core.icon name="ri-global-line" class="w-4 h-4 mr-1" /> DNS
               </div>
               <div class="w-full text-[10px]">
                 By DNS address
@@ -358,7 +121,7 @@ defmodule PortalWeb.Resources.Components do
           </label>
         </li>
         <li>
-          <.input
+          <Form.input
             id="resource-form-type--ip"
             type="radio_button_group"
             field={@form[:type]}
@@ -372,7 +135,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
+                <Core.icon name="ri-server-line" class="w-4 h-4 mr-1" /> IP
               </div>
               <div class="w-full text-[10px]">
                 By IP address
@@ -381,7 +144,7 @@ defmodule PortalWeb.Resources.Components do
           </label>
         </li>
         <li>
-          <.input
+          <Form.input
             id="resource-form-type--cidr"
             type="radio_button_group"
             field={@form[:type]}
@@ -395,7 +158,7 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
+                <Core.icon name="ri-server-line" class="w-4 h-4 mr-1" /> CIDR
               </div>
               <div class="w-full text-[10px]">
                 By CIDR range
@@ -404,7 +167,7 @@ defmodule PortalWeb.Resources.Components do
           </label>
         </li>
         <li>
-          <.input
+          <Form.input
             id="resource-form-type--device-pool"
             type="radio_button_group"
             field={@form[:type]}
@@ -418,10 +181,8 @@ defmodule PortalWeb.Resources.Components do
           >
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs flex items-center">
-                <.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
-                <span class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand">
-                  NEW
-                </span>
+                <Core.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
+                <Core.new_badge class="ml-1.5" />
               </div>
               <div class="w-full text-[10px]">
                 Access other devices directly
@@ -450,12 +211,12 @@ defmodule PortalWeb.Resources.Components do
     ~H"""
     <div class="space-y-3">
       <div class="flex items-center gap-2 rounded border border-border bg-raised px-3 py-2 text-[11px] text-subtle">
-        <.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-brand" />
+        <Core.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-brand" />
         <span>
           Requires a recent Firezone client.
-          <.website_link path="/kb/concepts/resources" fragment="device-pools">
+          <Navigation.website_link path="/kb/concepts/resources" fragment="device-pools">
             See supported versions
-          </.website_link>
+          </Navigation.website_link>
         </span>
       </div>
       <div>
@@ -481,7 +242,7 @@ defmodule PortalWeb.Resources.Components do
       </div>
       <.live_component
         :if={@members == :actor_group}
-        module={PortalWeb.Components.FormComponents.SelectWithGroups}
+        module={PortalWeb.Components.Form.SelectWithGroups}
         id="resource-form-group-id"
         label="Group"
         placeholder="Select Group"
@@ -539,7 +300,7 @@ defmodule PortalWeb.Resources.Components do
 
     ~H"""
     <li>
-      <.input
+      <Form.input
         id={@id}
         type="radio_button_group"
         field={@form[:members]}
@@ -556,14 +317,14 @@ defmodule PortalWeb.Resources.Components do
           data-pool-count-for={@value}
           class={[
             "absolute top-2 right-2 tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-            if(@checked, do: "bg-brand-muted text-brand", else: "bg-raised text-subtle")
+            if(@checked, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
           ]}
         >
           {@count}
         </span>
         <div class="block">
           <div class="w-full font-semibold mb-1 pr-8 text-xs flex items-center">
-            <.icon name={@icon} class="w-4 h-4 mr-1" /> {@title}
+            <Core.icon name={@icon} class="w-4 h-4 mr-1" /> {@title}
           </div>
           <div class="w-full text-[10px]">
             {render_slot(@inner_block)}
@@ -576,7 +337,7 @@ defmodule PortalWeb.Resources.Components do
 
   defp pool_members_choices do
     [
-      {:own_devices, "ri-user-line", "Your devices", "Each actor's own devices"},
+      {:own_devices, "ri-user-line", "My devices", "Each actor's own devices"},
       {:all_devices, "ri-device-line", "All devices", "Every device in the account"},
       {:actor_group, "ri-group-line", "A group's devices", "Devices of a group's members"},
       {:listed, "ri-list-check", "Static list", "Explicitly choose the devices in this pool"}
@@ -653,7 +414,7 @@ defmodule PortalWeb.Resources.Components do
       >
         Name <span class="text-error">*</span>
       </label>
-      <.input
+      <Form.input
         field={@form[:name]}
         type="text"
         placeholder="Name this resource"
@@ -672,7 +433,7 @@ defmodule PortalWeb.Resources.Components do
       >
         Address <span class="text-error">*</span>
       </label>
-      <.input
+      <Form.input
         field={@form[:address]}
         autocomplete="off"
         placeholder={
@@ -698,9 +459,9 @@ defmodule PortalWeb.Resources.Components do
         for={@form[:address_description].id}
         class="block text-xs font-medium text-body mb-1.5"
       >
-        Address Description <span class="text-muted font-normal">(optional)</span>
+        Address Description <span class="text-subtle font-normal">(optional)</span>
       </label>
-      <.input
+      <Form.input
         field={@form[:address_description]}
         type="text"
         placeholder="Enter a description or URL"
@@ -741,21 +502,21 @@ defmodule PortalWeb.Resources.Components do
     ~H"""
     <div>
       <%!-- Hidden radio inputs for form submission --%>
-      <.input
+      <Form.input
         id="resource-form-ip-stack--dual"
         type="radio_button_group"
         field={@form[:ip_stack]}
         value="dual"
         checked={"#{@form[:ip_stack].value}" == "" or "#{@form[:ip_stack].value}" == "dual"}
       />
-      <.input
+      <Form.input
         id="resource-form-ip-stack--ipv4"
         type="radio_button_group"
         field={@form[:ip_stack]}
         value="ipv4_only"
         checked={"#{@form[:ip_stack].value}" == "ipv4_only"}
       />
-      <.input
+      <Form.input
         id="resource-form-ip-stack--ipv6"
         type="radio_button_group"
         field={@form[:ip_stack]}
@@ -840,15 +601,15 @@ defmodule PortalWeb.Resources.Components do
           Traffic Restrictions <span class="font-normal text-subtle">(optional)</span>
         </span>
         <div class="relative">
-          <.button
+          <Form.button
             type="button"
             phx-click="toggle_resource_filters_dropdown"
             size="xs"
             icon="ri-add-line"
           >
              Add protocol
-            <.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
-          </.button>
+            <Core.icon name="ri-arrow-down-s-line" class="w-3 h-3" />
+          </Form.button>
           <div
             :if={@filters_dropdown_open}
             phx-click-away="close_resource_filters_dropdown"
@@ -921,7 +682,7 @@ defmodule PortalWeb.Resources.Components do
               value={Map.get(@filter_ports, protocol, "")}
               placeholder="All ports"
               class={[
-                "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
+                "w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-subtle outline-none transition-colors focus:ring-1 focus:ring-border-focus/30",
                 if(Map.has_key?(@filter_errors, protocol),
                   do: "border-error focus:border-error",
                   else: "border-input-border focus:border-border-focus"
@@ -948,7 +709,7 @@ defmodule PortalWeb.Resources.Components do
             class="shrink-0 text-subtle hover:text-heading transition-colors"
             aria-label={"Remove #{protocol} filter"}
           >
-            <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+            <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -968,7 +729,7 @@ defmodule PortalWeb.Resources.Components do
       >
         Site <span class="text-error">*</span>
       </label>
-      <.input
+      <Form.input
         field={@form[:site_id]}
         type="select"
         options={Enum.map(@sites, fn s -> {s.name, s.id} end)}
@@ -987,7 +748,7 @@ defmodule PortalWeb.Resources.Components do
     ~H"""
     <div class="space-y-1">
       <div class="relative mb-2" phx-click-away="blur_device_search">
-        <.icon
+        <Core.icon
           name="ri-search-line"
           class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
         />
@@ -1001,7 +762,7 @@ defmodule PortalWeb.Resources.Components do
           phx-focus="focus_device_search"
           autocomplete="off"
           data-1p-ignore
-          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-raised text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-raised text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
         />
       </div>
 
@@ -1009,7 +770,7 @@ defmodule PortalWeb.Resources.Components do
         <li :for={device <- @selected_devices}>
           <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-brand bg-brand-muted">
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-              <.icon name="ri-computer-line" class="w-4 h-4 text-brand" />
+              <Core.icon name="ri-computer-line" class="w-4 h-4 text-brand" />
             </div>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-brand truncate">{device.name}</p>
@@ -1022,7 +783,7 @@ defmodule PortalWeb.Resources.Components do
               class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-brand/50 hover:text-brand transition-colors"
               aria-label="Remove device"
             >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+              <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
             </button>
           </div>
         </li>
@@ -1037,7 +798,7 @@ defmodule PortalWeb.Resources.Components do
             class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-border bg-raised hover:border-border-emphasis hover:bg-surface cursor-pointer transition-colors"
           >
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-              <.icon name="ri-computer-line" class="w-4 h-4 text-subtle" />
+              <Core.icon name="ri-computer-line" class="w-4 h-4 text-subtle" />
             </div>
             <div class="flex-1 min-w-0 text-left">
               <p class="text-sm font-medium text-heading truncate">{device.name}</p>
@@ -1072,25 +833,13 @@ defmodule PortalWeb.Resources.Components do
     [
       Portal.Types.INET.to_string(device.ipv4),
       Portal.Types.INET.to_string(device.ipv6),
+      Portal.Device.fqdn(device),
       device.device_serial,
       device.device_uuid,
       device.id
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" | ")
-  end
-
-  @known_recommendations %{
-    "mongodb.net" => "ipv4_only"
-  }
-
-  defp ip_stack_recommendation(form) do
-    if address = form[:address].value do
-      @known_recommendations
-      |> Enum.find_value(fn {key, value} ->
-        String.ends_with?(String.trim(address), key) && value
-      end)
-    end
   end
 
   attr :open, :boolean, required: true
@@ -1131,7 +880,7 @@ defmodule PortalWeb.Resources.Components do
           <h2 class="text-sm font-semibold text-heading">
             {if @panel_view == :new_form, do: "Add Resource", else: "Edit Resource"}
           </h2>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_resource_form" />
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="cancel_resource_form" />
         </div>
       </div>
       <.form
@@ -1181,14 +930,14 @@ defmodule PortalWeb.Resources.Components do
           <.resource_site_selector form={@resource_form} sites={@resource_form_sites} />
         </div>
 
-        <.panel_footer>
-          <.panel_footer_button type="button" phx-click="cancel_resource_form">
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="cancel_resource_form">
             Cancel
-          </.panel_footer_button>
-          <.panel_footer_button type="submit" style="primary">
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary">
             {if @panel_view == :new_form, do: "Create Resource", else: "Save Changes"}
-          </.panel_footer_button>
-        </.panel_footer>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
     </div>
     """
@@ -1240,23 +989,23 @@ defmodule PortalWeb.Resources.Components do
               {@resource.address}
             </p>
             <p
-              :if={@resource.type == :device_pool and not lists_devices?(@resource)}
-              class="font-mono text-xs text-subtle mt-0.5 truncate"
+              :if={@resource.type == :device_pool}
+              class="text-xs italic text-subtle mt-0.5 truncate"
             >
-              &lt;slug&gt;.{Portal.Device.domain()}
+              Multiple Addresses
             </p>
           </div>
           <%!-- Right: actions --%>
           <div class="flex items-center gap-1.5 shrink-0">
-            <.button
+            <Form.button
               :if={not @confirm_delete_resource && @resource.type != :internet}
               phx-click="open_edit_form"
               size="sm"
               icon="ri-pencil-line"
             >
               Edit
-            </.button>
-            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+            </Form.button>
+            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
         </div>
       </div>
@@ -1340,7 +1089,7 @@ defmodule PortalWeb.Resources.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :devices,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -1364,7 +1113,7 @@ defmodule PortalWeb.Resources.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :groups,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -1387,9 +1136,9 @@ defmodule PortalWeb.Resources.Components do
         Authorizations
       </button>
       <div :if={@tab == :groups && @panel_view == :list} class="ml-auto pb-2 flex items-center">
-        <.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
+        <Form.button phx-click="open_grant_form" size="xs" icon="ri-add-line">
           Grant access
-        </.button>
+        </Form.button>
       </div>
     </div>
     """
@@ -1408,7 +1157,7 @@ defmodule PortalWeb.Resources.Components do
         :if={@devices == []}
         class="flex flex-col items-center justify-center h-full gap-2 px-6 text-center"
       >
-        <.icon name="ri-error-warning-line" class="w-8 h-8 text-warning" />
+        <Core.icon name="ri-error-warning-line" class="w-8 h-8 text-warning" />
         <p class="text-sm font-medium text-heading">No devices in this pool</p>
         <p class="text-xs text-subtle max-w-sm">
           An empty pool has nothing to connect to, so any Policy granting access to it has no
@@ -1439,28 +1188,28 @@ defmodule PortalWeb.Resources.Components do
                 <td class="px-4 py-2 text-heading">
                   <div class="flex items-center gap-1.5">
                     <span class="truncate">{device.name}</span>
-                    <.device_verified_badge device={device} />
+                    <DeviceComponents.device_verified_badge device={device} />
                   </div>
                 </td>
                 <td class="px-4 py-2 text-body">
                   {if device.actor, do: device.actor.name, else: "—"}
                 </td>
                 <td class="px-4 py-2 text-subtle font-mono">
-                  <.copy
+                  <Core.copy
                     id={"pool-member-#{device.id}-ipv4"}
                     class="flex items-center gap-1.5"
                   >
                     {device.ipv4}
-                  </.copy>
+                  </Core.copy>
                 </td>
                 <td class="px-4 py-2">
-                  <.device_status_badge
+                  <DeviceComponents.device_status_badge
                     device={device}
                     online?={MapSet.member?(@online_ids, device.id)}
                   />
                 </td>
                 <td class="px-4 py-2 text-subtle">
-                  <.icon
+                  <Core.icon
                     name={
                       if @expanded_id == device.id,
                         do: "ri-arrow-up-s-line",
@@ -1475,42 +1224,51 @@ defmodule PortalWeb.Resources.Components do
                   <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
                     <div :if={device.actor}>
                       <p class="text-subtle font-medium mb-1">Owner</p>
-                      <.link
+                      <Navigation.link
                         navigate={~p"/#{@account}/actors/#{device.actor.id}"}
                         class="text-brand hover:underline"
                       >
                         {device.actor.name}
-                      </.link>
+                      </Navigation.link>
                       <p :if={device.actor.email} class="text-subtle mt-0.5">
                         {device.actor.email}
                       </p>
                     </div>
                     <div :if={device.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Operating System</p>
-                      <.device_os device={device} />
+                      <DeviceComponents.device_os device={device} />
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv4</p>
-                      <.copy
+                      <Core.copy
                         id={"pool-member-#{device.id}-detail-ipv4"}
                         class="flex items-center gap-1.5 text-heading font-mono"
                       >
                         {device.ipv4}
-                      </.copy>
+                      </Core.copy>
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
-                      <.copy
+                      <Core.copy
                         id={"pool-member-#{device.id}-detail-ipv6"}
                         class="flex items-start gap-1.5 text-heading font-mono break-all"
                       >
                         {device.ipv6}
-                      </.copy>
+                      </Core.copy>
+                    </div>
+                    <div>
+                      <p class="text-subtle font-medium mb-1">Tunnel DNS Name</p>
+                      <Core.copy
+                        id={"pool-member-#{device.id}-detail-dns-name"}
+                        class="flex items-start gap-1.5 text-heading font-mono break-all"
+                      >
+                        {Portal.Device.fqdn(device)}
+                      </Core.copy>
                     </div>
                     <div :if={device.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Last Seen</p>
                       <p class="text-heading">
-                        <.relative_datetime datetime={device.last_seen_at} />
+                        <Core.relative_datetime datetime={device.last_seen_at} />
                       </p>
                     </div>
                     <div :if={device.device_serial}>
@@ -1519,12 +1277,12 @@ defmodule PortalWeb.Resources.Components do
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Device</p>
-                      <.link
+                      <Navigation.link
                         navigate={~p"/#{@account}/devices/#{device.id}"}
                         class="text-brand hover:underline font-mono break-all"
                       >
                         {device.id}
-                      </.link>
+                      </Navigation.link>
                     </div>
                   </div>
                 </td>
@@ -1565,10 +1323,10 @@ defmodule PortalWeb.Resources.Components do
               </span>
             </span>
             <div class="flex items-center gap-1.5 shrink-0">
-              <.button type="button" phx-click="cancel_remove_group" size="xs">
+              <Form.button type="button" phx-click="cancel_remove_group" size="xs">
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 type="button"
                 phx-click="remove_group_access"
                 phx-value-group_id={row.group.id}
@@ -1576,21 +1334,21 @@ defmodule PortalWeb.Resources.Components do
                 size="xs"
               >
                 Remove
-              </.button>
+              </Form.button>
             </div>
           </div>
           <div
             :if={@confirm_remove_group_id != row.group.id}
             class="flex items-center gap-1 pr-4 hover:bg-raised group/item"
           >
-            <.link
-              navigate={~p"/#{@account}/groups/#{row.group.id}"}
+            <Navigation.link
+              navigate={~p"/#{@account}/policies/#{row.policy_id}"}
               class={[
                 "flex items-center gap-3 px-5 py-3 flex-1 min-w-0",
                 row.policy_is_disabled && "opacity-50 hover:opacity-75"
               ]}
             >
-              <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
+              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" variant="circle" />
               <div class="flex-1 min-w-0 flex items-center gap-2">
                 <p class="text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
                   {row.group.name}
@@ -1602,7 +1360,7 @@ defmodule PortalWeb.Resources.Components do
                   disabled
                 </span>
               </div>
-            </.link>
+            </Navigation.link>
             <div class="relative shrink-0">
               <button
                 type="button"
@@ -1611,13 +1369,19 @@ defmodule PortalWeb.Resources.Components do
                 class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
                 title="More actions"
               >
-                <.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
+                <Core.icon name="ri-more-2-line" class="w-3.5 h-3.5" />
               </button>
               <div
                 :if={@group_actions_open_id == row.group.id}
                 phx-click-away="close_group_actions"
                 class="absolute right-0 top-full mt-1 w-40 rounded-md border border-border bg-elevated shadow-lg z-10 py-1"
               >
+                <Navigation.link
+                  navigate={~p"/#{@account}/groups/#{row.group.id}"}
+                  class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                >
+                  <Core.icon name="ri-group-line" class="w-3.5 h-3.5 shrink-0" /> Go to Group
+                </Navigation.link>
                 <button
                   :if={!row.policy_is_disabled}
                   type="button"
@@ -1625,7 +1389,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
+                  <Core.icon name="ri-pause-line" class="w-3.5 h-3.5 shrink-0" /> Disable Access
                 </button>
                 <button
                   :if={row.policy_is_disabled}
@@ -1634,7 +1398,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
+                  <Core.icon name="ri-play-line" class="w-3.5 h-3.5 shrink-0" /> Enable Access
                 </button>
                 <button
                   type="button"
@@ -1642,7 +1406,7 @@ defmodule PortalWeb.Resources.Components do
                   phx-value-group_id={row.group.id}
                   class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-error hover:bg-raised transition-colors"
                 >
-                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
+                  <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Remove access
                 </button>
               </div>
             </div>
@@ -1699,7 +1463,7 @@ defmodule PortalWeb.Resources.Components do
           class="flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
           title="Back to group list"
         >
-          <.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
+          <Core.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
         </button>
         <span class="text-xs font-semibold text-heading">Grant access</span>
       </div>
@@ -1740,13 +1504,13 @@ defmodule PortalWeb.Resources.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Available
                   </span>
-                  <span class="text-[10px] text-muted">
+                  <span class="text-[10px] text-subtle">
                     {length(filtered_available)}
                   </span>
                 </div>
                 <div class="px-2 pt-1.5 shrink-0">
                   <div class="relative">
-                    <.icon
+                    <Core.icon
                       name="ri-search-line"
                       class="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
                     />
@@ -1756,7 +1520,7 @@ defmodule PortalWeb.Resources.Components do
                       value={@grant_search}
                       phx-keyup="search_grant_groups"
                       phx-debounce="200"
-                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
                     />
                   </div>
                 </div>
@@ -1768,7 +1532,7 @@ defmodule PortalWeb.Resources.Components do
                       phx-value-group_id={row.group.id}
                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left transition-colors hover:bg-surface cursor-pointer"
                     >
-                      <.provider_icon provider={provider_type_from_group(row)} size="xs" variant="circle" />
+                      <Core.provider_icon provider={Core.provider_type_from_group(row)} size="xs" variant="circle" />
                       <span class="text-xs text-heading truncate">
                         {row.group.name}
                       </span>
@@ -1793,7 +1557,7 @@ defmodule PortalWeb.Resources.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Selected
                   </span>
-                  <span class="text-[10px] font-medium text-muted">
+                  <span class="text-[10px] font-medium text-subtle">
                     {length(@grant_selected_group_ids)}
                   </span>
                 </div>
@@ -1805,11 +1569,11 @@ defmodule PortalWeb.Resources.Components do
                       phx-value-group_id={row.group.id}
                       class="flex items-center gap-2 px-2 py-1.5 w-full rounded text-left hover:bg-surface transition-colors cursor-pointer group"
                     >
-                      <.provider_icon provider={provider_type_from_group(row)} size="xs" variant="circle" />
+                      <Core.provider_icon provider={Core.provider_type_from_group(row)} size="xs" variant="circle" />
                       <span class="flex-1 text-xs text-heading truncate">
                         {row.group.name}
                       </span>
-                      <.icon
+                      <Core.icon
                         name="ri-close-line"
                         class="w-3.5 h-3.5 text-subtle opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
                       />
@@ -1826,78 +1590,77 @@ defmodule PortalWeb.Resources.Components do
             </div>
           </div>
           <div class="border-t border-border pt-4">
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                Conditions
-                <span class="ml-1 font-normal normal-case tracking-normal text-muted">
-                  (optional)
-                </span>
-              </h4>
-              <div
-                :if={
-                  @policy_conditions_enabled? and
-                    available_conditions(@resource) -- @active_conditions != []
-                }
-                class="relative"
-              >
-                <button
-                  type="button"
-                  phx-click="toggle_conditions_dropdown"
-                  class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
-                </button>
-                <div :if={@conditions_dropdown_open}>
-                  <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
-                  <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
-                    <button
-                      :for={type <- available_conditions(@resource) -- @active_conditions}
-                      type="button"
-                      phx-click="add_condition"
-                      phx-value-type={type}
-                      class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
-                    >
-                      {condition_type_label(type)}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <%= if @policy_conditions_enabled? == false do %>
-              <.upgrade_locked_section
-                id="resource-grant-conditions-locked-container"
-                account={@account}
-                message="Upgrade your plan to unlock policy conditions."
-                description="Add policy restrictions like IP ranges, identity providers, and time windows."
-              >
-                <p class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border">
-                  No conditions — access is unrestricted
-                </p>
-              </.upgrade_locked_section>
-            <% else %>
-              <p
-                :if={@active_conditions == []}
-                class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border"
-              >
-                No conditions — access is unrestricted
-              </p>
-              <div :if={@active_conditions != []} class="space-y-2">
-                <.grant_condition_card
-                  :for={type <- @active_conditions}
-                  type={type}
-                  providers={@providers}
-                  conditions_state={@conditions_state}
-                />
-              </div>
-            <% end %>
-          </div>
-          <.postures_section id="resource-grant-postures" account={@account} state={@postures} />
-          <div class="border-t border-border pt-4">
-            <.flow_log_uploads_toggle
+            <PolicyComponents.flow_log_uploads_toggle
               form={@grant_form}
               internet_resource?={@resource.type == :internet}
             />
           </div>
+          <PostureComponents.policy_restrictions id="resource-grant-postures" account={@account} state={@postures}>
+            <div class="border-t border-border pt-4">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                  Conditions
+                  <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
+                    (optional)
+                  </span>
+                </h4>
+                <div
+                  :if={
+                    @policy_conditions_enabled? and
+                      PolicyComponents.available_conditions(@resource) -- @active_conditions != []
+                  }
+                  class="relative"
+                >
+                  <button
+                    type="button"
+                    phx-click="toggle_conditions_dropdown"
+                    class="flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-2.5 h-2.5" /> Add condition
+                  </button>
+                  <div :if={@conditions_dropdown_open}>
+                    <div class="fixed inset-0 z-10" phx-click="toggle_conditions_dropdown"></div>
+                    <div class="absolute right-0 top-full mt-1 z-20 min-w-44 rounded-lg border border-border-strong bg-elevated shadow-lg py-1 overflow-hidden">
+                      <button
+                        :for={type <- PolicyComponents.available_conditions(@resource) -- @active_conditions}
+                        type="button"
+                        phx-click="add_condition"
+                        phx-value-type={type}
+                        class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+                      >
+                        {PolicyComponents.condition_type_label(type)}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <%= if @policy_conditions_enabled? == false do %>
+                <Form.upgrade_locked_section
+                  id="resource-grant-conditions-locked-container"
+                  account={@account}
+                  message="Upgrade your plan to unlock policy conditions."
+                  description="Add policy restrictions like IP ranges, identity providers, and time windows."
+                >
+                  <PostureComponents.conditions_preview />
+                </Form.upgrade_locked_section>
+              <% else %>
+                <p
+                  :if={@active_conditions == []}
+                  class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
+                >
+                  No conditions — access is unrestricted
+                </p>
+                <div :if={@active_conditions != []} class="space-y-2">
+                  <PolicyComponents.grant_condition_card
+                    :for={type <- @active_conditions}
+                    type={type}
+                    providers={@providers}
+                    conditions_state={@conditions_state}
+                  />
+                </div>
+              <% end %>
+            </div>
+          </PostureComponents.policy_restrictions>
         </div>
       </div>
       <div
@@ -1906,18 +1669,18 @@ defmodule PortalWeb.Resources.Components do
       >
         <p :for={{_field, {msg, _}} <- @grant_form.errors}>{msg}</p>
       </div>
-      <.panel_footer>
-        <.panel_footer_button type="button" phx-click="close_grant_form">
+      <Form.panel_footer>
+        <Form.panel_footer_button type="button" phx-click="close_grant_form">
           Cancel
-        </.panel_footer_button>
-        <.panel_footer_button
+        </Form.panel_footer_button>
+        <Form.panel_footer_button
           type="submit"
           style="primary"
           disabled={PortalWeb.Policies.Postures.blocked?(@postures) or @grant_selected_group_ids == []}
         >
           Grant access
-        </.panel_footer_button>
-      </.panel_footer>
+        </Form.panel_footer_button>
+      </Form.panel_footer>
     </.form>
     """
   end
@@ -1932,12 +1695,12 @@ defmodule PortalWeb.Resources.Components do
   def resource_policy_authorizations_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
-      <.authorization_flow_logs_notice account={@account} />
+      <Authorization.authorization_flow_logs_notice account={@account} />
       <div
         :if={@policy_authorizations == []}
         class="flex flex-1 flex-col items-center justify-center gap-2 text-subtle"
       >
-        <.icon name="ri-shield-check-line" class="w-8 h-8" />
+        <Core.icon name="ri-shield-check-line" class="w-8 h-8" />
         <p class="text-sm">No recent policy authorizations</p>
       </div>
       <div :if={@policy_authorizations != []} class="flex-1 flex flex-col overflow-hidden">
@@ -1969,13 +1732,13 @@ defmodule PortalWeb.Resources.Components do
                     {if row.group, do: row.group.name, else: "(deleted group)"}
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.inserted_at} />
+                    <Core.relative_datetime datetime={row.authorization.inserted_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.relative_datetime datetime={row.authorization.expires_at} />
+                    <Core.relative_datetime datetime={row.authorization.expires_at} />
                   </td>
                   <td class="px-4 py-2 text-subtle">
-                    <.icon
+                    <Core.icon
                       name={
                         if @expanded_id == row.authorization.id,
                           do: "ri-arrow-up-s-line",
@@ -2033,12 +1796,12 @@ defmodule PortalWeb.Resources.Components do
                       </div>
                       <div>
                         <p class="text-subtle font-medium mb-1">Policy</p>
-                        <.link
+                        <Navigation.link
                           navigate={~p"/#{@account}/policies/#{row.authorization.policy_id}"}
                           class="text-brand hover:underline"
                         >
                           {if row.group, do: row.group.name, else: "Everyone"} → {@resource.name}
-                        </.link>
+                        </Navigation.link>
                       </div>
                     </div>
                   </td>
@@ -2052,18 +1815,18 @@ defmodule PortalWeb.Resources.Components do
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
+            <Core.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
           <span class="text-xs text-subtle">Page {@page}</span>
           <button
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
-            Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
+            Next <Core.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -2088,21 +1851,21 @@ defmodule PortalWeb.Resources.Components do
         <dl class="space-y-2.5">
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Resource ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all">
+            <dd class="font-mono text-[11px] text-body break-all font-medium">
               {@resource.id}
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Type</dt>
             <dd>
-              <span class={type_badge_class(@resource.type)}>
-                {resource_type_label(@resource.type)}
+              <span class={ResourceType.type_badge_class(@resource.type)}>
+                {ResourceType.resource_type_label(@resource.type)}
               </span>
             </dd>
           </div>
           <div :if={@resource.type == :dns}>
             <dt class="text-[10px] text-subtle mb-0.5">IP Stack</dt>
-            <dd class="text-xs text-body">
+            <dd class="text-xs text-body font-medium">
               {case @resource.ip_stack do
                 :dual -> "Dual-stack (A + AAAA)"
                 :ipv4_only -> "IPv4 only (A)"
@@ -2113,27 +1876,21 @@ defmodule PortalWeb.Resources.Components do
           </div>
           <div :if={@resource.type not in [:internet, :device_pool]}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="font-mono text-xs text-heading font-medium break-all">
+            <dd class="font-mono text-xs text-body font-medium break-all">
               {@resource.address}
             </dd>
           </div>
-          <div :if={@resource.type == :device_pool and not lists_devices?(@resource)}>
+          <div :if={@resource.type == :device_pool}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="font-mono text-xs text-heading font-medium break-all">
-              &lt;slug&gt;.{Portal.Device.domain()}
-            </dd>
-          </div>
-          <div :if={lists_devices?(@resource)}>
-            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="text-xs italic text-muted">Multiple Addresses</dd>
+            <dd class="text-xs italic text-subtle">Multiple Addresses</dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
             <dd class={[
-              "text-xs",
+              "text-xs font-medium",
               if(@resource.address_description,
                 do: "text-body",
-                else: "text-muted italic"
+                else: "text-subtle italic"
               )
             ]}>
               {@resource.address_description || "No Address Description"}
@@ -2148,7 +1905,7 @@ defmodule PortalWeb.Resources.Components do
         </h3>
         <p
           :if={@resource.filters == []}
-          class="text-xs text-muted italic"
+          class="text-xs text-subtle italic"
         >
           None — all protocols/ports permitted
         </p>
@@ -2170,13 +1927,13 @@ defmodule PortalWeb.Resources.Components do
           <div>
             <dt class="text-[10px] text-subtle mb-1">Site</dt>
             <%= if @resource.site do %>
-              <dd class="flex items-center gap-1.5 flex-wrap">
-                <.link
+              <dd class="flex items-center gap-1.5 flex-wrap text-body font-medium">
+                <Navigation.link
                   navigate={~p"/#{@account}/sites/#{@resource.site}"}
                   class="text-xs underline font-medium text-body hover:text-heading transition-colors"
                 >
                   {@resource.site.name}
-                </.link>
+                </Navigation.link>
                 <span
                   :if={resource_online?(@resource, @online_site_ids)}
                   class="relative flex items-center justify-center w-1.5 h-1.5"
@@ -2188,14 +1945,14 @@ defmodule PortalWeb.Resources.Components do
                 </span>
               </dd>
             <% else %>
-              <dd class="text-xs italic text-muted">{nil_site_label(@resource)}</dd>
+              <dd class="text-xs italic text-subtle">{nil_site_label(@resource)}</dd>
             <% end %>
           </div>
         </dl>
       </section>
       <div class="border-t border-border"></div>
       <section :if={@resource.type != :internet}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
           Danger Zone
         </h3>
         <button
@@ -2204,7 +1961,7 @@ defmodule PortalWeb.Resources.Components do
           phx-click="confirm_delete_resource"
           class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
         >
-          <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete resource
+          <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete resource
         </button>
         <div
           :if={@confirm_delete_resource}
@@ -2217,12 +1974,12 @@ defmodule PortalWeb.Resources.Components do
             All Policies associated with this Resource will also be deleted and all devices will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_delete_resource" size="xs">
+            <Form.button type="button" phx-click="cancel_delete_resource" size="xs">
               Cancel
-            </.button>
-            <.button type="button" phx-click="delete_resource" style="danger" size="xs">
+            </Form.button>
+            <Form.button type="button" phx-click="delete_resource" style="danger" size="xs">
               Delete
-            </.button>
+            </Form.button>
           </div>
         </div>
       </section>
@@ -2273,12 +2030,12 @@ defmodule PortalWeb.Resources.Components do
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""
-    <.status_badge :if={@total == 0} style={:warning}>
+    <Core.status_badge :if={@total == 0} style={:warning}>
       No devices
-    </.status_badge>
-    <.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
+    </Core.status_badge>
+    <Core.status_badge :if={@total > 0} style={if @online > 0, do: :success, else: :neutral}>
       {@online} / {@total} online
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 
@@ -2291,9 +2048,9 @@ defmodule PortalWeb.Resources.Components do
       end
 
     ~H"""
-    <.status_badge style={@style}>
+    <Core.status_badge style={@style}>
       {@label}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 
@@ -2301,9 +2058,9 @@ defmodule PortalWeb.Resources.Components do
     assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.online_site_ids))
 
     ~H"""
-    <.status_badge style={if @online?, do: :success, else: :neutral}>
+    <Core.status_badge style={if @online?, do: :success, else: :neutral}>
       {if @online?, do: "Online", else: "Offline"}
-    </.status_badge>
+    </Core.status_badge>
     """
   end
 
@@ -2318,43 +2075,10 @@ defmodule PortalWeb.Resources.Components do
     end
   end
 
-  defp pool_kind_label(:own_devices), do: "Your devices"
+  defp pool_kind_label(:own_devices), do: "My devices"
   defp pool_kind_label(:all_devices), do: "All devices"
   defp pool_kind_label(:actor_group), do: "Group's devices"
   defp pool_kind_label(:listed), do: "Static list"
-
-  @spec resource_type_label(atom()) :: String.t()
-  def resource_type_label(:dns), do: "DNS"
-  def resource_type_label(:ip), do: "IP"
-  def resource_type_label(:cidr), do: "CIDR"
-  def resource_type_label(:internet), do: "Internet"
-  def resource_type_label(:device_pool), do: "Device Pool"
-  def resource_type_label(type), do: to_string(type)
-
-  @spec type_badge_class(atom()) :: String.t()
-  def type_badge_class(:dns),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
-
-  def type_badge_class(:ip),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
-
-  def type_badge_class(:cidr),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
-
-  def type_badge_class(:internet),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium trcking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-
-  def type_badge_class(:device_pool),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-device-pool text-badge-device-pool-text"
-
-  def type_badge_class(_),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   defmodule Database do
     import Ecto.Query
@@ -2437,6 +2161,7 @@ defmodule PortalWeb.Resources.Components do
           ilike(type(d.id, :string), ^pattern) or
           ilike(type(d.ipv4, :string), ^pattern) or
           ilike(type(d.ipv6, :string), ^pattern) or
+          ilike(coalesce(d.slug, ""), ^pattern) or
           ^device_identifier_filter(pattern)
       )
     end

@@ -134,6 +134,10 @@ if config_env() == :prod do
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
 
+  config :portal, Portal.GitHub.AuthProvider,
+    client_id: env_var_to_config!(:github_oauth_client_id),
+    client_secret: env_var_to_config!(:github_oauth_client_secret)
+
   config :portal, Portal.Google.SyncAuthorization,
     client_id: env_var_to_config!(:google_sync_authz_client_id),
     client_secret: env_var_to_config!(:google_sync_authz_client_secret)
@@ -279,6 +283,9 @@ if config_env() == :prod do
     # Schedule SentinelOne device inventory sync every 2 hours
     {"35 */2 * * *", Portal.SentinelOne.Scheduler},
 
+    # Schedule Sophos device inventory sync every 2 hours
+    {"45 */2 * * *", Portal.Sophos.Scheduler},
+
     # Group membership changes do not produce user push notifications, so run
     # a full Google directory sync every four hours.
     {"20 */4 * * *", Portal.Google.Scheduler},
@@ -313,6 +320,8 @@ if config_env() == :prod do
      args: %{provider: "santa", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sentinelone", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -331,6 +340,8 @@ if config_env() == :prod do
      args: %{provider: "santa", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sentinelone", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -349,6 +360,8 @@ if config_env() == :prod do
      args: %{provider: "santa", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sentinelone", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -386,17 +399,8 @@ if config_env() == :prod do
     # Delete expired portal sessions every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
 
-    # Delete old change_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
-
-    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
-    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
-
-    # Delete old session_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
-
-    # Delete old api_request_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
+    # Maintain daily log partitions (pre-create upcoming, drop expired)
+    {"30 3 * * *", Portal.Workers.PartitionLogTables},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
@@ -430,6 +434,8 @@ if config_env() == :prod do
       santa_sync: 5,
       sentinelone_scheduler: 1,
       sentinelone_sync: 5,
+      sophos_scheduler: 1,
+      sophos_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       google_subscriptions: 1,
@@ -739,6 +745,12 @@ if config_env() == :prod do
     pixel_id: env_var_to_config(:openai_conversions_pixel_id),
     endpoint: "https://bzr.openai.com/v1/events",
     req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Mailer.PostureProviderInterestEmail,
+    recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
+
+  config :portal, Portal.Mailer.FeedbackEmail,
+    recipient: env_var_to_config!(:feedback_email_recipient)
 
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),

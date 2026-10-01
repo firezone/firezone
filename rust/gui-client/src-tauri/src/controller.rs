@@ -1,5 +1,5 @@
 use crate::{
-    auth, deep_link, dialog,
+    auth, deep_link,
     gui::{self, system_tray},
     logging::{self, FileCount},
     service,
@@ -10,7 +10,7 @@ use crate::{
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
-use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
+use connlib_model::{ResourceId, ResourceView, Site};
 use futures::{
     FutureExt, SinkExt, StreamExt,
     stream::{self, BoxStream},
@@ -159,7 +159,7 @@ pub enum Status {
     /// Firezone is ready to use.
     TunnelReady {
         #[debug(skip)]
-        resources: ResourceList,
+        resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal,
@@ -714,7 +714,12 @@ impl<I: GuiIntegration> Controller<I> {
                     self.disconnect().await?;
                 }
 
-                dialog::error(&user_msg)?;
+                let title = if requires_sign_in {
+                    "Your Firezone session has ended"
+                } else {
+                    "Firezone disconnected"
+                };
+                self.integration.show_notification(title, user_msg)?;
             }
             service::ServerMsg::ConnectedToPortal(connected) => {
                 if connected.actor_name.is_empty() {
@@ -739,11 +744,7 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 }
 
-                tracing::debug!(
-                    resources = resources.resources.len(),
-                    connected_devices = resources.connected_devices.len(),
-                    "Got new Resources"
-                );
+                tracing::debug!(len = resources.len(), "Got new Resources");
 
                 self.status = Status::TunnelReady { resources };
                 self.resolve_connect_replies(gui_ipc::ServerMsg::Ack).await;
@@ -864,7 +865,7 @@ impl<I: GuiIntegration> Controller<I> {
                     )));
                 };
 
-                gui_ipc::ServerMsg::Resources(resources.resources.clone())
+                gui_ipc::ServerMsg::Resources(resources.clone())
             }
             gui_ipc::ClientMsg::SetInternetResourceEnabled(enabled) => {
                 self.set_internet_resource_enabled(enabled).await?;
@@ -1061,8 +1062,7 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: connected.actor_name.clone(),
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
-                        resources: resources.resources.clone(),
-                        connected_devices: resources.connected_devices.clone(),
+                        resources: resources.clone(),
                     }),
                     SessionViewModel::SignedIn {
                         account_slug: connected.account_slug.clone(),
@@ -1151,7 +1151,6 @@ impl<I: GuiIntegration> Controller<I> {
         };
 
         let resource = resources
-            .resources
             .iter()
             .find(|r| r.id() == resource_id)
             .context("Unknown resource")?;
@@ -1926,6 +1925,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shows_disconnect_notification() {
+        let _guard = logging::test("debug");
+
+        for (requires_sign_in, expected_title) in [
+            (true, "Your Firezone session has ended"),
+            (false, "Firezone disconnected"),
+        ] {
+            let mut test_controller = Controller::start_for_test();
+            let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+            boot_tunnel(
+                &mut test_controller,
+                &mut mock_tunnel,
+                vec![dns_resource_foo()],
+            )
+            .await;
+
+            mock_tunnel
+                .send_on_disconnect("Reason for the disconnect", requires_sign_in)
+                .await;
+
+            let (title, body) = test_controller
+                .wait_integration(|i| i.nth_notification(1))
+                .await;
+            assert_eq!(title, expected_title);
+            assert_eq!(body, "Reason for the disconnect");
+        }
+    }
+
+    #[tokio::test]
     async fn no_legacy_skips_migration() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -2406,10 +2434,7 @@ mod tests {
 
         async fn send_resources(&mut self, resources: Vec<ResourceView>) {
             self.tx
-                .send(&service::ServerMsg::OnUpdateResources(ResourceList {
-                    resources,
-                    connected_devices: Vec::new(),
-                }))
+                .send(&service::ServerMsg::OnUpdateResources(resources))
                 .await
                 .unwrap();
         }
@@ -2434,6 +2459,18 @@ mod tests {
         async fn send_gateway_version_mismatch(&mut self, resource_id: ResourceId) {
             self.tx
                 .send(&service::ServerMsg::GatewayVersionMismatch { resource_id })
+                .await
+                .unwrap();
+        }
+
+        async fn send_on_disconnect(&mut self, user_msg: &str, requires_sign_in: bool) {
+            self.tx
+                .send(&service::ServerMsg::OnDisconnect {
+                    user_msg: user_msg.to_owned(),
+                    log_msg: "Diagnostics for the logs".to_owned(),
+                    requires_sign_in,
+                    is_user_facing: true,
+                })
                 .await
                 .unwrap();
         }

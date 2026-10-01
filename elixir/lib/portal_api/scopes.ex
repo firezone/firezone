@@ -35,6 +35,7 @@ defmodule PortalAPI.Scopes do
     PortalAPI.X509AuthProviderController => :auth_providers,
     PortalAPI.OIDCAuthProviderController => :auth_providers,
     PortalAPI.GoogleAuthProviderController => :auth_providers,
+    PortalAPI.GitHubAuthProviderController => :auth_providers,
     PortalAPI.EntraAuthProviderController => :auth_providers,
     PortalAPI.OktaAuthProviderController => :auth_providers,
     PortalAPI.GoogleDirectoryController => :directories,
@@ -45,11 +46,13 @@ defmodule PortalAPI.Scopes do
     PortalAPI.DefenderDeviceController => :posture_providers,
     PortalAPI.SantaDeviceController => :posture_providers,
     PortalAPI.SentinelOneDeviceController => :posture_providers,
+    PortalAPI.SophosDeviceController => :posture_providers,
     PortalAPI.IntunePostureProviderController => :posture_providers,
     PortalAPI.IruPostureProviderController => :posture_providers,
     PortalAPI.DefenderPostureProviderController => :posture_providers,
     PortalAPI.SantaPostureProviderController => :posture_providers,
-    PortalAPI.SentinelOnePostureProviderController => :posture_providers
+    PortalAPI.SentinelOnePostureProviderController => :posture_providers,
+    PortalAPI.SophosPostureProviderController => :posture_providers
   }
 
   @doc "The entity `controller` operates on, or `:error` if it is not mapped."

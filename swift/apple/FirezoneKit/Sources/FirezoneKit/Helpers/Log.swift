@@ -149,11 +149,11 @@ public final class Log {
     writeToStderr(.error, message)
   }
 
-  public static func error(_ err: Error) {
-    error(err.localizedDescription)
+  public static func error(_ err: Error, fileID: String = #fileID, function: String = #function) {
+    error(Telemetry.fallbackDescription(of: err) ?? err.localizedDescription)
 
     if shouldCaptureError(err) {
-      Telemetry.capture(err)
+      Telemetry.capture(err, fileID: fileID, function: function)
     }
   }
 
@@ -197,7 +197,11 @@ public final class Log {
     guard let directory = directory
     else { return }
 
-    try FileManager.default.removeItem(at: directory)
+    let fileManager = FileManager.default
+    let items = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    for item in items {
+      try fileManager.removeItem(at: item)
+    }
   }
 
   private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
@@ -225,13 +229,13 @@ public final class Log {
 }
 
 extension FileManager {
-  enum FileManagerError: Error {
+  enum FileManagerError: LocalizedError {
     case invalidURL(URL, Error)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
-      case .invalidURL(let url, let error):
-        return "Unable to get resource value for '\(url)': \(error)"
+      case .invalidURL(_, let error):
+        return "Unable to get resource value: \(error.localizedDescription)"
       }
     }
   }

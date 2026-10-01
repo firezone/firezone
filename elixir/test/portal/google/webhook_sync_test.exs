@@ -2,7 +2,7 @@ defmodule Portal.Google.WebhookSyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
-
+  import Portal.ActorFixtures
   import Portal.AccountFixtures
   import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
@@ -31,7 +31,14 @@ defmodule Portal.Google.WebhookSyncTest do
 
   describe "user notifications" do
     test "updates an existing identity", %{account: account, directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          email: "old@example.com",
+          member: true
+        )
 
       stub_google(users: %{"user-1" => google_user("user-1", "New Name", "new@example.com")})
 
@@ -49,7 +56,13 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "an older full-sync write does not undo the webhook write",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          member: true
+        )
       stub_google(users: %{"user-1" => google_user("user-1", "Webhook Name", "u1@example.com")})
 
       assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
@@ -66,7 +79,14 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "updates the actor the directory created when the user changes",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          email: "old@example.com",
+          member: true
+        )
 
       actor =
         identity.actor_id
@@ -85,7 +105,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "preserves the identity and memberships when user flags never arrive",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = mark_created_by_directory(identity.actor_id, directory)
       Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
       user = google_user("user-1", "New User", "u1@example.com") |> Map.delete("archived")
@@ -102,7 +122,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "removes a suspended user with their memberships and directory actor",
          %{directory: directory, base_directory: base_directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = mark_created_by_directory(identity.actor_id, directory)
       group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
       membership_fixture(actor: actor, group: group)
@@ -120,7 +140,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "removes an identity, its memberships, and its actor in one transaction",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = mark_created_by_directory(identity.actor_id, directory)
       stub_google(users: %{})
 
@@ -134,7 +154,7 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "locks the actor before removing its identity", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       mark_created_by_directory(identity.actor_id, directory)
       stub_google(users: %{})
 
@@ -148,7 +168,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "leaves other actors of the directory alone when removing a user",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       mark_created_by_directory(identity.actor_id, directory)
       orphan = Portal.ActorFixtures.actor_fixture(account: ctx.account)
       mark_created_by_directory(orphan.id, directory)
@@ -161,7 +181,7 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "removes a user Google no longer returns", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       stub_google(users: %{})
 
       assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
@@ -170,7 +190,7 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "removes a user Google soft-deleted", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
 
       Req.Test.stub(APIClient, fn conn ->
         if conn.request_path == "/token" do
@@ -202,7 +222,7 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "keeps an actor that still has other identities", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = mark_created_by_directory(identity.actor_id, directory)
       other = identity_fixture(account: ctx.account, actor: actor)
       stub_google(users: %{})
@@ -216,7 +236,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "removes a user who left every synced group and org unit",
          %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", member: false)
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: false)
       actor = mark_created_by_directory(identity.actor_id, directory)
       stub_google(users: %{"user-1" => google_user("user-1", "Alice", "alice@example.com")})
 
@@ -235,7 +255,13 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "skips a user without a primary email", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          member: true
+        )
 
       user = google_user("user-1", "Bad", "bad@example.com") |> Map.delete("primaryEmail")
       stub_google(users: %{"user-1" => user})
@@ -246,7 +272,7 @@ defmodule Portal.Google.WebhookSyncTest do
     end
 
     test "fails on unexpected Google errors", %{directory: directory} = ctx do
-      directory_identity(ctx, "user-1")
+      directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
 
       Req.Test.stub(APIClient, fn conn ->
         if conn.request_path == "/token" do
@@ -323,7 +349,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "moves org unit memberships when a user changes org unit",
          %{directory: directory, eng: eng, sales: sales, org_units: org_units} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = Actor |> Repo.get_by!(id: identity.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: actor, group: eng)
 
@@ -344,7 +370,7 @@ defmodule Portal.Google.WebhookSyncTest do
 
     test "removes a user who moved out of every tracked org unit",
          %{directory: directory, eng: eng, org_units: org_units} = ctx do
-      identity = directory_identity(ctx, "user-1", member: false)
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: false)
       actor = mark_created_by_directory(identity.actor_id, directory)
       membership_fixture(actor: actor, group: eng)
 
@@ -370,7 +396,7 @@ defmodule Portal.Google.WebhookSyncTest do
   end
 
   test "snoozes while a full sync for the directory is executing", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
+    identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
     stub_google(users: %{})
 
     executing_job(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
@@ -383,7 +409,7 @@ defmodule Portal.Google.WebhookSyncTest do
   test "skips accounts without directory sync" do
     account = account_fixture(features: %{idp_sync: false})
     directory = google_directory_fixture(account: account)
-    identity = directory_identity(%{account: account, directory: directory}, "user-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", member: true)
     stub_google(users: %{})
 
     assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
@@ -391,9 +417,9 @@ defmodule Portal.Google.WebhookSyncTest do
     assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
-  test "skips disabled directories", %{account: account} = ctx do
+  test "skips disabled directories", %{account: account} do
     directory = google_directory_fixture(account: account, is_disabled: true)
-    identity = directory_identity(%{ctx | directory: directory}, "user-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1", member: true)
     stub_google(users: %{})
 
     assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
@@ -407,37 +433,6 @@ defmodule Portal.Google.WebhookSyncTest do
 
   # Identities only exist through a synced group or org unit, so give each one
   # a group membership unless a test wants a user without any.
-  defp directory_identity(ctx, idp_id, attrs \\ []) do
-    {member, attrs} = Keyword.pop(attrs, :member, true)
-    base_directory = Repo.get_by!(Portal.Directory, id: ctx.directory.id)
-
-    identity =
-      attrs
-      |> Enum.into(%{})
-      |> Map.merge(%{
-        account: ctx.account,
-        directory: base_directory,
-        issuer: Sync.issuer(),
-        idp_id: idp_id
-      })
-      |> identity_fixture()
-
-    if member do
-      actor = Actor |> Repo.get_by!(id: identity.actor_id) |> Repo.preload(:account)
-      group = group_fixture(account: ctx.account, directory: base_directory)
-      membership_fixture(actor: actor, group: group)
-    end
-
-    identity
-  end
-
-  defp mark_created_by_directory(actor_id, directory) do
-    Actor
-    |> Repo.get_by!(id: actor_id)
-    |> Ecto.Changeset.change(created_by_directory_id: directory.id)
-    |> Repo.update!()
-    |> Repo.preload(:account)
-  end
 
   defp google_user(id, name, email, opts \\ []) do
     %{

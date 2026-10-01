@@ -2,6 +2,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::ClientId;
 use dns_types::{DomainName, RecordType};
+use itertools::Itertools as _;
 use tunnel_proto::dns;
 
 use super::context::Generator;
@@ -103,9 +104,51 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQue
 
 pub(super) fn generate(
     g: &mut Generator,
-    target: DnsQueryTarget,
+    targets: &[DnsQueryTarget],
     state: &ReferenceState,
 ) -> Transition {
+    let target = targets[g.choose_index(targets.len())].clone();
+    let (client_id, query) = generate_query(g, target);
+    let known_ptr_target = (query.r_type == RecordType::PTR)
+        .then(|| arb_known_ptr_target(g, state, client_id))
+        .flatten();
+
+    if let Some(KnownPtrTarget {
+        record_domain,
+        family,
+        address_index,
+    }) = known_ptr_target
+    {
+        return Transition::SendDnsResourcePtrQuery {
+            client_id,
+            record_domain,
+            family,
+            address_index,
+            query_id: query.query_id,
+            dns_server: query.dns_server,
+            transport: query.transport,
+        };
+    }
+
+    let queries = std::iter::once((client_id, query))
+        .chain((0..g.count(0, 4)).map(|_| {
+            let target = targets[g.choose_index(targets.len())].clone();
+            generate_query(g, target)
+        }))
+        .unique_by(|(client_id, query)| {
+            (
+                *client_id,
+                query.dns_server.clone(),
+                query.query_id,
+                query.transport,
+            )
+        })
+        .collect();
+
+    Transition::SendDnsQueries(queries)
+}
+
+fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQuery) {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
         DnsNameSpec::Resource { address } => {
@@ -133,27 +176,6 @@ pub(super) fn generate(
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    let known_ptr_target = (r_type == RecordType::PTR)
-        .then(|| arb_known_ptr_target(g, state, target.client_id))
-        .flatten();
-
-    if let Some(KnownPtrTarget {
-        record_domain,
-        family,
-        address_index,
-    }) = known_ptr_target
-    {
-        return Transition::SendDnsResourcePtrQuery {
-            client_id: target.client_id,
-            record_domain,
-            family,
-            address_index,
-            query_id: arb_dns_query_id(g),
-            dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
-        };
-    }
-
     let domain = if r_type == RecordType::PTR {
         DomainName::reverse_from_addr(arb_unassigned_ptr_query_ip(g))
             .expect("reverse DNS names always fit")
@@ -161,16 +183,16 @@ pub(super) fn generate(
         domain
     };
 
-    Transition::SendDnsQuery {
-        client_id: target.client_id,
-        query: DnsQuery {
+    (
+        target.client_id,
+        DnsQuery {
             domain,
             r_type,
             query_id: arb_dns_query_id(g),
             dns_server: target.dns_server,
             transport: arb_dns_transport(g),
         },
-    }
+    )
 }
 
 fn arb_known_ptr_target(

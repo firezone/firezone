@@ -1,0 +1,18 @@
+---
+name: "Setup AFL++"
+description: "Restores AFL++ tools and runtime after mise setup"
+runs:
+  using: "composite"
+  steps:
+    - name: Cache AFL++ tools and runtime
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.local/share/afl.rs
+        key: afl-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust/tests/fuzz/mise.toml', 'rust/tests/fuzz/mise.lock') }}
+    # The mise cache can contain cargo-afl without its separately cached runtime.
+    - name: Populate AFL++ cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: mise --cd rust/tests/fuzz install --force cargo:cargo-afl

@@ -767,11 +767,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
-  ## Google / Entra / Okta authentication
+  ## Google / GitHub / Entra / Okta authentication
   ##############################################
 
   defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  defconfig(:github_oauth_client_id, :string, default: nil)
+  defconfig(:github_oauth_client_secret, :string, default: nil, sensitive: true)
 
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
   defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
@@ -974,6 +977,34 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## Outbound Email Settings
   ##############################################
+
+  @doc """
+  Recipient address for feedback submitted through the portal.
+  Feedback is disabled when unset or blank.
+  """
+  defconfig(:feedback_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:posture_provider_interest_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
 
   @doc """
   From address to use for sending outbound emails. If not set, sending email will be disabled (default).

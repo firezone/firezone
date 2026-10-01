@@ -107,35 +107,6 @@ defmodule Portal.Mocks.Stripe do
     [{"GET", "/v1/products/#{product["id"]}", 200, product}]
   end
 
-  def mock_fetch_product_endpoint(product_id, resp \\ %{}) do
-    response =
-      Map.merge(
-        %{
-          "id" => product_id,
-          "object" => "product",
-          "active" => true,
-          "created" => 1_678_833_149,
-          "default_price" => nil,
-          "description" => nil,
-          "images" => [],
-          "features" => [],
-          "livemode" => false,
-          "metadata" => %{},
-          "name" => "Enterprise",
-          "package_dimensions" => nil,
-          "shippable" => nil,
-          "statement_descriptor" => nil,
-          "tax_code" => nil,
-          "unit_label" => nil,
-          "updated" => 1_678_833_149,
-          "url" => nil
-        },
-        resp
-      )
-
-    [{"GET", "/v1/products/#{product_id}", 200, response}]
-  end
-
   def mock_create_billing_session_endpoint(account, resp \\ %{}) do
     response =
       Map.merge(

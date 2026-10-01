@@ -69,4 +69,40 @@ defmodule Portal.IruFixtures do
     |> Portal.Iru.Device.changeset(device_attrs)
     |> Portal.Repo.insert!()
   end
+
+  @doc "Build a iru API response payload for sync tests."
+  def iru_api_device_fixture(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "device_id" => "device-1",
+        "device_name" => "Alice's MacBook Air",
+        "model" => "MacBook Air (M1, 2020)",
+        "serial_number" => "FVHHFKF7Q6L4",
+        "platform" => "Mac",
+        "os_version" => "14.4.1",
+        "supplemental_build_version" => "23E224",
+        "supplemental_os_version_extra" => "",
+        "last_check_in" => "2024-07-23T14:11:37.150080Z",
+        "user" => %{
+          "email" => "accuhive.admin@kandji.io",
+          "name" => "Accuhive Admin",
+          "id" => "5344c996-8823-4b37-8d6e-8515fc7c3a0a",
+          "is_archived" => false
+        },
+        "asset_tag" => "",
+        "blueprint_id" => "ab102b9d-8e9c-420d-a498-f2a1123091c7",
+        "blueprint_name" => "main hive",
+        "mdm_enabled" => true,
+        "agent_installed" => true,
+        "is_missing" => false,
+        "is_removed" => false,
+        "agent_version" => "4.5.9 (5160)",
+        "first_enrollment" => "2024-01-26 16:15:36.087016+00:00",
+        "last_enrollment" => "2024-05-13 20:09:27.374451+00:00",
+        "lost_mode_status" => "",
+        "tags" => ["accuhive_02"]
+      },
+      Enum.into(overrides, %{})
+    )
+  end
 end

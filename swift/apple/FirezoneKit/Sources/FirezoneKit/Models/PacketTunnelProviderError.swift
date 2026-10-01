@@ -6,24 +6,24 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
-  case providerConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case credentialNotConfigured
+public enum PacketTunnelProviderError: Int, Error, CustomNSError, LocalizedError {
+  case providerConfigurationIsInvalid = 0
+  case firezoneIdIsInvalid = 1
+  case credentialNotConfigured = 2
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
   }
 
-  public var errorCode: Int {
-    switch self {
-    case .providerConfigurationIsInvalid: 0
-    case .firezoneIdIsInvalid: 1
-    case .credentialNotConfigured: 2
-    }
-  }
+  public var errorCode: Int { rawValue }
 
   public var errorDescription: String? { message }
+
+  public static func isCredentialNotConfigured(_ error: any Error) -> Bool {
+    let expected = credentialNotConfigured as NSError
+    let actual = error as NSError
+    return actual.domain == expected.domain && actual.code == expected.code
+  }
 
   /// `LocalizedError` is a Swift witness, so it is lost when the error crosses to
   /// another process: the network extension hands one to its completion handler and

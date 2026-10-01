@@ -918,6 +918,7 @@ defmodule Portal.Authentication do
         Portal.EmailOTP.AuthProvider,
         Portal.Userpass.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Okta.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.OIDC.AuthProvider

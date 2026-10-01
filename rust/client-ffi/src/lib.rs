@@ -41,9 +41,19 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    events: Mutex<client_shared::EventStream>,
     runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
+}
+
+/// The events emitted by a [`Session`], which ends once the [`Session`] has been dropped.
+#[derive(uniffi::Object)]
+pub struct EventStream(Mutex<client_shared::EventStream>);
+
+/// A new [`Session`] together with its [`EventStream`], which is handed out only once.
+#[derive(uniffi::Record)]
+pub struct Connection {
+    pub session: Arc<Session>,
+    pub events: Arc<EventStream>,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -177,6 +187,16 @@ pub enum Resource {
     Dns { resource: DnsResource },
     Cidr { resource: CidrResource },
     Internet { resource: InternetResource },
+    DevicePool { resource: DevicePoolResource },
+}
+
+/// Device pool resource view
+#[derive(uniffi::Record)]
+pub struct DevicePoolResource {
+    pub id: String,
+    pub name: String,
+    /// The devices of this pool we currently have a live connection to.
+    pub devices: Vec<ConnectedDevice>,
 }
 
 /// A device peer that this client currently has a live connection to.
@@ -185,13 +205,12 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
     /// Tunnel IPv6 address the device is reachable on.
     pub tun_ipv6: String,
-    /// Names of the device pools this peer belongs to, sorted (typically one,
-    /// but can be multiple).
-    pub pools: Vec<String>,
 }
 
 #[derive(uniffi::Enum)]
@@ -206,7 +225,6 @@ pub enum Event {
     },
     ResourcesUpdated {
         resources: Vec<Resource>,
-        connected_devices: Vec<ConnectedDevice>,
     },
     ConnectedToPortal {
         account_slug: String,
@@ -270,110 +288,103 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 
 #[uniffi::export]
 #[cfg(target_os = "android")]
-impl Session {
-    #[uniffi::constructor]
-    pub fn new_android(
-        config: AndroidSessionConfig,
-        protect_socket: Arc<dyn ProtectSocket>,
-        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
-    ) -> Result<Self, ConnlibError> {
-        let AndroidSessionConfig {
-            api_url,
-            token,
-            device_id,
-            device_name,
-            device_info,
-            is_internet_resource_active,
-        } = config;
-        let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
-        let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
+pub fn connect_android(
+    config: AndroidSessionConfig,
+    protect_socket: Arc<dyn ProtectSocket>,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    let AndroidSessionConfig {
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+    } = config;
+    let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
+    let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
 
-        connect(
-            api_url,
-            token,
-            device_id,
-            Some(device_name),
-            device_info,
-            is_internet_resource_active,
-            tls_identity,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )
-    }
+    connect(
+        api_url,
+        token,
+        device_id,
+        Some(device_name),
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )
 }
 
 #[uniffi::export]
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-impl Session {
-    #[uniffi::constructor]
-    pub fn new_apple(
-        api_url: String,
-        token: Option<String>,
-        device_id: String,
-        device_name: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
-        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
-    ) -> Result<Self, ConnlibError> {
-        // iOS doesn't need socket protection like Android
-        let tcp_socket_factory = Arc::new(socket_factory::tcp);
-        let udp_socket_factory = Arc::new(socket_factory::udp);
+pub fn connect_apple(
+    api_url: String,
+    token: Option<String>,
+    device_id: String,
+    device_name: Option<String>,
+    device_info: DeviceInfo,
+    is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    // iOS doesn't need socket protection like Android
+    let tcp_socket_factory = Arc::new(socket_factory::tcp);
+    let udp_socket_factory = Arc::new(socket_factory::udp);
 
-        // Locate the TUN device before `connect` spawns anything: every failed
-        // search used to leave a Tokio runtime and its threads behind, and the
-        // NetworkExtension process outlives the session that owns them.
-        let tun_fd = find_tun_fd()?;
+    // Locate the TUN device before `connect` spawns anything: every failed
+    // search used to leave a Tokio runtime and its threads behind, and the
+    // NetworkExtension process outlives the session that owns them.
+    let tun_fd = find_tun_fd()?;
 
-        let session = connect(
-            api_url,
-            token,
-            device_id,
-            device_name,
-            device_info,
-            is_internet_resource_active,
-            tls_identity,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )?;
+    let connection = connect(
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )?;
 
-        session.set_tun(tun_fd)?;
+    let runtime = connection.session.runtime.as_ref().context("No runtime")?;
+    // SAFETY: NetworkExtension owns the descriptor and keeps it open for the session.
+    let tun = unsafe { platform::Tun::from_fd(tun_fd, runtime.handle()) }
+        .context("Failed to create new Tun")?;
+    connection.session.inner.set_tun(Box::new(tun));
 
-        Ok(session)
-    }
+    Ok(connection)
 }
 
+/// Dummy constructor that isn't feature-gated by an OS.
+///
+/// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
 #[uniffi::export]
-impl Session {
-    #[uniffi::constructor]
-    /// Dummy constructor that isn't feature-gated by an OS.
-    ///
-    /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
-    pub fn new_dummy(
-        api_url: String,
-        token: Option<String>,
-        device_id: String,
-        device_name: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
-        tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
-    ) -> Result<Self, ConnlibError> {
-        let tcp_socket_factory = Arc::new(socket_factory::tcp);
-        let udp_socket_factory = Arc::new(socket_factory::udp);
+pub fn connect_dummy(
+    api_url: String,
+    token: Option<String>,
+    device_id: String,
+    device_name: Option<String>,
+    device_info: DeviceInfo,
+    is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    let tcp_socket_factory = Arc::new(socket_factory::tcp);
+    let udp_socket_factory = Arc::new(socket_factory::udp);
 
-        let session = connect(
-            api_url,
-            token,
-            device_id,
-            device_name,
-            device_info,
-            is_internet_resource_active,
-            tls_identity,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )?;
-
-        Ok(session)
-    }
+    connect(
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )
 }
 
 /// Find the TUN device with retry logic.
@@ -446,23 +457,32 @@ impl Session {
 
         self.inner.reset(reason)
     }
+}
 
+#[cfg(target_os = "android")]
+#[uniffi::export]
+impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        use std::os::fd::{FromRawFd as _, OwnedFd};
+
         tracing::debug!("Received set_tun command");
 
         let runtime = self.runtime.as_ref().context("No runtime")?;
-        // SAFETY: FD must be open.
-        let tun = unsafe {
-            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
-        };
+        // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let tun = platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?;
 
         self.inner.set_tun(Box::new(tun));
 
         Ok(())
     }
+}
 
-    pub async fn next_event(&self) -> Option<Event> {
-        match self.events.lock().await.next().await? {
+#[uniffi::export]
+impl EventStream {
+    /// Returns the next event, or `None` once the [`Session`] has shut down.
+    pub async fn next(&self) -> Option<Event> {
+        match self.0.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
@@ -495,22 +515,10 @@ impl Session {
                     ipv6_routes,
                 })
             }
-            client_shared::Event::ResourcesUpdated(resource_list) => {
-                let resources = resource_list
-                    .resources
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                let connected_devices = resource_list
-                    .connected_devices
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
+            client_shared::Event::ResourcesUpdated(resources) => {
+                let resources = resources.into_iter().map(Into::into).collect();
 
-                Some(Event::ResourcesUpdated {
-                    resources,
-                    connected_devices,
-                })
+                Some(Event::ResourcesUpdated { resources })
             }
             client_shared::Event::ConnectedToPortal(connected) => {
                 telemetry::set_account_slug(connected.account_slug.clone());
@@ -552,10 +560,9 @@ impl Drop for Session {
 
         self.inner.stop(); // Instruct the event-loop to shut down.
 
+        // Keep the runtime alive so the event-loop can gracefully close its connections.
         runtime.block_on(async {
-            // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
-            let drain = async { self.events.lock().await.drain().await };
-            let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
         });
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
@@ -585,7 +592,7 @@ fn connect(
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-) -> Result<Session, ConnlibError> {
+) -> Result<Connection, ConnlibError> {
     // Convert FFI DeviceInfo to internal phoenix_channel::DeviceInfo
     let device_info = phoenix_channel::DeviceInfo {
         device_uuid: device_info.device_uuid,
@@ -675,11 +682,13 @@ fn connect(
 
     analytics::new_session(device_id, api_url);
 
-    Ok(Session {
-        inner: session,
-        events: Mutex::new(events),
-        runtime: Some(runtime),
-        uploader,
+    Ok(Connection {
+        session: Arc::new(Session {
+            inner: session,
+            runtime: Some(runtime),
+            uploader,
+        }),
+        events: Arc::new(EventStream(Mutex::new(events))),
     })
 }
 
@@ -937,6 +946,9 @@ impl From<connlib_model::ResourceView> for Resource {
             connlib_model::ResourceView::Internet(internet) => Resource::Internet {
                 resource: internet.into(),
             },
+            connlib_model::ResourceView::DevicePool(pool) => Resource::DevicePool {
+                resource: pool.into(),
+            },
         }
     }
 }
@@ -978,14 +990,24 @@ impl From<connlib_model::InternetResourceView> for InternetResource {
     }
 }
 
+impl From<connlib_model::DevicePoolResourceView> for DevicePoolResource {
+    fn from(pool: connlib_model::DevicePoolResourceView) -> Self {
+        DevicePoolResource {
+            id: pool.id.to_string(),
+            name: pool.name,
+            devices: pool.devices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
             id: device.id.to_string(),
             name: device.name,
+            slug: device.slug,
             tun_ipv4: device.tun_ipv4.to_string(),
             tun_ipv6: device.tun_ipv6.to_string(),
-            pools: device.pools,
         }
     }
 }

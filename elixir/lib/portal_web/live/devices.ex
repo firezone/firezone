@@ -1,6 +1,6 @@
 defmodule PortalWeb.Devices do
   use PortalWeb, :live_view
-  import PortalWeb.Devices.Components
+  alias PortalWeb.Devices.Components, as: DeviceComponents
   alias Portal.{Presence.Devices, ComponentVersions}
   alias Portal.Changes.Change
   alias Portal.Device
@@ -34,10 +34,10 @@ defmodule PortalWeb.Devices do
         serials_by_device: %{}
       )
       |> assign(base_device_assigns())
-      |> assign_live_table("devices",
+      |> LiveTable.assign_live_table("devices",
         query_module: Database,
         sortable_fields: [
-          {:devices, :name},
+          {:devices, :slug},
           {:devices, :last_seen_version},
           {:devices, :last_seen_at},
           {:devices, :inserted_at},
@@ -50,7 +50,7 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
@@ -82,7 +82,7 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
@@ -99,7 +99,7 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -128,30 +128,30 @@ defmodule PortalWeb.Devices do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Devices</:title>
         <:description>
           End-user devices and servers that access your protected Resources.
         </:description>
         <:action>
-          <.docs_action path="/deploy/clients" />
+          <Navigation.docs_action path="/deploy/clients" />
         </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           stale={@stale}
           id="devices"
           rows={@devices}
@@ -166,14 +166,14 @@ defmodule PortalWeb.Devices do
           metadata={@devices_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={device} field={{:devices, :name}} label="Device" class="w-80">
+          <:col :let={device} field={{:devices, :slug}} label="Device" class="w-80">
             <div class="flex items-center gap-2">
               <span class="mr-2">
-                <.device_os_icon device={device} />
+                <DeviceComponents.device_os_icon device={device} />
               </span>
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {device.name}
+                  {device.slug}
                 </div>
                 <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {device.id}
@@ -182,7 +182,7 @@ defmodule PortalWeb.Devices do
             </div>
           </:col>
           <:col :let={device} label="Owner">
-            <.actor_name_and_role
+            <DeviceComponents.actor_name_and_role
               account={@account}
               actor={device.actor}
               class="text-sm"
@@ -190,16 +190,16 @@ defmodule PortalWeb.Devices do
             />
           </:col>
           <:col :let={device} label="Serial" class="w-44">
-            <.serial_cell serial={Map.get(@serials_by_device, device.id)} />
+            <DeviceComponents.serial_cell serial={Map.get(@serials_by_device, device.id)} />
           </:col>
           <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
-            <.version
+            <DeviceComponents.version
               current={device.last_seen_version}
               latest={ComponentVersions.client_version(device)}
             />
           </:col>
           <:col :let={device} label="Status" class="w-28">
-            <.device_status_badge device={device} />
+            <DeviceComponents.device_status_badge device={device} />
           </:col>
           <:col
             :let={device}
@@ -208,7 +208,7 @@ defmodule PortalWeb.Devices do
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={device.last_seen_at} />
+              <Core.relative_datetime datetime={device.last_seen_at} />
             </span>
           </:col>
           <:col
@@ -218,13 +218,13 @@ defmodule PortalWeb.Devices do
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={device.inserted_at} />
+              <Core.relative_datetime datetime={device.inserted_at} />
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No devices yet</p>
@@ -234,10 +234,10 @@ defmodule PortalWeb.Devices do
               </div>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.device_panel
+      <DeviceComponents.device_panel
         account={@account}
         device={@selected_device}
         panel={device_panel_state(assigns)}
@@ -310,10 +310,10 @@ defmodule PortalWeb.Devices do
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event(
@@ -321,7 +321,7 @@ defmodule PortalWeb.Devices do
         %{"tab" => tab},
         %{assigns: %{selected_device: %Device{} = device}} = socket
       ) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{device}", tab: tab))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{device}", tab: tab))}
   end
 
   def handle_event("switch_device_tab", _params, %{assigns: %{selected_device: nil}} = socket) do
@@ -331,7 +331,7 @@ defmodule PortalWeb.Devices do
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
     {:noreply,
      push_patch(socket,
-       to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -344,12 +344,12 @@ defmodule PortalWeb.Devices do
 
   def handle_event("open_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"))}
   end
 
   def handle_event("cancel_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("change_device_edit_form", %{"device" => attrs}, socket) do
@@ -368,8 +368,8 @@ defmodule PortalWeb.Devices do
         {:noreply,
          socket
          |> put_flash(:success, "Device updated successfully.")
-         |> reload_live_table!("devices")
-         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{updated_client.id}"))}
+         |> LiveTable.reload_live_table!("devices")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{updated_client.id}"))}
 
       {:error, changeset} ->
         {:noreply,
@@ -382,12 +382,12 @@ defmodule PortalWeb.Devices do
   def handle_event("handle_keydown", _params, socket)
       when socket.assigns.device_panel.view == :edit_device do
     {:noreply,
-     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_device) do
-    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -412,7 +412,7 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device \"#{device.name}\" was verified.")
          |> assign_updated_selected_device(updated_client)
          |> merge_state(:device_confirm, unverify?: false)
-         |> reload_live_table!("devices")}
+         |> LiveTable.reload_live_table!("devices")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to verify device.")}
@@ -437,7 +437,7 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device \"#{device.name}\" was unverified.")
          |> assign_updated_selected_device(updated_client)
          |> merge_state(:device_confirm, unverify?: false)
-         |> reload_live_table!("devices")}
+         |> LiveTable.reload_live_table!("devices")}
 
       {:error, _} ->
         {:noreply,
@@ -456,8 +456,8 @@ defmodule PortalWeb.Devices do
          socket
          |> put_flash(:success, "Device \"#{device.name}\" was deleted.")
          |> merge_state(:device_confirm, delete?: false)
-         |> reload_live_table!("devices")
-         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
+         |> LiveTable.reload_live_table!("devices")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
 
       {:error, _} ->
         {:noreply, merge_state(socket, :device_confirm, delete?: false)}
@@ -490,7 +490,7 @@ defmodule PortalWeb.Devices do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
@@ -526,8 +526,8 @@ defmodule PortalWeb.Devices do
       ) do
     rendered_client_ids = Enum.map(socket.assigns.devices, & &1.id)
 
-    if presence_updates_any_id?(event, rendered_client_ids) do
-      socket = reload_live_table!(socket, "devices")
+    if LiveTable.presence_updates_any_id?(event, rendered_client_ids) do
+      socket = LiveTable.reload_live_table!(socket, "devices")
       {:noreply, socket}
     else
       {:noreply, socket}
@@ -802,6 +802,7 @@ defmodule PortalWeb.Devices do
          [devices: devices, actors: actors],
          fulltext_search(actors.name, ^search_term) or
            fulltext_search(devices.name, ^search_term) or
+           fulltext_search(devices.slug, ^search_term) or
            fulltext_search(actors.email, ^search_term)
        )}
     end
@@ -1157,6 +1158,7 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:defender), do: 2
     defp provider_type_rank(:santa), do: 3
     defp provider_type_rank(:sentinelone), do: 4
+    defp provider_type_rank(:sophos), do: 5
 
   end
 end

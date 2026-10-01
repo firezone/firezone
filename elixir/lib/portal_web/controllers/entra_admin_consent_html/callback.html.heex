@@ -1,9 +1,9 @@
-<div class="flex flex-col items-center justify-center min-h-screen bg-neutral-50">
+<div class="flex flex-col items-center justify-center min-h-screen bg-surface">
   <div class="bg-white shadow-md rounded-md p-8 max-w-md">
     <%= if @success do %>
       <div class="flex items-center justify-center mb-4">
         <svg
-          class="w-16 h-16 text-green-600"
+          class="w-16 h-16 text-success"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -16,15 +16,15 @@
           />
         </svg>
       </div>
-      <h1 class="text-2xl font-bold text-center text-neutral-900 mb-2">
+      <h1 class="text-2xl font-bold text-center text-heading mb-2">
         Admin Consent Granted
       </h1>
-      <p class="text-center text-neutral-600 mb-6">
+      <p class="text-center text-subtle mb-6">
         You have successfully granted permissions for directory sync. You can close this window and return to the settings page.
       </p>
     <% else %>
       <div class="flex items-center justify-center mb-4">
-        <svg class="w-16 h-16 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-16 h-16 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -33,17 +33,17 @@
           />
         </svg>
       </div>
-      <h1 class="text-2xl font-bold text-center text-neutral-900 mb-2">
+      <h1 class="text-2xl font-bold text-center text-heading mb-2">
         Consent Failed
       </h1>
-      <p class="text-center text-neutral-600 mb-6">
+      <p class="text-center text-subtle mb-6">
         {Map.get(@flash, "error", "Something went wrong during the admin consent process.")}
       </p>
     <% end %>
     <button
       type="button"
       data-close-window-button
-      class="w-full bg-accent-600 hover:bg-accent-700 text-white font-medium py-2 px-4 rounded-sm"
+      class="w-full bg-accent hover:bg-accent-dark text-white font-medium py-2 px-4 rounded-sm"
     >
       Close Window
     </button>

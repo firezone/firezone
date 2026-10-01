@@ -58,6 +58,7 @@ defmodule PortalAPI.Schemas.ContractTest do
     },
     %{schema: PortalAPI.Schemas.EntraAuthProvider.Schema, struct: Portal.Entra.AuthProvider},
     %{schema: PortalAPI.Schemas.GoogleAuthProvider.Schema, struct: Portal.Google.AuthProvider},
+    %{schema: PortalAPI.Schemas.GitHubAuthProvider.Schema, struct: Portal.GitHub.AuthProvider},
     %{schema: PortalAPI.Schemas.OktaAuthProvider.Schema, struct: Portal.Okta.AuthProvider},
     %{schema: PortalAPI.Schemas.OIDCAuthProvider.Schema, struct: Portal.OIDC.AuthProvider},
     %{schema: PortalAPI.Schemas.EmailOTPAuthProvider.Schema, struct: Portal.EmailOTP.AuthProvider},
@@ -86,6 +87,11 @@ defmodule PortalAPI.Schemas.ContractTest do
       attrs: %{posture_provider: %{name: "SentinelOne"}}
     },
     %{
+      schema: PortalAPI.Schemas.SophosPostureProvider.Schema,
+      struct: Portal.Sophos.PostureProvider,
+      attrs: %{posture_provider: %{name: "Sophos"}}
+    },
+    %{
       schema: PortalAPI.Schemas.DefenderPostureProvider.Schema,
       struct: Portal.Defender.PostureProvider,
       attrs: %{posture_provider: %{name: "Defender"}}
@@ -94,6 +100,7 @@ defmodule PortalAPI.Schemas.ContractTest do
     %{schema: PortalAPI.Schemas.IruDevice.Schema, struct: Portal.Iru.Device},
     %{schema: PortalAPI.Schemas.SantaDevice.Schema, struct: Portal.Santa.Device},
     %{schema: PortalAPI.Schemas.SentinelOneDevice.Schema, struct: Portal.SentinelOne.Device},
+    %{schema: PortalAPI.Schemas.SophosDevice.Schema, struct: Portal.Sophos.Device},
     %{schema: PortalAPI.Schemas.DefenderDevice.Schema, struct: Portal.Defender.Device}
   ]
 

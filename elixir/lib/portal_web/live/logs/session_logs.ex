@@ -1,7 +1,7 @@
 defmodule PortalWeb.Logs.SessionLogs do
   use PortalWeb, :live_view
 
-  import PortalWeb.Logs.Components
+  alias PortalWeb.Logs.Components, as: LogComponents
 
   alias PortalWeb.Devices
   alias __MODULE__.Database
@@ -10,14 +10,14 @@ defmodule PortalWeb.Logs.SessionLogs do
   @filter_key "session_logs_filter"
 
   def mount(_params, _session, socket) do
-    browser_tz = browser_tz_from_connect(socket)
+    browser_tz = LogComponents.browser_tz_from_connect(socket)
 
     socket =
       socket
       |> assign(page_title: "Session Logs")
       |> assign(selected_log: nil, browser_tz: browser_tz)
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
-      |> assign_live_table(@table_id,
+      |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:session_logs, :timestamp}, {:session_logs, :log_id}],
         callback: &handle_logs_update!/2
@@ -33,8 +33,8 @@ defmodule PortalWeb.Logs.SessionLogs do
       ) do
     socket =
       socket
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     case Database.fetch_log(log_id, socket.assigns.subject) do
       {:ok, log} ->
@@ -58,15 +58,15 @@ defmodule PortalWeb.Logs.SessionLogs do
     socket =
       socket
       |> assign(selected_log: nil)
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     {:noreply, socket}
   end
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
     {:noreply,
@@ -97,10 +97,10 @@ defmodule PortalWeb.Logs.SessionLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.logs_nav account={@account} current_path={@current_path} />
+      <Navigation.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="session_logs"
           rows={@session_logs}
           row_id={&"session-log-#{&1.log_id}"}
@@ -122,7 +122,7 @@ defmodule PortalWeb.Logs.SessionLogs do
           row_item={& &1}
         >
           <:col :let={row} field={{:session_logs, :timestamp}} label="Timestamp" class="w-44">
-            <.timestamp_cell
+            <LogComponents.timestamp_cell
               log_id={row.log_id}
               timestamp={row.timestamp}
               tz_mode={@tz_mode}
@@ -130,50 +130,50 @@ defmodule PortalWeb.Logs.SessionLogs do
             />
           </:col>
           <:col :let={row} label="Context" class="w-40">
-            <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <.session_context_icon context={row.context} user_agent={ua(row)} />
+            <div class="flex items-center gap-2 text-xs text-body">
+              <LogComponents.session_context_icon context={row.context} user_agent={ua(row)} />
               <span class="truncate">{context_label(row.context)}</span>
             </div>
           </:col>
           <:col :let={row} label="Actor" class="w-72">
-            <.actor_cell subject={row.subject} />
+            <LogComponents.actor_cell subject={row.subject} />
           </:col>
           <:col :let={row} label="IP" class="w-32">
-            <.ip_cell ip={subject_field(row, "ip")} />
+            <LogComponents.ip_cell ip={subject_field(row, "ip")} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
-            <span class="block truncate text-xs text-[var(--text-secondary)]">
+            <span class="block truncate text-xs text-body">
               {row_location(row)}
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-login-circle-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <Core.icon name="ri-login-circle-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No sessions</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No sessions</p>
+                <p class="text-xs text-subtle mt-0.5">
                   Client, Gateway, and Portal sessions will appear here as they're created.
                 </p>
               </div>
             </div>
           </:empty>
           <:footer>
-            <.log_sinks_notice account={@account} />
+            <LogComponents.log_sinks_notice account={@account} />
           </:footer>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.show_panel id="session-log-panel" open?={not is_nil(@selected_log)}>
+      <LogComponents.show_panel id="session-log-panel" open?={not is_nil(@selected_log)}>
         <:title>
           <%= if @selected_log do %>
-            <.session_context_icon
+            <LogComponents.session_context_icon
               context={@selected_log.context}
               user_agent={ua(@selected_log)}
-              class="w-4 h-4 text-[var(--text-secondary)]"
+              class="w-4 h-4 text-body"
             />
-            <span class="text-sm font-semibold text-[var(--text-primary)] truncate">
+            <span class="text-sm font-semibold text-heading truncate">
               {device_label(@selected_log)}
             </span>
           <% end %>
@@ -182,7 +182,7 @@ defmodule PortalWeb.Logs.SessionLogs do
           :if={@selected_log}
           class="flex-1 flex flex-col min-h-0 overflow-auto p-5 gap-4"
         >
-          <.actor_card
+          <LogComponents.actor_card
             :if={
               subject_field(@selected_log, "actor_name") ||
                 subject_field(@selected_log, "actor_email")
@@ -194,21 +194,21 @@ defmodule PortalWeb.Logs.SessionLogs do
           />
 
           <section class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
-            <.location_map
+            <LogComponents.location_map
               lat={subject_field(@selected_log, "ip_lat")}
               lon={subject_field(@selected_log, "ip_lon")}
             >
               <:caption>
                 <div class="flex items-center justify-between gap-2 text-xs">
                   <div class="flex items-center gap-2 min-w-0">
-                    <.icon
+                    <Core.icon
                       name="ri-map-pin-line"
-                      class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
+                      class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
-                    <span class="text-[var(--text-primary)] truncate">
+                    <span class="text-heading truncate">
                       {location_caption(@selected_log)}
                     </span>
                   </div>
@@ -217,7 +217,7 @@ defmodule PortalWeb.Logs.SessionLogs do
                       is_number(subject_field(@selected_log, "ip_lat")) and
                         is_number(subject_field(@selected_log, "ip_lon"))
                     }
-                    class="font-mono text-[10px] text-[var(--text-tertiary)] tabular-nums shrink-0"
+                    class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
                   >
                     {format_coord(subject_field(@selected_log, "ip_lat"))}, {format_coord(
                       subject_field(@selected_log, "ip_lon")
@@ -225,70 +225,70 @@ defmodule PortalWeb.Logs.SessionLogs do
                   </span>
                 </div>
               </:caption>
-            </.location_map>
+            </LogComponents.location_map>
           </section>
         </div>
-        <.show_panel_sidebar :if={@selected_log}>
+        <LogComponents.show_panel_sidebar :if={@selected_log}>
           <section>
-            <.section_heading label="Details" />
+            <LogComponents.section_heading label="Details" />
             <dl class="space-y-2.5">
-              <.detail_row label="Timestamp">
-                <.timestamp_cell
+              <LogComponents.detail_row label="Timestamp">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-timestamp"
                   log_id={@selected_log.log_id}
                   timestamp={@selected_log.timestamp}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
-              <.detail_row label="Log ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Log ID">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log_id}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Identifiers" />
+            <LogComponents.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
-              <.detail_row :if={subject_field(@selected_log, "actor_id")} label="Actor ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+              <LogComponents.detail_row :if={subject_field(@selected_log, "actor_id")} label="Actor ID">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_log, "actor_id")}
                 </span>
-              </.detail_row>
-              <.detail_row
+              </LogComponents.detail_row>
+              <LogComponents.detail_row
                 :if={subject_field(@selected_log, "auth_provider_id")}
                 label="Auth provider ID"
               >
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_log, "auth_provider_id")}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Source" />
+            <LogComponents.section_heading label="Source" />
             <dl class="space-y-2.5">
-              <.detail_row :if={subject_field(@selected_log, "ip")} label="IP address">
-                <span class="font-mono text-xs text-[var(--text-primary)]">
+              <LogComponents.detail_row :if={subject_field(@selected_log, "ip")} label="IP address">
+                <span class="font-mono text-xs text-heading">
                   {subject_field(@selected_log, "ip")}
                 </span>
-              </.detail_row>
-              <.detail_row :if={ua(@selected_log)} label="User agent">
-                <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={ua(@selected_log)} label="User agent">
+                <span class="font-mono text-xs text-body break-all">
                   {ua(@selected_log)}
                 </span>
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
-        </.show_panel_sidebar>
-      </.show_panel>
+        </LogComponents.show_panel_sidebar>
+      </LogComponents.show_panel>
     </div>
     """
   end

@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
+    hash::RandomState,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     num::NonZeroUsize,
 };
@@ -38,7 +39,7 @@ pub(crate) trait RouteEntry: Ord + Clone {
 
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>>,
+    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, RandomState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -85,7 +86,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            match_cache: LruCache::new(MAX_CACHE_ENTRIES),
+            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, RandomState::new()),
         }
     }
 }

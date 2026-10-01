@@ -38,7 +38,12 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
+    pub(crate) fn new(
+        seed: u64,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        created_at: SystemTime,
+    ) -> Self {
         let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
@@ -50,7 +55,7 @@ impl SimRelay {
         Self {
             sut,
             allocations: Default::default(),
-            created_at: SystemTime::now(),
+            created_at,
         }
     }
 
@@ -85,7 +90,12 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+    pub(crate) fn receive(
+        &mut self,
+        transmit: Transmit,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Option<Transmit> {
         let dst = transmit.dst;
         let payload = transmit.payload;
         let sender = transmit.src.unwrap();
@@ -94,7 +104,7 @@ impl SimRelay {
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
-            return self.handle_client_input(payload, ClientSocket::new(sender), now);
+            return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
         }
 
         self.handle_peer_traffic(
@@ -109,8 +119,11 @@ impl SimRelay {
         mut payload: Buffer<Vec<u8>>,
         client: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<Transmit> {
-        let (port, peer) = self.sut.handle_client_input(&payload, client, now)?;
+        let (port, peer) = self
+            .sut
+            .handle_client_input(&payload, client, now, now_utc)?;
 
         payload.shift_start_right(4);
 
@@ -179,11 +192,12 @@ impl SimRelay {
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
+        // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+        // Shortening it would cover the relay's expiry and re-auth paths, which nothing
+        // does today, but the reference model needs to predict that first.
+        const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
 
-        let expiry = self.created_at + ONE_HOUR;
-
-        let secs = expiry
+        let secs = (self.created_at + VALIDITY)
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();

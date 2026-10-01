@@ -32,6 +32,20 @@ You can achieve this more easily by using `pre-commit`. See
   using ALE)
 - [VSCode](https://marketplace.visualstudio.com/items?itemName=mkhl.shfmt)
 
+## Elixir dead code
+
+Run `mise run //:elixir:dead-code --check` to compare public function names
+against `elixir/dead-code-exceptions.json`. Run `mise run //:elixir:dead-code`
+to update the exceptions after reviewing the diff, then commit the JSON file.
+CI rejects both new violations and exceptions that are no longer needed.
+
+This is a basic name-only scan of tracked working-tree files: definitions come
+from Elixir `.ex`/`.exs` files, and references can be in any tracked text file.
+It does not resolve modules or arities. Comments, strings, and documentation
+count as references, and a `def` in a documentation example can be reported.
+Callbacks and functions invoked dynamically may need exceptions. Stage new
+files before running the task so Git includes them in the scan.
+
 ## Scripting tips
 
 - Use `#!/usr/bin/env bash` along with `set -euox pipefail` in general for dev

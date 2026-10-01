@@ -8,6 +8,7 @@ mod buffered_transmits;
 mod dns_records;
 mod dns_server_resource;
 mod echo;
+pub mod feedback;
 mod flux_capacitor;
 mod icmp_error_hosts;
 mod os;
@@ -36,6 +37,7 @@ pub mod tunnel_proto {
     use super::assertions::PanicOnErrorEvents;
 
     pub use super::arb::Generator;
+    pub use super::assertions::check_invariants;
     pub use super::flux_capacitor::FluxCapacitor;
     pub use super::reference::ReferenceState;
     pub use super::stub_portal::StubPortal;

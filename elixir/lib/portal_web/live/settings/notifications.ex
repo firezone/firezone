@@ -6,8 +6,7 @@ defmodule PortalWeb.Settings.Notifications do
     socket =
       assign(socket,
         page_title: "Notifications",
-        form: to_form(build_changeset(socket.assigns.account)),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        form: to_form(build_changeset(socket.assigns.account))
       )
 
     {:ok, socket}
@@ -16,10 +15,9 @@ defmodule PortalWeb.Settings.Notifications do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 overflow-y-auto p-6">
@@ -62,7 +60,7 @@ defmodule PortalWeb.Settings.Notifications do
         <p :if={@description} class="text-xs text-subtle mt-0.5">{@description}</p>
       </div>
       <input type="hidden" name={@field.name} value="false" />
-      <.toggle id={@field.id} name={@field.name} value="true" checked={@checked} />
+      <Core.toggle id={@field.id} name={@field.name} value="true" checked={@checked} />
     </div>
     """
   end
