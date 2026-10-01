@@ -35,8 +35,8 @@ use std::{
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
-use random_state::RandomState;
 use smallvec::{SmallVec, smallvec};
 
 mod token;
@@ -90,8 +90,8 @@ impl Scope for (ClientId, ResourceId) {
 /// identifies a flow (see the module docs).
 #[derive(Debug)]
 pub struct Tracker<S> {
-    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, RandomState>,
-    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, RandomState>,
+    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
+    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
 
     enabled: bool,
     created_at: Instant,

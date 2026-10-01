@@ -2796,7 +2796,7 @@ dependencies = [
  "flow-log-writer",
  "ip-packet",
  "jsonschema",
- "random-state",
+ "fast-random-state",
  "serde",
  "serde_json",
  "smallvec",
@@ -6199,7 +6199,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "random-state"
+name = "fast-random-state"
 version = "0.1.0"
 dependencies = [
  "foldhash 0.2.0",
@@ -8900,7 +8900,7 @@ dependencies = [
  "otel-instruments",
  "proptest",
  "rand 0.10.3",
- "random-state",
+ "fast-random-state",
  "rangemap",
  "ringbuffer",
  "secrecy",

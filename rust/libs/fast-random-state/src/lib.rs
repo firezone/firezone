@@ -9,9 +9,9 @@ use foldhash::fast::{FixedState, FoldHasher};
 /// `std` draws its keys from `getrandom`, which the fuzzer interposes to stay deterministic;
 /// `foldhash`'s own random seed would bypass it.
 #[derive(Clone, Debug)]
-pub struct RandomState(FixedState);
+pub struct FastRandomState(FixedState);
 
-impl Default for RandomState {
+impl Default for FastRandomState {
     fn default() -> Self {
         Self(FixedState::with_seed(
             std::hash::RandomState::new().hash_one(()),
@@ -19,7 +19,7 @@ impl Default for RandomState {
     }
 }
 
-impl BuildHasher for RandomState {
+impl BuildHasher for FastRandomState {
     type Hasher = FoldHasher<'static>;
 
     #[inline]

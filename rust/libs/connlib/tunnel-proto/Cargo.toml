@@ -37,7 +37,7 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 rand = { workspace = true }
-random-state = { workspace = true }
+fast-random-state = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
