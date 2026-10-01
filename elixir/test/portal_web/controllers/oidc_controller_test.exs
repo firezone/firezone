@@ -3799,7 +3799,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) == "/sign_up/google"
 
-      identity = get_session(conn, "google_sign_up")
+      identity = get_session(conn, "idp_sign_up")
       assert identity["email"] == "ada@example.com"
       assert identity["issuer"] == "#{Mocks.OIDC.mock_endpoint()}/"
       assert identity["idp_id"] == "353690423699814251281"

@@ -1078,7 +1078,7 @@ impl TunnelTest {
                 let Some(transmit) = client.exec_mut(|sim| {
                     sim.on_received_packet(packet, &ref_state.icmp_error_hosts, now)
                 }) else {
-                    continue;
+                    continue 'outer;
                 };
 
                 buffered_transmits.push_from(transmit, client, now);

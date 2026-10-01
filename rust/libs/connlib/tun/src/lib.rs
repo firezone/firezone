@@ -1,19 +1,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod workers;
+pub use workers::Workers;
+
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::IpPacket;
 use std::sync::LazyLock;
 use tokio::sync::mpsc;
-
-#[cfg(target_family = "unix")]
-pub mod ioctl;
-#[cfg(target_os = "linux")]
-pub mod linux;
-#[cfg(target_family = "unix")]
-pub mod unix;
-
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub mod apple;
 
 /// How many packets a single item on the TUN channels may at most hold.
 ///

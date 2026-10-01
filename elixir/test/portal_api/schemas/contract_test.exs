@@ -58,6 +58,7 @@ defmodule PortalAPI.Schemas.ContractTest do
     },
     %{schema: PortalAPI.Schemas.EntraAuthProvider.Schema, struct: Portal.Entra.AuthProvider},
     %{schema: PortalAPI.Schemas.GoogleAuthProvider.Schema, struct: Portal.Google.AuthProvider},
+    %{schema: PortalAPI.Schemas.GitHubAuthProvider.Schema, struct: Portal.GitHub.AuthProvider},
     %{schema: PortalAPI.Schemas.OktaAuthProvider.Schema, struct: Portal.Okta.AuthProvider},
     %{schema: PortalAPI.Schemas.OIDCAuthProvider.Schema, struct: Portal.OIDC.AuthProvider},
     %{schema: PortalAPI.Schemas.EmailOTPAuthProvider.Schema, struct: Portal.EmailOTP.AuthProvider},

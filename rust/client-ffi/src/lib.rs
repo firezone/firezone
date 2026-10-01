@@ -341,7 +341,11 @@ pub fn connect_apple(
         udp_socket_factory,
     )?;
 
-    connection.session.set_tun(tun_fd)?;
+    let runtime = connection.session.runtime.as_ref().context("No runtime")?;
+    // SAFETY: NetworkExtension owns the descriptor and keeps it open for the session.
+    let tun = unsafe { platform::Tun::from_fd(tun_fd, runtime.handle()) }
+        .context("Failed to create new Tun")?;
+    connection.session.inner.set_tun(Box::new(tun));
 
     Ok(connection)
 }
@@ -445,15 +449,20 @@ impl Session {
 
         self.inner.reset(reason)
     }
+}
 
+#[cfg(target_os = "android")]
+#[uniffi::export]
+impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        use std::os::fd::{FromRawFd as _, OwnedFd};
+
         tracing::debug!("Received set_tun command");
 
         let runtime = self.runtime.as_ref().context("No runtime")?;
-        // SAFETY: FD must be open.
-        let tun = unsafe {
-            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
-        };
+        // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let tun = platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?;
 
         self.inner.set_tun(Box::new(tun));
 

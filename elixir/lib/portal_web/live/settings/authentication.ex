@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.Authentication do
     OIDC,
     Entra,
     Google,
+    GitHub,
     Okta
   }
 
@@ -32,7 +33,7 @@ defmodule PortalWeb.Settings.Authentication do
     "hover:bg-raised hover:border-border-emphasis"
   ]
 
-  @new_types ~w[google entra okta oidc]
+  @new_types ~w[google github entra okta oidc]
   @edit_types @new_types ++ ~w[userpass email_otp]
 
   @common_fields ~w[name context is_disabled issuer client_session_lifetime_secs portal_session_lifetime_secs]a
@@ -41,6 +42,7 @@ defmodule PortalWeb.Settings.Authentication do
     EmailOTP.AuthProvider => @common_fields,
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
+    GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
     Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
@@ -583,7 +585,7 @@ defmodule PortalWeb.Settings.Authentication do
     # Provider-specific trigger fields:
     # - Okta: okta_domain is user-editable, discovery_document_uri is computed from it
     # - OIDC: discovery_document_uri is user-editable
-    # - Google/Entra: no user-editable OIDC config fields
+    # - Google/GitHub/Entra: no user-editable OIDC config fields
     case schema do
       Okta.AuthProvider ->
         [:client_id, :client_secret, :okta_domain]
@@ -719,6 +721,20 @@ defmodule PortalWeb.Settings.Authentication do
                     </span>
                     <span class="text-xs text-body">
                       Authenticate users against a Google account.
+                    </span>
+                  </Navigation.link>
+                </li>
+                <li>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/authentication/github/new"}
+                    class={select_type_classes()}
+                  >
+                    <span class="flex items-center gap-3 w-2/5 shrink-0">
+                      <Core.provider_icon provider="github" size="xl" />
+                      <span class="text-sm font-medium text-heading">GitHub</span>
+                    </span>
+                    <span class="text-xs text-body">
+                      Authenticate users against a GitHub account.
                     </span>
                   </Navigation.link>
                 </li>
@@ -1336,6 +1352,69 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
         </div>
 
+        <%!-- GitHub-specific config --%>
+        <div :if={@type == "github"} class="pt-4 border-t border-border space-y-4">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Provider Configuration
+          </p>
+          <fieldset>
+            <legend class="block text-xs font-medium text-body mb-3">
+              Email Verification <span class="text-error">*</span>
+            </legend>
+            <% email_verification_method = get_field(@form.source, :email_verification_method) %>
+            <div class="grid gap-3 md:grid-cols-2">
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :proof,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="proof"
+                  checked={email_verification_method == :proof}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  Proof
+                </span>
+                <span class="text-xs text-body">
+                  Send a one-time passcode to the user's email before linking their GitHub account for the first time.
+                  <strong class="block mt-1">Default.</strong>
+                </span>
+              </label>
+
+              <label class={[
+                "flex flex-col p-3 border rounded cursor-pointer transition-all",
+                if(email_verification_method == :none,
+                  do: "border-brand bg-raised",
+                  else: "border-border hover:border-border-emphasis"
+                )
+              ]}>
+                <input
+                  type="radio"
+                  name={@form[:email_verification_method].name}
+                  value="none"
+                  checked={email_verification_method == :none}
+                  class="sr-only"
+                  required
+                />
+                <span class="text-sm font-semibold text-heading mb-1">
+                  None
+                </span>
+                <span class="text-xs text-body">
+                  Link a GitHub account to the user with the same email, as long as GitHub has verified that email.
+                  GitHub does not re-check addresses, so a former owner of an email can still sign in as its current user.
+                  <strong class="block mt-1">Not recommended.</strong>
+                </span>
+              </label>
+            </div>
+          </fieldset>
+        </div>
+
         <%!-- Provider-specific config (Okta / OIDC) --%>
         <div :if={@type in ["okta", "oidc"]} class="pt-4 border-t border-border space-y-4">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
@@ -1531,7 +1610,7 @@ defmodule PortalWeb.Settings.Authentication do
 
         <%!-- Verification --%>
         <div
-          :if={@type in ["entra", "google", "okta", "oidc"] and not @is_legacy}
+          :if={@type in ["entra", "google", "github", "okta", "oidc"] and not @is_legacy}
           class="pt-4 border-t border-border"
         >
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
@@ -1683,6 +1762,7 @@ defmodule PortalWeb.Settings.Authentication do
   defp select_type_classes, do: @select_type_classes
 
   defp titleize("google"), do: "Google"
+  defp titleize("github"), do: "GitHub"
   defp titleize("entra"), do: "Microsoft Entra"
   defp titleize("okta"), do: "Okta"
   defp titleize("oidc"), do: "OpenID Connect"
@@ -1841,7 +1921,7 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defmodule Database do
-    alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, Okta, Safe}
+    alias Portal.{AuthProvider, EmailOTP, X509, Userpass, OIDC, Entra, Google, GitHub, Okta, Safe}
     import Ecto.Query
     import Ecto.Changeset
 
@@ -1850,6 +1930,7 @@ defmodule PortalWeb.Settings.Authentication do
         EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        GitHub.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
         OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()

@@ -10,6 +10,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     Account,
     OIDC,
     Google,
+    GitHub,
     Okta,
     Entra,
     Safe
@@ -54,6 +55,10 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     ~p"/#{account}/sign_in/google/#{provider}?#{params}"
   end
 
+  defp redirect_path(account, %GitHub.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/github/#{provider}?#{params}"
+  end
+
   defp redirect_path(account, %Entra.AuthProvider{} = provider, params) do
     ~p"/#{account}/sign_in/entra/#{provider}?#{params}"
   end
@@ -70,6 +75,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       OIDC,
       Okta,
       Google,
+      GitHub,
       Entra
     }
 
@@ -90,6 +96,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       providers = [
         {OIDC.AuthProvider, :oidc},
         {Google.AuthProvider, :google},
+        {GitHub.AuthProvider, :github},
         {Entra.AuthProvider, :entra},
         {Okta.AuthProvider, :okta}
       ]

@@ -3,7 +3,6 @@ use std::time::Duration;
 use telemetry::Dsn;
 
 mod make_writer;
-mod tun;
 
 // mark:next-android-version
 pub const RELEASE: &str = "connlib-android@1.5.16";
@@ -18,4 +17,4 @@ pub const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 pub const DSN: Dsn = telemetry::ANDROID_DSN;
 
 pub(crate) use make_writer::MakeWriter;
-pub(crate) use tun::Tun;
+pub(crate) use tun_android::Io as Tun;

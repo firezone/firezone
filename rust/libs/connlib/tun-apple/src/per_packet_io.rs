@@ -8,10 +8,9 @@ use std::os::fd::AsRawFd;
 use std::pin::pin;
 use tokio::io::unix::AsyncFd;
 
-use crate::PacketBatch;
+use tun::PacketBatch;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 const MAX_ENOSPC_RETRIES: u32 = 24;
 
 /// Upper bound (as a power of two) for how many times we busy-spin between write retries.
@@ -21,7 +20,7 @@ const SPIN_LIMIT: u32 = 6;
 
 pub fn tun_send<T>(
     fd: T,
-    mut outbound_rx: crate::OutboundRx,
+    mut outbound_rx: tun::OutboundRx,
     write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
@@ -90,7 +89,6 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
     // On MacOS / iOS, the kernel returns `ENOSPC` when the TUN queue fills up.
     // It's transient and clears off this thread, and isn't observable
     // via write-readiness, so we retry rather than suspend.
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
     if is_queue_full(e) && attempt < MAX_ENOSPC_RETRIES {
         return true;
     }
@@ -103,14 +101,8 @@ fn should_retry(e: &io::Error, attempt: u32) -> bool {
 /// Whether the write failed because the TUN queue is full (`ENOSPC` on MacOS / iOS).
 ///
 /// Dropping in this case is expected back-pressure; any other error is a genuine failure.
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn is_queue_full(e: &io::Error) -> bool {
     e.raw_os_error() == Some(libc::ENOSPC)
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "ios")))]
-fn is_queue_full(_e: &io::Error) -> bool {
-    false
 }
 
 /// Briefly back off after a retryable write error before trying again.
@@ -156,7 +148,7 @@ fn drop_attributes(e: &io::Error) -> [KeyValue; 3] {
 
 pub fn tun_recv<T>(
     fd: T,
-    inbound_tx: crate::InboundTx,
+    inbound_tx: tun::InboundTx,
     read: impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where

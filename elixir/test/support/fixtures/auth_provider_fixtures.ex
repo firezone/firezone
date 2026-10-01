@@ -2,7 +2,7 @@ defmodule Portal.AuthProviderFixtures do
   @moduledoc """
   Test helpers for creating auth providers and related data.
 
-  Note: Auth providers have multiple subtypes (email_otp, userpass, x509, oidc, google, okta, entra).
+  Note: Auth providers have multiple subtypes (email_otp, userpass, x509, oidc, google, github, okta, entra).
   This module provides basic fixtures. For more complex provider setups,
   consider using the existing Portal.Fixtures.Auth module or creating
   provider-specific fixture modules.
@@ -282,6 +282,31 @@ defmodule Portal.AuthProviderFixtures do
       end)
 
     %Portal.Google.AuthProvider{id: auth_provider.id}
+    |> Ecto.Changeset.change(attrs)
+    |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
+    |> Ecto.Changeset.put_assoc(:account, account)
+    |> Portal.Repo.insert!()
+  end
+
+  def valid_github_provider_attrs do
+    %{
+      name: "GitHub",
+      context: :clients_and_portal,
+      issuer: "https://github.com/login/oauth",
+      is_verified: true
+    }
+  end
+
+  def github_provider_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, valid_github_provider_attrs())
+    account = Map.get_lazy(attrs, :account, fn -> account_fixture() end)
+
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :github, account: account)
+      end)
+
+    %Portal.GitHub.AuthProvider{id: auth_provider.id}
     |> Ecto.Changeset.change(attrs)
     |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
     |> Ecto.Changeset.put_assoc(:account, account)
