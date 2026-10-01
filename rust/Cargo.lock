@@ -920,7 +920,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=parallel-encryption#b575b953eb64fb1e15c4d37039d14818bca4f4ad"
+source = "git+https://github.com/firezone/boringtun?branch=parallel-encryption#589a3139796b1c399c41c85d70acb8bca3bbb8a6"
 dependencies = [
  "aead",
  "blake2",
@@ -8855,9 +8855,9 @@ dependencies = [
 name = "tunnel"
 version = "0.1.0"
 dependencies = [
- "boringtun",
  "anyhow-ext",
  "bootstrap-dns-client",
+ "boringtun",
  "bufferpool",
  "connlib-model",
  "dns-types",
