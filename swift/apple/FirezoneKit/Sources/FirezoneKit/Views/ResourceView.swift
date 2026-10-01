@@ -25,7 +25,9 @@ import SwiftUI
 
       return List {
         if resource.isDevicePool() {
-          ConnectedDevicesSection(devices: resource.devices)
+          if !resource.devices.isEmpty {
+            ConnectedDevicesSection(devices: resource.devices)
+          }
         } else if resource.isInternetResource() {
           InternetResourceHeader(resource: resource)
         } else {
@@ -79,7 +81,12 @@ import SwiftUI
         }
       }
       .listStyle(GroupedListStyle())
-      .navigationBarTitle("Details", displayMode: .inline)
+      .overlay {
+        if resource.isDevicePool() && resource.devices.isEmpty {
+          NoConnectedDevicesView()
+        }
+      }
+      .navigationBarTitle(resource.isDevicePool() ? resource.name : "Details", displayMode: .inline)
     }
 
     @ViewBuilder
