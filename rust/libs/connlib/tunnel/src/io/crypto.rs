@@ -13,7 +13,7 @@ use std::{
 
 use ip_packet::Ecn;
 use snownet::{DecryptedPacket, EncryptedPacket};
-use socket_factory::DatagramOut;
+use socket_factory::{DatagramBatch, DatagramLocation, DatagramOut};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
@@ -114,24 +114,27 @@ where
         Ok(())
     }
 
-    /// Opens `packets`, after all packets previously submitted from the same peer.
+    /// Opens `packets`, received in `batch`, after all packets previously submitted from the same
+    /// peer.
     pub fn open(
         &mut self,
-        packets: Vec<Received<EncryptedPacket<TId>>>,
+        batch: DatagramBatch,
+        packets: Vec<(DatagramLocation, Received<EncryptedPacket<TId>>)>,
     ) -> Result<(), CryptoWorkersUnavailable> {
         if packets.is_empty() {
             return Ok(());
         }
 
-        let batch = Arc::new(BatchInFlight::new(self.opens_in_flight.clone()));
+        let batch = Arc::new(batch);
+        let in_flight = Arc::new(BatchInFlight::new(self.opens_in_flight.clone()));
         let mut parts = iter::repeat_with(Vec::new)
             .take(self.openers.len())
             .collect::<Vec<_>>();
 
-        for received in packets {
+        for (location, received) in packets {
             let index = worker_index(received.from, self.openers.len())?;
 
-            parts[index].push(received);
+            parts[index].push((location, received));
         }
 
         for (worker, part) in self.openers.iter().zip(parts) {
@@ -140,7 +143,7 @@ where
             }
 
             // Fails only once the worker is gone, in which case the packets are dropped.
-            let _ = worker.send(Open(part, batch.clone()));
+            let _ = worker.send(Open(batch.clone(), part, in_flight.clone()));
         }
 
         Ok(())
@@ -228,8 +231,11 @@ fn open_work<TId>(
     jobs: crossbeam_channel::Receiver<Open<TId>>,
     opened: mpsc::UnboundedSender<Opened<TId>>,
 ) {
-    for Open(packets, batch) in jobs {
-        if opened.send(Opened(open(packets), batch)).is_err() {
+    for Open(batch, packets, in_flight) in jobs {
+        if opened
+            .send(Opened(open(&batch, packets), in_flight))
+            .is_err()
+        {
             return;
         }
     }
@@ -237,7 +243,11 @@ fn open_work<TId>(
 
 struct Seal(PendingDatagram, mpsc::Sender<DatagramOut>);
 
-struct Open<TId>(Vec<Received<EncryptedPacket<TId>>>, Arc<BatchInFlight>);
+struct Open<TId>(
+    Arc<DatagramBatch>,
+    Vec<(DatagramLocation, Received<EncryptedPacket<TId>>)>,
+    Arc<BatchInFlight>,
+);
 
 struct Opened<TId>(Vec<Received<DecryptedPacket<TId>>>, Arc<BatchInFlight>);
 
@@ -258,14 +268,17 @@ impl Drop for BatchInFlight {
     }
 }
 
-fn open<TId>(packets: Vec<Received<EncryptedPacket<TId>>>) -> Vec<Received<DecryptedPacket<TId>>> {
+fn open<TId>(
+    batch: &DatagramBatch,
+    packets: Vec<(DatagramLocation, Received<EncryptedPacket<TId>>)>,
+) -> Vec<Received<DecryptedPacket<TId>>> {
     packets
         .into_iter()
-        .map(|received| Received {
+        .map(|(location, received)| Received {
             local: received.local,
             from: received.from,
             ecn: received.ecn,
-            packet: received.packet.decrypt(),
+            packet: received.packet.decrypt(batch.get(location)),
         })
         .collect()
 }

@@ -371,6 +371,15 @@ pub struct DatagramIn<'a> {
     pub from: SocketAddr,
     pub packet: &'a [u8],
     pub ecn: Ecn,
+    pub location: DatagramLocation,
+}
+
+/// Where a [`DatagramIn`] is stored within its [`DatagramBatch`].
+#[derive(Debug, Clone, Copy)]
+pub struct DatagramLocation {
+    buffer: usize,
+    start: usize,
+    end: usize,
 }
 
 /// An outbound UDP datagram.
@@ -1023,6 +1032,14 @@ impl<B> DatagramBatch<B> {
         self.len() == 0
     }
 
+    /// Returns the datagram at `location`, as yielded by [`DatagramBatch::drain`].
+    pub fn get(&self, location: DatagramLocation) -> &[u8]
+    where
+        B: Deref<Target = Vec<u8>>,
+    {
+        &self.buffers[location.buffer][location.start..location.end]
+    }
+
     /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// When [`quinn_udp`] returns us the buffers, it will have populated the
@@ -1149,6 +1166,11 @@ where
                     Some(EcnCodepoint::Ect1) => Ecn::Ect1,
                     None => Ecn::NonEct,
                 },
+                location: DatagramLocation {
+                    buffer: self.buf_index,
+                    start: segment_start,
+                    end: segment_end,
+                },
             });
         }
     }
@@ -1266,6 +1288,43 @@ mod tests {
 
         assert_eq!(batch.drain().count(), 0);
         assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn drained_datagrams_can_be_looked_up_by_location() {
+        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
+        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
+
+        let mut buffers = buffer_pool.pull();
+        buffers.extend([
+            DummyBuffer(b"foobarbaz".to_vec()),
+            DummyBuffer(b"qux".to_vec()),
+        ]);
+
+        let mut metas = meta_pool.pull();
+        metas.extend([
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                9,
+                3,
+            ),
+            recv_meta(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                IpAddr::V4(Ipv4Addr::LOCALHOST),
+                3,
+                3,
+            ),
+        ]);
+
+        let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
+        let locations = batch.drain().map(|d| d.location).collect::<Vec<_>>();
+
+        let datagrams = locations
+            .into_iter()
+            .map(|location| batch.get(location))
+            .collect::<Vec<_>>();
+        assert_eq!(datagrams, [b"foo", b"bar", b"baz", b"qux"]);
     }
 
     /// A zero stride on a non-empty buffer must not stall the iterator: the receive

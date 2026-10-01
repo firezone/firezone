@@ -300,9 +300,9 @@ impl SimClient {
         let Some(packet) = self.sut.handle_network_input(local, from, payload, now)? else {
             return Ok(None);
         };
-        let packet = self
-            .sut
-            .handle_decrypted_network_input(local, from, packet.decrypt(), now)?;
+        let packet =
+            self.sut
+                .handle_decrypted_network_input(local, from, packet.decrypt(payload), now)?;
 
         Ok(packet)
     }

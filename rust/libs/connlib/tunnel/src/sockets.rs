@@ -229,8 +229,7 @@ const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
 ///
 /// Per address family (hence `2 *`), receive batches can be held in three places at once: up to
 /// [`INBOUND_QUEUE_SIZE`] queued in the channel, up to [`UDP_RECV_BATCH_LIMIT`] drained onto the main
-/// thread or, copied into packet buffers of about the same size, being decrypted, and one being
-/// filled by the receive task. Each batch pins
+/// thread or being decrypted, and one being filled by the receive task. Each batch pins
 /// [`socket_factory::MAX_RECV_BATCH_MEMORY`], which on Linux / Android sizes every buffer for a full
 /// 64-datagram GRO batch - the term that dominates here and the reason the depths above are shallow.
 const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =

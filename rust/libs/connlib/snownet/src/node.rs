@@ -43,6 +43,7 @@ use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
+use std::range::Range;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use std::{iter, mem};
@@ -570,18 +571,19 @@ where
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     /// - `Ok(Some)` if the packet was a wireguard data message from a peer.
-    ///   Decrypt it with [`EncryptedPacket::decrypt`], on any thread, and pass the result to
-    ///   [`Node::handle_decrypted`].
+    ///   Decrypt it from `datagram` with [`EncryptedPacket::decrypt`], on any thread, and pass the
+    ///   result to [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: &[u8],
+        datagram: &[u8],
         now: Instant,
     ) -> Result<Option<EncryptedPacket<TId>>> {
         self.last_now = now;
 
-        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, datagram, now)
+        {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
         };
@@ -595,13 +597,22 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let packet = match self.connections_try_handle(from, destination, packet, now) {
+        let (cid, open) = match self.connections_try_handle(from, destination, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
+        let message = datagram
+            .subslice_range(packet)
+            .expect("the payload of a TURN channel is part of its datagram");
 
-        Ok(Some(packet))
+        Ok(Some(EncryptedPacket {
+            cid,
+            from,
+            destination,
+            message,
+            open,
+        }))
     }
 
     /// Completes the decapsulation of a packet decrypted by [`EncryptedPacket::decrypt`].
@@ -1091,7 +1102,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, EncryptedPacket<TId>> {
+    ) -> ControlFlow<Result<()>, (TId, PendingOpen)> {
         // If the packet is not a WireGuard packet, bail early.
         let Ok(parsed_packet) = boringtun::noise::Tunn::parse_incoming_packet(packet) else {
             tracing::debug!(packet = %hex::encode(packet));
@@ -1163,7 +1174,9 @@ where
             }
         }
 
-        control_flow.map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        control_flow
+            .map_continue(|open| (cid, open))
+            .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
     fn allocations_drain_events(&mut self, now: Instant) {
@@ -1396,22 +1409,24 @@ pub struct EncryptedPacket<TId> {
     cid: TId,
     from: SocketAddr,
     destination: SocketAddr,
-    buffer: IpPacketBuf,
+    /// Where the data message is in the datagram passed to [`Node::decapsulate`].
+    message: Range<usize>,
     open: PendingOpen,
 }
 
 impl<TId> EncryptedPacket<TId> {
-    /// Decrypts the packet.
+    /// Decrypts the packet from `datagram`, the bytes it was decapsulated from.
     ///
     /// This does not touch the [`Node`] and can therefore run on any thread.
-    pub fn decrypt(mut self) -> DecryptedPacket<TId> {
-        let opened = self.open.open(self.buffer.buf());
+    pub fn decrypt(self, datagram: &[u8]) -> DecryptedPacket<TId> {
+        let mut buffer = IpPacketBuf::new();
+        let opened = self.open.open_into(&datagram[self.message], buffer.buf());
 
         DecryptedPacket {
             cid: self.cid,
             from: self.from,
             destination: self.destination,
-            buffer: self.buffer,
+            buffer,
             opened,
         }
     }
@@ -2002,7 +2017,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
-    ) -> ControlFlow<Result<()>, EncryptedPacket<TId>>
+    ) -> ControlFlow<Result<()>, PendingOpen>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -2018,20 +2033,12 @@ where
         };
 
         if let Ok(Packet::PacketData(data)) = Tunn::parse_incoming_packet(packet) {
-            let mut buffer = IpPacketBuf::new();
-
-            let open = match self.tunnel.decapsulate_data_deferred(data, buffer.buf()) {
+            let open = match self.tunnel.decapsulate_data_deferred(data) {
                 Ok(open) => open,
                 Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
             };
 
-            return ControlFlow::Continue(EncryptedPacket {
-                cid,
-                from,
-                destination,
-                buffer,
-                open,
-            });
+            return ControlFlow::Continue(open);
         }
 
         let mut buffer = IpPacketBuf::new();

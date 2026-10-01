@@ -333,7 +333,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for batch in batches.iter_mut() {
+                    for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
 
                         for received in batch.drain() {
@@ -358,18 +358,21 @@ impl ClientTunnel {
                                     local: received.local,
                                     from: received.from,
                                 }) {
-                                Ok(Some(packet)) => encrypted.push(io::Received {
-                                    local: received.local,
-                                    from: received.from,
-                                    ecn: received.ecn,
-                                    packet,
-                                }),
+                                Ok(Some(packet)) => encrypted.push((
+                                    received.location,
+                                    io::Received {
+                                        local: received.local,
+                                        from: received.from,
+                                        ecn: received.ecn,
+                                        packet,
+                                    },
+                                )),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
                         }
 
-                        if let Err(e) = self.io.decrypt(encrypted) {
+                        if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
                     }
@@ -575,7 +578,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for batch in batches.iter_mut() {
+                    for mut batch in batches.drain(..) {
                         let mut encrypted = Vec::with_capacity(batch.len());
 
                         for received in batch.drain() {
@@ -600,18 +603,21 @@ impl GatewayTunnel {
                                     local: received.local,
                                     from: received.from,
                                 }) {
-                                Ok(Some(packet)) => encrypted.push(io::Received {
-                                    local: received.local,
-                                    from: received.from,
-                                    ecn: received.ecn,
-                                    packet,
-                                }),
+                                Ok(Some(packet)) => encrypted.push((
+                                    received.location,
+                                    io::Received {
+                                        local: received.local,
+                                        from: received.from,
+                                        ecn: received.ecn,
+                                        packet,
+                                    },
+                                )),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
                         }
 
-                        if let Err(e) = self.io.decrypt(encrypted) {
+                        if let Err(e) = self.io.decrypt(batch, encrypted) {
                             error.push(anyhow::Error::new(e));
                         }
                     }

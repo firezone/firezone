@@ -26,7 +26,9 @@ use http_client::HttpClient;
 use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
 use snownet::{DecryptedPacket, EncryptedPacket, Outgoing};
-use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{
+    DatagramBatch, DatagramLocation, DatagramOut, SocketFactory, TcpSocket, UdpSocket,
+};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     io,
@@ -459,12 +461,14 @@ where
         }
     }
 
-    /// Decrypts a batch of packets off the main thread, yielding them via [`Input::decrypted`].
+    /// Decrypts packets received in `batch` off the main thread, yielding them via
+    /// [`Input::decrypted`].
     pub fn decrypt(
         &mut self,
-        packets: Vec<Received<EncryptedPacket<TId>>>,
+        batch: DatagramBatch,
+        packets: Vec<(DatagramLocation, Received<EncryptedPacket<TId>>)>,
     ) -> Result<(), CryptoWorkersUnavailable> {
-        self.crypto.open(packets)
+        self.crypto.open(batch, packets)
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
