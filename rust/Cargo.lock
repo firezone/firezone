@@ -920,7 +920,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=trim-to-firezone#e7b25d43c65e4cb8b0f03f19b43e31531deb88eb"
+source = "git+https://github.com/firezone/boringtun?branch=trim-to-firezone#b17b8ee81fd18fda6170b7b260e94542f7ab4d15"
 dependencies = [
  "aead",
  "blake2",
