@@ -98,6 +98,10 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
+    /// Resources that a TCP connection we no longer track may have reconnected us to.
+    #[debug(skip)]
+    untracked_tcp_resources: BTreeSet<ResourceId>,
+
     /// Tracks TCP connections expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
@@ -167,6 +171,7 @@ impl RefClient {
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
             expected_tcp_connections: Default::default(),
+            untracked_tcp_resources: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
@@ -225,6 +230,7 @@ impl RefClient {
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
+        self.untracked_tcp_resources.remove(resource);
 
         self.discard_authorization(resource);
         self.dns_resource_resolutions
@@ -576,6 +582,7 @@ impl RefClient {
         self.gateway_send_times.clear();
         self.client_send_times.clear();
 
+        self.untracked_tcp_resources.clear();
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.dns_resource_resolutions.clear();
@@ -710,6 +717,7 @@ impl RefClient {
         let resources_with_tcp_connections = self
             .expected_tcp_connections
             .values()
+            .chain(&self.untracked_tcp_resources)
             .copied()
             .collect::<BTreeSet<_>>();
 
@@ -1637,6 +1645,8 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
+        self.untracked_tcp_resources
+            .extend(self.expected_tcp_connections.values());
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
     }
