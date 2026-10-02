@@ -442,6 +442,51 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.metadata.stripe.product_name == "Business"
     end
 
+    test "sets connected_devices_per_actor from product metadata", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 5, %{
+          "connected_devices_per_actor" => "3"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.connected_devices_per_actor == 3
+    end
+
+    test "treats \"unlimited\" connected_devices_per_actor as no limit", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{limits: %{connected_devices_per_actor: 3}})
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 5, %{
+          "connected_devices_per_actor" => "unlimited"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.connected_devices_per_actor ==
+               nil
+    end
+
     test "clears the monthly active users limit for Team seats", %{
       account: account,
       customer: customer

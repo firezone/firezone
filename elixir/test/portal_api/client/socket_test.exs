@@ -450,6 +450,54 @@ defmodule PortalAPI.Client.SocketTest do
                )
     end
 
+    test "refuses a new device when the actor is at connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 1}})
+      actor = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert connect(Socket, connect_attrs(token: token),
+               connect_info: build_connect_info(token: token)
+             ) == {:error, :connected_devices_limit_reached}
+    end
+
+    test "allows a new device while below connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 2}})
+      actor = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: token),
+                 connect_info: build_connect_info(token: token)
+               )
+    end
+
+    test "does not count other actors' devices toward connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 1}})
+      actor = actor_fixture(account: account, type: :account_user)
+      other = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: other)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: token),
+                 connect_info: build_connect_info(token: token)
+               )
+    end
+
     test "returns error when service_accounts_limit_exceeded is true" do
       account = account_fixture()
       update_account(account, %{service_accounts_limit_exceeded: true})

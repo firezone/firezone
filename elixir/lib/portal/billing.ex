@@ -223,6 +223,26 @@ defmodule Portal.Billing do
          api_clients_count < account.limits.api_clients_count)
   end
 
+  @doc """
+  Returns `true` when connecting `device_id` would put the actor over its
+  `connected_devices_per_actor` limit. A `nil` limit means unlimited. The device
+  itself is not counted, so a client that reconnects is never refused.
+  """
+  @spec connected_devices_limit_reached?(Portal.Account.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          boolean()
+  def connected_devices_limit_reached?(%Portal.Account{} = account, actor_id, device_id) do
+    case account.limits && account.limits.connected_devices_per_actor do
+      nil ->
+        false
+
+      limit ->
+        connected =
+          Portal.Presence.Devices.online_client_ids_for_actor(account.id, actor_id, device_id)
+
+        length(connected) >= limit
+    end
+  end
+
   @type actor_enable_limit_error ::
           :users_limit_reached
           | :admin_users_limit_reached
