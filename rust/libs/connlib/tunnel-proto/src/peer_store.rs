@@ -2,18 +2,20 @@ use core::fmt;
 use std::collections::{BTreeMap, HashMap};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use fast_random_state::FastRandomState;
+
 use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
-    id_by_ip: HashMap<IpAddr, TId>,
+    id_by_ip: HashMap<IpAddr, TId, FastRandomState>,
     peer_by_id: BTreeMap<TId, P>,
 }
 
 impl<TId, P> Default for PeerStore<TId, P> {
     fn default() -> Self {
         Self {
-            id_by_ip: Default::default(),
+            id_by_ip: HashMap::default(),
             peer_by_id: Default::default(),
         }
     }

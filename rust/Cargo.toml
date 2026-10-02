@@ -43,6 +43,7 @@ members = [
     "libs/connlib/tunnel-proto",
     "libs/desktop-notifications",
     "libs/eventloop-budget",
+    "libs/fast-random-state",
     "libs/flow-log-spool",
     "libs/flow-log-upload",
     "libs/flow-log-writer",
@@ -123,12 +124,14 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
+fast-random-state = { path = "libs/fast-random-state" }
 fastrand = "2.3.0"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
+foldhash = "0.2.0"
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 glob = "0.3.3"
