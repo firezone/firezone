@@ -16,6 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -29,6 +30,7 @@ use tun::Tun;
 use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
+mod packet_counts;
 mod sockets;
 mod utils;
 
@@ -225,6 +227,10 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
+            let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
+
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
@@ -242,6 +248,7 @@ impl ClientTunnel {
 
             // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
+                tun_transmitted.record(&packet);
                 self.io.queue_tun(packet);
                 tick.want_continue();
             }
@@ -279,7 +286,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain() {
+                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -301,16 +308,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        self.packet_counter.add(
-                            1,
-                            &[
-                                otel::attr::network_protocol_name(received.packet),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
-
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
                         match self
                             .role_state
                             .handle_network_input(
@@ -323,9 +325,12 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
@@ -415,6 +420,10 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
+            let mut udp_received = UdpPacketCounts::receive(&self.packet_counter);
+            let mut tun_received = TunPacketCounts::receive(&self.packet_counter);
+            let mut tun_transmitted = TunPacketCounts::transmit(&self.packet_counter);
+
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
@@ -470,7 +479,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain() {
+                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
                             .handle_tun_input(packet, now, self.io.gso_queue_mut())
@@ -505,16 +514,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for received in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        self.packet_counter.add(
-                            1,
-                            &[
-                                otel::attr::network_protocol_name(received.packet),
-                                otel::attr::network_transport_udp(),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
-
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
                         match self
                             .role_state
                             .handle_network_input(
@@ -527,9 +531,12 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(packet)) => self
-                                .io
-                                .queue_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
+
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };

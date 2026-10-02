@@ -12,3 +12,6 @@ derive_more = { workspace = true, features = ["from"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true, optional = true }
+
+[dev-dependencies]
+network-types = { workspace = true }

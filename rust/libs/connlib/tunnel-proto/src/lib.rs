@@ -31,7 +31,7 @@ mod malicious_behaviour;
 pub mod messages;
 pub mod otel;
 mod p2p_control;
-mod packet_kind;
+pub mod packet_kind;
 mod peer_store;
 mod portal_connection;
 #[cfg(test)]
