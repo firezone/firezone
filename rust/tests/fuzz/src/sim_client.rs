@@ -1,5 +1,5 @@
 use super::{
-    QueryId,
+    DeviceListing, DeviceListingQuery, QueryId,
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{
@@ -13,7 +13,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
-use dns_types::{DomainName, Query, RecordData, RecordType};
+use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
@@ -64,6 +64,9 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
+    /// The answers to the PTR queries in the device domain.
+    pub(crate) device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
+
     pub(crate) probe_observations: Vec<ProbeObservation>,
     sent_probes: Vec<(ProbeId, ProbeProtocol)>,
 
@@ -97,6 +100,7 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
+            device_listings: Default::default(),
             probe_observations: Default::default(),
             sent_probes: Default::default(),
             routes: Default::default(),
@@ -190,6 +194,7 @@ impl SimClient {
             query_id,
             upstream,
             dns_transport,
+            false,
             now,
         )
     }
@@ -201,6 +206,7 @@ impl SimClient {
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
+        edns: bool,
         now: Instant,
     ) -> Option<Transmit> {
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
@@ -216,6 +222,7 @@ impl SimClient {
             .expect("tunnel should be initialised");
 
         let query = Query::new(domain, r_type).with_id(query_id);
+        let query = if edns { query.with_edns() } else { query };
 
         match dns_transport {
             DnsTransport::Udp { local_port } => {
@@ -415,12 +422,16 @@ impl SimClient {
                     .expect("packets from DNS sentinels on port 53 to be DNS packets");
 
                 self.received_udp_dns_responses.insert(
-                    (upstream, response.id(), udp.destination_port()),
+                    (upstream.clone(), response.id(), udp.destination_port()),
                     packet.clone(),
                 );
 
                 if !response.truncated() {
-                    self.handle_dns_response(&response);
+                    let transport = DnsTransport::Udp {
+                        local_port: udp.destination_port(),
+                    };
+
+                    self.handle_dns_response(upstream, transport, &response);
                 }
 
                 return None;
@@ -544,7 +555,33 @@ impl SimClient {
         )
     }
 
-    pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
+    pub(crate) fn handle_dns_response(
+        &mut self,
+        upstream: dns::Upstream,
+        transport: DnsTransport,
+        response: &dns_types::Response,
+    ) {
+        let domain = response.domain();
+        if response.qtype() == RecordType::PTR && dns::is_in_device_domain(&domain) {
+            let records = response
+                .records()
+                .map(|record| {
+                    let ttl = record.ttl().as_secs();
+
+                    (record.into_data().flatten_into(), ttl)
+                })
+                .collect();
+
+            self.device_listings.insert(
+                (domain, upstream, response.id(), transport),
+                (
+                    response.response_code(),
+                    records,
+                    response.note().map(ToOwned::to_owned),
+                ),
+            );
+        }
+
         for record in response.records() {
             #[expect(clippy::wildcard_enum_match_arm)]
             let ip = match record.data() {
@@ -622,6 +659,7 @@ impl SimClient {
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
+        self.device_listings.clear();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
     }

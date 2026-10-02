@@ -1,5 +1,5 @@
 use crate::{
-    dns::{self, device_slug},
+    dns::{self, device_slug, is_in_device_domain},
     expiring_map::{self, ExpiringMap},
     messages::client::FailReason,
 };
@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// How long to wait for the portal to resolve a device name before giving up.
+/// How long to wait for the portal to answer a query before giving up.
 const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// TTL used in synthesised DNS responses for device resolutions.
@@ -20,16 +20,24 @@ const QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Keeps downstream resolver caches short-lived so mapping changes propagate quickly.
 const DNS_TTL: u32 = 1;
 
-/// Answers queries for `<slug>.firezone.network` from the portal.
+/// Answers queries for `<slug>.firezone.network`, and PTR queries in `firezone.network`,
+/// from the portal.
 ///
 /// Every client may resolve every device in its account; whether it may reach the
 /// device is decided on the first packet, see `RequestDeviceAccess`.
 #[derive(Default)]
 pub struct DeviceStubResolver {
     resolved: BTreeMap<DomainName, (Ipv4Addr, Ipv6Addr)>,
-    pending: ExpiringMap<DomainName, SmallVec<[PendingQuery; 2]>>,
+    pending: ExpiringMap<PortalQuery, SmallVec<[PendingQuery; 2]>>,
 
     events: VecDeque<Event>,
+}
+
+/// A question for the portal, shared by every DNS query waiting on its answer.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum PortalQuery {
+    Resolve(DomainName),
+    Browse(DomainName),
 }
 
 pub(crate) enum ResolveStrategy {
@@ -44,6 +52,9 @@ pub(crate) enum ResolveStrategy {
 #[derive(Debug)]
 pub(crate) enum Event {
     QueryDomain {
+        domain: DomainName,
+    },
+    BrowseDomain {
         domain: DomainName,
     },
     SendResponse {
@@ -73,12 +84,22 @@ impl DeviceStubResolver {
         now: Instant,
     ) -> ResolveStrategy {
         let domain = query.domain();
+        let qtype = query.qtype();
+
+        if qtype == dns_types::RecordType::PTR && is_in_device_domain(&domain) {
+            return self.ask_portal(
+                PortalQuery::Browse(domain),
+                query,
+                local,
+                remote,
+                transport,
+                now,
+            );
+        }
 
         if device_slug(&domain).is_none() {
             return ResolveStrategy::Passthrough;
         }
-
-        let qtype = query.qtype();
 
         // Only A and AAAA are answered from device resolutions; for any other
         // qtype, the name exists but we have no records of that type (NOERROR + empty).
@@ -98,27 +119,14 @@ impl DeviceStubResolver {
             ));
         }
 
-        let pending = PendingQuery {
+        self.ask_portal(
+            PortalQuery::Resolve(domain),
+            query,
             local,
             remote,
             transport,
-            query: query.clone(),
-        };
-
-        if let Some(waiters) = self.pending.get_mut(&domain) {
-            waiters.push(pending);
-
-            return ResolveStrategy::Pending;
-        }
-
-        self.pending
-            .insert(domain.clone(), smallvec![pending], now, QUERY_TIMEOUT);
-
-        tracing::debug!(%domain, "Querying portal for device name");
-
-        self.events.push_back(Event::QueryDomain { domain });
-
-        ResolveStrategy::Pending
+            now,
+        )
     }
 
     pub(crate) fn handle_device_domain_resolved(
@@ -126,7 +134,7 @@ impl DeviceStubResolver {
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
-        let Some(pending) = self.pending.remove(&domain) else {
+        let Some(pending) = self.pending.remove(&PortalQuery::Resolve(domain.clone())) else {
             tracing::debug!(%domain, "Received device resolution for unknown query");
             return;
         };
@@ -137,31 +145,44 @@ impl DeviceStubResolver {
             self.resolved.insert(domain, (ipv4, ipv6));
         }
 
-        for pending in pending.value {
-            let response = match result {
-                Ok((ipv4, ipv6)) => {
-                    build_response(&pending.query, pending.query.domain(), ipv4, ipv6)
-                }
-                Err(FailReason::NotFound) => dns_types::Response::nxdomain(&pending.query),
-                Err(
-                    FailReason::Offline
-                    | FailReason::VersionMismatch
-                    | FailReason::Forbidden
-                    | FailReason::Disabled
-                    | FailReason::AmbiguousAddress
-                    | FailReason::MissingAddress
-                    | FailReason::InvalidAddress
-                    | FailReason::Unknown,
-                ) => dns_types::Response::servfail(&pending.query),
-            };
+        self.respond(pending.value, |query| match &result {
+            Ok((ipv4, ipv6)) => build_response(query, query.domain(), *ipv4, *ipv6),
+            Err(reason) => failure_response(query, reason),
+        });
+    }
 
-            self.events.push_back(Event::SendResponse {
-                local: pending.local,
-                remote: pending.remote,
-                transport: pending.transport,
-                response,
-            });
-        }
+    /// Answers the PTR queries for `domain` with the names the portal listed, the TTL, in
+    /// seconds, it gave them and how many names there are in all.
+    ///
+    /// The answer keeps as many of the names as fit in a DNS message and notes how many
+    /// it lists if that is fewer than all of them.
+    pub(crate) fn handle_device_domain_browsed(
+        &mut self,
+        domain: DomainName,
+        result: Result<(Vec<DomainName>, u32, usize), FailReason>,
+    ) {
+        let Some(pending) = self.pending.remove(&PortalQuery::Browse(domain.clone())) else {
+            tracing::debug!(%domain, "Received device domain listing for unknown query");
+            return;
+        };
+
+        tracing::debug!(%domain, ?result, "Device domain browsed");
+
+        self.respond(pending.value, |query| match &result {
+            Ok((names, ttl, total)) => {
+                let records = names
+                    .iter()
+                    .map(|name| (query.domain(), *ttl, dns_types::records::ptr(name.clone())));
+
+                let (builder, listed) =
+                    dns_types::ResponseBuilder::for_query(query, dns_types::ResponseCode::NOERROR)
+                        .with_records_that_fit(records);
+                let note = (listed < *total).then(|| format!("Lists {listed} of {total} names"));
+
+                builder.with_note(note).build()
+            }
+            Err(reason) => failure_response(query, reason),
+        });
     }
 
     /// Forgets the resolution of a device, so its next lookup asks the portal again.
@@ -175,26 +196,71 @@ impl DeviceStubResolver {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.pending.handle_timeout(now);
         while let Some(expiring_map::Event::EntryExpired {
-            key: domain,
+            key: question,
             value: waiters,
         }) = self.pending.poll_event()
         {
-            tracing::debug!(%domain, "Pending device DNS query timed out; returning SERVFAIL");
+            tracing::debug!(
+                ?question,
+                "Pending device DNS query timed out; returning SERVFAIL"
+            );
 
-            for pending in waiters {
-                let response = dns_types::Response::servfail(&pending.query);
-                self.events.push_back(Event::SendResponse {
-                    local: pending.local,
-                    remote: pending.remote,
-                    transport: pending.transport,
-                    response,
-                });
-            }
+            self.respond(waiters, dns_types::Response::servfail);
         }
     }
 
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.pending.poll_timeout()
+    }
+
+    fn ask_portal(
+        &mut self,
+        question: PortalQuery,
+        query: &dns_types::Query,
+        local: SocketAddr,
+        remote: SocketAddr,
+        transport: dns::Transport,
+        now: Instant,
+    ) -> ResolveStrategy {
+        let pending = PendingQuery {
+            local,
+            remote,
+            transport,
+            query: query.clone(),
+        };
+
+        if let Some(waiters) = self.pending.get_mut(&question) {
+            waiters.push(pending);
+
+            return ResolveStrategy::Pending;
+        }
+
+        self.pending
+            .insert(question.clone(), smallvec![pending], now, QUERY_TIMEOUT);
+
+        tracing::debug!(?question, "Asking portal");
+
+        self.events.push_back(match question {
+            PortalQuery::Resolve(domain) => Event::QueryDomain { domain },
+            PortalQuery::Browse(domain) => Event::BrowseDomain { domain },
+        });
+
+        ResolveStrategy::Pending
+    }
+
+    fn respond(
+        &mut self,
+        waiters: SmallVec<[PendingQuery; 2]>,
+        response: impl Fn(&dns_types::Query) -> dns_types::Response,
+    ) {
+        for pending in waiters {
+            self.events.push_back(Event::SendResponse {
+                response: response(&pending.query),
+                local: pending.local,
+                remote: pending.remote,
+                transport: pending.transport,
+            });
+        }
     }
 }
 
@@ -219,6 +285,22 @@ fn build_response(
             .build(),
         // The name exists but we don't have a record of the requested type.
         _ => builder.build(),
+    }
+}
+
+fn failure_response(query: &dns_types::Query, reason: &FailReason) -> dns_types::Response {
+    match reason {
+        FailReason::NotFound => dns_types::Response::nxdomain(query),
+        // The name exists but holds no records of the queried type.
+        FailReason::NotADevice => dns_types::Response::no_error(query),
+        FailReason::Offline
+        | FailReason::VersionMismatch
+        | FailReason::Forbidden
+        | FailReason::Disabled
+        | FailReason::AmbiguousAddress
+        | FailReason::MissingAddress
+        | FailReason::InvalidAddress
+        | FailReason::Unknown => dns_types::Response::servfail(query),
     }
 }
 
@@ -406,6 +488,120 @@ mod tests {
         resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
 
         assert!(resolver.poll_event().is_none());
+    }
+
+    #[test]
+    fn asks_the_portal_once_for_ptr_queries_in_the_device_domain() {
+        let mut resolver = DeviceStubResolver::default();
+
+        for domain in ["firezone.network", DEVICE, "a.b.firezone.network", DEVICE] {
+            let s = handle(&mut resolver, domain, dns_types::RecordType::PTR);
+
+            assert!(matches!(s, ResolveStrategy::Pending), "{domain}");
+        }
+        let s = handle(&mut resolver, "example.com", dns_types::RecordType::PTR);
+        assert!(matches!(s, ResolveStrategy::Passthrough));
+
+        let browsed = drain(&mut resolver)
+            .into_iter()
+            .map(|event| {
+                let Event::BrowseDomain { domain } = event else {
+                    panic!("unexpected event: {event:?}")
+                };
+
+                domain.to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            browsed,
+            ["firezone.network", DEVICE, "a.b.firezone.network"]
+        );
+    }
+
+    #[test]
+    fn answers_ptr_queries_with_the_listed_names_for_the_portal_ttl() {
+        let mut resolver = DeviceStubResolver::default();
+        handle(
+            &mut resolver,
+            "firezone.network",
+            dns_types::RecordType::PTR,
+        );
+        drain(&mut resolver);
+
+        resolver.handle_device_domain_browsed(
+            domain("firezone.network"),
+            Ok((vec![domain("your-devices.firezone.network")], 30, 1)),
+        );
+
+        let events = drain(&mut resolver);
+        let [Event::SendResponse { response, .. }] = events.as_slice() else {
+            panic!("unexpected events: {events:?}")
+        };
+        let expected = dns_types::records::ptr(domain("your-devices.firezone.network"));
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 1);
+        assert!(
+            response
+                .records()
+                .all(|r| r.data() == &expected && r.ttl().as_secs() == 30)
+        );
+    }
+
+    #[test]
+    fn lists_the_first_names_that_fit_in_a_message_and_notes_how_many() {
+        let mut resolver = DeviceStubResolver::default();
+        resolver.handle_query(
+            &query("all-devices.firezone.network", dns_types::RecordType::PTR).with_edns(),
+            LOCAL,
+            REMOTE,
+            dns::Transport::Tcp,
+            Instant::now(),
+        );
+        drain(&mut resolver);
+        let names = (0..2_000)
+            .map(|n| domain(&format!("{}-{n}.firezone.network", "a".repeat(40))))
+            .collect::<Vec<_>>();
+
+        resolver.handle_device_domain_browsed(
+            domain("all-devices.firezone.network"),
+            Ok((names.clone(), 30, 3_000)),
+        );
+
+        let events = drain(&mut resolver);
+        let [Event::SendResponse { response, .. }] = events.as_slice() else {
+            panic!("unexpected events: {events:?}")
+        };
+        let bytes = response.clone().into_bytes(u16::MAX);
+        let response = dns_types::Response::parse(&bytes).unwrap();
+        let listed = response.records().count();
+        assert!(!response.truncated());
+        assert!(bytes.len() > 65_000, "the listing fills the message");
+        assert!(
+            response
+                .records()
+                .zip(&names)
+                .all(|(r, name)| r.data() == &dns_types::records::ptr(name.clone()))
+        );
+        assert_eq!(
+            response.note(),
+            Some(format!("Lists {listed} of 3000 names").as_str())
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_not_a_device_has_no_addresses() {
+        let mut resolver = DeviceStubResolver::default();
+        handle(&mut resolver, DEVICE, dns_types::RecordType::A);
+        drain(&mut resolver);
+
+        resolver.handle_device_domain_resolved(domain(DEVICE), Err(FailReason::NotADevice));
+
+        let events = drain(&mut resolver);
+        let [Event::SendResponse { response, .. }] = events.as_slice() else {
+            panic!("unexpected events: {events:?}")
+        };
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
     }
 
     fn handle(

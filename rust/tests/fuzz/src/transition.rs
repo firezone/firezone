@@ -310,6 +310,7 @@ pub(crate) struct DnsQuery {
     pub(crate) query_id: u16,
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
+    pub(crate) edns: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

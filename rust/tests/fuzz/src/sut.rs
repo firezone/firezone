@@ -7,7 +7,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
+use super::transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -481,12 +481,15 @@ impl TunnelTest {
                         dns_server,
                         query_id,
                         transport,
+                        edns,
                     },
                 ) in queries
                 {
                     let client = self.clients.get_mut(&client_id).unwrap();
                     let transmit = client.exec_mut(|sim| {
-                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                        sim.send_dns_query_for(
+                            domain, r_type, query_id, dns_server, transport, edns, now,
+                        )
                     });
 
                     buffered_transmits.push_from(transmit, client, now);
@@ -1148,8 +1151,8 @@ impl TunnelTest {
                                 .unwrap();
 
                             c.received_tcp_dns_responses
-                                .insert((upstream, result.query.id()));
-                            c.handle_dns_response(&message)
+                                .insert((upstream.clone(), result.query.id()));
+                            c.handle_dns_response(upstream, DnsTransport::Tcp, &message)
                         }
                         Err(e) => {
                             tracing::error!("TCP DNS query failed: {e:#}");
@@ -1624,13 +1627,23 @@ impl TunnelTest {
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
-                let result = portal
-                    .resolve_device_domain(&domain)
-                    .ok_or(FailReason::NotFound);
+                let held = ref_state.clients[&src].inner().device_pool_ids();
+                let result = portal.resolve_device_domain(&domain, &held);
 
                 let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
-                    c.sut.handle_device_domain_resolved(domain, result);
+                    c.sut.handle_device_domain_resolved(domain, result, now);
+                });
+
+                Ok(())
+            }
+            ClientEvent::DeviceDomainBrowsed { domain } => {
+                let held = ref_state.clients[&src].inner().device_pool_ids();
+                let result = portal.browse_device_domain(&domain, &held);
+
+                let client = self.clients.get_mut(&src).expect("unknown source client");
+                client.exec_mut(|c| {
+                    c.sut.handle_device_domain_browsed(domain, result, now);
                 });
 
                 Ok(())
@@ -1891,6 +1904,7 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::RemovedIceCandidates { .. } => true,
         ClientEvent::RequestAccess { .. } => true,
         ClientEvent::DeviceDomainQueried { .. } => true,
+        ClientEvent::DeviceDomainBrowsed { .. } => true,
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,

@@ -1,5 +1,5 @@
 use super::{
-    QueryId,
+    DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
     probe::{ExpectedOutcome, RejectionResponse, Remote, Route},
@@ -14,12 +14,12 @@ use super::{
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
-    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
+    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::FailReason},
 };
 
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView, Site, SiteId};
-use dns_types::{DomainName, RecordType};
+use dns_types::{DomainName, RecordType, ResponseCode};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
@@ -108,6 +108,9 @@ pub struct RefClient {
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+    /// The expected answers to the PTR queries in the device domain.
+    #[debug(skip)]
+    pub(crate) expected_device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
     #[debug(skip)]
     connection_resets: Vec<Instant>,
@@ -170,6 +173,7 @@ impl RefClient {
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
+            expected_device_listings: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
@@ -941,6 +945,41 @@ impl RefClient {
         self.expect_dns_response(query);
     }
 
+    /// Expects the PTR `query` to be answered with `listing`, the names and TTL the portal
+    /// gave, or NXDOMAIN if it gave none.
+    ///
+    /// If the query carried EDNS and the names are fewer than all of them, the answer notes
+    /// how many of them it lists.
+    pub(crate) fn expect_device_listing(
+        &mut self,
+        query: &DnsQuery,
+        listing: Result<(Vec<DomainName>, u32, usize), FailReason>,
+    ) {
+        let listing = match listing {
+            Ok((names, ttl, total)) => {
+                let note = (query.edns && names.len() < total)
+                    .then(|| format!("Lists {} of {total} names", names.len()));
+                let records = names
+                    .into_iter()
+                    .map(|name| (dns_types::records::ptr(name), ttl))
+                    .collect();
+
+                (ResponseCode::NOERROR, records, note)
+            }
+            Err(_) => (ResponseCode::NXDOMAIN, BTreeSet::new(), None),
+        };
+
+        self.expected_device_listings.insert(
+            (
+                query.domain.clone(),
+                query.dns_server.clone(),
+                query.query_id,
+                query.transport,
+            ),
+            listing,
+        );
+    }
+
     pub(crate) fn on_dns_resource_ptr_query(
         &mut self,
         dns_server: &dns::Upstream,
@@ -992,7 +1031,7 @@ impl RefClient {
     }
 
     fn is_device_dns_query(&self, query: &DnsQuery) -> bool {
-        is_device_domain(&query.domain)
+        is_device_domain(&query.domain) || is_device_listing_query(query)
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
@@ -1637,6 +1676,7 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
+        self.expected_device_listings.clear();
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
     }
@@ -1671,6 +1711,11 @@ fn remove_pool(authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>, po
 /// from the portal and never resolves to a resource's proxy IPs.
 fn is_device_domain(domain: &DomainName) -> bool {
     dns::device_slug(domain).is_some()
+}
+
+/// Whether the SUT asks the portal which names `query` lists.
+pub(crate) fn is_device_listing_query(query: &DnsQuery) -> bool {
+    query.r_type == RecordType::PTR && dns::is_in_device_domain(&query.domain)
 }
 
 pub(crate) fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {

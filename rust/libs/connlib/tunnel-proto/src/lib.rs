@@ -84,6 +84,10 @@ pub enum ClientEvent {
     DeviceDomainQueried {
         domain: DomainName,
     },
+    /// A PTR query in the device domain asks the portal which names it lists.
+    DeviceDomainBrowsed {
+        domain: DomainName,
+    },
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<ResourceView>,
