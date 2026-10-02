@@ -239,24 +239,49 @@ impl PortAndPeerV6 {
     }
 }
 
+/// Local perf-buffer ABI: integer fields use native endianness on the shared host.
+/// IP version and ECN are individual bytes and have no byte-order conversion.
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
-    relayed_data: u64,
+    // UDP packet lengths fit in u16; u32 leaves room for metadata within 16 bytes.
+    relayed_data: u32,
+    ip_version: u8,
+    ecn: u8,
+    // Explicitly initialized padding keeps the perf record at 16 bytes.
+    reserved: [u8; 2],
     processing_duration_ns: u64,
 }
 
 impl StatsEvent {
-    pub fn new(relayed_data: u64, processing_duration: core::time::Duration) -> Self {
+    pub fn new(
+        relayed_data: u16,
+        processing_duration: core::time::Duration,
+        ip_version: u8,
+        ecn: u8,
+    ) -> Self {
         Self {
-            relayed_data,
+            relayed_data: u32::from(relayed_data),
             processing_duration_ns: duration_as_nanos_u64(processing_duration),
+            ip_version,
+            ecn,
+            reserved: [0; 2],
         }
     }
 
     pub fn relayed_data(&self) -> u64 {
-        self.relayed_data
+        u64::from(self.relayed_data)
+    }
+
+    /// Incoming IP version, before address-family translation.
+    pub fn ip_version(&self) -> u8 {
+        self.ip_version
+    }
+
+    /// Incoming ECN codepoint: Not-ECT (0), ECT(1) (1), ECT(0) (2), or CE (3).
+    pub fn ecn(&self) -> u8 {
+        self.ecn
     }
 
     /// Time the XDP program spent processing this packet.
@@ -266,11 +291,14 @@ impl StatsEvent {
 
     #[cfg(feature = "std")]
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        let (relayed_chunk, rest) = bytes.split_first_chunk::<8>()?;
+        let (packet_chunk, rest) = bytes.split_first_chunk::<8>()?;
         let (duration_chunk, _) = rest.split_first_chunk::<8>()?;
 
         Some(Self {
-            relayed_data: u64::from_ne_bytes(*relayed_chunk),
+            relayed_data: u32::from_ne_bytes(packet_chunk[..4].try_into().ok()?),
+            ip_version: packet_chunk[4],
+            ecn: packet_chunk[5],
+            reserved: [packet_chunk[6], packet_chunk[7]],
             processing_duration_ns: u64::from_ne_bytes(*duration_chunk),
         })
     }
@@ -311,23 +339,52 @@ fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
 #[cfg(all(test, feature = "std"))]
 mod stats_event_tests {
     use super::*;
+    use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
+
+    #[test]
+    fn extracts_ecn_from_network_order_headers() {
+        for dscp in 0..=63_u8 {
+            for ecn in 0..=3_u8 {
+                let traffic_class = (dscp << 2) | ecn;
+                let mut ipv4_bytes = [0_u8; Ipv4Hdr::LEN];
+                ipv4_bytes[0] = 0x45;
+                ipv4_bytes[1] = traffic_class;
+                // SAFETY: Ipv4Hdr contains only bytes and byte arrays, with no padding.
+                let ipv4: Ipv4Hdr = unsafe { core::mem::transmute(ipv4_bytes) };
+                assert_eq!(ipv4.ecn(), ecn);
+
+                let mut ipv6_bytes = [0_u8; Ipv6Hdr::LEN];
+                ipv6_bytes[0] = 0x60 | (traffic_class >> 4);
+                ipv6_bytes[1] = (traffic_class << 4) | 0x0f;
+                // SAFETY: Ipv6Hdr contains only bytes and byte arrays, with no padding.
+                let ipv6: Ipv6Hdr = unsafe { core::mem::transmute(ipv6_bytes) };
+                assert_eq!(ipv6.ecn(), ecn);
+                for (version, codepoint) in [(4, ipv4.ecn()), (6, ipv6.ecn())] {
+                    let event = StatsEvent::new(0, core::time::Duration::ZERO, version, codepoint);
+                    // SAFETY: StatsEvent has no implicit padding and every field is initialized.
+                    let bytes: [u8; 16] = unsafe { core::mem::transmute(event) };
+                    let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+                    assert_eq!(parsed.ip_version(), version);
+                    assert_eq!(parsed.ecn(), ecn);
+                }
+            }
+        }
+    }
 
     #[test]
     fn from_bytes_roundtrips_the_wire_format() {
-        let original = StatsEvent {
-            relayed_data: 4242,
-            processing_duration_ns: 9999,
-        };
+        let original = StatsEvent::new(4242, core::time::Duration::from_nanos(9999), 6, 3);
 
         // The kernel writes the struct's bytes verbatim into the perf buffer; lock in that the
         // wire format matches the `#[repr(C)]` in-memory layout.
-        // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
-        // of its size is a valid `[u8; 16]` and vice versa.
+        // SAFETY: StatsEvent has no implicit padding and every field is initialized.
         let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
 
         let parsed = StatsEvent::from_bytes(&bytes).expect("size-matching slice parses");
 
-        assert_eq!(parsed.relayed_data, original.relayed_data);
+        assert_eq!(parsed.ip_version(), original.ip_version());
+        assert_eq!(parsed.ecn(), original.ecn());
+        assert_eq!(parsed.relayed_data(), original.relayed_data());
         assert_eq!(
             parsed.processing_duration_ns,
             original.processing_duration_ns
@@ -336,13 +393,9 @@ mod stats_event_tests {
 
     #[test]
     fn from_chunks_reassembles_straddled_samples() {
-        let original = StatsEvent {
-            relayed_data: 4242,
-            processing_duration_ns: 9999,
-        };
+        let original = StatsEvent::new(4242, core::time::Duration::from_nanos(9999), 6, 3);
 
-        // SAFETY: `StatsEvent` is `#[repr(C)]` and contains only `u64`s, so every byte pattern
-        // of its size is a valid `[u8; 16]` and vice versa.
+        // SAFETY: StatsEvent has no implicit padding and every field is initialized.
         let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
 
         // The kernel pads samples to 8-byte alignment; emulate a padded record.
@@ -354,7 +407,9 @@ mod stats_event_tests {
 
             let parsed = StatsEvent::from_chunks(head, tail).expect("chunks cover the sample");
 
-            assert_eq!(parsed.relayed_data, original.relayed_data);
+            assert_eq!(parsed.ip_version(), original.ip_version());
+            assert_eq!(parsed.ecn(), original.ecn());
+            assert_eq!(parsed.relayed_data(), original.relayed_data());
             assert_eq!(
                 parsed.processing_duration_ns,
                 original.processing_duration_ns
@@ -364,7 +419,55 @@ mod stats_event_tests {
 
     #[test]
     fn from_chunks_rejects_a_truncated_sample() {
-        assert!(StatsEvent::from_chunks(&[0; 10], &[0; 5]).is_none());
+        let bytes = [0; core::mem::size_of::<StatsEvent>()];
+        for len in 0..bytes.len() {
+            assert!(StatsEvent::from_bytes(&bytes[..len]).is_none());
+            for split in 0..=len {
+                assert!(StatsEvent::from_chunks(&bytes[..split], &bytes[split..len]).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn preserves_maximum_udp_packet_length() {
+        let event = StatsEvent::new(u16::MAX, core::time::Duration::ZERO, 4, 3);
+        // SAFETY: StatsEvent has no implicit padding and every field is initialized.
+        let bytes: [u8; 16] = unsafe { core::mem::transmute(event) };
+        assert_eq!(&bytes[..4], &u32::from(u16::MAX).to_ne_bytes());
+        assert_eq!(
+            StatsEvent::from_bytes(&bytes).unwrap().relayed_data(),
+            u64::from(u16::MAX)
+        );
+    }
+
+    #[test]
+    fn stores_metadata_as_endian_independent_bytes() {
+        for value in u8::MIN..=u8::MAX {
+            let event = StatsEvent::new(0, core::time::Duration::ZERO, value, value);
+            // SAFETY: StatsEvent has no implicit padding and every field is initialized.
+            let bytes: [u8; 16] = unsafe { core::mem::transmute(event) };
+            assert_eq!(bytes[4], value);
+            assert_eq!(bytes[5], value);
+            assert_eq!(&bytes[6..8], &[0; 2]);
+            let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+            assert_eq!(parsed.ip_version(), value);
+            assert_eq!(parsed.ecn(), value);
+        }
+    }
+
+    #[test]
+    fn preserves_each_ip_version_and_ecn_codepoint() {
+        for ip_version in [4, 6] {
+            for ecn in 0..=3 {
+                let original =
+                    StatsEvent::new(42, core::time::Duration::from_nanos(99), ip_version, ecn);
+                // SAFETY: StatsEvent has no implicit padding and every field is initialized.
+                let bytes: [u8; 16] = unsafe { core::mem::transmute(original) };
+                let parsed = StatsEvent::from_bytes(&bytes).unwrap();
+                assert_eq!(parsed.ip_version(), ip_version);
+                assert_eq!(parsed.ecn(), ecn);
+            }
+        }
     }
 }
 
