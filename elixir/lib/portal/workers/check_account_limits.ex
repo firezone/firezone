@@ -12,6 +12,8 @@ defmodule Portal.Workers.CheckAccountLimits do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  import Ecto.Changeset, only: [cast: 3]
+
   alias Portal.Account
   alias Portal.Billing
   alias Portal.Mailer
@@ -21,6 +23,9 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
+
+  # Send the Business "running low on seats" email at most once a week
+  @seats_low_reminder_interval_days 7
 
   @batch_size 100
 
@@ -54,9 +59,55 @@ defmodule Portal.Workers.CheckAccountLimits do
       else
         update_account_limits(account, cleared_flags())
       end
+
+      maybe_send_seats_running_low_email(account, account_counts)
     end
 
     :ok
+  end
+
+  defp maybe_send_seats_running_low_email(account, account_counts) do
+    active_users = Map.get(account_counts, :active_users, 0)
+
+    if Billing.seats_running_low?(account, active_users) and seats_low_email_due?(account) do
+      case Database.get_account_admin_actors(account.id) do
+        [] ->
+          Logger.warning("No admin actors found for account", account_id: account.id)
+
+        admins ->
+          send_seats_running_low_email(account, admins, active_users)
+      end
+    end
+  end
+
+  defp seats_low_email_due?(%{seats_warning_last_sent_at: nil}), do: true
+
+  defp seats_low_email_due?(%{seats_warning_last_sent_at: last_sent_at}) do
+    DateTime.diff(DateTime.utc_now(), last_sent_at, :day) >= @seats_low_reminder_interval_days
+  end
+
+  defp send_seats_running_low_email(account, admins, active_users) do
+    recipient_emails = Enum.map(admins, & &1.email)
+
+    case Notifications.seats_running_low_email(account, active_users, recipient_emails)
+         |> Mailer.enqueue() do
+      {:ok, _result} ->
+        Logger.info("Seats running low email enqueued",
+          recipient_count: length(recipient_emails),
+          account_id: account.id
+        )
+
+        account
+        |> cast(%{seats_warning_last_sent_at: DateTime.utc_now()}, [:seats_warning_last_sent_at])
+        |> Database.update()
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue seats running low email",
+          recipient_count: length(recipient_emails),
+          reason: inspect(reason),
+          account_id: account.id
+        )
+    end
   end
 
   defp limit_flags(account, account_counts) do
@@ -177,8 +228,6 @@ defmodule Portal.Workers.CheckAccountLimits do
   end
 
   defp update_account_limits(account, attrs) do
-    import Ecto.Changeset
-
     fields = [
       :users_limit_exceeded,
       :seats_limit_exceeded,

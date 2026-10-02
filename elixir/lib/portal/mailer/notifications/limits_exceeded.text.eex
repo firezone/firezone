@@ -13,6 +13,9 @@ What happens next?
 <% :enterprise -> %>
 To resolve this:
 Please contact your account manager to increase these limits, or remove excess resources to get back within your current limits.
+<% :business -> %>
+To resolve this:
+You can add seats by going to Settings -> Billing (<%= @billing_url %>) in the admin portal and clicking the "Manage plan" button. Or remove excess resources to get back within your current limits.
 <% :team -> %>
 To resolve this:
 You can change your paid users by going to Settings -> Billing (<%= @billing_url %>) in the admin portal and clicking the "Manage" button in the upper-right. Or remove excess resources to get back within your current limits.

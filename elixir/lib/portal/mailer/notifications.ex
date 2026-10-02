@@ -44,6 +44,23 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
+  def seats_running_low_email(account, active_users_count, recipients) do
+    billing_url = url(~p"/#{account}/settings/account")
+    limit = account.limits.monthly_active_users_count
+
+    default_email()
+    |> subject("Firezone Account Running Low on Seats")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :seats_running_low,
+      account: account,
+      active_users_count: active_users_count,
+      seats_limit: limit,
+      seats_remaining: max(limit - active_users_count, 0),
+      billing_url: billing_url
+    )
+  end
+
   def account_scheduled_for_deletion_email(account, recipients, context) do
     settings_url = url(~p"/#{account}/settings/account")
 

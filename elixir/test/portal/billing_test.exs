@@ -474,6 +474,109 @@ defmodule Portal.BillingTest do
     end
   end
 
+  describe "plan_type/1" do
+    test "recognizes the Business plan" do
+      assert plan_type("Business") == :business
+      assert plan_type(business_account_fixture()) == :business
+    end
+
+    test "treats Business as a paid plan" do
+      assert paid_plan?(business_account_fixture())
+    end
+  end
+
+  describe "seats_running_low?/2" do
+    defp business_with_seats(limit) do
+      update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
+    end
+
+    test "is false with more than 10% of seats remaining" do
+      refute seats_running_low?(business_with_seats(100), 89)
+    end
+
+    test "is true with less than 10% of seats remaining" do
+      assert seats_running_low?(business_with_seats(100), 91)
+      assert seats_running_low?(business_with_seats(100), 100)
+    end
+
+    test "is false exactly at 10% remaining" do
+      refute seats_running_low?(business_with_seats(100), 90)
+    end
+
+    test "is false when the limit is already exceeded" do
+      refute seats_running_low?(business_with_seats(100), 101)
+    end
+
+    test "is false when there is no seat limit" do
+      refute seats_running_low?(business_with_seats(nil), 5)
+    end
+
+    test "is false for non-Business plans" do
+      account =
+        update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 10}})
+
+      refute seats_running_low?(account, 10)
+    end
+  end
+
+  describe "client_seat_restricted?/2" do
+    defp business_account_with_seats(limit) do
+      update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
+    end
+
+    defp make_active(account, actor) do
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+    end
+
+    test "does not restrict a new user while seats remain" do
+      account = business_account_with_seats(2)
+      make_active(account, actor_fixture(account: account))
+      new_actor = actor_fixture(account: account)
+
+      refute client_seat_restricted?(account, new_actor.id)
+    end
+
+    test "restricts a new user who would push past the limit" do
+      account = business_account_with_seats(2)
+      make_active(account, actor_fixture(account: account))
+      make_active(account, actor_fixture(account: account))
+      new_actor = actor_fixture(account: account)
+
+      assert client_seat_restricted?(account, new_actor.id)
+    end
+
+    test "never restricts an already active user, even when over the limit" do
+      account = business_account_with_seats(1)
+      active = actor_fixture(account: account)
+      make_active(account, active)
+      make_active(account, actor_fixture(account: account))
+
+      refute client_seat_restricted?(account, active.id)
+    end
+
+    test "does not restrict when there is no seat limit" do
+      account = business_account_with_seats(nil)
+      make_active(account, actor_fixture(account: account))
+
+      refute client_seat_restricted?(account, actor_fixture(account: account).id)
+    end
+
+    test "does not restrict other plans" do
+      account =
+        update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 0}})
+
+      refute client_seat_restricted?(account, actor_fixture(account: account).id)
+    end
+
+    test "seats_limit_exceeded alone does not block sign-in or connect" do
+      account = update_account(business_account_fixture(), %{seats_limit_exceeded: true})
+
+      refute client_sign_in_restricted?(account)
+      refute client_connect_restricted?(account)
+    end
+  end
+
   describe "client_sign_in_restricted?/1" do
     test "returns false when no limits are exceeded", %{account: account} do
       refute client_sign_in_restricted?(account)

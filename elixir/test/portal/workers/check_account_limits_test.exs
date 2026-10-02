@@ -429,6 +429,19 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert first_email.text_body =~ "contact your account manager"
     end
 
+    test "email shows Business plan CTA for Business accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Business"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [first_email | _] = collect_queued_emails(account.id)
+      assert first_email.text_body =~ "add seats"
+    end
+
     test "logs warning when seats_limit_exceeded transitions from false to true" do
       account = provisioned_account_fixture()
       admin = admin_actor_fixture(account: account)
@@ -482,6 +495,85 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       # Flag should still be true
       account = Repo.get!(Portal.Account, account.id)
       assert account.seats_limit_exceeded
+    end
+  end
+
+  describe "running low on seats email" do
+    setup do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Business"}}})
+      admin = admin_actor_fixture(account: account)
+
+      account = update_account(account, %{limits: %{monthly_active_users_count: 10}})
+      %{account: account, admin: admin}
+    end
+
+    defp make_seats_active(account, count) do
+      for _ <- 1..count do
+        actor = actor_fixture(account: account)
+        client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+    end
+
+    test "sends once when fewer than 10% of seats remain", %{account: account, admin: admin} do
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Firezone Account Running Low on Seats"
+      assert email.text_body =~ "10 / 10"
+      assert email.text_body =~ "Seats remaining: 0"
+
+      assert admin.email in Enum.map(email.bcc, fn
+               {_name, address} -> address
+               address -> address
+             end)
+
+      assert fetch_account!(account.id).seats_warning_last_sent_at
+    end
+
+    test "does not send again within a week", %{account: account} do
+      make_seats_active(account, 10)
+
+      update_account(account, %{
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -6, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "sends again after a week", %{account: account} do
+      make_seats_active(account, 10)
+
+      update_account(account, %{
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -8, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [_email] = collect_queued_emails(account.id)
+    end
+
+    test "does not send when enough seats remain", %{account: account} do
+      make_seats_active(account, 5)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "does not send for non-Business accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Team"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 10}})
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
     end
   end
 end

@@ -98,10 +98,10 @@ defmodule Portal.Billing do
 
   @doc """
   Returns the plan type for the account based on the Stripe product name.
-  Returns :enterprise, :team, :starter, or :unknown.
+  Returns :enterprise, :business, :team, :starter, or :unknown.
   """
   @spec plan_type(Portal.Account.t() | String.t() | nil) ::
-          :enterprise | :team | :starter | :unknown
+          :enterprise | :business | :team | :starter | :unknown
   def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}}),
     do: plan_type(product_name)
 
@@ -110,6 +110,7 @@ defmodule Portal.Billing do
   def plan_type(product_name) when is_binary(product_name) do
     cond do
       String.starts_with?(product_name, "Enterprise") -> :enterprise
+      product_name == "Business" -> :business
       product_name == "Team" -> :team
       product_name == "Starter" -> :starter
       true -> :unknown
@@ -119,7 +120,7 @@ defmodule Portal.Billing do
   def plan_type(nil), do: :unknown
 
   @spec paid_plan?(Portal.Account.t()) :: boolean()
-  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
+  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :business, :enterprise]
 
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
@@ -266,6 +267,7 @@ defmodule Portal.Billing do
   `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block sign-ins.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_sign_in_restricted?(Portal.Account.t()) :: boolean()
@@ -280,11 +282,43 @@ defmodule Portal.Billing do
   limits exceeded), `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block connections.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_connect_restricted?(Portal.Account.t()) :: boolean()
   def client_connect_restricted?(%Portal.Account{} = account) do
     account.users_limit_exceeded or account.service_accounts_limit_exceeded
+  end
+
+  @doc """
+  Business plan seat enforcement for a single user. Returns `true` only when the
+  user is not yet a monthly active user and every seat is already taken, so
+  the user would push the account past its limit. Users who are already active
+  are never restricted. Other plans are never restricted.
+  """
+  @spec client_seat_restricted?(Portal.Account.t(), Ecto.UUID.t()) :: boolean()
+  def client_seat_restricted?(%Portal.Account{} = account, actor_id) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    plan_type(account) == :business and is_integer(limit) and
+      not Database.actor_active_in_last_month?(account, actor_id) and
+      Database.count_1m_active_users_for_account(account) >= limit
+  end
+
+  @low_seats_threshold 0.1
+
+  @doc """
+  Returns true when a Business account has fewer than 10% of its monthly
+  active seats remaining (including having none left). Accounts that already
+  exceed the limit are not low, they receive the limits exceeded email instead.
+  """
+  @spec seats_running_low?(Portal.Account.t(), non_neg_integer()) :: boolean()
+  def seats_running_low?(%Portal.Account{} = account, active_users_count) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    plan_type(account) == :business and is_integer(limit) and limit > 0 and
+      active_users_count <= limit and
+      (limit - active_users_count) / limit < @low_seats_threshold
   end
 
   @doc """
@@ -788,6 +822,17 @@ defmodule Portal.Billing do
       )
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
+    end
+
+    def actor_active_in_last_month?(%Account{} = account, actor_id) do
+      from(d in Device,
+        where: d.account_id == ^account.id,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_seen_at > ago(1, "month")
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def count_1m_active_users_for_account(%Account{} = account) do
