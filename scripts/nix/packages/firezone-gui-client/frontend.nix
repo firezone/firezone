@@ -23,12 +23,9 @@ stdenvNoCC.mkDerivation (finalAttrs: {
       ;
     pnpm = pnpm_10;
     fetcherVersion = 4;
-    # The only maintained hash in the Nix packaging. It changes whenever
-    # gui-client/pnpm-lock.yaml does. The Nix build recomputes it on the fly
-    # when it drifts (so CI/CD never fails on a stale pin) and opens a
-    # firezone-bot PR to commit the new value; run
-    # scripts/nix/update-pnpm-hash.sh to refresh it by hand.
-    hash = "sha256-ksdIUZNZJHFTo4pZUZXKzF6qv6LEpBXG0Yi+9Jks/HY=";
+    # Refresh with scripts/nix/update-pnpm-hash.sh when pnpm-lock.yaml changes.
+    # CI and GUI release drafting verify this pin without repairing it.
+    hash = "sha256-cqwU7g51h5Pnn3RBmz71nug2Ydv6EUKVgpF6v00B4xY=";
   };
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
