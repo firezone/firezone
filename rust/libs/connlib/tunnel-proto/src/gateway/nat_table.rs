@@ -1,6 +1,7 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
-use bimap::BiMap;
+use bimap::BiHashMap;
+use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -14,13 +15,13 @@ use std::time::{Duration, Instant};
 ///
 /// We need to include the L4 component because multiple DNS resources could resolve to the same IP on the Internet.
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
-#[derive(Default, Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct NatTable {
-    table: BiMap<Inside, Outside>,
+    table: BiHashMap<Inside, Outside, FastRandomState, FastRandomState>,
     state_by_inside: BTreeMap<Inside, EntryState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
-    expired: HashSet<Outside>,
+    expired: HashSet<Outside, FastRandomState>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
@@ -129,12 +130,9 @@ impl NatTable {
 
         tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
 
-        if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-            state.outgoing_rst = true;
-        }
-
-        if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-            state.outgoing_fin = true;
+        if let Some(tcp) = packet.as_tcp() {
+            state.outgoing_rst |= tcp.rst();
+            state.outgoing_fin |= tcp.fin();
         }
 
         state.last_outgoing = now;
@@ -150,7 +148,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
+            if let Some((Inside(inside_proto, inside_dst), _)) =
                 self.translate_incoming_inner(&outside, now)
             {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
@@ -170,15 +168,10 @@ impl NatTable {
 
         let outside = Outside(packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_incoming_inner(&outside, now)
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.incoming_rst = true;
-            }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.incoming_fin = true;
+        if let Some((inside, state)) = self.translate_incoming_inner(&outside, now) {
+            if let Some(tcp) = packet.as_tcp() {
+                state.incoming_rst |= tcp.rst();
+                state.incoming_fin |= tcp.fin();
             }
 
             let (proto, src) = inside.into_inner();
@@ -193,9 +186,13 @@ impl NatTable {
         Ok(TranslateIncomingResult::NoNatSession)
     }
 
-    fn translate_incoming_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
-        let inside = self.table.get_by_right(outside)?;
-        let state = self.state_by_inside.get_mut(inside)?;
+    fn translate_incoming_inner(
+        &mut self,
+        outside: &Outside,
+        now: Instant,
+    ) -> Option<(Inside, &mut EntryState)> {
+        let inside = *self.table.get_by_right(outside)?;
+        let state = self.state_by_inside.get_mut(&inside)?;
 
         tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
 
@@ -204,7 +201,7 @@ impl NatTable {
             tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
-        Some(*inside)
+        Some((inside, state))
     }
 }
 

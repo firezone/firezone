@@ -72,9 +72,6 @@ pub(crate) struct SimClient {
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
-
-    /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimClient {
@@ -106,7 +103,6 @@ impl SimClient {
             tcp_client: crate::tcp::Client::new(now, os),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -293,19 +289,34 @@ impl SimClient {
         self.encapsulate(packet, now)
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    /// Drive the SUT's network -> TUN path, decrypting on the current thread.
+    fn handle_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        payload: &[u8],
+        now: Instant,
+    ) -> anyhow::Result<Option<IpPacket>> {
+        let Some(packet) = self.sut.handle_network_input(local, from, payload, now)? else {
+            return Ok(None);
+        };
+        let packet =
+            self.sut
+                .handle_decrypted_network_input(local, from, packet.decrypt(payload), now)?;
+
+        Ok(packet)
+    }
+
+    /// Drive the SUT's TUN -> network path, sealing the encapsulated datagram (if any) on the
+    /// current thread.
     fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+        let message = self.sut.handle_tun_input(packet, now)?;
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(message.map(snownet::DataMessage::seal))
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -332,7 +343,6 @@ impl SimClient {
         now: Instant,
     ) -> Option<Transmit> {
         let Some(packet) = self
-            .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()

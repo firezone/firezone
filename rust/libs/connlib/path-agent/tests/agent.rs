@@ -724,7 +724,7 @@ impl Activity {
             .filter(|(_, t)| (t.local, t.remote) == pair)
             .filter_map(|(_, t)| match &t.payload {
                 Payload::Plaintext(packet) => parse_probe(packet),
-                Payload::Ciphertext(_) => None,
+                Payload::Ciphertext(_) | Payload::Keepalive => None,
             })
             .filter(|p| p.kind == EchoKind::Request)
             .collect()

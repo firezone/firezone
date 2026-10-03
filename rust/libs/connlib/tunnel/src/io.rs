@@ -1,3 +1,4 @@
+mod crypto;
 mod device;
 mod doh;
 mod nameserver_set;
@@ -5,6 +6,7 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
+pub use crypto::{CryptoWorkersUnavailable, Received};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
@@ -12,6 +14,7 @@ use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
+use crypto::Crypto;
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
@@ -20,11 +23,14 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use snownet::{DecryptedPacket, EncryptedPacket, Outgoing};
+use socket_factory::{
+    DatagramBatch, DatagramLocation, DatagramOut, SocketFactory, TcpSocket, UdpSocket,
+};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -34,10 +40,13 @@ use std::{
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
-pub struct Io {
+pub struct Io<TId> {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    /// Control messages, sent unbatched and ahead of the data messages.
+    control_queue: VecDeque<DatagramOut>,
     gso_queue: UdpGsoQueue,
+    crypto: Crypto<TId>,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -80,20 +89,24 @@ enum DohClient {
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
-pub struct Input {
+pub struct Input<TId> {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    /// Batches of packets decrypted on behalf of [`Io::decrypt`], in the order they were submitted
+    /// per peer.
+    pub decrypted: Vec<Vec<Received<DecryptedPacket<TId>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
-impl Input {
+impl<TId> Input<TId> {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
             device: None,
             network: None,
+            decrypted: Vec::new(),
             tcp_dns_queries: Vec::new(),
             udp_dns_queries: Vec::new(),
             dns_response: None,
@@ -127,7 +140,10 @@ where
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 
-impl Io {
+impl<TId> Io<TId>
+where
+    TId: Send + 'static,
+{
     /// Creates a new I/O abstraction
     ///
     /// Must be called within a Tokio runtime context so we can bind the sockets.
@@ -163,7 +179,9 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
+            control_queue: VecDeque::new(),
             gso_queue: UdpGsoQueue::new(),
+            crypto: Crypto::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -226,7 +244,7 @@ impl Io {
         self.nameservers.fastest()
     }
 
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input<TId>> {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
@@ -253,7 +271,10 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let decrypted = self.crypto.poll_opened(cx);
+        let network = self
+            .sockets
+            .poll_recv_from(cx, self.crypto.opens_in_flight());
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
@@ -331,6 +352,7 @@ impl Io {
 
         if device.is_pending()
             && network.is_pending()
+            && decrypted.is_empty()
             && tcp_dns_queries.is_empty()
             && udp_dns_queries.is_empty()
             && dns_response.is_pending()
@@ -342,6 +364,7 @@ impl Io {
         Poll::Ready(Input {
             device: poll_result_to_option(device, &mut error),
             network: poll_to_option(network),
+            decrypted,
             tcp_dns_queries,
             udp_dns_queries,
             dns_response: poll_to_option(dns_response),
@@ -352,7 +375,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx)?.is_pending() {
+        if self.flush_network(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -367,25 +390,49 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
-    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
+    /// Sends the queued control messages and hands the queued batches to the crypto workers, which
+    /// send them once sealed.
+    ///
+    /// Pending while the socket or the crypto workers are at capacity.
+    pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
-        loop {
+        while !self.control_queue.is_empty() {
             ready!(self.sockets.poll_send_ready(cx)?);
 
-            let Some(datagram) = datagrams.next() else {
+            if let Some(datagram) = self.control_queue.pop_front() {
+                for segment in datagram.packet.chunks(datagram.segment_size) {
+                    transmitted.record(segment);
+                }
+                self.sockets.send(datagram)?;
+            }
+        }
+
+        while let Some(dst) = self.gso_queue.front_dst() {
+            ready!(self.crypto.poll_seal_ready(dst, cx))?;
+
+            let Some(datagram) = self.gso_queue.pop() else {
                 break;
             };
 
-            for segment in datagram.packet.chunks(datagram.segment_size) {
-                transmitted.record(segment);
+            for job in datagram.jobs() {
+                transmitted.record_wireguard(job.is_relayed());
             }
-
-            self.sockets.send(datagram)?;
+            let socket = self.sockets.sender(datagram.dst())?;
+            self.crypto.seal(datagram, socket)?;
         }
 
         Poll::Ready(Ok(()))
+    }
+
+    /// Decrypts packets received in `batch` off the main thread, yielding them via
+    /// [`Input::decrypted`].
+    pub fn decrypt(
+        &mut self,
+        batch: DatagramBatch,
+        packets: Vec<(DatagramLocation, Received<EncryptedPacket<TId>>)>,
+    ) -> Result<(), CryptoWorkersUnavailable> {
+        self.crypto.open(batch, packets)
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
@@ -405,6 +452,7 @@ impl Io {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
+        self.control_queue.clear();
         self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
@@ -417,19 +465,17 @@ impl Io {
         }
     }
 
-    /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
-        &mut self.gso_queue
-    }
-
-    pub fn send_network(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-    ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+    pub fn send_network(&mut self, transmit: Outgoing) {
+        match transmit {
+            Outgoing::Control(transmit) => self.control_queue.push_back(DatagramOut {
+                src: transmit.src,
+                dst: transmit.dst,
+                segment_size: transmit.payload.len(),
+                packet: transmit.payload,
+                ecn: transmit.ecn,
+            }),
+            Outgoing::Data(message) => self.gso_queue.push(message),
+        }
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
@@ -668,8 +714,8 @@ mod tests {
     }
 
     /// Helper functions to make the test more concise.
-    impl Io {
-        fn for_test() -> Io {
+    impl Io<()> {
+        fn for_test() -> Self {
             let mut io = Io::new(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
@@ -680,7 +726,7 @@ mod tests {
             io
         }
 
-        async fn next(&mut self) -> Input {
+        async fn next(&mut self) -> Input<()> {
             poll_fn(|cx| self.poll(cx)).await
         }
     }

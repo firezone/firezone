@@ -29,7 +29,20 @@ impl<'a> UdpPacketCounts<'a> {
     }
 
     pub(crate) fn record(&mut self, packet: &[u8]) {
-        self.counts[packet_kind::classify(packet) as usize] += 1;
+        self.add(packet_kind::classify(packet));
+    }
+
+    /// Records a WireGuard data message, sent through a TURN channel if `relayed`.
+    pub(crate) fn record_wireguard(&mut self, relayed: bool) {
+        self.add(if relayed {
+            Kind::WireguardOverTurn
+        } else {
+            Kind::Wireguard
+        });
+    }
+
+    fn add(&mut self, kind: Kind) {
+        self.counts[kind as usize] += 1;
     }
 }
 

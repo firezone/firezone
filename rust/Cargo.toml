@@ -97,7 +97,7 @@ bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
 bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
-boringtun = { version = "0.7.0", default-features = false }
+boringtun = { version = "0.8.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
@@ -110,6 +110,7 @@ client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"
+crossbeam-channel = "0.5.15"
 crossbeam-queue = "0.3.12"
 cryptoki = "0.12.0"
 dashmap = "6.2.1"
@@ -313,7 +314,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 [patch.crates-io]
 sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
-boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "parallel-encryption" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.

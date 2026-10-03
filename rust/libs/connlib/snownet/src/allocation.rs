@@ -934,8 +934,22 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
+        let header = self.channel_data_header(peer, buffer.len() - 4, now)?;
+        buffer[..4].copy_from_slice(&header);
+
+        Some(EncodeOk {
+            socket: self.active_socket.as_ref()?.addr,
+        })
+    }
+
+    /// Returns the channel-data header for sending `payload_length` bytes to `peer`.
+    pub fn channel_data_header(
+        &mut self,
+        peer: SocketAddr,
+        payload_length: usize,
+        now: Instant,
+    ) -> Option<[u8; 4]> {
         let active_socket = self.active_socket.as_mut()?;
-        let payload_length = buffer.len() - 4;
 
         let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
         let inflight_channel_to_peer = self.channel_bindings.inflight_channel_to_peer(peer, now);
@@ -953,17 +967,12 @@ impl Allocation {
                 return None;
             }
         };
-        crate::channel_data::encode_header_to_slice(
-            &mut buffer[..4],
-            channel_number,
-            payload_length,
-        );
+        let mut header = [0u8; 4];
+        crate::channel_data::encode_header_to_slice(&mut header, channel_number, payload_length);
 
         active_socket.reset(now);
 
-        Some(EncodeOk {
-            socket: active_socket.addr,
-        })
+        Some(header)
     }
 
     /// Whether this [`Allocation`] can be freed.
