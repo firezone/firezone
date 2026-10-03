@@ -63,6 +63,23 @@ defmodule PortalAPI.AccountControllerTest do
       assert used_mau + available_mau == 100
     end
 
+    test "does not render the ops-set meters", %{conn: conn} do
+      account =
+        account_fixture()
+        |> Ecto.Changeset.change(meters: ["ops.meter"])
+        |> Portal.Repo.update!()
+
+      actor = actor_fixture(type: :api_client, account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/account")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      refute Map.has_key?(data, "meters")
+    end
+
     test "returns 401 when not authenticated", %{conn: conn} do
       conn = get(conn, ~p"/account")
       assert json_response(conn, 401)

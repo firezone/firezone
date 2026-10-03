@@ -101,6 +101,51 @@ pub fn tunnel_errors() -> Counter<u64> {
         .build()
 }
 
+/// Failures to write the flow-log upload config the portal sends.
+pub const FLOW_LOG_CONFIG_ERRORS: &str = "flow_logs.config.errors";
+
+/// Failures to write an authorization's flow-log ingest token.
+pub const FLOW_LOG_TOKEN_ERRORS: &str = "flow_logs.token.errors";
+
+/// Failures to spool a flow-log report.
+pub const FLOW_LOG_REPORT_ERRORS: &str = "flow_logs.report.errors";
+
+/// Number of failures to write the flow-log upload config, by IO error kind.
+///
+/// Without the config, nothing is ever uploaded.
+pub fn flow_log_config_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_CONFIG_ERRORS,
+        "Number of failures to write the flow-log upload config.",
+    )
+}
+
+/// Number of failures to write a flow-log ingest token, by IO error kind.
+///
+/// Reports of an authorization whose token never landed are not spooled.
+pub fn flow_log_token_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_TOKEN_ERRORS,
+        "Number of failures to write a flow-log ingest token.",
+    )
+}
+
+/// Number of failures to spool a flow-log report, by IO error kind.
+pub fn flow_log_report_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_REPORT_ERRORS,
+        "Number of failures to spool a flow-log report.",
+    )
+}
+
+fn flow_log_errors(name: &'static str, description: &'static str) -> Counter<u64> {
+    meter()
+        .u64_counter(name)
+        .with_description(description)
+        .with_unit("{error}")
+        .build()
+}
+
 /// Number of portal connection hiccups by cause.
 pub fn portal_connection_hiccups() -> Counter<u64> {
     meter()

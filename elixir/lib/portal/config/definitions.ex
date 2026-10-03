@@ -223,6 +223,47 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The base URL gateways report OpenTelemetry metrics to.
+  """
+  defconfig(:metrics_api_url, :string,
+    default: "https://telemetry.firezone.dev/",
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
+  How often, in seconds, gateways report metrics.
+
+  Set to `0` to disable metrics reporting entirely.
+  """
+  defconfig(:metrics_report_interval_secs, :integer, default: 300)
+
+  @doc """
+  Ed25519 private key, PKCS#8 PEM encoded, gateway metrics tokens are signed with.
+  """
+  defconfig(:metrics_token_private_key, :string, default: nil, sensitive: true)
+
+  @doc """
+  Identifier of the metrics token signing key, sent as the `kid` JWT header.
+  Tokens naming any other key are rejected.
+  """
+  defconfig(:metrics_token_key_id, :string, default: nil)
+
+  @doc """
+  The Azure Monitor data collection endpoint URL gateway metrics are forwarded
+  to, as OTLP/HTTP protobuf. Reports are rejected while it is unset.
+  """
+  defconfig(:metrics_dce_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key)
+    end
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """

@@ -48,6 +48,7 @@ opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
+portal-metrics = { workspace = true }
 resolv-conf = { workspace = true }
 rpassword = { workspace = true }
 rustls = { workspace = true }
