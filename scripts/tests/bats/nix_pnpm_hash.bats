@@ -27,7 +27,7 @@ exit 1
 MOCK
   chmod +x "$REPO/bin/nix"
   export PATH="$REPO/bin:$PATH"
-  cd "$REPO"
+  cd "$REPO" || return
 }
 
 @test "check accepts a correct pin and restores the file" {
