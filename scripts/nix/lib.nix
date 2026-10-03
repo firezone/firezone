@@ -166,10 +166,9 @@ rec {
       }
     );
 
-  # Current released version of each component we package. Read from the
-  # sentinel comments here (kept in sync by scripts/bump-versions.sh) rather
-  # than from Cargo.toml, whose `version` tracks the next, in-development
-  # release.
+  # Gateway and headless track the current released versions via sentinel
+  # comments maintained by scripts/bump-versions.sh. The GUI uses the crate
+  # version so a release draft packages the version being built.
   versions = {
     # mark:current-gateway-version
     gateway = "1.6.2";
@@ -177,8 +176,9 @@ rec {
     # mark:current-headless-version
     headless = "1.5.13";
 
-    # mark:current-gui-version
-    gui = "1.5.18";
+    # The GUI release is built from this crate version; the current-version
+    # sentinel tracks the previous release until the post-release bump.
+    gui = (lib.importTOML ../../rust/gui-client/src-tauri/Cargo.toml).package.version;
   };
 
   meta = {

@@ -86,13 +86,15 @@ Note that `nix.settings` changes take effect only after a rebuild, so the very f
 
 Design goal: **zero Nix edits per release.**
 
-- Package versions are read from the crates' `Cargo.toml` files at evaluation time, so `scripts/bump-versions.sh` needs no Nix awareness.
-- Rust dependencies (including git dependencies) come straight from `rust/Cargo.lock` via `importCargoLock` with builtin git fetching: no vendor hash exists, so `cargo update --workspace` on release never requires a Nix change.
+- The GUI package version comes from its crate’s `Cargo.toml`, matching the release being built. Gateway and headless versions use the current-version markers in `lib.nix`, maintained by `scripts/bump-versions.sh`.
+- Rust dependencies (including git dependencies) come straight from `rust/Cargo.lock` via crane with builtin git fetching: no vendor hash exists, so `cargo update --workspace` on release never requires a Nix change.
   The cost: the first evaluation on a fresh machine fetches the git dependencies at eval time.
 - The Rust toolchain follows `rust/rust-toolchain.toml`.
   If CI fails with an unknown-toolchain error right after a toolchain bump, run `nix flake update rust-overlay`.
 - The **single maintained hash** is `pnpmDeps.hash` in `scripts/nix/packages/firezone-gui-client/frontend.nix`.
-  It must be bumped whenever `gui-client/pnpm-lock.yaml` changes; the CI failure message prints the expected value, paste it and re-run.
+  Refresh it on Linux with `scripts/nix/update-pnpm-hash.sh` whenever `gui-client/pnpm-lock.yaml` changes.
+  Nix CI and GUI release drafting run `scripts/nix/update-pnpm-hash.sh --check`, which forces a fresh dependency fetch and fails on a stale pin or fetch error.
+  The release draft and artifact builds depend on this check; commit the corrected hash before retrying. CI never silently repairs the release checkout.
 - Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and the `postinstall` script in `gui-client/package.json`; keep them in sync when those change.
 - Hardcoded FHS paths in Rust code (like the IPC peer-check path, see `FIREZONE_GUI_PEER_EXE` in `gui-client/src-tauri/src/ipc/unix/peer_check/linux.rs`) break NixOS builds silently.
   The Nix CI job on `rust/` PRs is what catches these at review time.
