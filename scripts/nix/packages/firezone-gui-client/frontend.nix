@@ -25,7 +25,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     fetcherVersion = 4;
     # Refresh with scripts/nix/update-pnpm-hash.sh when pnpm-lock.yaml changes.
     # CI and GUI release drafting verify this pin without repairing it.
-    hash = "sha256-ksdIUZNZJHFTo4pZUZXKzF6qv6LEpBXG0Yi+9Jks/HY=";
+    hash = "sha256-cqwU7g51h5Pnn3RBmz71nug2Ydv6EUKVgpF6v00B4xY=";
   };
 
   # nixpkgs packages pnpm by major version only, not the exact patch in
