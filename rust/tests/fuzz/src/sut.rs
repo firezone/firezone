@@ -12,6 +12,7 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
+use anyhow::ErrorExt as _;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
@@ -700,6 +701,18 @@ impl TunnelTest {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
                 self.reboot_relays_while_partitioned(new_relays, now);
             }
+            Transition::ExhaustRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.rejects_allocations = true);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.rejects_allocations = false);
+            }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self
                     .clients
@@ -971,20 +984,11 @@ impl TunnelTest {
             if let Some((client_id, event)) = client_event {
                 match self.on_client_event(client_id, event, ref_state, portal) {
                     Ok(()) => {}
-                    Err(ClientEventError::Client { id, error: e }) => {
-                        tracing::debug!("Failed to handle ClientEvent: {e}");
-
-                        let client = self.clients.get_mut(&id).unwrap();
-                        client.exec_mut(|c| {
-                            c.update_relays(iter::empty(), self.relays.iter(), now);
-                        });
+                    Err(e) if e.any_is::<NoTurnServers>() => {
+                        tracing::debug!("Failed to handle ClientEvent: {e:#}");
                     }
-                    Err(ClientEventError::Gateway { id, error: e }) => {
-                        tracing::debug!("Failed to handle GatewayEvent: {e}");
-
-                        let gateway = self.gateways.get_mut(&id).unwrap();
-                        gateway
-                            .exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now))
+                    Err(e) => {
+                        tracing::error!("Failed to handle ClientEvent: {e:#}");
                     }
                 }
                 continue;
@@ -1303,7 +1307,7 @@ impl TunnelTest {
         event: ClientEvent,
         ref_state: &ReferenceState,
         portal: &mut StubPortal,
-    ) -> Result<(), ClientEventError> {
+    ) -> anyhow::Result<()> {
         let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
@@ -1398,36 +1402,31 @@ impl TunnelTest {
                     make_preshared_key_and_ice(client_key, gateway_key);
                 let use_iceless = portal.iceless();
 
-                gateway
-                    .exec_mut(|g| {
-                        g.sut.create_authorization(
-                            Client {
-                                id: src,
-                                public_key: client_key.into(),
-                                preshared_key: preshared_key.clone(),
-                                ipv4: client_tun.v4,
-                                ipv6: client_tun.v6,
-                            },
-                            client_ice.clone(),
-                            gateway_ice.clone(),
-                            None,
-                            resource,
-                            use_iceless,
-                            now,
-                            test_ingest_token(),
-                        )?;
-                        g.record_authorization(
-                            src,
-                            resource_id,
-                            [client_tun.v4.into(), client_tun.v6.into()],
-                        );
+                gateway.exec_mut(|g| {
+                    g.sut.create_authorization(
+                        Client {
+                            id: src,
+                            public_key: client_key.into(),
+                            preshared_key: preshared_key.clone(),
+                            ipv4: client_tun.v4,
+                            ipv6: client_tun.v6,
+                        },
+                        client_ice.clone(),
+                        gateway_ice.clone(),
+                        None,
+                        resource,
+                        use_iceless,
+                        now,
+                        test_ingest_token(),
+                    )?;
+                    g.record_authorization(
+                        src,
+                        resource_id,
+                        [client_tun.v4.into(), client_tun.v6.into()],
+                    );
 
-                        Ok(())
-                    })
-                    .map_err(|error| ClientEventError::Gateway {
-                        id: gateway_id,
-                        error,
-                    })?;
+                    anyhow::Ok(())
+                })?;
 
                 // The gateway's candidates and the portal's `flow_created` reply travel
                 // independently, so the client may receive them before it knows about
@@ -1445,28 +1444,21 @@ impl TunnelTest {
                 }
 
                 let client = self.clients.get_mut(&src).unwrap();
-                client
-                    .exec_mut(|c| {
-                        c.sut.handle_resource_access_authorized(
-                            resource_id,
-                            gateway_id,
-                            gateway_key,
-                            gateway.inner().sut.tunnel_ip_config().unwrap(),
-                            site_id,
-                            preshared_key,
-                            client_ice,
-                            gateway_ice,
-                            use_iceless,
-                            test_ingest_token(),
-                            now,
-                        )
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::error!("{e:#}");
-
-                        Ok(())
-                    })
-                    .map_err(|error| ClientEventError::Client { id: src, error })?;
+                client.exec_mut(|c| {
+                    c.sut.handle_resource_access_authorized(
+                        resource_id,
+                        gateway_id,
+                        gateway_key,
+                        gateway.inner().sut.tunnel_ip_config().unwrap(),
+                        site_id,
+                        preshared_key,
+                        client_ice,
+                        gateway_ice,
+                        use_iceless,
+                        test_ingest_token(),
+                        now,
+                    )
+                })?;
 
                 Ok(())
             }
@@ -1528,54 +1520,47 @@ impl TunnelTest {
                     expires_at: None,
                 };
                 remote_client.exec_mut(|c| {
-                    c.sut
-                        .handle_client_device_access_authorized(
-                            src,
-                            src_key,
-                            src_tun,
-                            preshared_key.clone(),
-                            remote_client_ice.clone(),
-                            local_client_ice.clone(),
-                            tunnel_proto::messages::IceRole::Controlled,
-                            use_iceless,
-                            "initiating client".to_owned(),
-                            portal.device_label(src),
-                            None,
-                            Some(remote_authorization),
-                            test_ingest_token(),
-                            now,
-                        )
-                        .map_err(|error| ClientEventError::Client {
-                            id: remote_id,
-                            error,
-                        })?;
+                    c.sut.handle_client_device_access_authorized(
+                        src,
+                        src_key,
+                        src_tun,
+                        preshared_key.clone(),
+                        remote_client_ice.clone(),
+                        local_client_ice.clone(),
+                        tunnel_proto::messages::IceRole::Controlled,
+                        use_iceless,
+                        "initiating client".to_owned(),
+                        portal.device_label(src),
+                        None,
+                        Some(remote_authorization),
+                        test_ingest_token(),
+                        now,
+                    )?;
 
-                    Ok(())
+                    anyhow::Ok(())
                 })?;
 
                 let local_client = self.clients.get_mut(&src).expect("unknown source client");
 
                 local_client.exec_mut(|c| {
-                    c.sut
-                        .handle_client_device_access_authorized(
-                            remote_id,
-                            remote_key,
-                            remote_tun,
-                            preshared_key,
-                            local_client_ice,
-                            remote_client_ice,
-                            tunnel_proto::messages::IceRole::Controlling,
-                            use_iceless,
-                            "target client".to_owned(),
-                            portal.device_label(remote_id),
-                            Some(pool),
-                            None,
-                            test_ingest_token(),
-                            now,
-                        )
-                        .map_err(|error| ClientEventError::Client { id: src, error })?;
+                    c.sut.handle_client_device_access_authorized(
+                        remote_id,
+                        remote_key,
+                        remote_tun,
+                        preshared_key,
+                        local_client_ice,
+                        remote_client_ice,
+                        tunnel_proto::messages::IceRole::Controlling,
+                        use_iceless,
+                        "target client".to_owned(),
+                        portal.device_label(remote_id),
+                        Some(pool),
+                        None,
+                        test_ingest_token(),
+                        now,
+                    )?;
 
-                    Ok(())
+                    anyhow::Ok(())
                 })?;
 
                 Ok(())
@@ -1615,10 +1600,20 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::NoRelays => {
-                // Mimic the portal: reply with the current set of relays.
+            ClientEvent::NoRelays { excluded_relay_ids } => {
+                // Mimic the portal: reply with the current set of relays, except the excluded ones.
+                let mut relays = self
+                    .relays
+                    .iter()
+                    .filter(|(id, _)| !excluded_relay_ids.contains(id))
+                    .peekable();
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| c.update_relays(iter::empty(), self.relays.iter(), now));
+                client.exec_mut(|c| {
+                    if relays.peek().is_some() {
+                        c.answerable_relay_requests.push(now);
+                    }
+                    c.update_relays(iter::empty(), relays, now)
+                });
 
                 Ok(())
             }
@@ -1752,11 +1747,6 @@ impl TunnelTest {
     }
 }
 
-enum ClientEventError {
-    Client { id: ClientId, error: NoTurnServers },
-    Gateway { id: GatewayId, error: NoTurnServers },
-}
-
 fn address_from_destination(
     destination: &Destination,
     state: &TunnelTest,
@@ -1877,9 +1867,18 @@ fn on_gateway_event(
                 g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
             })
         }
-        GatewayEvent::NoRelays => {
-            // Mimic the portal: reply with the current set of relays.
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
+        GatewayEvent::NoRelays { excluded_relay_ids } => {
+            // Mimic the portal: reply with the current set of relays, except the excluded ones.
+            let mut relays = relays
+                .iter()
+                .filter(|(id, _)| !excluded_relay_ids.contains(id))
+                .peekable();
+            gateway.exec_mut(|g| {
+                if relays.peek().is_some() {
+                    g.answerable_relay_requests.push(now);
+                }
+                g.update_relays(iter::empty(), relays, now)
+            });
         }
     }
 }
@@ -1894,6 +1893,6 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,
-        ClientEvent::NoRelays => true,
+        ClientEvent::NoRelays { .. } => true,
     }
 }

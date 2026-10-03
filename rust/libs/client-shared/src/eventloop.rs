@@ -466,9 +466,11 @@ impl Eventloop {
             Ok(ClientEvent::DnsRecordsChanged { records }) => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
-            Ok(ClientEvent::NoRelays) => {
+            Ok(ClientEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {
+                        excluded_relay_ids,
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }
@@ -681,14 +683,9 @@ impl Eventloop {
                     flow_logs_ingest_token,
                     now,
                 ) {
-                    Ok(Ok(())) => {}
-                    Ok(Err(e @ snownet::NoTurnServers {})) => {
-                        tracing::debug!("Failed to handle authorization created: {e}");
-
-                        self.portal_cmd_tx
-                            .send(PortalCommand::Send(EgressMessages::NoRelays {}))
-                            .await
-                            .context("Failed to send message to portal")?;
+                    Ok(()) => {}
+                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
+                        tracing::debug!("Failed to handle authorization created: {e:#}");
                     }
                     Err(e) => {
                         tracing::warn!("Failed to handle authorization created: {e:#}");
@@ -774,13 +771,15 @@ impl Eventloop {
                     now,
                 ) {
                     Ok(()) => {}
-                    Err(e @ snownet::NoTurnServers {}) => {
-                        tracing::debug!("Failed to handle client device access authorization: {e}");
-
-                        self.portal_cmd_tx
-                            .send(PortalCommand::Send(EgressMessages::NoRelays {}))
-                            .await
-                            .context("Failed to send message to portal")?;
+                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
+                        tracing::debug!(
+                            "Failed to handle client device access authorization: {e:#}"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to handle client device access authorization: {e:#}"
+                        );
                     }
                 };
             }

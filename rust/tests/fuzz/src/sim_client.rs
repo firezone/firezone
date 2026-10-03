@@ -75,6 +75,9 @@ pub(crate) struct SimClient {
 
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
+
+    /// When the node asked the portal for relays while the portal had some to give it.
+    pub(crate) answerable_relay_requests: Vec<Instant>,
 }
 
 impl SimClient {
@@ -107,6 +110,7 @@ impl SimClient {
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
+            answerable_relay_requests: Default::default(),
         }
     }
 

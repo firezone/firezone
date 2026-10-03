@@ -307,9 +307,11 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            Ok(GatewayEvent::NoRelays) => {
+            Ok(GatewayEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {
+                        excluded_relay_ids,
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }
@@ -382,7 +384,7 @@ impl Eventloop {
                     }
                 }
 
-                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
+                match tunnel.state_mut().create_authorization(
                     msg.client,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
@@ -392,14 +394,17 @@ impl Eventloop {
                     now,
                     msg.flow_logs_ingest_token,
                 ) {
-                    tracing::debug!("Failed to create authorization: No TURN servers available");
+                    Ok(()) => {}
+                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
+                        tracing::debug!("Failed to create authorization: {e:#}");
 
-                    self.portal_cmd_tx
-                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
-                        .await
-                        .context("Failed to send message to portal")?;
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create authorization: {e:#}");
 
-                    return Ok(());
+                        return Ok(());
+                    }
                 };
 
                 self.portal_cmd_tx

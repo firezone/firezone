@@ -9,7 +9,7 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceView,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -63,7 +63,7 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: ClientOrGatewayId,
@@ -92,8 +92,10 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -127,7 +129,7 @@ impl IpConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GatewayEvent {
     AddedIceCandidates {
         conn_id: ClientId,
@@ -138,8 +140,10 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
