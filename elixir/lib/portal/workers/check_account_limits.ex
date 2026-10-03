@@ -24,8 +24,10 @@ defmodule Portal.Workers.CheckAccountLimits do
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
 
-  # Send the Business "running low on seats" email at most once a week
-  @seats_low_reminder_interval_days 7
+  # Repeat the Business seat warning email at most once a week, unless the
+  # account's state gets worse (approaching -> at limit)
+  @seats_warning_interval_days 7
+  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2}
 
   @batch_size 100
 
@@ -60,53 +62,79 @@ defmodule Portal.Workers.CheckAccountLimits do
         update_account_limits(account, cleared_flags())
       end
 
-      maybe_send_seats_running_low_email(account, account_counts)
+      maybe_send_seats_warning_email(account, account_counts)
     end
 
     :ok
   end
 
-  defp maybe_send_seats_running_low_email(account, account_counts) do
+  defp maybe_send_seats_warning_email(account, account_counts) do
     active_users = Map.get(account_counts, :active_users, 0)
 
-    if Billing.seats_running_low?(account, active_users) and seats_low_email_due?(account) do
-      case Database.get_account_admin_actors(account.id) do
-        [] ->
-          Logger.warning("No admin actors found for account", account_id: account.id)
+    case Billing.seats_warning_level(account, active_users) do
+      level when level in [:approaching, :at_limit] ->
+        if seats_warning_due?(account, level) do
+          send_seats_warning_email(account, level, active_users)
+        end
 
-        admins ->
-          send_seats_running_low_email(account, admins, active_users)
-      end
+      :clear ->
+        clear_seats_warning(account)
+
+      _ ->
+        :ok
     end
   end
 
-  defp seats_low_email_due?(%{seats_warning_last_sent_at: nil}), do: true
+  defp seats_warning_due?(%{seats_warning_last_sent_at: nil}, _level), do: true
 
-  defp seats_low_email_due?(%{seats_warning_last_sent_at: last_sent_at}) do
-    DateTime.diff(DateTime.utc_now(), last_sent_at, :day) >= @seats_low_reminder_interval_days
+  defp seats_warning_due?(account, level) do
+    worse? = @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level]
+
+    worse? or
+      DateTime.diff(DateTime.utc_now(), account.seats_warning_last_sent_at, :day) >=
+        @seats_warning_interval_days
   end
 
-  defp send_seats_running_low_email(account, admins, active_users) do
-    recipient_emails = Enum.map(admins, & &1.email)
+  defp clear_seats_warning(%{seats_warning_last_sent_at: nil, seats_warning_level: nil}), do: :ok
 
-    case Notifications.seats_running_low_email(account, active_users, recipient_emails)
-         |> Mailer.enqueue() do
-      {:ok, _result} ->
-        Logger.info("Seats running low email enqueued",
-          recipient_count: length(recipient_emails),
-          account_id: account.id
-        )
+  defp clear_seats_warning(account), do: put_seats_warning(account, nil, nil)
 
-        account
-        |> cast(%{seats_warning_last_sent_at: DateTime.utc_now()}, [:seats_warning_last_sent_at])
-        |> Database.update()
+  defp put_seats_warning(account, sent_at, level) do
+    account
+    |> cast(%{seats_warning_last_sent_at: sent_at, seats_warning_level: level}, [
+      :seats_warning_last_sent_at,
+      :seats_warning_level
+    ])
+    |> Database.update()
+  end
 
-      {:error, reason} ->
-        Logger.error("Failed to enqueue seats running low email",
-          recipient_count: length(recipient_emails),
-          reason: inspect(reason),
-          account_id: account.id
-        )
+  defp send_seats_warning_email(account, level, active_users) do
+    case Database.get_account_admin_actors(account.id) do
+      [] ->
+        Logger.warning("No admin actors found for account", account_id: account.id)
+
+      admins ->
+        recipient_emails = Enum.map(admins, & &1.email)
+
+        case Notifications.seats_warning_email(account, level, active_users, recipient_emails)
+             |> Mailer.enqueue() do
+          {:ok, _result} ->
+            Logger.info("Seats warning email enqueued",
+              level: level,
+              recipient_count: length(recipient_emails),
+              account_id: account.id
+            )
+
+            put_seats_warning(account, DateTime.utc_now(), level)
+
+          {:error, reason} ->
+            Logger.error("Failed to enqueue seats warning email",
+              level: level,
+              recipient_count: length(recipient_emails),
+              reason: inspect(reason),
+              account_id: account.id
+            )
+        end
     end
   end
 

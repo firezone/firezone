@@ -44,16 +44,25 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
-  def seats_running_low_email(account, active_users_count, recipients) do
+  def seats_warning_email(account, level, active_users_count, recipients) do
     billing_url = url(~p"/#{account}/settings/account")
     limit = account.limits.monthly_active_users_count
 
+    heading =
+      case level do
+        :at_limit -> "You have reached your seat limit"
+        :approaching -> "You are approaching your seat limit"
+      end
+
     default_email()
-    |> subject("Firezone Account Running Low on Seats")
+    |> subject(heading)
+    |> reply_to("support@firezone.dev")
     |> put_recipients(recipients)
     |> with_account_id(account.id)
-    |> render_body(__MODULE__, :seats_running_low,
+    |> render_body(__MODULE__, :seats_warning,
       account: account,
+      level: level,
+      heading: heading,
       active_users_count: active_users_count,
       seats_limit: limit,
       seats_remaining: max(limit - active_users_count, 0),

@@ -133,7 +133,8 @@ defmodule Portal.AccountFixtures do
       :sites_limit_exceeded,
       :admins_limit_exceeded,
       :warning_last_sent_at,
-      :seats_warning_last_sent_at
+      :seats_warning_last_sent_at,
+      :seats_warning_level
     ])
     |> cast_embed(:config)
     |> cast_embed(:features)

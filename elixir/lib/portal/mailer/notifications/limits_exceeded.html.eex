@@ -99,7 +99,7 @@
                   </p>
                   <% :business -> %>
                   <p style="margin: 0; line-height: 24px">
-                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Billing</a> in the admin portal and clicking the "Manage plan" button. Or remove excess resources to get back within your current limits.
+                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button. Or remove excess resources to get back within your current limits.
                   </p>
                   <% :team -> %>
                   <p style="margin: 0; line-height: 24px">

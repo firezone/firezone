@@ -485,37 +485,41 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "seats_running_low?/2" do
+  describe "seats_warning_level/2" do
     defp business_with_seats(limit) do
       update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
     end
 
-    test "is false with more than 10% of seats remaining" do
-      refute seats_running_low?(business_with_seats(100), 89)
+    test "is :clear with more than 10% of seats remaining" do
+      assert seats_warning_level(business_with_seats(100), 89) == :clear
     end
 
-    test "is true with less than 10% of seats remaining" do
-      assert seats_running_low?(business_with_seats(100), 91)
-      assert seats_running_low?(business_with_seats(100), 100)
+    test "is :clear at exactly 10% remaining" do
+      assert seats_warning_level(business_with_seats(100), 90) == :clear
     end
 
-    test "is false exactly at 10% remaining" do
-      refute seats_running_low?(business_with_seats(100), 90)
+    test "is :approaching with fewer than 10% of seats remaining" do
+      assert seats_warning_level(business_with_seats(100), 91) == :approaching
+      assert seats_warning_level(business_with_seats(100), 99) == :approaching
     end
 
-    test "is false when the limit is already exceeded" do
-      refute seats_running_low?(business_with_seats(100), 101)
+    test "is :at_limit when every seat is used" do
+      assert seats_warning_level(business_with_seats(100), 100) == :at_limit
     end
 
-    test "is false when there is no seat limit" do
-      refute seats_running_low?(business_with_seats(nil), 5)
+    test "is :over when the limit is exceeded" do
+      assert seats_warning_level(business_with_seats(100), 101) == :over
     end
 
-    test "is false for non-Business plans" do
+    test "is nil when there is no seat limit" do
+      assert seats_warning_level(business_with_seats(nil), 5) == nil
+    end
+
+    test "is nil for non-Business plans" do
       account =
         update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 10}})
 
-      refute seats_running_low?(account, 10)
+      assert seats_warning_level(account, 10) == nil
     end
   end
 

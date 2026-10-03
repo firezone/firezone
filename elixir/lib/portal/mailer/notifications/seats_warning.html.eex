@@ -19,7 +19,7 @@
     td,th,div,p,a,h1,h2,h3,h4,h5,h6 {font-family: "Segoe UI", sans-serif; mso-line-height-rule: exactly;}
   </style>
   <![endif]-->
-  <title>Account Running Low on Seats</title>
+  <title><%= @heading %></title>
   <style>
     .hover-important-text-decoration-underline:hover {
       text-decoration: underline !important
@@ -49,9 +49,9 @@
 </head>
 <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
   <div style="display: none">
-    Account Running Low on Seats
+    <%= @heading %>
   </div>
-  <div role="article" aria-roledescription="email" aria-label="Account Running Low on Seats" lang="en">
+  <div role="article" aria-roledescription="email" aria-label="<%= @heading %>" lang="en">
     <div class="sm-px-4 email-container" style="background-color: #f6f6f6; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
       <table align="center" cellpadding="0" cellspacing="0" role="none">
         <tr>
@@ -68,14 +68,15 @@
               <tr>
                 <td class="sm-px-6 content-box" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
                   <h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
-                    Account Running Low on Seats
+                    <%= @heading %>
                   </h1>
                   <p style="margin: 0; line-height: 24px">
-                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) is almost out of monthly active seats.
+                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) <%= case @level do %><% :at_limit -> %>has used every monthly active user seat included in your subscription.<% _ -> %>is close to the number of monthly active users included in your subscription.<% end %>
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <div style="margin: 0; padding: 16px; background-color: #fffbeb; border-radius: 4px; color: #92400e; font-weight: 500; line-height: 24px">
-                    <div>Monthly active users: <%= @active_users_count %> / <%= @seats_limit %></div>
+                    <div>Current monthly active users: <%= @active_users_count %></div>
+                    <div>Seats in your subscription: <%= @seats_limit %></div>
                     <div>Seats remaining: <%= @seats_remaining %></div>
                   </div>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
@@ -83,15 +84,15 @@
                     <span style="font-weight: 600">What happens next?</span>
                   </p>
                   <p style="margin: 0; line-height: 24px">
-                    When all seats are used, new users cannot be enabled. If the number of monthly active users goes over your seat count, client sign ins and connections are blocked until you add seats or the count drops.
+                    <%= case @level do %><% :at_limit -> %>New users cannot sign in or connect until you add seats. Users who are already active are not affected.<% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.<% end %>
                   </p>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Billing</a> in the admin portal and clicking the "Manage plan" button.
+                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button.
                   </p>
                   <div role="separator" style="line-height: 24px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    You will get this reminder at most once a week while seats are running low. If you have any questions, please contact our support team.
+                    You will get this reminder at most once a week while your seats are nearly or fully used. If you have any questions, just reply to this email to reach our support team.
                   </p>
                   <p style="margin: 0; margin-top: 16px; line-height: 24px">
                     Thanks, <br>The Firezone Team
