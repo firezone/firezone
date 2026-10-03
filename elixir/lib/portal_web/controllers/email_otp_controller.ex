@@ -71,6 +71,7 @@ defmodule PortalWeb.EmailOTPController do
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
+         false <- client_seat_restricted?(account, actor_id, context_type),
          {:ok, passcode} <-
            Authentication.verify_one_time_passcode(
              account.id,
@@ -213,6 +214,13 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
+
+  defp client_seat_restricted?(account, actor_id, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_seat_restricted?(account, actor_id)
+  end
+
+  defp client_seat_restricted?(_account, _actor_id, _context_type), do: false
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]

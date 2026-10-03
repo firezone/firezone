@@ -12,6 +12,8 @@ defmodule Portal.Workers.CheckAccountLimits do
     max_attempts: 3,
     unique: [period: :infinity, states: :incomplete]
 
+  import Ecto.Changeset, only: [cast: 3]
+
   alias Portal.Account
   alias Portal.Billing
   alias Portal.Mailer
@@ -21,6 +23,11 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
+
+  # Repeat the Business seat warning email at most once a week, unless the
+  # account's state gets worse (approaching -> at limit)
+  @seats_warning_interval_days 7
+  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2}
 
   @batch_size 100
 
@@ -54,9 +61,89 @@ defmodule Portal.Workers.CheckAccountLimits do
       else
         update_account_limits(account, cleared_flags())
       end
+
+      maybe_send_seats_warning_email(account, account_counts)
     end
 
     :ok
+  end
+
+  defp maybe_send_seats_warning_email(account, account_counts) do
+    active_users = Map.get(account_counts, :active_users, 0)
+
+    case Billing.seats_warning_level(account, active_users) do
+      level when level in [:approaching, :at_limit] ->
+        if seats_warning_enabled?(account) and seats_warning_due?(account, level) do
+          send_seats_warning_email(account, level, active_users)
+        end
+
+      :clear ->
+        clear_seats_warning(account)
+
+      _ ->
+        :ok
+    end
+  end
+
+  # On unless an admin turned it off in Settings -> Notifications
+  defp seats_warning_enabled?(account) do
+    case account.config do
+      %{notifications: %{seats_warning: %{enabled: false}}} -> false
+      _ -> true
+    end
+  end
+
+  defp seats_warning_due?(%{seats_warning_last_sent_at: nil}, _level), do: true
+
+  defp seats_warning_due?(account, level) do
+    worse? = @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level]
+
+    worse? or
+      DateTime.diff(DateTime.utc_now(), account.seats_warning_last_sent_at, :day) >=
+        @seats_warning_interval_days
+  end
+
+  defp clear_seats_warning(%{seats_warning_last_sent_at: nil, seats_warning_level: nil}), do: :ok
+
+  defp clear_seats_warning(account), do: put_seats_warning(account, nil, nil)
+
+  defp put_seats_warning(account, sent_at, level) do
+    account
+    |> cast(%{seats_warning_last_sent_at: sent_at, seats_warning_level: level}, [
+      :seats_warning_last_sent_at,
+      :seats_warning_level
+    ])
+    |> Database.update()
+  end
+
+  defp send_seats_warning_email(account, level, active_users) do
+    case Database.get_account_admin_actors(account.id) do
+      [] ->
+        Logger.warning("No admin actors found for account", account_id: account.id)
+
+      admins ->
+        recipient_emails = Enum.map(admins, & &1.email)
+
+        case Notifications.seats_warning_email(account, level, active_users, recipient_emails)
+             |> Mailer.enqueue() do
+          {:ok, _result} ->
+            Logger.info("Seats warning email enqueued",
+              level: level,
+              recipient_count: length(recipient_emails),
+              account_id: account.id
+            )
+
+            put_seats_warning(account, DateTime.utc_now(), level)
+
+          {:error, reason} ->
+            Logger.error("Failed to enqueue seats warning email",
+              level: level,
+              recipient_count: length(recipient_emails),
+              reason: inspect(reason),
+              account_id: account.id
+            )
+        end
+    end
   end
 
   defp limit_flags(account, account_counts) do
@@ -177,8 +264,6 @@ defmodule Portal.Workers.CheckAccountLimits do
   end
 
   defp update_account_limits(account, attrs) do
-    import Ecto.Changeset
-
     fields = [
       :users_limit_exceeded,
       :seats_limit_exceeded,
@@ -197,7 +282,6 @@ defmodule Portal.Workers.CheckAccountLimits do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Actor
-    alias Portal.Device
 
     @doc """
     Fetches counts for the given accounts in batched GROUP BY queries.
@@ -208,7 +292,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     def fetch_counts_for_accounts(account_ids) do
       results = %{
         users: count_users_by_account(account_ids),
-        active_users: count_1m_active_users_by_account(account_ids),
+        active_users: Billing.count_monthly_active_users_by_account(account_ids),
         service_accounts: count_service_accounts_by_account(account_ids),
         sites: count_sites_by_account(account_ids),
         admins: count_admins_by_account(account_ids)
@@ -286,24 +370,6 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
-      |> Map.new()
-    end
-
-    defp count_1m_active_users_by_account(account_ids) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id in ^account_ids)
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
-      )
-      |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> group_by([devices: d], d.account_id)
-      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()

@@ -87,6 +87,18 @@ defmodule Portal.AccountFixtures do
   end
 
   @doc """
+  Generate an account with a Business plan.
+  """
+  def business_account_fixture(attrs \\ %{}) do
+    account = account_fixture(attrs)
+
+    account
+    |> cast(%{metadata: %{stripe: %{product_name: "Business"}}}, [])
+    |> cast_embed(:metadata)
+    |> Repo.update!()
+  end
+
+  @doc """
   Generate a disabled account.
   """
   def disabled_account_fixture(attrs \\ %{}) do
@@ -120,7 +132,9 @@ defmodule Portal.AccountFixtures do
       :service_accounts_limit_exceeded,
       :sites_limit_exceeded,
       :admins_limit_exceeded,
-      :warning_last_sent_at
+      :warning_last_sent_at,
+      :seats_warning_last_sent_at,
+      :seats_warning_level
     ])
     |> cast_embed(:config)
     |> cast_embed(:features)

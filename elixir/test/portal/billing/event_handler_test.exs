@@ -418,6 +418,30 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.limits.monthly_active_users_count == 42
     end
 
+    test "sets the monthly active users limit from Business seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:business, account.metadata.stripe.customer_id, 25, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 25
+      assert updated.limits.users_count == nil
+      assert updated.metadata.stripe.product_name == "Business"
+    end
+
     test "clears the monthly active users limit for Team seats", %{
       account: account,
       customer: customer

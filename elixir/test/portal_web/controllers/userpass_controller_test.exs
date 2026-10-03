@@ -317,6 +317,50 @@ defmodule PortalWeb.UserpassControllerTest do
       assert flash(conn, :error) =~ "exceeding billing limits"
     end
 
+    test "rejects a new user on a full Business account but lets an active user sign in",
+         %{
+           conn: conn,
+           account: account,
+           provider: provider,
+           password_hash: password_hash
+         } do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{product_name: "Business"}},
+          limits: %{monthly_active_users_count: 1}
+        })
+
+      active =
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: active)
+
+      Portal.ClientSessionFixtures.client_session_fixture(
+        account: account,
+        actor: active,
+        client: client
+      )
+
+      new_user =
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      params = fn actor ->
+        %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        }
+      end
+
+      blocked = post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", params.(new_user))
+      assert flash(blocked, :error) =~ "exceeding billing limits"
+
+      allowed = post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", params.(active))
+      assert allowed.status == 200
+      assert allowed.resp_body =~ "client_redirect"
+    end
+
     test "allows gui-client sign-in when account has exceeded monthly active users limits (soft limit)",
          %{
            conn: conn,

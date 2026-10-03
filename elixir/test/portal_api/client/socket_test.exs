@@ -421,6 +421,35 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
 
+    test "on a full Business account blocks a new user but not an active one" do
+      account = business_account_fixture()
+      update_account(account, %{limits: %{monthly_active_users_count: 1}})
+
+      active = actor_fixture(account: account, type: :account_user)
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: active)
+
+      Portal.ClientSessionFixtures.client_session_fixture(
+        account: account,
+        actor: active,
+        client: client
+      )
+
+      new_user = actor_fixture(account: account, type: :account_user)
+
+      new_token = encode_token(client_token_fixture(account: account, actor: new_user))
+
+      assert connect(Socket, connect_attrs(token: new_token),
+               connect_info: build_connect_info(token: new_token)
+             ) == {:error, :limits_exceeded}
+
+      active_token = encode_token(client_token_fixture(account: account, actor: active))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: active_token),
+                 connect_info: build_connect_info(token: active_token)
+               )
+    end
+
     test "returns error when service_accounts_limit_exceeded is true" do
       account = account_fixture()
       update_account(account, %{service_accounts_limit_exceeded: true})

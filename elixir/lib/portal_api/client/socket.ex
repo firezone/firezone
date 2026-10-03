@@ -120,6 +120,7 @@ defmodule PortalAPI.Client.Socket do
 
   defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
     with false <- Portal.Billing.client_connect_restricted?(subject.account),
+         false <- Portal.Billing.client_seat_restricted?(subject.account, subject.actor.id),
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),

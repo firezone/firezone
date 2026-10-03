@@ -54,6 +54,8 @@ defmodule PortalAPI.Schemas.Account do
                :metadata,
                :scheduled_deletion_at,
                :seats_limit_exceeded,
+               :seats_warning_last_sent_at,
+               :seats_warning_level,
                :service_accounts_limit_exceeded,
                :sites_limit_exceeded,
                :updated_at,

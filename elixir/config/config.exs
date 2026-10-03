@@ -409,6 +409,8 @@ config :portal, Portal.Billing,
     "prod_PZdZiSBX1HdXO2",
     # Team
     "prod_PZdbLazRNU3Bdi",
+    # Business
+    "prod_VMyDXDNwtDbpYa",
     # Enterprise
     "prod_PZdb7NJhcdyjRV"
   ],

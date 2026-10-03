@@ -89,6 +89,11 @@ defmodule Portal.Account do
     # Tracks when the last limit exceeded email was sent (for throttling)
     field :warning_last_sent_at, :utc_datetime_usec
 
+    # Tracks the last seat warning email sent (Business plan): when, and which
+    # state it described, so a worse state is not held back by the weekly throttle
+    field :seats_warning_last_sent_at, :utc_datetime_usec
+    field :seats_warning_level, Ecto.Enum, values: [:approaching, :at_limit]
+
     field :disabled_reason, :string
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
