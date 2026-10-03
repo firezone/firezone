@@ -9,6 +9,7 @@ defmodule Portal.Accounts.Limits do
     field :service_accounts_count, :integer
     field :sites_count, :integer
     field :account_admin_users_count, :integer
+    field :connected_devices_per_actor, :integer
     field :api_clients_count, :integer, default: 100
     field :api_tokens_per_client_count, :integer, default: 100
     field :api_refill_rate, :integer
@@ -24,6 +25,7 @@ defmodule Portal.Accounts.Limits do
       service_accounts_count
       sites_count
       account_admin_users_count
+      connected_devices_per_actor
       api_clients_count
       api_tokens_per_client_count
       api_refill_rate
@@ -39,6 +41,7 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:service_accounts_count, greater_than_or_equal_to: 0)
     |> validate_number(:sites_count, greater_than_or_equal_to: 0)
     |> validate_number(:account_admin_users_count, greater_than_or_equal_to: 0)
+    |> validate_number(:connected_devices_per_actor, greater_than_or_equal_to: 0)
     |> validate_number(:api_clients_count, greater_than_or_equal_to: 0)
     |> validate_number(:api_tokens_per_client_count, greater_than_or_equal_to: 0)
     |> validate_number(:ingestion_refill_rate, greater_than_or_equal_to: 0)

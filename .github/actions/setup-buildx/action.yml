@@ -3,7 +3,7 @@ description: "Sets up Docker Buildx with the BuildKit image and Docker Hub base-
 runs:
   using: "composite"
   steps:
-    - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+    - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       with:
         # Boot BuildKit from the mirror instead of registry-1.docker.io, whose
         # anonymous pulls from shared runner IPs frequently time out.

@@ -153,6 +153,18 @@ impl IpPacketBuf {
     }
 }
 
+impl AsRef<[u8]> for IpPacketBuf {
+    fn as_ref(&self) -> &[u8] {
+        &self.inner
+    }
+}
+
+impl AsMut<[u8]> for IpPacketBuf {
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.inner
+    }
+}
+
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
     buf: Buffer<Vec<u8>>,
@@ -248,11 +260,12 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
-    /// Parses and validates the first `len` bytes of `buf` as an IP packet.
+    /// Parses and validates the IP packet at the start of the first `len` bytes of `buf`.
     ///
-    /// All layout invariants are checked here, once: header lengths and length
-    /// fields must be consistent with `len` all the way through the transport
-    /// layer. Accessors on the returned packet rely on these invariants and
+    /// The packet's length comes from its IP header; anything after it within
+    /// `len`, such as padding added by WireGuard, is ignored. All layout
+    /// invariants are checked here, once: header lengths and length fields must
+    /// be consistent with that length all the way through the transport layer. Accessors on the returned packet rely on these invariants and
     /// don't re-validate.
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
@@ -260,16 +273,16 @@ impl IpPacket {
 
         let packet = &buf.inner[..len];
 
-        let (version, ip_header_length, protocol) = match packet.first().map(|b| b >> 4) {
+        let (version, ip_header_length, protocol, len) = match packet.first().map(|b| b >> 4) {
             Some(4) => {
                 let (header, _, _) =
                     ValidIpv4::parse(packet).context("Failed to parse IPv4 header")?;
 
                 anyhow::ensure!(header.ihl() >= 5, "IPv4 IHL must be at least 5");
+                let total_len = header.total_len() as usize;
                 anyhow::ensure!(
-                    header.total_len() as usize == len,
-                    "IPv4 total length ({}) does not match packet length ({len})",
-                    header.total_len()
+                    total_len <= len,
+                    "IPv4 total length ({total_len}) exceeds packet length ({len})"
                 );
                 anyhow::ensure!(
                     !header.flags().contains(Ipv4Flags::MORE_FRAGMENTS)
@@ -277,15 +290,21 @@ impl IpPacket {
                     Fragmented
                 );
 
-                (IpVersion::V4, 4 * header.ihl() as usize, header.protocol())
+                (
+                    IpVersion::V4,
+                    4 * header.ihl() as usize,
+                    header.protocol(),
+                    total_len,
+                )
             }
             Some(6) => {
                 let (header, _, _) =
                     ValidIpv6::parse(packet).context("Failed to parse IPv6 header")?;
 
+                let total_len = header.payload_len() as usize + Ipv6HeaderSlice::LEN;
                 anyhow::ensure!(
-                    header.payload_len() as usize + Ipv6HeaderSlice::LEN == len,
-                    "IPv6 payload length ({}) does not match packet length ({len})",
+                    total_len <= len,
+                    "IPv6 payload length ({}) exceeds packet length ({len})",
                     header.payload_len()
                 );
                 anyhow::ensure!(!ipv6_is_fragmenting(&header), Fragmented);
@@ -294,13 +313,17 @@ impl IpPacket {
                     .next_layer()
                     .context("Failed to determine transport protocol of IPv6 packet")?;
 
-                (IpVersion::V6, header.packet_length(), protocol)
+                (IpVersion::V6, header.packet_length(), protocol, total_len)
             }
             Some(version) => bail!("Unsupported IP version: {version}"),
             None => bail!("Empty packet"),
         };
 
-        let l4 = &packet[ip_header_length..];
+        anyhow::ensure!(
+            ip_header_length <= len,
+            "IP header length ({ip_header_length}) exceeds packet length ({len})"
+        );
+        let l4 = &buf.inner[ip_header_length..len];
 
         let transport = match (version, protocol) {
             (_, IpProtocol::UDP) => {
@@ -1303,5 +1326,23 @@ mod tests {
         p.set_dst(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 
         assert_eq!(p.destination(), IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn trailing_padding_is_ignored() {
+        for packet in [
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, b"foobar"),
+            crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, b"foobar"),
+        ] {
+            let packet = packet.unwrap();
+            let mut buf = IpPacketBuf::new();
+            let len = packet.packet().len();
+            buf.buf()[..len].copy_from_slice(packet.packet());
+            buf.buf()[len..len + 13].fill(0);
+
+            let padded = IpPacket::new(buf, len + 13).unwrap();
+
+            assert_eq!(padded.packet(), packet.packet());
+        }
     }
 }

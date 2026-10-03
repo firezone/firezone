@@ -69,6 +69,16 @@ defmodule PortalAPI.Sockets do
           "due to exceeding billing limits. Please contact your administrator to add more seats."
       )
 
+  def handle_error(conn, :connected_devices_limit_reached),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        403,
+        :connected_devices_limit_reached,
+        "This user has reached the number of devices that can be connected at the same time. " <>
+          "Disconnect another device and try again."
+      )
+
   def handle_error(conn, :account_disabled),
     do: ProblemDetails.send_with_code(conn, 403, :account_disabled, "The account is disabled")
 
