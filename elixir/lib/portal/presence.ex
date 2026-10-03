@@ -84,22 +84,6 @@ defmodule Portal.Presence do
       |> Enum.map(&elem(&1, 0))
     end
 
-    @doc """
-    The ids of the clients one actor has connected right now, leaving out
-    `except_device_id` so a client that reconnects is not counted against itself.
-    """
-    def online_client_ids_for_actor(account_id, actor_id, except_device_id) do
-      account_id
-      |> __MODULE__.Account.list()
-      |> Enum.flat_map(fn
-        {id, %{metas: [%{type: :client, actor_id: ^actor_id} | _]}} when id != except_device_id ->
-          [id]
-
-        _ ->
-          []
-      end)
-    end
-
     @doc "How many gateways are connected to each site, keyed by site id."
     def online_gateway_counts(account_id) do
       account_id

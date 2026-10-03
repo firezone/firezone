@@ -291,26 +291,6 @@ defmodule Portal.Billing do
   end
 
   @doc """
-  Returns `true` when connecting `device_id` would put the actor over its
-  `connected_devices_per_actor` limit. A `nil` limit means unlimited. The device
-  itself is not counted, so a client that reconnects is never refused.
-  """
-  @spec connected_devices_limit_reached?(Portal.Account.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
-          boolean()
-  def connected_devices_limit_reached?(%Portal.Account{} = account, actor_id, device_id) do
-    case account.limits && account.limits.connected_devices_per_actor do
-      nil ->
-        false
-
-      limit ->
-        connected =
-          Portal.Presence.Devices.online_client_ids_for_actor(account.id, actor_id, device_id)
-
-        length(connected) >= limit
-    end
-  end
-
-  @doc """
   Business plan seat enforcement for a single user. Returns `true` only when the
   user is not yet a monthly active user and every seat is already taken, so
   the user would push the account past its limit. Users who are already active

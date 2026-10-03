@@ -519,47 +519,6 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "connected_devices_limit_reached?/3" do
-    setup do
-      account = update_account(account_fixture(), %{limits: %{connected_devices_per_actor: 2}})
-      actor = actor_fixture(account: account, type: :account_user)
-      %{account: account, actor: actor}
-    end
-
-    defp connect_device(account, actor) do
-      device = client_fixture(account: account, actor: actor)
-      :ok = Portal.Presence.Devices.connect(device, Ecto.UUID.generate())
-      device
-    end
-
-    test "is false below the limit", %{account: account, actor: actor} do
-      connect_device(account, actor)
-
-      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
-    end
-
-    test "is true at the limit", %{account: account, actor: actor} do
-      connect_device(account, actor)
-      connect_device(account, actor)
-
-      assert connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
-    end
-
-    test "never counts the device itself", %{account: account, actor: actor} do
-      connect_device(account, actor)
-      device = connect_device(account, actor)
-
-      refute connected_devices_limit_reached?(account, actor.id, device.id)
-    end
-
-    test "is always false when the limit is nil (unlimited)", %{account: account, actor: actor} do
-      account = update_account(account, %{limits: %{connected_devices_per_actor: nil}})
-      for _ <- 1..5, do: connect_device(account, actor)
-
-      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
-    end
-  end
-
   describe "client_seat_restricted?/2" do
     defp business_account_with_seats(limit) do
       update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
