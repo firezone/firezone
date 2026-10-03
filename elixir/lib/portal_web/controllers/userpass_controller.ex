@@ -28,6 +28,7 @@ defmodule PortalWeb.UserpassController do
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
          %Portal.Actor{} = actor <- fetch_actor(account, email),
+         false <- client_seat_restricted?(account, actor, context_type),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          :ok <- Portal.AuthProvider.validate_context(provider, context_type),
@@ -72,6 +73,13 @@ defmodule PortalWeb.UserpassController do
   end
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
+
+  defp client_seat_restricted?(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_seat_restricted?(account, actor.id)
+  end
+
+  defp client_seat_restricted?(_account, _actor, _context_type), do: false
 
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]

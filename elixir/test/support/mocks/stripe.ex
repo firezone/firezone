@@ -406,6 +406,22 @@ defmodule Portal.Mocks.Stripe do
     {product, price, subscription}
   end
 
+  def build_all(:business, customer_id, seats, metadata) do
+    product =
+      build_product(id: "prod_test_business", name: "Business", metadata: business_metadata())
+
+    price = build_price(product: product["id"], amount: 800)
+
+    subscription =
+      build_subscription(
+        customer: customer_id,
+        metadata: metadata,
+        items: [[price: price, quantity: seats]]
+      )
+
+    {product, price, subscription}
+  end
+
   def build_all(:enterprise, customer_id, seats, metadata) do
     product =
       build_product(
@@ -528,6 +544,23 @@ defmodule Portal.Mocks.Stripe do
       "policy_conditions" => true,
       "service_accounts_count" => 100,
       "support_type" => "email"
+    }
+    |> Map.merge(opts)
+  end
+
+  def business_metadata(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "account_admin_users_count" => "unlimited",
+      "sites_count" => "unlimited",
+      "idp_sync" => true,
+      "internet_resource" => true,
+      "monthly_active_users_count" => "unlimited",
+      "policy_conditions" => true,
+      "service_accounts_count" => "unlimited",
+      "support_type" => "email",
+      "users_count" => "unlimited"
     }
     |> Map.merge(opts)
   end

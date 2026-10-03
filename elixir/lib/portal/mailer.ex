@@ -261,6 +261,7 @@ defmodule Portal.Mailer do
       "to" => serialize_addresses(email.to),
       "cc" => serialize_addresses(email.cc),
       "bcc" => serialize_addresses(email.bcc),
+      "reply_to" => serialize_addresses(email.reply_to),
       "from" =>
         case email.from do
           {name, addr} -> %{"name" => name, "address" => addr}
