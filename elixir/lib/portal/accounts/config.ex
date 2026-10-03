@@ -30,6 +30,9 @@ defmodule Portal.Accounts.Config do
       on_replace: :update do
       embeds_one :outdated_gateway, Portal.Accounts.Config.Notifications.Email,
         on_replace: :update
+
+      embeds_one :seats_warning, Portal.Accounts.Config.Notifications.Email,
+        on_replace: :update
     end
   end
 
@@ -42,7 +45,8 @@ defmodule Portal.Accounts.Config do
         type: :system
       },
       notifications: %__MODULE__.Notifications{
-        outdated_gateway: %Portal.Accounts.Config.Notifications.Email{enabled: true}
+        outdated_gateway: %Portal.Accounts.Config.Notifications.Email{enabled: true},
+        seats_warning: %Portal.Accounts.Config.Notifications.Email{enabled: true}
       }
     }
   end
@@ -63,7 +67,16 @@ defmodule Portal.Accounts.Config do
         _ -> outdated_gateway
       end
 
-    notifications = %{notifications | outdated_gateway: outdated_gateway}
+    seats_warning =
+      case notifications.seats_warning do
+        %{enabled: enabled} = seats_warning when not is_nil(enabled) ->
+          seats_warning
+
+        _ ->
+          %Portal.Accounts.Config.Notifications.Email{enabled: true}
+      end
+
+    notifications = %{notifications | outdated_gateway: outdated_gateway, seats_warning: seats_warning}
 
     %{config | notifications: notifications}
   end
@@ -118,6 +131,7 @@ defmodule Portal.Accounts.Config do
     schema
     |> cast(attrs, [])
     |> cast_embed(:outdated_gateway, with: &email_changeset/2)
+    |> cast_embed(:seats_warning, with: &email_changeset/2)
   end
 
   defp email_changeset(schema, attrs) do

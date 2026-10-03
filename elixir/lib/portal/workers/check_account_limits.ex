@@ -73,7 +73,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
     case Billing.seats_warning_level(account, active_users) do
       level when level in [:approaching, :at_limit] ->
-        if seats_warning_due?(account, level) do
+        if seats_warning_enabled?(account) and seats_warning_due?(account, level) do
           send_seats_warning_email(account, level, active_users)
         end
 
@@ -82,6 +82,14 @@ defmodule Portal.Workers.CheckAccountLimits do
 
       _ ->
         :ok
+    end
+  end
+
+  # On unless an admin turned it off in Settings -> Notifications
+  defp seats_warning_enabled?(account) do
+    case account.config do
+      %{notifications: %{seats_warning: %{enabled: false}}} -> false
+      _ -> true
     end
   end
 

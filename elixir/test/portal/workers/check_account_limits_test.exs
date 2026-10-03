@@ -625,6 +625,38 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert account.seats_warning_last_sent_at == nil
     end
 
+    test "does not send when seat warnings are turned off in notification settings", %{
+      account: account
+    } do
+      update_account(account, %{
+        config: %{notifications: %{seats_warning: %{enabled: false}}}
+      })
+
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == nil
+    end
+
+    test "sends again once seat warnings are turned back on", %{account: account} do
+      update_account(account, %{
+        config: %{notifications: %{seats_warning: %{enabled: false}}}
+      })
+
+      make_seats_active(account, 10)
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert collect_queued_emails(account.id) == []
+
+      update_account(account, %{
+        config: %{notifications: %{seats_warning: %{enabled: true}}}
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert [_email] = collect_queued_emails(account.id)
+    end
+
     test "does not send when enough seats remain", %{account: account} do
       make_seats_active(account, 5)
 
