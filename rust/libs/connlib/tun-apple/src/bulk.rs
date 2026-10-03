@@ -7,7 +7,7 @@
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec};
 use opentelemetry::KeyValue;
 use std::ffi::c_void;
@@ -38,9 +38,12 @@ pub fn send(
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
 
-    let mut tcp_coalescer = max_coalesced_len.map(|max| {
-        PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete).with_max_packet_len(max)
-    });
+    let mut coalescer = match max_coalesced_len {
+        Some(max) => {
+            PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete).with_max_packet_len(max)
+        }
+        None => PacketCoalescer::passthrough(),
+    };
     let mut packets = Vec::<CoalescedPacket>::with_capacity(MAX_BATCH_SIZE);
 
     tokio::runtime::Builder::new_current_thread()
@@ -51,18 +54,14 @@ pub fn send(
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
 
             while let Some(mut batch) = outbound_rx.recv().await {
-                let batch = batch.drain().inspect(|_packet| {
+                for packet in batch.drain() {
                     #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::dev::send", ?_packet);
-                });
+                    tracing::trace!(target: "wire::dev::send", ?packet);
 
-                match tcp_coalescer.as_mut() {
-                    Some(coalescer) => {
-                        batch.for_each(|packet| coalescer.enqueue(packet));
-                        packets.extend(coalescer.drain());
-                    }
-                    None => packets.extend(batch.map(CoalescedPacket::from)),
+                    coalescer.enqueue(packet);
                 }
+
+                packets.extend(coalescer.drain());
 
                 let mut offset = 0;
                 while offset < packets.len() {
@@ -241,9 +240,9 @@ unsafe fn send_batch(
     for i in 0..count {
         let payload = batch[i].packet();
 
-        let af = match payload[0] >> 4 {
-            6 => AF_INET6,
-            _ => AF_INET,
+        let af = match batch[i].version() {
+            IpVersion::V4 => AF_INET,
+            IpVersion::V6 => AF_INET6,
         };
         afs[i] = (af as u32).to_be_bytes();
 

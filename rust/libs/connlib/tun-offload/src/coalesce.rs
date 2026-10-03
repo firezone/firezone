@@ -167,6 +167,17 @@ impl CoalescedPacket {
         }
     }
 
+    /// The IP version of the packet.
+    pub fn version(&self) -> IpVersion {
+        match &self.0 {
+            Inner::Packet(packet) => packet.version(),
+            Inner::Batch { buf, .. } => match buf[0] >> 4 {
+                6 => IpVersion::V6,
+                _ => IpVersion::V4,
+            },
+        }
+    }
+
     /// Metadata required to finish an offloaded coalesced packet.
     pub fn offload_metadata(&self) -> Option<OffloadMetadata> {
         match &self.0 {
