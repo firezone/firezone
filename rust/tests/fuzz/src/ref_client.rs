@@ -94,6 +94,10 @@ pub struct RefClient {
     #[debug(skip)]
     gateways_by_site: BTreeMap<SiteId, GatewayId>,
 
+    /// Sites whose Gateway may have closed our connection without telling us.
+    #[debug(skip)]
+    sites_closed_without_goodbye: BTreeSet<SiteId>,
+
     /// The expected TCP connections.
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
@@ -174,6 +178,7 @@ impl RefClient {
             routes: Default::default(),
             site_status: Default::default(),
             gateways_by_site: Default::default(),
+            sites_closed_without_goodbye: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
@@ -536,10 +541,13 @@ impl RefClient {
     ///
     /// Only the connection to that Gateway goes; the ICE state towards our peers, which
     /// `connection_resets` tracks, is untouched.
+    ///
+    /// Without its `goodbye`, we only notice once our handshakes towards it give up.
     pub(crate) fn close_gateway_connection(
         &mut self,
         gateway: GatewayId,
         resources: &BTreeSet<ResourceId>,
+        goodbye_may_be_lost: bool,
     ) {
         self.gateway_send_times.remove(&gateway);
 
@@ -548,7 +556,16 @@ impl RefClient {
             .iter()
             .copied()
             .filter(|resource| connected.contains(resource))
-            .collect();
+            .collect::<Vec<_>>();
+
+        if goodbye_may_be_lost {
+            let sites = affected
+                .iter()
+                .filter_map(|resource| self.site_for_resource(*resource).ok())
+                .map(|site| site.id)
+                .collect::<Vec<_>>();
+            self.sites_closed_without_goodbye.extend(sites);
+        }
 
         self.discard_connections(affected);
     }
@@ -576,6 +593,7 @@ impl RefClient {
         self.gateway_send_times.clear();
         self.client_send_times.clear();
 
+        self.sites_closed_without_goodbye.clear();
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
         self.dns_resource_resolutions.clear();
@@ -722,7 +740,9 @@ impl RefClient {
             .iter()
             .filter_map(move |r| {
                 let site = r.site().ok()?;
-                maybe_online_sites.contains(site).then_some(r.id())
+                (maybe_online_sites.contains(site)
+                    || self.sites_closed_without_goodbye.contains(&site.id))
+                .then_some(r.id())
             })
             .collect()
     }
