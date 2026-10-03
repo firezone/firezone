@@ -25,7 +25,7 @@ defmodule PortalWeb.Settings.Account do
         admins_count: Database.count_account_admin_users_for_account(subject),
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
-        active_users_count: Database.count_1m_active_users_for_account(subject),
+        active_users_count: Portal.Billing.count_monthly_active_users(subject.account),
         sites_count: Database.count_groups_for_account(subject)
       )
 
@@ -675,7 +675,6 @@ defmodule PortalWeb.Settings.Account do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Device
 
     @spec update_account_name(Account.t(), map(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
@@ -720,23 +719,6 @@ defmodule PortalWeb.Settings.Account do
         where: a.is_disabled == false,
         where: a.type in [:account_admin_user, :account_user]
       )
-      |> Safe.scoped(subject)
-      |> Safe.aggregate(:count)
-    end
-
-    @spec count_1m_active_users_for_account(Portal.Authentication.Subject.t()) :: integer()
-    def count_1m_active_users_for_account(subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
-      )
-      |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([devices: d], d.actor_id)
-      |> distinct(true)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end

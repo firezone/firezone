@@ -26,6 +26,20 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
              } == CheckAccountLimits.Database.fetch_counts_for_accounts([account.id])
     end
 
+    test "counts active service accounts as monthly active users" do
+      account = provisioned_account_fixture()
+      user = actor_fixture(account: account, type: :account_user)
+      service_account = actor_fixture(account: account, type: :service_account)
+
+      for actor <- [user, service_account] do
+        client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert %{active_users: 2} =
+               CheckAccountLimits.Database.fetch_counts_for_accounts([account.id])[account.id]
+    end
+
     test "does nothing when limits are not violated" do
       account = provisioned_account_fixture()
       admin_actor_fixture(account: account)

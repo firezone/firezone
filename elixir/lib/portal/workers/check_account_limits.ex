@@ -282,7 +282,6 @@ defmodule Portal.Workers.CheckAccountLimits do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Actor
-    alias Portal.Device
 
     @doc """
     Fetches counts for the given accounts in batched GROUP BY queries.
@@ -293,7 +292,7 @@ defmodule Portal.Workers.CheckAccountLimits do
     def fetch_counts_for_accounts(account_ids) do
       results = %{
         users: count_users_by_account(account_ids),
-        active_users: count_1m_active_users_by_account(account_ids),
+        active_users: Billing.count_monthly_active_users_by_account(account_ids),
         service_accounts: count_service_accounts_by_account(account_ids),
         sites: count_sites_by_account(account_ids),
         admins: count_admins_by_account(account_ids)
@@ -371,24 +370,6 @@ defmodule Portal.Workers.CheckAccountLimits do
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}
       )
-      |> Safe.unscoped()
-      |> Safe.all()
-      |> Map.new()
-    end
-
-    defp count_1m_active_users_by_account(account_ids) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id in ^account_ids)
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
-      )
-      |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> group_by([devices: d], d.account_id)
-      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()
