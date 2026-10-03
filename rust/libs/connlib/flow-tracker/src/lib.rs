@@ -824,16 +824,16 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-pub fn record_ingest_token(token: Option<IngestToken>) {
+pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
-        data.ingest_token = token;
+        data.ingest_token = token.cloned();
     });
 }
 
 /// Records the domain name in case the current packet is for a DNS resource.
-pub fn record_domain(domain: DomainName) {
+pub fn record_domain(domain: &DomainName) {
     update_current_flow(|data| {
-        data.domain = Some(domain);
+        data.domain = Some(domain.clone());
     });
 }
 
