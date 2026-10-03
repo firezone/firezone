@@ -321,6 +321,7 @@ defmodule PortalWeb.OIDCController do
          tokens
        ) do
     with :ok <- check_admin(identity, context_type),
+         :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
@@ -341,6 +342,7 @@ defmodule PortalWeb.OIDCController do
          _tokens
        ) do
     with :ok <- check_actor(actor, context_type),
+         :ok <- ensure_client_seat_available(account, actor, context_type),
          {:ok, conn} <-
            start_owner_verification(conn, account, provider, actor, identity_profile, params) do
       conn
@@ -751,6 +753,7 @@ defmodule PortalWeb.OIDCController do
              entered_code
            ),
          :ok <- check_admin(identity, context_type),
+         :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
       {:ok,
        %{
@@ -850,6 +853,17 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp ensure_client_sign_in_allowed(_account, _context_type), do: :ok
+
+  defp ensure_client_seat_available(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    if Portal.Billing.client_seat_restricted?(account, actor.id) do
+      {:error, :client_sign_in_restricted}
+    else
+      :ok
+    end
+  end
+
+  defp ensure_client_seat_available(_account, _actor, _context_type), do: :ok
 
   defp create_session_or_token(conn, identity, provider, params) do
     type = context_type(params)

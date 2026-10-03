@@ -84,6 +84,8 @@ config :portal, Portal.Billing,
     "prod_test_starter",
     # Team
     "prod_test_team",
+    # Business
+    "prod_test_business",
     # Enterprise
     "prod_test_enterprise"
   ],

@@ -120,11 +120,13 @@ defmodule PortalAPI.Client.Socket do
 
   defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
     with false <- Portal.Billing.client_connect_restricted?(subject.account),
+         false <- Portal.Billing.client_seat_restricted?(subject.account, subject.actor.id),
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
          {:ok, proof} <- attest_device(proof, connect_info, subject),
-         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject) do
+         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject),
+         :ok <- check_connected_devices(subject, client) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
@@ -137,6 +139,10 @@ defmodule PortalAPI.Client.Socket do
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
+
+      {:error, :connected_devices_limit_reached} ->
+        OpenTelemetry.Tracer.set_status(:error, "connected_devices_limit_reached")
+        {:error, :connected_devices_limit_reached}
 
       {:error, :device_untrusted} ->
         OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
@@ -155,6 +161,18 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
         Logger.debug("Error connecting client websocket: #{inspect(changeset)}")
         {:error, changeset}
+    end
+  end
+
+  defp check_connected_devices(subject, client) do
+    if Portal.Billing.connected_devices_limit_reached?(
+         subject.account,
+         subject.actor.id,
+         client.id
+       ) do
+      {:error, :connected_devices_limit_reached}
+    else
+      :ok
     end
   end
 
