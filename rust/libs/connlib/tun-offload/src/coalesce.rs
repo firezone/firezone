@@ -10,7 +10,6 @@
 use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
 use std::net::IpAddr;
-use std::sync::LazyLock;
 
 use ip_packet::checksum;
 
@@ -25,10 +24,6 @@ const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 const MAX_UDP_SEGMENTS: usize = 128;
 
 const TCP_FLAG_PSH: u8 = 0x08;
-
-/// Each round of coalescing takes at most one [`tun::PacketBatch`] of packets.
-static ITEMS_POOL: LazyLock<BufferPool<VecBuf<CoalescedPacket>>> =
-    LazyLock::new(|| BufferPool::new(tun::MAX_BATCH_SIZE, "coalesced-packets"));
 
 /// How transport checksums are represented in a coalesced packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +52,8 @@ pub struct PacketCoalescer {
     /// into the most recent item of its connection, so per-flow ordering is preserved
     /// by construction.
     items: Buffer<VecBuf<CoalescedPacket>>,
+    /// Each round of coalescing takes at most one [`tun::PacketBatch`] of packets.
+    items_pool: BufferPool<VecBuf<CoalescedPacket>>,
     buffer_pool: BufferPool<Vec<u8>>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
@@ -77,8 +74,11 @@ impl PacketCoalescer {
             }
         }
 
+        let items_pool = BufferPool::new(tun::MAX_BATCH_SIZE, "coalesced-packets");
+
         Self {
-            items: ITEMS_POOL.pull(),
+            items: items_pool.pull(),
+            items_pool,
             buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, "packet-coalescer"),
             coalesce_tcp,
             coalesce_udp,
@@ -137,7 +137,7 @@ impl PacketCoalescer {
     pub fn take(&mut self) -> Buffer<VecBuf<CoalescedPacket>> {
         self.finish();
 
-        std::mem::replace(&mut self.items, ITEMS_POOL.pull())
+        std::mem::replace(&mut self.items, self.items_pool.pull())
     }
 
     /// Drains all queued packets, in write order.
