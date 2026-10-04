@@ -43,6 +43,8 @@ const MAX_PENDING_PACKETS: u32 =
 
 /// From XNU's `bsd/net/if_utun.h`.
 const UTUN_OPT_MAX_PENDING_PACKETS: libc::c_int = 16;
+/// From XNU's `bsd/net/if_utun.h`.
+const UTUN_OPT_SLOT_SIZE: libc::c_int = 21;
 
 pub struct Io {
     name: String,
@@ -60,9 +62,10 @@ impl Io {
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
+        let max_coalesced_len = max_coalesced_len(fd);
         let workers = tun::Workers::spawn(
             runtime,
-            move |outbound_rx| send(fd, outbound_rx),
+            move |outbound_rx| send(fd, outbound_rx, max_coalesced_len),
             move |inbound_tx| recv(fd, inbound_tx),
         )?;
 
@@ -107,9 +110,9 @@ fn name(fd: RawFd) -> io::Result<String> {
 }
 
 /// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.
-fn send(fd: RawFd, outbound_rx: tun::OutboundRx) -> Result<()> {
+fn send(fd: RawFd, outbound_rx: tun::OutboundRx, max_coalesced_len: Option<usize>) -> Result<()> {
     match sys::batch_syscalls() {
-        Some(syscalls) => bulk::send(fd, syscalls, outbound_rx),
+        Some(syscalls) => bulk::send(fd, syscalls, outbound_rx, max_coalesced_len),
         None => crate::per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
     }
 }
@@ -169,6 +172,32 @@ fn raise_max_pending_packets(fd: RawFd) {
         new = MAX_PENDING_PACKETS,
         "Raised `UTUN_OPT_MAX_PENDING_PACKETS`"
     );
+}
+
+/// The largest packet we may coalesce TCP segments into, if the utun accepts more than one segment.
+///
+/// The utun's netif drops any injected packet larger than its slot size.
+/// NetworkExtension does not let us change the slot size, so we coalesce up to whatever it is.
+fn max_coalesced_len(fd: RawFd) -> Option<usize> {
+    let slot_size = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_SLOT_SIZE) {
+        Ok(slot_size) => slot_size as usize,
+        Err(e) => {
+            tracing::debug!(error = %e, "Failed to get `UTUN_OPT_SLOT_SIZE`; not coalescing TCP");
+            return None;
+        }
+    };
+
+    if slot_size <= ip_packet::MAX_IP_SIZE {
+        tracing::debug!(
+            slot_size,
+            "utun slot fits only one packet; not coalescing TCP"
+        );
+        return None;
+    }
+
+    tracing::debug!(slot_size, "Coalescing TCP up to the utun slot size");
+
+    Some(slot_size)
 }
 
 /// Raises the utun socket's receive buffer so the kernel can queue more inbound

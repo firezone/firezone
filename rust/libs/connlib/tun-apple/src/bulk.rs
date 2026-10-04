@@ -15,6 +15,7 @@ use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
 use std::pin::pin;
 use tokio::io::{Interest, unix::AsyncFd};
+use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 use super::sys;
 use tun::{MAX_BATCH_SIZE, PacketBatch};
@@ -25,13 +26,25 @@ const EMPTY_IOVEC: iovec = iovec {
 };
 
 /// Sends batches of packets from `outbound_rx` to the TUN device.
+///
+/// With `max_coalesced_len`, consecutive TCP segments of a flow are coalesced into packets of up to
+/// that many bytes first, so the kernel injects fewer, larger packets.
 pub fn send(
     fd: RawFd,
     syscalls: &'static sys::BatchSyscalls,
     mut outbound_rx: tun::OutboundRx,
+    max_coalesced_len: Option<usize>,
 ) -> Result<()> {
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
+
+    let mut coalescer = match max_coalesced_len {
+        Some(max) => {
+            PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete).with_max_packet_len(max)
+        }
+        None => PacketCoalescer::passthrough(),
+    };
+    let mut packets = Vec::<CoalescedPacket>::with_capacity(MAX_BATCH_SIZE);
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -40,7 +53,16 @@ pub fn send(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
 
-            while let Some(packets) = outbound_rx.recv().await {
+            while let Some(mut batch) = outbound_rx.recv().await {
+                for packet in batch.drain() {
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::dev::send", ?packet);
+
+                    coalescer.enqueue(packet);
+                }
+
+                packets.extend(coalescer.drain());
+
                 let mut offset = 0;
                 while offset < packets.len() {
                     let result = fd
@@ -70,7 +92,10 @@ pub fn send(
                             // `sendmsg_x` does not report how many datagrams it sent before
                             // failing, so we cannot resubmit the tail without risking a
                             // re-injection of an already-sent prefix. Drop the rest of the batch.
-                            let dropped = packets.len() - offset;
+                            let dropped = packets[offset..]
+                                .iter()
+                                .map(CoalescedPacket::num_segments)
+                                .sum::<usize>();
                             dropped_packets.add(dropped as u64, &drop_attributes(&e));
 
                             if e.raw_os_error() == Some(libc::ENOSPC) {
@@ -84,6 +109,8 @@ pub fn send(
                         }
                     }
                 }
+
+                packets.clear();
             }
 
             anyhow::Ok(())
@@ -201,7 +228,7 @@ pub fn recv(
 unsafe fn send_batch(
     syscalls: &sys::BatchSyscalls,
     fd: RawFd,
-    batch: &[IpPacket],
+    batch: &[CoalescedPacket],
 ) -> io::Result<usize> {
     let count = batch.len().min(MAX_BATCH_SIZE);
 
@@ -211,8 +238,7 @@ unsafe fn send_batch(
     let mut msgs = [sys::msghdr_x::ZEROED; MAX_BATCH_SIZE];
 
     for i in 0..count {
-        #[cfg(debug_assertions)]
-        tracing::trace!(target: "wire::dev::send", packet = ?batch[i]);
+        let payload = batch[i].packet();
 
         let af = match batch[i].version() {
             IpVersion::V4 => AF_INET,
@@ -220,7 +246,6 @@ unsafe fn send_batch(
         };
         afs[i] = (af as u32).to_be_bytes();
 
-        let payload = batch[i].packet();
         iovs[i] = [
             iovec {
                 iov_base: afs[i].as_ptr() as *mut c_void,
