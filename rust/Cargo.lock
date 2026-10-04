@@ -8795,6 +8795,7 @@ dependencies = [
  "ip-packet",
  "smallvec",
  "tracing",
+ "tun",
 ]
 
 [[package]]

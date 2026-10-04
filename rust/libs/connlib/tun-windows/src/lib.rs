@@ -199,7 +199,7 @@ fn send_worker(
             coalescer.enqueue(packet);
         }
 
-        'next_packet: for packet in coalescer.drain() {
+        'next_packet: for packet in coalescer.take().iter() {
             let bytes = packet.packet();
             let num_segments = packet.num_segments();
 
