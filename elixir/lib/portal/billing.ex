@@ -98,10 +98,10 @@ defmodule Portal.Billing do
 
   @doc """
   Returns the plan type for the account based on the Stripe product name.
-  Returns :enterprise, :team, :starter, or :unknown.
+  Returns :enterprise, :business, :team, :starter, or :unknown.
   """
   @spec plan_type(Portal.Account.t() | String.t() | nil) ::
-          :enterprise | :team | :starter | :unknown
+          :enterprise | :business | :team | :starter | :unknown
   def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}}),
     do: plan_type(product_name)
 
@@ -110,6 +110,7 @@ defmodule Portal.Billing do
   def plan_type(product_name) when is_binary(product_name) do
     cond do
       String.starts_with?(product_name, "Enterprise") -> :enterprise
+      product_name == "Business" -> :business
       product_name == "Team" -> :team
       product_name == "Starter" -> :starter
       true -> :unknown
@@ -119,11 +120,31 @@ defmodule Portal.Billing do
   def plan_type(nil), do: :unknown
 
   @spec paid_plan?(Portal.Account.t()) :: boolean()
-  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
+  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :business, :enterprise]
 
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
+  end
+
+  @doc """
+  Monthly active seats: distinct enabled users, admins and service accounts
+  with a client device seen in the last month.
+  """
+  @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
+  def count_monthly_active_users(%Portal.Account{id: account_id}) do
+    [account_id]
+    |> Database.count_monthly_active_users_by_account()
+    |> Map.get(account_id, 0)
+  end
+
+  @doc """
+  Same as `count_monthly_active_users/1` for many accounts at once, as a map of
+  account id to count. Accounts without active users are missing from the map.
+  """
+  @spec count_monthly_active_users_by_account([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => integer()}
+  def count_monthly_active_users_by_account(account_ids) do
+    Database.count_monthly_active_users_by_account(account_ids)
   end
 
   def seats_limit_exceeded?(%Portal.Account{} = account, active_users_count) do
@@ -133,7 +154,7 @@ defmodule Portal.Billing do
 
   def can_create_users?(%Portal.Account{} = account) do
     users_count = Database.count_users_for_account(account)
-    active_users_count = Database.count_1m_active_users_for_account(account)
+    active_users_count = count_monthly_active_users(account)
 
     cond do
       not Portal.Account.active?(account) ->
@@ -202,6 +223,26 @@ defmodule Portal.Billing do
          api_clients_count < account.limits.api_clients_count)
   end
 
+  @doc """
+  Returns `true` when connecting `device_id` would put the actor over its
+  `connected_devices_per_actor` limit. A `nil` limit means unlimited. The device
+  itself is not counted, so a client that reconnects is never refused.
+  """
+  @spec connected_devices_limit_reached?(Portal.Account.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          boolean()
+  def connected_devices_limit_reached?(%Portal.Account{} = account, actor_id, device_id) do
+    case account.limits && account.limits.connected_devices_per_actor do
+      nil ->
+        false
+
+      limit ->
+        connected =
+          Portal.Presence.Devices.online_client_ids_for_actor(account.id, actor_id, device_id)
+
+        length(connected) >= limit
+    end
+  end
+
   @type actor_enable_limit_error ::
           :users_limit_reached
           | :admin_users_limit_reached
@@ -266,6 +307,7 @@ defmodule Portal.Billing do
   `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block sign-ins.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_sign_in_restricted?(Portal.Account.t()) :: boolean()
@@ -280,11 +322,53 @@ defmodule Portal.Billing do
   limits exceeded), `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block connections.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_connect_restricted?(Portal.Account.t()) :: boolean()
   def client_connect_restricted?(%Portal.Account{} = account) do
     account.users_limit_exceeded or account.service_accounts_limit_exceeded
+  end
+
+  @doc """
+  Business plan seat enforcement for a single user. Returns `true` only when the
+  user is not yet a monthly active user and every seat is already taken, so
+  the user would push the account past its limit. Users who are already active
+  are never restricted. Other plans are never restricted.
+  """
+  @spec client_seat_restricted?(Portal.Account.t(), Ecto.UUID.t()) :: boolean()
+  def client_seat_restricted?(%Portal.Account{} = account, actor_id) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    plan_type(account) == :business and is_integer(limit) and
+      not Database.actor_active_in_last_month?(account, actor_id) and
+      count_monthly_active_users(account) >= limit
+  end
+
+  @low_seats_threshold 0.1
+
+  @doc """
+  Where a Business account stands against its monthly active seat limit.
+
+    * `:approaching` - fewer than 10% of seats remain, at least one is free
+    * `:at_limit` - every seat is used, new users are blocked
+    * `:over` - more active users than seats, covered by the limits exceeded email
+    * `:clear` - plenty of seats remain
+
+  Returns `nil` for other plans and for accounts without a seat limit.
+  """
+  @spec seats_warning_level(Portal.Account.t(), non_neg_integer()) ::
+          :approaching | :at_limit | :over | :clear | nil
+  def seats_warning_level(%Portal.Account{} = account, active_users_count) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    cond do
+      plan_type(account) != :business or not is_integer(limit) -> nil
+      active_users_count > limit -> :over
+      active_users_count == limit -> :at_limit
+      (limit - active_users_count) / limit < @low_seats_threshold -> :approaching
+      true -> :clear
+    end
   end
 
   @doc """
@@ -301,7 +385,7 @@ defmodule Portal.Billing do
         users_limit_exceeded:
           users_limit_exceeded?(account, Database.count_users_for_account(account)),
         seats_limit_exceeded:
-          seats_limit_exceeded?(account, Database.count_1m_active_users_for_account(account)),
+          seats_limit_exceeded?(account, count_monthly_active_users(account)),
         service_accounts_limit_exceeded:
           service_accounts_limit_exceeded?(
             account,
@@ -790,21 +874,33 @@ defmodule Portal.Billing do
       |> Safe.aggregate(:count)
     end
 
-    def count_1m_active_users_for_account(%Account{} = account) do
+    def actor_active_in_last_month?(%Account{} = account, actor_id) do
+      from(d in Device,
+        where: d.account_id == ^account.id,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_seen_at > ago(1, "month")
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def count_monthly_active_users_by_account(account_ids) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id == ^account.id)
+      |> where([devices: d], d.account_id in ^account_ids)
       |> where([devices: d], d.last_seen_at > ago(1, "month"))
       |> join(:inner, [devices: d], a in Actor,
         on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([devices: d], d.actor_id)
-      |> distinct(true)
+      |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
+      |> group_by([devices: d], d.account_id)
+      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
       |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      |> Safe.all()
+      |> Map.new()
     end
 
     def count_sites_for_account(account) do

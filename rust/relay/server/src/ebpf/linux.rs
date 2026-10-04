@@ -86,6 +86,7 @@ impl Program {
         let packet_size = crate::metrics::packet_size();
 
         let processing_duration = crate::metrics::xdp_processing_duration();
+        let packets = crate::metrics::packets();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
@@ -101,6 +102,7 @@ impl Program {
             tokio::task::spawn({
                 let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
+                let packets = packets.clone();
 
                 async move {
                     loop {
@@ -128,6 +130,16 @@ impl Program {
                                             packet_size.record(
                                                 stats.relayed_data(),
                                                 &[crate::metrics::datapath_xdp()],
+                                            );
+                                            packets.add(
+                                                1,
+                                                &[
+                                                    crate::metrics::datapath_xdp(),
+                                                    crate::metrics::network_type(
+                                                        stats.ip_version(),
+                                                    ),
+                                                    crate::metrics::network_ecn(stats.ecn()),
+                                                ],
                                             );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,

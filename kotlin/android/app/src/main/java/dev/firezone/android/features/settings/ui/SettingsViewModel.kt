@@ -208,7 +208,7 @@ internal class SettingsViewModel
             zipFile: File,
         ) = flow {
             ZipOutputStream(FileOutputStream(zipFile)).use { zipStream ->
-                sourceFolder.walkTopDown().forEach { file ->
+                sourceFolder.walkTopDown().filter { it != sourceFolder }.forEach { file ->
                     val entryName = sourceFolder.toPath().relativize(file.toPath()).toString()
                     if (file.isDirectory) {
                         zipStream.putNextEntry(ZipEntry("$entryName/"))

@@ -3,10 +3,16 @@ defmodule PortalWeb.Settings.Notifications do
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
+    account = %{
+      socket.assigns.account
+      | config: Portal.Accounts.Config.ensure_defaults(socket.assigns.account.config)
+    }
+
     socket =
       assign(socket,
         page_title: "Notifications",
-        form: to_form(build_changeset(socket.assigns.account))
+        account: account,
+        form: to_form(build_changeset(account))
       )
 
     {:ok, socket}
@@ -34,6 +40,17 @@ defmodule PortalWeb.Settings.Notifications do
                     label="Gateway Upgrade Available"
                     description="Receive an email when a new gateway version is available"
                     field={outdated_gateway[:enabled]}
+                  />
+                </.inputs_for>
+                <.inputs_for
+                  :let={seats_warning}
+                  :if={Portal.Billing.plan_type(@account) == :business}
+                  field={notifications[:seats_warning]}
+                >
+                  <.notification_row
+                    label="Seat Limit Warnings"
+                    description="Receive an email when your monthly active users are close to, or have reached, the seats in your subscription"
+                    field={seats_warning[:enabled]}
                   />
                 </.inputs_for>
               </div>
