@@ -7,9 +7,10 @@
 //! Only packets that the kernel's own GRO would merge are combined, everything else is
 //! passed through untouched.
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, BufferPool, VecBuf};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
 use std::net::IpAddr;
+use std::sync::LazyLock;
 
 use ip_packet::checksum;
 
@@ -24,6 +25,10 @@ const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 const MAX_UDP_SEGMENTS: usize = 128;
 
 const TCP_FLAG_PSH: u8 = 0x08;
+
+/// Each round of coalescing takes at most one [`tun::PacketBatch`] of packets.
+static ITEMS_POOL: LazyLock<BufferPool<VecBuf<CoalescedPacket>>> =
+    LazyLock::new(|| BufferPool::new(tun::MAX_BATCH_SIZE, "coalesced-packets"));
 
 /// How transport checksums are represented in a coalesced packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,7 +56,7 @@ pub struct PacketCoalescer {
     /// Non-coalescable packets flow through this queue too: a segment may only merge
     /// into the most recent item of its connection, so per-flow ordering is preserved
     /// by construction.
-    items: Vec<CoalescedPacket>,
+    items: Buffer<VecBuf<CoalescedPacket>>,
     buffer_pool: BufferPool<Vec<u8>>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
@@ -73,7 +78,7 @@ impl PacketCoalescer {
         }
 
         Self {
-            items: Vec::new(),
+            items: ITEMS_POOL.pull(),
             buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, "packet-coalescer"),
             coalesce_tcp,
             coalesce_udp,
@@ -129,12 +134,10 @@ impl PacketCoalescer {
     }
 
     /// Takes all queued packets, in write order.
-    pub fn take(&mut self) -> Vec<CoalescedPacket> {
+    pub fn take(&mut self) -> Buffer<VecBuf<CoalescedPacket>> {
         self.finish();
 
-        let capacity = self.items.capacity();
-
-        std::mem::replace(&mut self.items, Vec::with_capacity(capacity))
+        std::mem::replace(&mut self.items, ITEMS_POOL.pull())
     }
 
     /// Drains all queued packets, in write order.
@@ -145,7 +148,7 @@ impl PacketCoalescer {
     }
 
     fn finish(&mut self) {
-        for item in &mut self.items {
+        for item in self.items.iter_mut() {
             if let Inner::Batch(batch) = &mut item.0 {
                 batch.finish(self.checksum_mode);
             }
@@ -154,8 +157,10 @@ impl PacketCoalescer {
 }
 
 /// A pending write to the TUN device.
+#[derive(Clone)]
 pub struct CoalescedPacket(Inner);
 
+#[derive(Clone)]
 enum Inner {
     /// An individual IP packet, passed through unchanged.
     Packet(IpPacket),
@@ -389,6 +394,7 @@ impl FlowKey {
     }
 }
 
+#[derive(Clone)]
 struct Batch {
     key: FlowKey,
     state: BatchState,
@@ -406,6 +412,7 @@ struct Batch {
     offload_metadata: Option<OffloadMetadata>,
 }
 
+#[derive(Clone)]
 enum BatchState {
     /// A single packet; not copied anywhere yet.
     Single(IpPacket),
