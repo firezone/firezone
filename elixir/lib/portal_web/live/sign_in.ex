@@ -52,6 +52,7 @@ defmodule PortalWeb.SignIn do
         email_otp_auth_provider: auth_providers(account, EmailOTP.AuthProvider),
         userpass_auth_provider: auth_providers(account, Userpass.AuthProvider)
       )
+      |> hide_last_used_if_only_one_provider()
 
     if connecting_client do
       # Part of an app connection, so it keeps the centered look the consent
@@ -332,6 +333,26 @@ defmodule PortalWeb.SignIn do
       Database.get_auth_provider(account, module)
     else
       Database.list_auth_providers(account, module)
+    end
+  end
+
+  defp hide_last_used_if_only_one_provider(socket) do
+    a = socket.assigns
+
+    provider_count =
+      Enum.count(
+        a.google_auth_providers ++
+          a.github_auth_providers ++
+          a.okta_auth_providers ++
+          a.entra_auth_providers ++
+          a.oidc_auth_providers ++
+          Enum.reject([a.email_otp_auth_provider, a.userpass_auth_provider], &is_nil/1)
+      )
+
+    if provider_count > 1 do
+      socket
+    else
+      assign(socket, :last_used_provider_id, nil)
     end
   end
 
