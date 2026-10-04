@@ -236,25 +236,12 @@ defmodule PortalWeb.SignIn do
     >
       {render_slot(@icon)}
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
-      <.last_used_badge :if={@last_used} />
+      <Core.badge :if={@last_used} type="primary" class="shrink-0">Last used</Core.badge>
       <Core.icon
         name="ri-arrow-right-s-line"
         class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </Navigation.link>
-    """
-  end
-
-  attr :class, :string, default: nil
-
-  defp last_used_badge(assigns) do
-    ~H"""
-    <span class={[
-      "px-2 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium shrink-0",
-      @class
-    ]}>
-      Last used
-    </span>
     """
   end
 
@@ -273,7 +260,9 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
     >
-      <.last_used_badge :if={assigns[:last_used]} class="self-start mb-2 w-fit" />
+      <Core.badge :if={assigns[:last_used]} type="primary" class="self-start mb-2 w-fit">
+        Last used
+      </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <input
         type="text"
@@ -314,7 +303,9 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
     >
-      <.last_used_badge :if={assigns[:last_used]} class="self-start mb-2 w-fit" />
+      <Core.badge :if={assigns[:last_used]} type="primary" class="self-start mb-2 w-fit">
+        Last used
+      </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <div class="flex gap-2">
         <input
