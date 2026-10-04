@@ -324,6 +324,7 @@ defmodule PortalWeb.OIDCController do
          :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
+      conn = Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
     else
       error -> handle_error(conn, error)
@@ -773,7 +774,11 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp handle_verify_identity_result(_conn, {:ok, result}, _params) do
-    conn = Cookie.PendingIdentity.delete_all(result.conn, result.pending_identity_ids)
+    conn =
+      result.conn
+      |> Cookie.PendingIdentity.delete_all(result.pending_identity_ids)
+      |> Cookie.LastUsedProvider.put(result.provider.id)
+
     :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:oidc_identity_verification, result.email})
 
     signed_in(

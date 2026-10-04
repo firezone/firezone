@@ -14,9 +14,9 @@ defmodule PortalWeb.SignIn do
 
   alias __MODULE__.Database
 
-  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
+  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
     account = Database.get_account_by_id_or_slug!(account_id_or_slug)
-    mount_account(account, params, socket)
+    mount_account(account, params, session, socket)
   end
 
   # The pending OAuth request rides through sign-in as redirect_to, so the app
@@ -34,7 +34,7 @@ defmodule PortalWeb.SignIn do
 
   defp connecting_client(_params), do: nil
 
-  defp mount_account(account, params, socket) do
+  defp mount_account(account, params, session, socket) do
     connecting_client = connecting_client(params)
 
     socket =
@@ -43,6 +43,7 @@ defmodule PortalWeb.SignIn do
         account: account,
         params: PortalWeb.Authentication.take_sign_in_params(params),
         connecting_client: connecting_client,
+        last_used_provider_id: session["last_used_provider_id"],
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         github_auth_providers: auth_providers(account, GitHub.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
@@ -111,6 +112,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="google"
           >
             <:icon>
@@ -123,6 +125,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="github"
           >
             <:icon>
@@ -135,6 +138,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="okta"
           >
             <:icon>
@@ -147,6 +151,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="entra"
           >
             <:icon>
@@ -159,6 +164,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="oidc"
           >
             <:icon>
@@ -171,6 +177,7 @@ defmodule PortalWeb.SignIn do
       <:item :if={@email_otp_auth_provider}>
         <.email_form
           provider={@email_otp_auth_provider}
+          last_used={@email_otp_auth_provider.id == @last_used_provider_id}
           account={@account}
           flash={@flash}
           params={@params}
@@ -180,6 +187,7 @@ defmodule PortalWeb.SignIn do
       <:item :if={@userpass_auth_provider}>
         <.userpass_form
           provider={@userpass_auth_provider}
+          last_used={@userpass_auth_provider.id == @last_used_provider_id}
           account={@account}
           flash={@flash}
           params={@params}
@@ -217,6 +225,7 @@ defmodule PortalWeb.SignIn do
   attr :provider, :any, required: true
   attr :account, :any, required: true
   attr :params, :map, required: true
+  attr :last_used, :boolean, default: false
   slot :icon
 
   defp auth_button(assigns) do
@@ -227,11 +236,25 @@ defmodule PortalWeb.SignIn do
     >
       {render_slot(@icon)}
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <.last_used_badge :if={@last_used} />
       <Core.icon
         name="ri-arrow-right-s-line"
         class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </Navigation.link>
+    """
+  end
+
+  attr :class, :string, default: nil
+
+  defp last_used_badge(assigns) do
+    ~H"""
+    <span class={[
+      "px-2 py-0.5 rounded-full bg-brand/10 text-brand text-xs font-medium shrink-0",
+      @class
+    ]}>
+      Last used
+    </span>
     """
   end
 
@@ -250,6 +273,7 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
     >
+      <.last_used_badge :if={assigns[:last_used]} class="self-start mb-2 w-fit" />
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <input
         type="text"
@@ -290,6 +314,7 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
     >
+      <.last_used_badge :if={assigns[:last_used]} class="self-start mb-2 w-fit" />
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <div class="flex gap-2">
         <input

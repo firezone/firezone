@@ -37,6 +37,24 @@ defmodule PortalWeb.SignInTest do
       assert html =~ "ri-github-fill"
     end
 
+    test "badges only the last used sign-in method", %{conn: conn, account: account} do
+      github = github_provider_fixture(account: account, name: "GitHub")
+      _google = google_provider_fixture(account: account, name: "Google")
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+      refute html =~ "Last used"
+
+      conn = PortalWeb.Cookie.LastUsedProvider.put(conn, github.id)
+      cookie = conn.resp_cookies["last_used_provider"].value
+
+      {:ok, _lv, html} =
+        build_conn()
+        |> Plug.Test.put_req_cookie("last_used_provider", cookie)
+        |> live(~p"/#{account}/sign_in")
+
+      assert length(String.split(html, "Last used")) == 2
+    end
+
     test "does not show email OTP form when no providers configured",
          %{conn: conn, account: account} do
       {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
