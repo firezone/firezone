@@ -51,7 +51,7 @@ pub struct PacketCoalescer {
     /// Non-coalescable packets flow through this queue too: a segment may only merge
     /// into the most recent item of its connection, so per-flow ordering is preserved
     /// by construction.
-    items: Vec<Item>,
+    items: Vec<CoalescedPacket>,
     buffer_pool: BufferPool<Vec<u8>>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
@@ -104,7 +104,7 @@ impl PacketCoalescer {
     pub fn enqueue(&mut self, packet: IpPacket) {
         let Some(candidate) = Candidate::from_packet(&packet, self.coalesce_tcp, self.coalesce_udp)
         else {
-            self.items.push(Item::Packet(packet));
+            self.items.push(CoalescedPacket::from(packet));
             return;
         };
 
@@ -116,23 +116,42 @@ impl PacketCoalescer {
             .rev()
             .find(|i| i.same_connection(&packet))
         {
-            Some(Item::Batch(batch))
+            Some(CoalescedPacket(Inner::Batch(batch)))
                 if batch.key == candidate.key
                     && batch.can_append(&candidate, &packet, self.max_packet_len) =>
             {
                 batch.append(&candidate, &packet, &self.buffer_pool)
             }
-            _ => self.items.push(Item::Batch(Batch::new(candidate, packet))),
+            _ => self
+                .items
+                .push(CoalescedPacket(Inner::Batch(Batch::new(candidate, packet)))),
         }
+    }
+
+    /// Finishes all queued packets and returns them, in write order.
+    ///
+    /// The packets stay queued until [`PacketCoalescer::clear`] or [`PacketCoalescer::drain`].
+    /// Packets enqueued in the meantime do not coalesce into the finished ones.
+    pub fn finish(&mut self) -> &[CoalescedPacket] {
+        for item in &mut self.items {
+            if let Inner::Batch(batch) = &mut item.0 {
+                batch.finish(self.checksum_mode);
+            }
+        }
+
+        &self.items
+    }
+
+    /// Discards all queued packets.
+    pub fn clear(&mut self) {
+        self.items.clear();
     }
 
     /// Drains all queued packets, in write order.
     pub fn drain(&mut self) -> impl Iterator<Item = CoalescedPacket> + '_ {
-        let checksum_mode = self.checksum_mode;
+        self.finish();
 
-        self.items
-            .drain(..)
-            .map(move |item| item.into_outgoing(checksum_mode))
+        self.items.drain(..)
     }
 }
 
@@ -142,12 +161,8 @@ pub struct CoalescedPacket(Inner);
 enum Inner {
     /// An individual IP packet, passed through unchanged.
     Packet(IpPacket),
-    /// A coalesced batch.
-    Batch {
-        buf: Buffer<Vec<u8>>,
-        num_segments: usize,
-        offload_metadata: Option<OffloadMetadata>,
-    },
+    /// One or more coalesced segments of a single flow.
+    Batch(Batch),
 }
 
 impl CoalescedPacket {
@@ -155,7 +170,7 @@ impl CoalescedPacket {
     pub fn num_segments(&self) -> usize {
         match &self.0 {
             Inner::Packet(_) => 1,
-            Inner::Batch { num_segments, .. } => *num_segments,
+            Inner::Batch(batch) => batch.num_segs,
         }
     }
 
@@ -163,7 +178,7 @@ impl CoalescedPacket {
     pub fn packet(&self) -> &[u8] {
         match &self.0 {
             Inner::Packet(packet) => packet.packet(),
-            Inner::Batch { buf, .. } => buf,
+            Inner::Batch(batch) => batch.packet(),
         }
     }
 
@@ -171,10 +186,7 @@ impl CoalescedPacket {
     pub fn version(&self) -> IpVersion {
         match &self.0 {
             Inner::Packet(packet) => packet.version(),
-            Inner::Batch { buf, .. } => match buf[0] >> 4 {
-                6 => IpVersion::V6,
-                _ => IpVersion::V4,
-            },
+            Inner::Batch(batch) => batch.key.version(),
         }
     }
 
@@ -182,9 +194,15 @@ impl CoalescedPacket {
     pub fn offload_metadata(&self) -> Option<OffloadMetadata> {
         match &self.0 {
             Inner::Packet(_) => None,
-            Inner::Batch {
-                offload_metadata, ..
-            } => *offload_metadata,
+            Inner::Batch(batch) => batch.offload_metadata,
+        }
+    }
+
+    /// Whether this item carries traffic of the same connection as `packet`.
+    fn same_connection(&self, packet: &IpPacket) -> bool {
+        match &self.0 {
+            Inner::Packet(existing) => same_connection(existing, packet),
+            Inner::Batch(batch) => batch.key.same_connection(packet),
         }
     }
 }
@@ -192,31 +210,6 @@ impl CoalescedPacket {
 impl From<IpPacket> for CoalescedPacket {
     fn from(packet: IpPacket) -> Self {
         Self(Inner::Packet(packet))
-    }
-}
-
-/// An entry in a [`PacketCoalescer`].
-enum Item {
-    /// A packet that cannot participate in coalescing, passed through as-is.
-    Packet(IpPacket),
-    /// One or more coalesced segments of a single flow.
-    Batch(Batch),
-}
-
-impl Item {
-    /// Whether this item carries traffic of the same connection as `packet`.
-    fn same_connection(&self, packet: &IpPacket) -> bool {
-        match self {
-            Item::Packet(existing) => same_connection(existing, packet),
-            Item::Batch(batch) => batch.key.same_connection(packet),
-        }
-    }
-
-    fn into_outgoing(self, checksum_mode: ChecksumMode) -> CoalescedPacket {
-        match self {
-            Item::Packet(packet) => CoalescedPacket::from(packet),
-            Item::Batch(batch) => batch.into_outgoing(checksum_mode),
-        }
     }
 }
 
@@ -412,6 +405,9 @@ struct Batch {
     next_seq: u32,
     num_segs: usize,
     psh: bool,
+    /// Whether the headers have been fixed up; a finished batch takes no further segments.
+    finished: bool,
+    offload_metadata: Option<OffloadMetadata>,
 }
 
 enum BatchState {
@@ -450,6 +446,8 @@ impl Batch {
             next_seq: candidate.seq.wrapping_add(candidate.payload_len as u32),
             num_segs: 1,
             psh: candidate.psh,
+            finished: false,
+            offload_metadata: None,
             state: BatchState::Single(packet),
         }
     }
@@ -474,43 +472,30 @@ impl Batch {
     fn is_ongoing(&self) -> bool {
         let payload_len = self.total_len - self.ip_hdr_len - self.l4_hdr_len;
 
-        !self.psh && payload_len == self.num_segs * self.seg_size
+        !self.finished && !self.psh && payload_len == self.num_segs * self.seg_size
     }
 
-    fn into_outgoing(self, checksum_mode: ChecksumMode) -> CoalescedPacket {
-        let Batch {
-            key,
-            state,
-            ip_hdr_len,
-            l4_hdr_len,
-            seg_size,
-            num_segs,
-            psh,
-            ..
-        } = self;
-
-        match state {
-            BatchState::Single(packet) => CoalescedPacket::from(packet),
-            BatchState::Coalesced(mut buf) => {
-                let offload_metadata = finalize(
-                    &mut buf,
-                    &key,
-                    ip_hdr_len,
-                    l4_hdr_len,
-                    seg_size,
-                    psh,
-                    checksum_mode,
-                );
-                let offload_metadata =
-                    matches!(checksum_mode, ChecksumMode::Offloaded).then_some(offload_metadata);
-
-                CoalescedPacket(Inner::Batch {
-                    buf,
-                    num_segments: num_segs,
-                    offload_metadata,
-                })
-            }
+    fn finish(&mut self, checksum_mode: ChecksumMode) {
+        if std::mem::replace(&mut self.finished, true) {
+            return;
         }
+
+        let BatchState::Coalesced(buf) = &mut self.state else {
+            return;
+        };
+
+        let offload_metadata = finalize(
+            buf,
+            &self.key,
+            self.ip_hdr_len,
+            self.l4_hdr_len,
+            self.seg_size,
+            self.psh,
+            checksum_mode,
+        );
+
+        self.offload_metadata =
+            matches!(checksum_mode, ChecksumMode::Offloaded).then_some(offload_metadata);
     }
 
     fn can_append(&self, candidate: &Candidate, packet: &IpPacket, max_packet_len: usize) -> bool {
@@ -543,13 +528,13 @@ impl Batch {
             return false;
         }
 
-        if !ip_headers_compatible(self.template(), packet.packet(), self.key.version()) {
+        if !ip_headers_compatible(self.packet(), packet.packet(), self.key.version()) {
             return false;
         }
 
         if candidate.key.protocol == IpNumber::TCP
             && !tcp_headers_compatible(
-                self.template(),
+                self.packet(),
                 packet.packet(),
                 self.ip_hdr_len,
                 self.l4_hdr_len,
@@ -561,8 +546,8 @@ impl Batch {
         true
     }
 
-    /// The first packet of the batch; all compatibility checks compare against its headers.
-    fn template(&self) -> &[u8] {
+    /// The batch's packet bytes; all compatibility checks compare against its headers.
+    fn packet(&self) -> &[u8] {
         match &self.state {
             BatchState::Single(packet) => packet.packet(),
             BatchState::Coalesced(buf) => buf,
@@ -836,6 +821,29 @@ mod tests {
             .expect("offloaded packet needs metadata");
         assert_eq!(metadata.protocol, Protocol::Udp);
         assert_eq!(metadata.segment_size, 100);
+    }
+
+    #[test]
+    fn finished_batch_takes_no_further_segments() {
+        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
+
+        queue.enqueue(tcp4(1000, &[1; 100]));
+        queue.enqueue(tcp4(1100, &[2; 100]));
+        let finished = queue
+            .finish()
+            .iter()
+            .map(|p| p.packet().len())
+            .collect::<Vec<_>>();
+        queue.enqueue(tcp4(1200, &[3; 100]));
+
+        let out = queue.drain().collect::<Vec<_>>();
+        let [first, second] = out.as_slice() else {
+            panic!("expected the third segment to start a new packet")
+        };
+
+        assert_eq!(finished, [20 + 20 + 200]);
+        assert_eq!(first.num_segments(), 2);
+        assert_eq!(second.num_segments(), 1);
     }
 
     #[test]

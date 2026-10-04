@@ -44,7 +44,6 @@ pub fn send(
         }
         None => PacketCoalescer::passthrough(),
     };
-    let mut packets = Vec::<CoalescedPacket>::with_capacity(MAX_BATCH_SIZE);
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -61,7 +60,7 @@ pub fn send(
                     coalescer.enqueue(packet);
                 }
 
-                packets.extend(coalescer.drain());
+                let packets = coalescer.finish();
 
                 let mut offset = 0;
                 while offset < packets.len() {
@@ -110,7 +109,7 @@ pub fn send(
                     }
                 }
 
-                packets.clear();
+                coalescer.clear();
             }
 
             anyhow::Ok(())
