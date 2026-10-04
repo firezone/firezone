@@ -157,10 +157,8 @@ impl PacketCoalescer {
 }
 
 /// A pending write to the TUN device.
-#[derive(Clone)]
 pub struct CoalescedPacket(Inner);
 
-#[derive(Clone)]
 enum Inner {
     /// An individual IP packet, passed through unchanged.
     Packet(IpPacket),
@@ -394,7 +392,6 @@ impl FlowKey {
     }
 }
 
-#[derive(Clone)]
 struct Batch {
     key: FlowKey,
     state: BatchState,
@@ -412,7 +409,6 @@ struct Batch {
     offload_metadata: Option<OffloadMetadata>,
 }
 
-#[derive(Clone)]
 enum BatchState {
     /// A single packet; not copied anywhere yet.
     Single(IpPacket),
