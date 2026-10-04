@@ -254,6 +254,12 @@ impl StubPortal {
                     .load_balanced_requests
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
+
+                // The Gateways drop everything they held for the Client on its `goodbye`.
+                for _ in self
+                    .gateway_policy_authorizations
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
             }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}

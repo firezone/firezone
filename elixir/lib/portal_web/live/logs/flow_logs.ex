@@ -950,6 +950,7 @@ defmodule PortalWeb.Logs.FlowLogs do
     alias Portal.Types.LogId
 
     @candidate_limit 3
+    @candidate_start_window_seconds 86_400
 
     def list_flow_logs(subject, opts \\ []) do
       {query, opts} =
@@ -1082,6 +1083,10 @@ defmodule PortalWeb.Logs.FlowLogs do
     # overlapping time window narrows the matches, but cannot prove identity
     # because independently created logs have no shared flow ID.
     #
+    # The bare flow_start bounds around the selected flow let PostgreSQL prune
+    # the daily partitions. Without them every partition of the account is
+    # scanned and the time-distance sort runs over all of its rows.
+    #
     # Only fields both sides can agree on are matched, and the WireGuard tuple
     # is not one of them: each side records the path from its own vantage point
     # (its own bound socket address and the peer address it observes), so NAT on
@@ -1100,6 +1105,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           where: candidate.responder_device_id == ^log.responder_device_id,
           where: candidate.resource_id == ^log.resource_id,
           where: candidate.protocol == ^log.protocol,
+          where: candidate.flow_start >= ^DateTime.add(selected_min, -@candidate_start_window_seconds),
           where: candidate.inner_src_ip == ^log.inner_src_ip,
           where: candidate.inner_src_port == ^log.inner_src_port,
           where: candidate.inner_dst_port == ^log.inner_dst_port,
@@ -1149,9 +1155,12 @@ defmodule PortalWeb.Logs.FlowLogs do
     defp filter_candidate_upper_bound(query, nil), do: query
 
     defp filter_candidate_upper_bound(query, selected_max) do
+      latest_start = DateTime.add(selected_max, @candidate_start_window_seconds)
+
       where(
         query,
         [flow_logs: candidate],
+        candidate.flow_start <= ^latest_start and
         fragment("LEAST(?, COALESCE(?, ?))", candidate.flow_start, candidate.flow_end, candidate.flow_start) <=
           ^selected_max
       )

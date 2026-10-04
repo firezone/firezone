@@ -1,5 +1,4 @@
 allowBuilds:
-  "@parcel/watcher": true
   esbuild: true
 overrides:
   "@humanfs/node": 0.16.8

@@ -793,6 +793,52 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ "No matching responder log"
       refute panel_html =~ other.log_id
     end
+
+    test "does not match a responder log that started over a day earlier", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity = %{
+        account: account,
+        policy_authorization_id: Ecto.UUID.generate(),
+        initiator_device_id: Ecto.UUID.generate(),
+        responder_device_id: Ecto.UUID.generate(),
+        resource_id: Ecto.UUID.generate(),
+        protocol: :tcp,
+        inner_src_ip: %Postgrex.INET{address: {100, 64, 0, 8}},
+        inner_src_port: 51_234,
+        inner_dst_ip: %Postgrex.INET{address: {10, 0, 0, 9}},
+        inner_dst_port: 443,
+        domain: nil
+      }
+
+      selected =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :initiator)
+          |> Map.put(:flow_start, ~U[2026-07-30 10:00:00.000000Z])
+          |> Map.put(:flow_end, ~U[2026-07-30 10:01:00.000000Z])
+        )
+
+      other =
+        flow_log_fixture(
+          identity
+          |> Map.put(:role, :responder)
+          |> Map.put(:flow_start, ~U[2026-07-28 10:00:00.000000Z])
+          |> Map.put(:flow_end, nil)
+        )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs/#{selected.log_id}")
+
+      panel_html = lv |> element("#flow-log-panel") |> render()
+
+      assert html =~ "No matching responder log"
+      refute panel_html =~ other.log_id
+    end
   end
 
   defp toggle_show_incomplete(lv, value) do
