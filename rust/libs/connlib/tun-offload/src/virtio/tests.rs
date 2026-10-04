@@ -26,7 +26,7 @@ fn coalesced_tcp_packet_roundtrips_through_virtio_gso() {
         coalescer.enqueue(segment);
     }
 
-    let out = coalescer.drain().collect::<Vec<_>>();
+    let out = coalescer.take();
     let [super_packet] = out.as_slice() else {
         panic!("expected one coalesced packet")
     };
@@ -68,7 +68,7 @@ fn coalesced_udp_packet_roundtrips_through_virtio_gso() {
         coalescer.enqueue(datagram);
     }
 
-    let out = coalescer.drain().collect::<Vec<_>>();
+    let out = coalescer.take();
     let [super_packet] = out.as_slice() else {
         panic!("expected one coalesced packet")
     };
