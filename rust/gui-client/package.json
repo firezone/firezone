@@ -40,7 +40,7 @@
     "tslib": "^2.8.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1",
-    "vite": "^8.3.1"
+    "vite": "^8.3.2"
   },
   "devDependencies": {
     "@vitest/browser": "^4.1.11",
