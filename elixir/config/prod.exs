@@ -26,6 +26,8 @@ config :portal, Portal.Billing,
     "prod_PY9HpTq72kNPk7",
     # Team
     "prod_PnvjiKBrSTBVqp",
+    # Business
+    "prod_VMyGOVTAFNKIPP",
     # Enterprise
     "prod_PY9QUBMAlUEYes"
   ],

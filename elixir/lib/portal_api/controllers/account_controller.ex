@@ -31,7 +31,7 @@ defmodule PortalAPI.AccountController do
   defp build_limits(account) do
     # Get current usage counts
     users_count = Database.count_users_for_account(account)
-    monthly_active_users_count = Database.count_1m_active_users_for_account(account)
+    monthly_active_users_count = Portal.Billing.count_monthly_active_users(account)
     service_accounts_count = Database.count_service_accounts_for_account(account)
     admin_users_count = Database.count_account_admin_users_for_account(account)
     sites_count = Database.count_groups_for_account(account)
@@ -67,7 +67,6 @@ defmodule PortalAPI.AccountController do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Device
 
     def fetch_account(id, subject) do
       result =
@@ -107,23 +106,6 @@ defmodule PortalAPI.AccountController do
         where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
-    end
-
-    def count_1m_active_users_for_account(account) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id == ^account.id)
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
-      )
-      |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([devices: d], d.actor_id)
-      |> distinct(true)
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end

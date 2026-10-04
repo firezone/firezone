@@ -29,6 +29,30 @@ defmodule Portal.Workers.OutboundEmailTest do
       assert db_entry.recipients == ["to@test.com"]
     end
 
+    test "sends the reply-to address from the queued request" do
+      account = account_fixture()
+      configure_acs_secondary()
+      test_pid = self()
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:acs_body, JSON.decode!(body)})
+
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-message-reply", "status" => "Running"})
+      end)
+
+      args =
+        put_in(queued_args(account.id), ["request", "reply_to"], [
+          %{"name" => "", "address" => "support@firezone.dev"}
+        ])
+
+      assert :ok = perform_job(Worker, args)
+
+      assert_received {:acs_body, %{"replyTo" => [%{"address" => "support@firezone.dev"}]}}
+    end
+
     test "skips delivery when the recipient was suppressed after enqueue" do
       account = account_fixture()
       configure_acs_secondary()

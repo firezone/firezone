@@ -189,7 +189,7 @@ impl<B> Buffer<B> {
 
 impl<B> Clone for Buffer<B>
 where
-    B: Buf,
+    B: CloneBuf,
 {
     fn clone(&self) -> Self {
         let mut copy = self
@@ -288,7 +288,6 @@ fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
 
 pub trait Buf: Sized {
     fn with_capacity(capacity: usize) -> Self;
-    fn clone(&self, dst: &mut Self);
     fn capacity(&self) -> usize;
 
     /// Restores the buffer to a pristine state before it returns to the pool.
@@ -297,6 +296,11 @@ pub trait Buf: Sized {
     /// [`VecBuf`] use it to drop their items so those don't stay alive inside an
     /// idle pool.
     fn reset(&mut self) {}
+}
+
+/// A [`Buf`] whose contents can be copied into another buffer of its pool.
+pub trait CloneBuf: Buf {
+    fn clone(&self, dst: &mut Self);
 }
 
 /// A [`Buf`] whose length can be set directly, e.g. to fit incoming data.
@@ -330,17 +334,9 @@ impl<T> DerefMut for VecBuf<T> {
     }
 }
 
-impl<T> Buf for VecBuf<T>
-where
-    T: Clone,
-{
+impl<T> Buf for VecBuf<T> {
     fn with_capacity(capacity: usize) -> Self {
         Self(Vec::with_capacity(capacity))
-    }
-
-    fn clone(&self, dst: &mut Self) {
-        dst.0.clear();
-        dst.0.extend(self.0.iter().cloned());
     }
 
     fn capacity(&self) -> usize {
@@ -352,18 +348,30 @@ where
     }
 }
 
+impl<T> CloneBuf for VecBuf<T>
+where
+    T: Clone,
+{
+    fn clone(&self, dst: &mut Self) {
+        dst.0.clear();
+        dst.0.extend(self.0.iter().cloned());
+    }
+}
+
 impl Buf for Vec<u8> {
     fn with_capacity(capacity: usize) -> Self {
         vec![0; capacity]
     }
 
+    fn capacity(&self) -> usize {
+        Vec::capacity(self)
+    }
+}
+
+impl CloneBuf for Vec<u8> {
     fn clone(&self, dst: &mut Self) {
         dst.resize(self.len(), 0);
         dst.copy_from_slice(self);
-    }
-
-    fn capacity(&self) -> usize {
-        Vec::capacity(self)
     }
 }
 
@@ -378,13 +386,15 @@ impl Buf for BytesMut {
         BytesMut::zeroed(capacity)
     }
 
+    fn capacity(&self) -> usize {
+        BytesMut::capacity(self)
+    }
+}
+
+impl CloneBuf for BytesMut {
     fn clone(&self, dst: &mut Self) {
         dst.resize(self.len(), 0);
         dst.copy_from_slice(self);
-    }
-
-    fn capacity(&self) -> usize {
-        BytesMut::capacity(self)
     }
 }
 
