@@ -128,23 +128,13 @@ impl PacketCoalescer {
         }
     }
 
-    /// Finishes all queued packets and returns them, in write order.
-    ///
-    /// The packets stay queued until [`PacketCoalescer::clear`] or [`PacketCoalescer::drain`].
-    /// Packets enqueued in the meantime do not coalesce into the finished ones.
-    pub fn finish(&mut self) -> &[CoalescedPacket] {
-        for item in &mut self.items {
-            if let Inner::Batch(batch) = &mut item.0 {
-                batch.finish(self.checksum_mode);
-            }
-        }
+    /// Takes all queued packets, in write order.
+    pub fn take(&mut self) -> Vec<CoalescedPacket> {
+        self.finish();
 
-        &self.items
-    }
+        let capacity = self.items.capacity();
 
-    /// Discards all queued packets.
-    pub fn clear(&mut self) {
-        self.items.clear();
+        std::mem::replace(&mut self.items, Vec::with_capacity(capacity))
     }
 
     /// Drains all queued packets, in write order.
@@ -152,6 +142,14 @@ impl PacketCoalescer {
         self.finish();
 
         self.items.drain(..)
+    }
+
+    fn finish(&mut self) {
+        for item in &mut self.items {
+            if let Inner::Batch(batch) = &mut item.0 {
+                batch.finish(self.checksum_mode);
+            }
+        }
     }
 }
 
@@ -405,8 +403,6 @@ struct Batch {
     next_seq: u32,
     num_segs: usize,
     psh: bool,
-    /// Whether the headers have been fixed up; a finished batch takes no further segments.
-    finished: bool,
     offload_metadata: Option<OffloadMetadata>,
 }
 
@@ -446,7 +442,6 @@ impl Batch {
             next_seq: candidate.seq.wrapping_add(candidate.payload_len as u32),
             num_segs: 1,
             psh: candidate.psh,
-            finished: false,
             offload_metadata: None,
             state: BatchState::Single(packet),
         }
@@ -472,14 +467,10 @@ impl Batch {
     fn is_ongoing(&self) -> bool {
         let payload_len = self.total_len - self.ip_hdr_len - self.l4_hdr_len;
 
-        !self.finished && !self.psh && payload_len == self.num_segs * self.seg_size
+        !self.psh && payload_len == self.num_segs * self.seg_size
     }
 
     fn finish(&mut self, checksum_mode: ChecksumMode) {
-        if std::mem::replace(&mut self.finished, true) {
-            return;
-        }
-
         let BatchState::Coalesced(buf) = &mut self.state else {
             return;
         };
@@ -821,29 +812,6 @@ mod tests {
             .expect("offloaded packet needs metadata");
         assert_eq!(metadata.protocol, Protocol::Udp);
         assert_eq!(metadata.segment_size, 100);
-    }
-
-    #[test]
-    fn finished_batch_takes_no_further_segments() {
-        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
-
-        queue.enqueue(tcp4(1000, &[1; 100]));
-        queue.enqueue(tcp4(1100, &[2; 100]));
-        let finished = queue
-            .finish()
-            .iter()
-            .map(|p| p.packet().len())
-            .collect::<Vec<_>>();
-        queue.enqueue(tcp4(1200, &[3; 100]));
-
-        let out = queue.drain().collect::<Vec<_>>();
-        let [first, second] = out.as_slice() else {
-            panic!("expected the third segment to start a new packet")
-        };
-
-        assert_eq!(finished, [20 + 20 + 200]);
-        assert_eq!(first.num_segments(), 2);
-        assert_eq!(second.num_segments(), 1);
     }
 
     #[test]

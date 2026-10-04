@@ -60,7 +60,7 @@ pub fn send(
                     coalescer.enqueue(packet);
                 }
 
-                let packets = coalescer.finish();
+                let packets = coalescer.take();
 
                 let mut offset = 0;
                 while offset < packets.len() {
@@ -108,8 +108,6 @@ pub fn send(
                         }
                     }
                 }
-
-                coalescer.clear();
             }
 
             anyhow::Ok(())
