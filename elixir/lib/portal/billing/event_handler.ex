@@ -681,9 +681,9 @@ defmodule Portal.Billing.EventHandler do
     }
   end
 
-  # Enterprise seats are sold as monthly active users, so the limit comes from
-  # the subscription quantity and never from the Stripe metadata.
-  defp put_seat_limit(limits, :enterprise, seats),
+  # Enterprise and Business seats are sold as monthly active users, so the limit
+  # comes from the subscription quantity and never from the Stripe metadata.
+  defp put_seat_limit(limits, plan_type, seats) when plan_type in [:enterprise, :business],
     do: Map.put(limits, "monthly_active_users_count", seats)
 
   defp put_seat_limit(limits, _plan_type, _seats),
