@@ -2,12 +2,16 @@ defmodule Portal.Analytics.TeamEnrollmentTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
   import Portal.AccountFixtures
-  alias Portal.Analytics.OpenAI
+  alias Portal.Analytics.{GoogleAds, OpenAI}
   alias Portal.Billing.EventHandler
   alias Portal.Mocks.Stripe
 
   setup do
     Portal.Config.put_env_override(:portal, OpenAI, api_key: "test-key")
+    Portal.Config.put_env_override(:portal, GoogleAds,
+      customer_id: "1234567890", subscription_conversion_action_id: "2222222222",
+      service_account_email: "ads@example.com", workload_identity_provider: "provider",
+      workload_identity_audience: "audience")
     account = account_fixture(metadata: %{
       stripe: %{customer_id: "cus_conversion", product_name: "Starter", billing_email: "ada@example.com"},
       marketing_attribution: %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
@@ -28,6 +32,7 @@ defmodule Portal.Analytics.TeamEnrollmentTest do
     later = Stripe.build_event("customer.subscription.updated", subscription, event["created"] + 1)
     assert {:ok, ^later} = EventHandler.handle_event(later)
     assert [_] = all_enqueued(worker: OpenAI)
+    assert [_] = all_enqueued(worker: GoogleAds)
   end
 
   test "trial and incomplete subscriptions count only when they become active", %{subscription: subscription} do
@@ -35,18 +40,22 @@ defmodule Portal.Analytics.TeamEnrollmentTest do
     event = Stripe.build_event("customer.subscription.created", trial)
     assert {:ok, _} = EventHandler.handle_event(event)
     assert [] = all_enqueued(worker: OpenAI)
+    assert [] = all_enqueued(worker: GoogleAds)
     active = Stripe.build_event("customer.subscription.updated", subscription, event["created"] + 1)
     assert {:ok, _} = EventHandler.handle_event(active)
     assert [_] = all_enqueued(worker: OpenAI)
+    assert [_] = all_enqueued(worker: GoogleAds)
   end
 
   test "incomplete Team enrollment waits for activation", %{subscription: subscription} do
     event = Stripe.build_event("customer.subscription.created", Map.put(subscription, "status", "incomplete"))
     assert {:ok, _} = EventHandler.handle_event(event)
     assert [] = all_enqueued(worker: OpenAI)
+    assert [] = all_enqueued(worker: GoogleAds)
     active = Stripe.build_event("customer.subscription.updated", subscription, event["created"] + 1)
     assert {:ok, _} = EventHandler.handle_event(active)
     assert [_] = all_enqueued(worker: OpenAI)
+    assert [_] = all_enqueued(worker: GoogleAds)
   end
 
   test "failed webhook transaction does not enqueue", %{subscription: subscription} do
@@ -54,5 +63,23 @@ defmodule Portal.Analytics.TeamEnrollmentTest do
     event = Stripe.build_event("customer.subscription.updated", subscription)
     assert {:error, :no_plan_product} = EventHandler.handle_event(event)
     assert [] = all_enqueued(worker: OpenAI)
+    assert [] = all_enqueued(worker: GoogleAds)
   end
+  test "enqueue failure rolls back billing and the processed marker so webhook replay recovers", %{subscription: subscription, account: account} do
+    # Invalid UTF-8 cannot be encoded into an Oban JSON payload.
+    Portal.Config.merge_env_override(:portal, GoogleAds, customer_id: <<255>>)
+    event = Stripe.build_event("customer.subscription.updated", subscription)
+    assert {:error, :conversion_enqueue_failed} = EventHandler.handle_event(event)
+    refute Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    assert Portal.Billing.plan_type(Portal.Repo.get!(Portal.Account, account.id)) == :starter
+    assert [] = all_enqueued(worker: OpenAI)
+    assert [] = all_enqueued(worker: GoogleAds)
+
+    Portal.Config.merge_env_override(:portal, GoogleAds, customer_id: "1234567890")
+    assert {:ok, ^event} = EventHandler.handle_event(event)
+    assert Portal.Billing.Stripe.ProcessedEvents.event_processed?(event["id"])
+    assert [_] = all_enqueued(worker: OpenAI)
+    assert [_] = all_enqueued(worker: GoogleAds)
+  end
+
 end
