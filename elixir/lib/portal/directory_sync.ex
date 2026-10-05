@@ -135,9 +135,53 @@ defmodule Portal.DirectorySync do
   the identity rows it already holds. The actors the directory created follow
   their identity's name and email. A newer write for the same identity is
   never undone by an older one.
+
+  An identity with `disabled: true` is a user who is inactive at the IdP. It
+  only refreshes an identity the directory already holds for an actor it
+  created, and disables that actor instead of letting a prune delete it. It
+  never creates an actor or links one by email. When the user is active again,
+  the actor is re-enabled, but only if this directory was the one to disable
+  it. The last enabled admin of an account is never disabled.
   """
   def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
-    Database.upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields)
+    result = Database.upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields)
+
+    with {:ok, _} <- result do
+      warn_kept_admins(account_id, issuer, directory_id, identities)
+    end
+
+    result
+  end
+
+  @doc """
+  Those of `idp_ids` whose identity's actor the directory created. A sync keeps
+  such a user when they turn inactive at the IdP and disables the actor, any
+  other inactive user is dropped as if deleted.
+  """
+  def owned_idp_ids(_account_id, _issuer, _directory_id, []), do: MapSet.new()
+
+  def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
+    Database.owned_idp_ids(account_id, issuer, directory_id, idp_ids) |> MapSet.new()
+  end
+
+  # The upsert keeps the last enabled admin enabled rather than lock everyone
+  # out of the account, so say why the actor survived its user's suspension.
+  defp warn_kept_admins(account_id, issuer, directory_id, identities) do
+    case for(%{disabled: true, idp_id: idp_id} <- identities, do: idp_id) do
+      [] ->
+        :ok
+
+      idp_ids ->
+        for actor_id <- Database.enabled_admin_ids(account_id, issuer, directory_id, idp_ids) do
+          Logger.warning("Kept the last enabled admin enabled although the IdP deactivated its user",
+            account_id: account_id,
+            directory_id: directory_id,
+            actor_id: actor_id
+          )
+        end
+
+        :ok
+    end
   end
 
   defp workers(provider), do: Map.fetch!(@workers, provider)
@@ -280,18 +324,52 @@ defmodule Portal.DirectorySync do
       end
     end
 
+    # Reads with the primary on purpose: the sync writes right after, and a
+    # lagging replica would drop a user whose actor was just created.
+    def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
+      owned_identities(account_id, issuer, directory_id)
+      |> where([i], i.idp_id in ^idp_ids)
+      |> select([i], i.idp_id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def enabled_admin_ids(account_id, issuer, directory_id, idp_ids) do
+      owned_identities(account_id, issuer, directory_id)
+      |> where([i], i.idp_id in ^idp_ids)
+      |> where([_i, a], a.type == :account_admin_user and a.is_disabled == false)
+      |> select([_i, a], a.id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    defp owned_identities(account_id, issuer, directory_id) do
+      from(i in Portal.ExternalIdentity,
+        join: a in Portal.Actor,
+        on: a.account_id == i.account_id and a.id == i.actor_id,
+        where: i.account_id == ^account_id,
+        where: i.issuer == ^issuer,
+        where: a.created_by_directory_id == ^directory_id
+      )
+    end
+
     defp identity_upsert_params(account_id, issuer, directory_id, synced_at, identities, fields) do
-      Enum.flat_map(identities, fn identity -> Enum.map(fields, &Map.get(identity, &1)) end) ++
+      Enum.flat_map(identities, fn identity ->
+        Enum.map(fields, &Map.get(identity, &1)) ++ [Map.get(identity, :disabled) == true]
+      end) ++
         [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), synced_at]
     end
 
+    # Each input row carries the identity `fields` followed by `disabled`, which
+    # is not an identity column: it only decides what happens to the actor.
     defp identity_upsert_query(count, fields) do
-      width = length(fields)
+      width = length(fields) + 1
 
       values_clause =
         Enum.map_join(1..count, ", ", fn i ->
           base = (i - 1) * width
-          "(" <> Enum.map_join(1..width, ", ", &"$#{base + &1}") <> ")"
+          columns = Enum.map(1..(width - 1), &"$#{base + &1}") ++ ["$#{base + width}::boolean"]
+          "(" <> Enum.join(columns, ", ") <> ")"
         end)
 
       offset = count * width
@@ -306,7 +384,7 @@ defmodule Portal.DirectorySync do
       """
       WITH input_data AS (
         SELECT * FROM (VALUES #{values_clause})
-        AS t(#{Enum.join(fields, ", ")})
+        AS t(#{Enum.join(fields, ", ")}, disabled)
       ),
       pre_existing_identities AS (
         SELECT ei.id, ei.account_id, ei.actor_id, ei.idp_id
@@ -321,6 +399,7 @@ defmodule Portal.DirectorySync do
         JOIN actors a ON a.email = id.email AND a.account_id = $#{account_id}
         WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.email IS NOT NULL
+          AND NOT id.disabled
         ORDER BY id.idp_id, a.inserted_at ASC
       ),
       -- Recycles the actor's existing identity for this directory so a changed
@@ -349,6 +428,7 @@ defmodule Portal.DirectorySync do
         FROM input_data id
         WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
           AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
+          AND NOT id.disabled
       ),
       new_actors AS (
         INSERT INTO actors (id, type, account_id, name, email, created_by_directory_id, inserted_at, updated_at)
@@ -364,18 +444,74 @@ defmodule Portal.DirectorySync do
         FROM actors_to_create
         RETURNING id, name
       ),
+      -- An inactive user only keeps an identity whose actor the directory
+      -- created. Any other is left without sync state for the prune to remove.
       all_actor_mappings AS (
-        SELECT atc.new_actor_id AS actor_id, atc.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}
+        SELECT atc.new_actor_id AS actor_id, atc.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
         FROM actors_to_create atc
         JOIN input_data id ON id.idp_id = atc.idp_id
         UNION ALL
-        SELECT ei.actor_id, ei.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}
+        SELECT ei.actor_id, ei.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
         FROM pre_existing_identities ei
         JOIN input_data id ON id.idp_id = ei.idp_id
+        WHERE NOT id.disabled
+          OR EXISTS (
+            SELECT 1 FROM actors a
+            WHERE a.account_id = ei.account_id
+              AND a.id = ei.actor_id
+              AND a.created_by_directory_id = $#{directory_id}
+          )
         UNION ALL
-        SELECT eabe.actor_id, eabe.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}
+        SELECT eabe.actor_id, eabe.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
         FROM existing_actors_by_email eabe
         JOIN input_data id ON id.idp_id = eabe.idp_id
+      ),
+      -- Actors the directory created whose user turned inactive. Disabling
+      -- every enabled admin of the account would lock it out, so when no
+      -- enabled admin outside this set remains, the admins in it stay enabled.
+      deactivated_actors AS (
+        SELECT a.id, a.type
+        FROM actors a
+        JOIN all_actor_mappings aam ON aam.actor_id = a.id
+        WHERE a.account_id = $#{account_id}
+          AND a.created_by_directory_id = $#{directory_id}
+          AND aam.disabled
+          AND NOT a.is_disabled
+      ),
+      kept_admins AS (
+        SELECT da.id
+        FROM deactivated_actors da
+        WHERE da.type = 'account_admin_user'
+          AND NOT EXISTS (
+            SELECT 1 FROM actors other
+            WHERE other.account_id = $#{account_id}
+              AND other.type = 'account_admin_user'
+              AND NOT other.is_disabled
+              AND other.id NOT IN (SELECT id FROM deactivated_actors)
+          )
+      ),
+      actor_targets AS (
+        SELECT
+          aam.actor_id,
+          aam.name,
+          aam.email,
+          COALESCE(ei.id, edi.id) AS identity_id,
+          CASE
+            WHEN aam.disabled AND aam.actor_id NOT IN (SELECT id FROM kept_admins) THEN true
+            WHEN NOT aam.disabled AND a.disabled_by_directory_id = $#{directory_id} THEN false
+            ELSE a.is_disabled
+          END AS is_disabled,
+          CASE
+            WHEN aam.actor_id IN (SELECT id FROM deactivated_actors)
+              AND aam.actor_id NOT IN (SELECT id FROM kept_admins) THEN $#{directory_id}
+            WHEN NOT aam.disabled AND a.disabled_by_directory_id = $#{directory_id} THEN NULL
+            ELSE a.disabled_by_directory_id
+          END AS disabled_by_directory_id
+        FROM all_actor_mappings aam
+        JOIN actors a ON a.account_id = $#{account_id} AND a.id = aam.actor_id
+        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        WHERE a.created_by_directory_id = $#{directory_id}
       ),
       upserted_identities AS (
         INSERT INTO external_identities (
@@ -416,26 +552,26 @@ defmodule Portal.DirectorySync do
       -- moves then.
       updated_actors AS (
         UPDATE actors a
-        SET name = aam.name,
+        SET name = t.name,
             email = CASE
               WHEN EXISTS (
                 SELECT 1 FROM actors other
-                WHERE other.account_id = a.account_id AND other.email = aam.email AND other.id <> a.id
+                WHERE other.account_id = a.account_id AND other.email = t.email AND other.id <> a.id
               ) THEN a.email
-              ELSE aam.email
+              ELSE t.email
             END,
+            is_disabled = t.is_disabled,
+            disabled_by_directory_id = t.disabled_by_directory_id,
             updated_at = $#{synced_at}
-        FROM all_actor_mappings aam
-        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
-        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        FROM actor_targets t
         WHERE a.account_id = $#{account_id}
-          AND a.id = aam.actor_id
-          AND a.created_by_directory_id = $#{directory_id}
-          AND (a.name, a.email) IS DISTINCT FROM (aam.name, aam.email)
+          AND a.id = t.actor_id
+          AND (a.name, a.email, a.is_disabled, a.disabled_by_directory_id)
+              IS DISTINCT FROM (t.name, t.email, t.is_disabled, t.disabled_by_directory_id)
           AND NOT EXISTS (
             SELECT 1 FROM external_identity_sync_states iss
             WHERE iss.account_id = $#{account_id}
-              AND iss.external_identity_id = COALESCE(ei.id, edi.id)
+              AND iss.external_identity_id = t.identity_id
               AND iss.synced_at >= $#{synced_at}
           )
       ),
@@ -445,6 +581,7 @@ defmodule Portal.DirectorySync do
         SELECT pei.id, pei.account_id
         FROM pre_existing_identities pei
         WHERE pei.idp_id NOT IN (SELECT idp_id FROM upserted_identities)
+          AND pei.idp_id IN (SELECT idp_id FROM all_actor_mappings)
       )
       INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
       SELECT id, account_id, $#{synced_at} FROM all_identity_ids

@@ -72,8 +72,11 @@ defmodule Portal.Okta.WebhookSync do
     synced_at = DateTime.utc_now()
 
     case APIClient.get_user(client, access_token, user_id) do
+      # A suspended or deactivated user whose actor this directory created
+      # stays, so the upsert disables the actor; any other one is removed.
       {:ok, %Req.Response{status: 200, body: %{"id" => ^user_id} = user}} ->
-        if Okta.Sync.syncable_user?(user) and assigned?(directory, client, access_token, user_id) do
+        if Okta.Sync.keep_users(directory, [user]) != [] and
+             assigned?(directory, client, access_token, user_id) do
           refresh_user(directory, client, access_token, synced_at, user)
         else
           remove_identity(directory, user_id)

@@ -543,10 +543,9 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  @active_user_query "isSuspended=false isArchived=false"
-
   @doc """
-  Streams active users across every domain in the customer account.
+  Streams users across every domain in the customer account, suspended and
+  archived ones included, each with its `suspended` and `archived` flags.
   Returns a stream that yields pages of users.
   """
   def stream_users(access_token) do
@@ -554,12 +553,11 @@ defmodule Portal.Google.APIClient do
       URI.encode_query(%{
         "customer" => "my_customer",
         "maxResults" => "500",
-        "projection" => "full",
-        "query" => @active_user_query
+        "projection" => "full"
       })
 
     stream_pages("/admin/directory/v1/users", query, access_token, "users")
-    |> Stream.map(&filter_active_google_users_result(&1, access_token))
+    |> Stream.map(&resolve_users_flags_result(&1, access_token))
   end
 
   @doc """
@@ -634,7 +632,7 @@ defmodule Portal.Google.APIClient do
 
   Chunks `user_ids` into groups of #{@batch_size} and issues one multipart HTTP POST
   per chunk. Users that return 404 or 412 (deleted from Google Workspace) are
-  silently skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
+  silently skipped. Suspended and archived users are returned with their flags. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
   """
   @spec batch_get_users(String.t(), [String.t()]) :: {:ok, [map()]} | {:error, term()}
   def batch_get_users(_access_token, []), do: {:ok, []}
@@ -652,7 +650,7 @@ defmodule Portal.Google.APIClient do
 
     case result do
       {:ok, chunks} ->
-        case filter_active_google_users_result(chunks |> Enum.reverse() |> List.flatten(), access_token) do
+        case resolve_users_flags_result(chunks |> Enum.reverse() |> List.flatten(), access_token) do
           {:error, _} = error -> error
           users -> {:ok, users}
         end
@@ -875,14 +873,15 @@ defmodule Portal.Google.APIClient do
   end
 
   @doc """
-  Streams active users from a specific organization unit.
+  Streams the users of a specific organization unit, suspended and archived
+  ones included, each with its `suspended` and `archived` flags.
   Returns a stream that yields pages of users in the given org unit.
   """
   def stream_organization_unit_members(access_token, org_unit_path) do
     query =
       URI.encode_query(%{
         "customer" => "my_customer",
-        "query" => "orgUnitPath='#{org_unit_path}' #{@active_user_query}",
+        "query" => "orgUnitPath='#{org_unit_path}'",
         "maxResults" => "500",
         "projection" => "full"
       })
@@ -895,13 +894,13 @@ defmodule Portal.Google.APIClient do
 
   defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}, _access_token), do: []
   defp filter_org_unit_members_result(result, access_token),
-    do: filter_active_google_users_result(result, access_token)
+    do: resolve_users_flags_result(result, access_token)
 
-  defp filter_active_google_users_result(users, access_token) when is_list(users) do
+  # Suspended and archived users are kept: whether one stays is the sync's call.
+  # Only users deleted since they were listed are dropped.
+  defp resolve_users_flags_result(users, access_token) when is_list(users) do
     Enum.reduce_while(users, [], fn user, acc ->
       case resolve_user_flags(user, access_token) do
-        {:ok, %{"suspended" => true}} -> {:cont, acc}
-        {:ok, %{"archived" => true}} -> {:cont, acc}
         {:ok, user} -> {:cont, [user | acc]}
 
         :deleted -> {:cont, acc}
@@ -914,7 +913,7 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  defp filter_active_google_users_result(other, _access_token), do: other
+  defp resolve_users_flags_result(other, _access_token), do: other
 
   defp user_flags_present?(user),
     do: Map.has_key?(user, "suspended") and Map.has_key?(user, "archived")

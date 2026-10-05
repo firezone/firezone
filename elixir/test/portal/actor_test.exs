@@ -2,6 +2,7 @@ defmodule Portal.ActorTest do
   use Portal.DataCase, async: true
 
   import Ecto.Changeset
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DirectoryFixtures
@@ -221,6 +222,48 @@ defmodule Portal.ActorTest do
         |> Repo.insert()
 
       assert actor.created_by_directory_id == directory.id
+    end
+  end
+
+  describe "changeset/1 disabled_by_directory_id" do
+    setup do
+      account = account_fixture()
+      directory = directory_fixture(account: account)
+      actor = actor_fixture(account: account)
+
+      {1, _} =
+        Repo.update_all(
+          from(a in Actor, where: a.id == ^actor.id),
+          set: [is_disabled: true, disabled_by_directory_id: directory.id]
+        )
+
+      %{account: account, actor: Repo.get_by!(Actor, id: actor.id), directory: directory}
+    end
+
+    test "clears it when an admin enables the actor", %{actor: actor} do
+      {:ok, actor} = actor |> change(is_disabled: false) |> Actor.changeset() |> Repo.update()
+
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "keeps it when is_disabled does not change", %{actor: actor, directory: directory} do
+      {:ok, actor} = actor |> change(name: "Renamed") |> Actor.changeset() |> Repo.update()
+
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+    end
+
+    test "rejects it on an enabled actor", %{account: account, directory: directory} do
+      actor = actor_fixture(account: account)
+
+      assert {:error, changeset} =
+               actor
+               |> change(disabled_by_directory_id: directory.id)
+               |> Actor.changeset()
+               |> Repo.update()
+
+      assert %{disabled_by_directory_id: ["is invalid"]} = errors_on(changeset)
     end
   end
 

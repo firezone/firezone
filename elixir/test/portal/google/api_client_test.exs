@@ -1023,7 +1023,7 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["customer"] == "my_customer"
 
       assert conn.query_params["query"] ==
-               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+               "orgUnitPath='/Engineering'"
 
       assert conn.query_params["maxResults"] == "500"
       assert conn.query_params["projection"] == "full"
@@ -1090,7 +1090,7 @@ defmodule Portal.Google.APIClientTest do
       assert [{:error, %Req.Response{status: 403}}] = result
     end
 
-    test "filters suspended and archived org unit users from returned pages" do
+    test "returns suspended and archived org unit users with their flags" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "users" => [
@@ -1105,7 +1105,13 @@ defmodule Portal.Google.APIClientTest do
         APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
-      assert [[%{"id" => "user1"}]] = result
+      assert [
+               [
+                 %{"id" => "user1"},
+                 %{"id" => "user2", "suspended" => true},
+                 %{"id" => "user3", "archived" => true}
+               ]
+             ] = result
     end
   end
 
@@ -1424,7 +1430,7 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
-    test "filters suspended and archived users from batch results" do
+    test "returns suspended and archived users from batch results with their flags" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "filtered_users_boundary"
 
@@ -1458,7 +1464,11 @@ defmodule Portal.Google.APIClientTest do
       assert {:ok, users} =
                APIClient.batch_get_users(@test_access_token, ["user1", "user2", "user3"])
 
-      assert Enum.map(users, & &1["id"]) == ["user1"]
+      assert Enum.map(users, &{&1["id"], &1["suspended"], &1["archived"]}) == [
+               {"user1", false, false},
+               {"user2", true, false},
+               {"user3", false, true}
+             ]
     end
 
     test "refetches batch users missing suspended or archived flags" do
@@ -1648,7 +1658,7 @@ defmodule Portal.Google.APIClientTest do
       assert page1_params["projection"] == "full"
 
       assert page1_params["query"] ==
-               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+               "orgUnitPath='/Engineering'"
 
       refute Map.has_key?(page1_params, "pageToken")
 
@@ -1658,7 +1668,7 @@ defmodule Portal.Google.APIClientTest do
       assert page2_params["projection"] == "full"
 
       assert page2_params["query"] ==
-               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+               "orgUnitPath='/Engineering'"
 
       assert page2_params["pageToken"] == "token123"
     end

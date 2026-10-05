@@ -13,7 +13,7 @@ defmodule Portal.Google.Sync do
      the group graph during traversal, then compute flattened memberships in-memory
      and upsert them in batches. Separate `fetched_user_ids` and `synced_user_ids`
      sets are threaded through traversal so users are fetched at most once even if
-     they are later filtered out as suspended or archived.
+     they are later dropped (see `keep_users/2`).
   Finally, delete everything whose sync_state row is missing or older than this run's synced_at.
   """
   use Oban.Worker,
@@ -797,16 +797,13 @@ defmodule Portal.Google.Sync do
           count: length(users)
         )
 
-        syncable_users = Enum.filter(users, &syncable_user?(&1, directory.id))
+        Enum.each(users, &validate_ou_member!(&1, ou_idp_id, directory))
+        kept_users = keep_users(directory, users)
 
-        tuples =
-          Enum.map(syncable_users, fn user ->
-            validate_ou_member!(user, ou_idp_id, directory)
-            {ou_idp_id, user["id"]}
-          end)
+        tuples = Enum.map(kept_users, &{ou_idp_id, &1["id"]})
 
         users_by_id =
-          Enum.reduce(syncable_users, users_by_id_acc, fn user, acc ->
+          Enum.reduce(kept_users, users_by_id_acc, fn user, acc ->
             Map.put(acc, user["id"], user)
           end)
 
@@ -819,9 +816,8 @@ defmodule Portal.Google.Sync do
 
   defp sync_identities_for_user_payloads(_directory, _synced_at, []), do: :ok
 
+  # Every caller passes users `keep_users/2` already kept.
   defp sync_identities_for_user_payloads(directory, synced_at, users) do
-    users = Enum.filter(users, &syncable_user?(&1, directory.id))
-
     identities = Enum.map(users, &map_user_to_identity(&1, directory.id))
 
     identities
@@ -883,7 +879,7 @@ defmodule Portal.Google.Sync do
        when is_map(customer_users) do
     user_idp_ids
     |> Enum.flat_map(&(customer_users |> Map.get(&1) |> List.wrap()))
-    |> Enum.filter(&syncable_user?(&1, directory.id))
+    |> then(&keep_users(directory, &1))
   end
 
   defp fetch_syncable_users(directory, access_token, user_idp_ids, nil) do
@@ -899,13 +895,17 @@ defmodule Portal.Google.Sync do
             step: :batch_get_users
       end
 
-    Enum.filter(users, &syncable_user?(&1, directory.id))
+    keep_users(directory, users)
   end
 
-  def syncable_user?(user, directory_id) do
+  @doc """
+  Whether Google reports the user active, or suspended or archived. A user
+  without both flags fails the sync rather than being read as inactive.
+  """
+  def user_state(user, directory_id) do
     case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
       {{:ok, suspended}, {:ok, archived}} ->
-        suspended != true and archived != true
+        if suspended == true or archived == true, do: :inactive, else: :active
 
       _ ->
         raise Google.SyncError,
@@ -913,6 +913,28 @@ defmodule Portal.Google.Sync do
           directory_id: directory_id,
           step: :validate_user
     end
+  end
+
+  @doc """
+  The users a sync writes: the active ones, and the suspended or archived ones
+  whose actor this directory created, kept so the actor is disabled rather
+  than deleted. Any other inactive user is dropped, and so removed like a
+  deleted one.
+  """
+  def keep_users(directory, users) do
+    users = Enum.map(users, &{&1, user_state(&1, directory.id)})
+
+    inactive_ids =
+      for {%{"id" => id} = user, :inactive} <- users,
+          is_binary(id),
+          is_binary(user["primaryEmail"]),
+          do: id
+
+    owned = DirectorySync.owned_idp_ids(directory.account_id, issuer(), directory.id, inactive_ids)
+
+    for {user, state} <- users,
+        state == :active or (state == :inactive and MapSet.member?(owned, user["id"])),
+        do: user
   end
 
   def map_user_to_identity(user, directory_id) do
@@ -937,7 +959,8 @@ defmodule Portal.Google.Sync do
       given_name: Map.get(user, "name", %{}) |> Map.get("givenName"),
       family_name: Map.get(user, "name", %{}) |> Map.get("familyName"),
       preferred_username: primary_email,
-      picture: Map.get(user, "thumbnailPhotoUrl")
+      picture: Map.get(user, "thumbnailPhotoUrl"),
+      disabled: user["suspended"] == true or user["archived"] == true
     }
   end
 

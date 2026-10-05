@@ -571,6 +571,49 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Disable"
     end
 
+    test "explains that a directory disabled the actor and hands the decision to the admin on enable",
+         %{conn: conn, account: account, actor: actor} do
+      directory = Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account, name: "Acme Entra")
+      identity = directory_identity_fixture(directory: directory, idp_id: "user-1")
+      other_actor = mark_created_by_directory(identity.actor_id, directory)
+
+      other_actor
+      |> Ecto.Changeset.change(is_disabled: true, disabled_by_directory_id: directory.id)
+      |> Portal.Repo.update!()
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ "Disabled by directory sync"
+      assert lv |> element("[data-testid=disabled-by-directory]") |> render() =~ "Acme Entra"
+
+      assert lv |> element("[data-testid=directory-disabled-notice]") |> render() =~
+               "Acme Entra disabled this actor"
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+
+      refute html =~ "directory-disabled-notice"
+      refute html =~ "Disabled by directory sync"
+      assert Portal.Repo.get_by!(Actor, id: other_actor.id).disabled_by_directory_id == nil
+    end
+
+    test "shows no directory notice on an actor an admin disabled",
+         %{conn: conn, account: account, actor: actor} do
+      other_actor = disabled_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ "Enable"
+      refute html =~ "directory-disabled-notice"
+      refute html =~ "disabled-by-directory"
+      refute html =~ "Disabled by directory sync"
+    end
+
     test "does not re-enable actor when users limit is reached", %{
       conn: conn,
       account: account,
