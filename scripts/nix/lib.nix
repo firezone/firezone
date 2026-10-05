@@ -166,18 +166,11 @@ rec {
       }
     );
 
-  # Gateway and headless track the current released versions via sentinel
-  # comments maintained by scripts/bump-versions.sh. The GUI uses the crate
-  # version so a release draft packages the version being built.
+  # Match the crate versions being built, including release drafts. The
+  # current-version markers track the previous release until the version bump.
   versions = {
-    # mark:current-gateway-version
-    gateway = "1.6.2";
-
-    # mark:current-headless-version
-    headless = "1.5.13";
-
-    # The GUI release is built from this crate version; the current-version
-    # sentinel tracks the previous release until the post-release bump.
+    gateway = (lib.importTOML ../../rust/gateway/Cargo.toml).package.version;
+    headless = (lib.importTOML ../../rust/headless-client/Cargo.toml).package.version;
     gui = (lib.importTOML ../../rust/gui-client/src-tauri/Cargo.toml).package.version;
   };
 

@@ -86,7 +86,7 @@ Note that `nix.settings` changes take effect only after a rebuild, so the very f
 
 Design goal: **zero Nix edits per release.**
 
-- The GUI package version comes from its crate’s `Cargo.toml`, matching the release being built. Gateway and headless versions use the current-version markers in `lib.nix`, maintained by `scripts/bump-versions.sh`.
+- Package versions come from their crates’ `Cargo.toml` files, matching the versions being built, including release drafts.
 - Rust dependencies (including git dependencies) come straight from `rust/Cargo.lock` via crane with builtin git fetching: no vendor hash exists, so `cargo update --workspace` on release never requires a Nix change.
   The cost: the first evaluation on a fresh machine fetches the git dependencies at eval time.
 - The Rust toolchain follows `rust/rust-toolchain.toml`.
