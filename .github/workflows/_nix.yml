@@ -150,8 +150,7 @@ jobs:
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "fix(nix): bump gui-client pnpm-deps hash" \
-              --body "rust/gui-client/pnpm-lock.yaml changed; refreshing the fetchPnpmDeps pin so local Nix builds match CI." \
-              --reviewer firezone/engineering
+              --body "rust/gui-client/pnpm-lock.yaml changed; refreshing the fetchPnpmDeps pin so local Nix builds match CI."
           fi
       - name: Azure login (OIDC)
         if: ${{ inputs.push_to_cache }}
