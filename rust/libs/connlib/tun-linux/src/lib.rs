@@ -101,31 +101,23 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
 
-            let mut ready = Vec::new();
-            // `None` when the kernel does not support GSO writes or rejected one at
-            // runtime; packets then pass through 1:1.
-            let mut coalescer = tun_fd.offloads.then(|| {
+            let mut coalescer = if tun_fd.offloads {
                 PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
-            });
+            } else {
+                PacketCoalescer::passthrough()
+            };
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
                     #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::dev::send", ?packet);
 
-                    match &mut coalescer {
-                        Some(coalescer) => coalescer.enqueue(packet),
-                        None => ready.push(CoalescedPacket::from(packet)),
-                    }
-                }
-
-                if let Some(coalescer) = &mut coalescer {
-                    ready.extend(coalescer.drain());
+                    coalescer.enqueue(packet);
                 }
 
                 let gso_failed = write_all(
                     &fd,
-                    &mut ready,
+                    &coalescer.take(),
                     &batch_size_histogram,
                     &dropped_packets_counter,
                 )
@@ -137,7 +129,7 @@ where
                     // the dropped segments are re-sent by the endpoints.
                     tracing::info!("Kernel rejected GSO write; disabling TUN segmentation offload");
 
-                    coalescer = None;
+                    coalescer = PacketCoalescer::passthrough();
                 }
             }
 
@@ -152,7 +144,7 @@ where
 /// Writes out all ready packets; returns `true` if the kernel rejected a GSO write.
 async fn write_all<T>(
     fd: &AsyncFd<T>,
-    ready: &mut Vec<CoalescedPacket>,
+    ready: &[CoalescedPacket],
     batch_size_histogram: &opentelemetry::metrics::Histogram<u64>,
     dropped_packets_counter: &opentelemetry::metrics::Counter<u64>,
 ) -> bool
@@ -161,10 +153,10 @@ where
 {
     let mut gso_failed = false;
 
-    for outgoing in ready.drain(..) {
+    for outgoing in ready {
         let num_segments = outgoing.num_segments();
 
-        match write(fd, &outgoing).await {
+        match write(fd, outgoing).await {
             Ok(_) => {
                 if num_segments > 1 {
                     batch_size_histogram.record(num_segments as u64, &send_metric_attributes());

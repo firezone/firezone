@@ -46,6 +46,8 @@ let
   };
 in
 {
+  pnpm-deps = pkgs.firezone-gui-client-frontend.pnpmDeps;
+
   module-eval = builtins.seq eval.config.system.build.toplevel.drvPath (
     pkgs.runCommand "firezone-module-eval-ok" { } "touch $out"
   );
