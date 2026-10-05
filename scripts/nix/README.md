@@ -93,7 +93,7 @@ Design goal: **zero Nix edits per release.**
   If CI fails with an unknown-toolchain error right after a toolchain bump, run `nix flake update rust-overlay`.
 - The **single maintained hash** is `pnpmDeps.hash` in `scripts/nix/packages/firezone-gui-client/frontend.nix`.
   Refresh it on Linux with `scripts/nix/update-pnpm-hash.sh` whenever `gui-client/pnpm-lock.yaml` changes.
-  Ordinary Nix CI repairs stale pins locally; a read-only job computes the hash on same-repository PRs and a trusted writer commits only the pin using `RELEASE_PR_BOT_GITHUB_TOKEN`.
+  Ordinary Nix CI repairs stale pins locally; a read-only job computes the hash only when same-repository PRs change the GUI package manifest or lockfile and a trusted writer commits only the pin using `RELEASE_PR_BOT_GITHUB_TOKEN`.
   GUI release preparation and release cache publishing run `scripts/nix/update-pnpm-hash.sh --check`, which forces a fresh fetch and fails on a stale committed pin or fetch error.
   Merge the source PR containing the corrected pin and retry the release from that commit; release jobs never repair the checkout. Fork PRs must update the pin manually.
 - Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and the `postinstall` script in `gui-client/package.json`; keep them in sync when those change.

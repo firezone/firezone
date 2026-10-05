@@ -37,18 +37,13 @@ validate_pr() {
 }
 
 read_artifact() {
-    local archive="$1" sha="$2" entries
-    [[ $(wc -c <"$archive") -le 65536 ]] || fail "Artifact archive is too large" || return 1
-    entries=$(unzip -Z -1 "$archive") || return 1
-    [[ "$entries" == "hash.json" ]] || fail "Expected exactly one hash.json artifact file" || return 1
-    # Never extract archive paths. Bound decompression even for a zip bomb.
-    unzip -p "$archive" hash.json | head -c 1025 >"$task_tmp/payload.json" || return 1
-    [[ $(wc -c <"$task_tmp/payload.json") -le 1024 ]] || fail "Artifact payload is too large" || return 1
+    local payload="$1" sha="$2"
+    [[ -f "$payload" && ! -L "$payload" && $(wc -c <"$payload") -le 1024 ]] || fail "Invalid or oversized hash artifact" || return 1
     jq -e --arg sha "$sha" '
         type == "object" and keys == ["hash", "sha"] and .sha == $sha and
         (.hash | type == "string" and test("^sha256-[A-Za-z0-9+/]{43}=$"))
-    ' "$task_tmp/payload.json" >/dev/null || fail "Invalid artifact payload or commit" || return 1
-    jq -r .hash "$task_tmp/payload.json"
+    ' "$payload" >/dev/null || fail "Invalid artifact payload or commit" || return 1
+    jq -r .hash "$payload"
 }
 
 api() {
@@ -70,7 +65,7 @@ cleanup() {
 }
 
 commit_hash() {
-    local run_id sha workflow_id number value current_hash artifact_id parent_tree tree_sha commit_sha branch
+    local run_id sha workflow_id number value current_hash parent_tree tree_sha commit_sha branch
     run_id=$(jq -er '.workflow_run.id | select(type == "number" and . > 0 and . == floor)' "$GITHUB_EVENT_PATH")
     repo_api "actions/runs/$run_id" >"$task_tmp/run.json"
     jq -e --arg repo "$repository" --arg workflow "$PNPM_WORKFLOW" '
@@ -89,13 +84,7 @@ commit_hash() {
     repo_api "pulls/$number" >"$task_tmp/pr.json"
     validate_pr "$task_tmp/pr.json"
     get_text "$sha" "$task_tmp/original.nix"
-    artifact_id=$(repo_api "actions/runs/$run_id/artifacts?per_page=100" --jq '
-        [.artifacts[] | select(.name == "pr-pnpm-hash" and .expired == false)] |
-        select(length == 1 and .[0].size_in_bytes <= 65536) | .[0].id
-    ')
-    [[ "$artifact_id" =~ ^[0-9]+$ ]] || fail "Expected one bounded hash artifact"
-    repo_api "actions/artifacts/$artifact_id/zip" >"$task_tmp/artifact.zip"
-    value=$(read_artifact "$task_tmp/artifact.zip" "$sha")
+    value=$(read_artifact "$1" "$sha")
     current_hash=$(read_pin "$task_tmp/original.nix")
     if [[ "$value" == "$current_hash" ]]; then
         echo "Hash already correct; no commit needed"
@@ -141,9 +130,9 @@ main() {
     commit)
         repository="$GITHUB_REPOSITORY"
         [[ "$repository" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
-        commit_hash
+        commit_hash "$2"
         ;;
-    *) fail "Usage: $0 compute OUTPUT | commit" ;;
+    *) fail "Usage: $0 compute OUTPUT | commit HASH_JSON" ;;
     esac
 }
 

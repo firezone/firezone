@@ -103,8 +103,6 @@ MOCK
 
 make_artifact() {
     jq -n --arg hash "$1" --arg sha "$2" '{hash:$hash,sha:$sha}' >"$MOCK_DIR/hash.json"
-    rm -f "$MOCK_DIR/artifact.zip"
-    (cd "$MOCK_DIR" && zip -q artifact.zip hash.json)
 }
 
 edit_json() {
@@ -134,32 +132,29 @@ edit_json() {
 }
 
 @test "artifact rejects a stale commit, extra fields and hash injection" {
-    run read_artifact "$MOCK_DIR/artifact.zip" "$SHA"
+    run read_artifact "$MOCK_DIR/hash.json" "$SHA"
     [ "$status" -eq 0 ]
     [ "$output" = "$NEW_HASH" ]
     for change in '.sha="stale"' '.branch="main"' '.hash += "\nrun evil"' '.hash=1'; do
         make_artifact "$NEW_HASH" "$SHA"
         edit_json "$MOCK_DIR/hash.json" "$change"
-        (cd "$MOCK_DIR" && zip -q artifact.zip hash.json)
-        run read_artifact "$MOCK_DIR/artifact.zip" "$SHA"
+        run read_artifact "$MOCK_DIR/hash.json" "$SHA"
         [ "$status" -eq 1 ]
     done
 }
 
-@test "artifact rejects unexpected paths, duplicate entries and oversized payloads" {
-    printf extra >"$MOCK_DIR/extra.json"
-    (cd "$MOCK_DIR" && zip -q artifact.zip extra.json)
-    run read_artifact "$MOCK_DIR/artifact.zip" "$SHA"
+@test "artifact rejects oversized payloads and symlinks" {
+    head -c 2048 /dev/zero >"$MOCK_DIR/hash.json"
+    run read_artifact "$MOCK_DIR/hash.json" "$SHA"
     [ "$status" -eq 1 ]
     make_artifact "$NEW_HASH" "$SHA"
-    head -c 2048 /dev/zero >"$MOCK_DIR/hash.json"
-    (cd "$MOCK_DIR" && zip -q artifact.zip hash.json)
-    run read_artifact "$MOCK_DIR/artifact.zip" "$SHA"
+    ln -s "$MOCK_DIR/hash.json" "$MOCK_DIR/link.json"
+    run read_artifact "$MOCK_DIR/link.json" "$SHA"
     [ "$status" -eq 1 ]
 }
 
 @test "writer commits only the hash, uses the existing bot token, and never force pushes" {
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -eq 0 ]
     jq -e --arg path "$PNPM_FRONTEND" --arg hash "$NEW_HASH" \
         '.tree | length == 1 and .[0].path == $path and .[0].content == ("hash = \"" + $hash + "\";\n")' "$MOCK_DIR/tree.json"
@@ -172,14 +167,14 @@ edit_json() {
     edit_json "$MOCK_DIR/pr.json" '.user.login="developer" | .head.ref="feature/frontend"'
     edit_json "$MOCK_DIR/run.json" '.head_branch="feature/frontend"'
     printf 'other = true;\n' >>"$MOCK_DIR/frontend.nix"
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -eq 0 ]
     jq -e --arg hash "$NEW_HASH" '.tree[0].content == ("hash = \"" + $hash + "\";\nother = true;\n")' "$MOCK_DIR/tree.json"
 }
 
 @test "writer rejects a different source workflow before obtaining write credentials" {
     edit_json "$MOCK_DIR/run.json" '.path=".github/workflows/evil.yml"'
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -ne 0 ]
     run grep -q 'write-token' "$MOCK_DIR/calls"
     [ "$status" -eq 1 ]
@@ -187,7 +182,7 @@ edit_json() {
 
 @test "correct hash does not use write credentials" {
     make_artifact "$HASH" "$SHA"
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Hash already correct"* ]]
     run grep -q 'write-token' "$MOCK_DIR/calls"
@@ -196,7 +191,7 @@ edit_json() {
 
 @test "PR changed after validation is not written" {
     export LATEST_SHA=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -ne 0 ]
     run grep -q 'git/trees' "$MOCK_DIR/calls"
     [ "$status" -eq 1 ]
@@ -206,7 +201,7 @@ edit_json() {
 
 @test "rejected fast-forward update is not retried with force" {
     export REF_FAILURE=true
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -ne 0 ]
     jq -e '.force == false' "$MOCK_DIR/ref.json"
     run grep -q 'installation/token' "$MOCK_DIR/calls"
@@ -228,7 +223,7 @@ edit_json() {
 
 @test "writer rejects invalid artifact data before obtaining write credentials" {
     make_artifact "$NEW_HASH" stale
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -ne 0 ]
     run grep -q 'write-token' "$MOCK_DIR/calls"
     [ "$status" -eq 1 ]
@@ -237,7 +232,7 @@ edit_json() {
 @test "writer never updates the default branch even if the run names it" {
     edit_json "$MOCK_DIR/pr.json" '.head.ref="main"'
     edit_json "$MOCK_DIR/run.json" '.head_branch="main"'
-    run bash "$SCRIPT" commit
+    run bash "$SCRIPT" commit "$MOCK_DIR/hash.json"
     [ "$status" -ne 0 ]
     run grep -q 'write-token' "$MOCK_DIR/calls"
     [ "$status" -eq 1 ]

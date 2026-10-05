@@ -2,6 +2,9 @@ name: Compute PR pnpm hash
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - rust/gui-client/package.json
+      - rust/gui-client/pnpm-lock.yaml
 
 permissions:
   contents: read
