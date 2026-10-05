@@ -33,6 +33,7 @@ defmodule PortalWeb.UserpassController do
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
+      conn = PortalWeb.Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
       error -> handle_error(conn, error, params)

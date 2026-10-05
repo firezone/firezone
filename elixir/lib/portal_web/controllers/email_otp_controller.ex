@@ -95,7 +95,11 @@ defmodule PortalWeb.EmailOTPController do
 
   defp handle_verify_result(conn, {:ok, result}, params) do
     context_type = context_type(params)
-    conn = PortalWeb.Cookie.EmailOTP.delete(conn)
+    conn =
+      conn
+      |> PortalWeb.Cookie.EmailOTP.delete()
+      |> PortalWeb.Cookie.LastUsedProvider.put(params["auth_provider_id"])
+
     :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
     signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end

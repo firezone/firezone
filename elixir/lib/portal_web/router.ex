@@ -167,6 +167,7 @@ defmodule PortalWeb.Router do
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
 
     live_session :redirect_if_user_is_authenticated,
+      session: {PortalWeb.Cookie.LastUsedProvider, :fetch_state, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
