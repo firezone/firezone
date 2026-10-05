@@ -39,7 +39,7 @@ pub struct ReferenceState {
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
     /// Relays that answer new allocations with `508 Insufficient Capacity`.
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
-    /// Relays that accept allocations again, and since when, for up to [`RELAY_RECOVERY`].
+    /// Relays that accept allocations again while nodes may still ignore them, and since when.
     pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
     /// Whether a node may have no relay left because every relay it tried rejected its allocation.
     pub(crate) node_may_lack_relays: bool,
@@ -121,11 +121,6 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
-        for _ in self
-            .recovering_relays
-            .extract_if(.., |_, freed_at| now >= *freed_at + RELAY_RECOVERY)
-        {}
-
         match transition {
             Transition::AddResource(resource) => {
                 for client in self.clients.values_mut() {
@@ -443,7 +438,11 @@ impl ReferenceState {
                 self.exhausted_relays.remove(relay);
                 self.recovering_relays.insert(*relay, now);
             }
-            Transition::Idle { .. } => {}
+            Transition::Idle { duration } => {
+                for _ in self.recovering_relays.extract_if(.., |_, freed_at| {
+                    now + *duration >= *freed_at + RELAY_RECOVERY
+                }) {}
+            }
             Transition::PartitionRelaysFromPortal => {
                 self.node_may_lack_relays = !self.has_healthy_relay();
 
