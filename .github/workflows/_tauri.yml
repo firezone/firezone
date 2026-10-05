@@ -19,7 +19,21 @@ permissions:
   security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
+  check-nix-pnpm:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        with:
+          determinate: false
+          diagnostic-endpoint: ""
+      - name: Verify pnpm dependency hash
+        working-directory: .
+        run: ./scripts/nix/update-pnpm-hash.sh --check
+
   update-release-draft:
+    needs: check-nix-pnpm
     permissions:
       contents: write # for updating the release draft
       id-token: write # OIDC auth
@@ -29,7 +43,7 @@ jobs:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.19
     steps:
-      - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
+      - uses: release-drafter/release-drafter@c345907820e0396f6f44bcfd9ac4763325f8feb0 # v7.8.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:

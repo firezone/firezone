@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/check-release-review-lock
         with:
           release-name: ${{ env.RELEASE_NAME }}
-      - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
+      - uses: release-drafter/release-drafter@c345907820e0396f6f44bcfd9ac4763325f8feb0 # v7.8.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:

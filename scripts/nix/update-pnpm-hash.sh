@@ -6,10 +6,16 @@
 # whenever rust/gui-client/pnpm-lock.yaml does (e.g. every dependabot bump).
 # This script pins a deliberately-wrong hash to force the FOD to rebuild,
 # reads the correct value out of Nix's mismatch error, and rewrites the pin in
-# place. It exits 0 whether or not a change was needed; run `git diff`
-# afterwards to see if the pin moved. CD runs it on a failed Nix build to open
-# a corrective PR; you can also run it locally on a Linux host with Nix.
+# place. With --check, it restores the file and fails if the pin is stale.
+# Run on a Linux host with Nix. Only the dependency fetch is built.
 set -euo pipefail
+
+check=false
+case "${1:-}" in
+  --check) check=true ;;
+  "") ;;
+  *) echo "Usage: $0 [--check]" >&2; exit 1 ;;
+esac
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
@@ -26,29 +32,45 @@ if [ -z "$current_hash" ]; then
   exit 1
 fi
 
-sed -i "s|$current_hash|$fake_hash|" "$frontend_nix"
+# Restore on every failure (including interrupted builds), and always in check
+# mode. Preserve the exact original file, not just the hash.
+original=$(mktemp)
+cp "$frontend_nix" "$original"
+restore=true
+cleanup() {
+  if "$restore"; then
+    cp "$original" "$frontend_nix"
+  fi
+  rm -f "$original"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-# With the sentinel pinned the FOD fails fast on its hash check, long before
-# any Rust compilation, so this build is cheap.
-build_log=$(nix build .#firezone-gui-client --no-link --print-build-logs 2>&1 || true)
+sed "s|$current_hash|$fake_hash|" "$original" > "$frontend_nix"
 
+# Bypass substitution of the pinned output and fetch just the pnpm store.
+# The fake hash must produce a mismatch; any other failure is an error.
+system=$(nix eval --impure --raw --expr builtins.currentSystem)
+build_log=$(nix build ".#checks.${system}.pnpm-deps" --no-link --print-build-logs 2>&1 || true)
 new_hash=$(printf '%s\n' "$build_log" \
-  | grep -oE 'got:[[:space:]]+sha256-[A-Za-z0-9+/=]+' \
-  | grep -oE 'sha256-[A-Za-z0-9+/=]+' \
+  | sed -nE 's/^[[:space:]]*got:[[:space:]]+(sha256-[A-Za-z0-9+/=]+)[[:space:]]*$/\1/p' \
   | tail -n1)
 
 if [ -z "$new_hash" ]; then
-  # No mismatch was reported: restore the original pin and assume it was
-  # correct (the build failed for some other reason, if it failed at all).
-  sed -i "s|$fake_hash|$current_hash|" "$frontend_nix"
-  echo "pnpm-deps hash already correct ($current_hash)"
-  exit 0
+  printf '%s\n' "$build_log" >&2
+  echo "Could not determine the pnpm-deps hash; validation failed." >&2
+  exit 1
 fi
 
-sed -i "s|$fake_hash|$new_hash|" "$frontend_nix"
-
 if [ "$new_hash" = "$current_hash" ]; then
-  echo "pnpm-deps hash unchanged ($current_hash)"
+  echo "pnpm-deps hash correct ($current_hash)"
+elif "$check"; then
+  echo "pnpm-deps hash is stale: $current_hash -> $new_hash" >&2
+  echo "Run scripts/nix/update-pnpm-hash.sh on Linux and commit the updated pin before releasing." >&2
+  exit 1
 else
+  sed "s|$current_hash|$new_hash|" "$original" > "$frontend_nix"
+  restore=false
   echo "pnpm-deps hash updated: $current_hash -> $new_hash"
 fi

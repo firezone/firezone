@@ -10,6 +10,7 @@ bufferpool = { workspace = true }
 ip-packet = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
+tun = { workspace = true }
 
 [dev-dependencies]
 ingot = { workspace = true }
