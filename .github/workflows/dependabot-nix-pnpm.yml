@@ -35,7 +35,7 @@ jobs:
         run: |
           ./scripts/nix/update-pnpm-hash.sh
           mkdir -p "$RUNNER_TEMP/pnpm-hash"
-          python3 scripts/nix/dependabot-pnpm-hash.py compute "$RUNNER_TEMP/pnpm-hash/hash.json"
+          bash scripts/nix/dependabot-pnpm-hash.sh compute "$RUNNER_TEMP/pnpm-hash/hash.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dependabot-pnpm-hash
