@@ -132,8 +132,8 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           <:col :let={row} label="Method" class="w-24">
             <.method_badge method={row.log.method} />
           </:col>
-          <:col :let={row} label="Path">
-            <span class="font-mono text-xs text-heading break-all">
+          <:col :let={row} label="Path" class="w-72">
+            <span class="block truncate font-mono text-xs text-heading" title={row.log.path}>
               {row.log.path}
             </span>
           </:col>
