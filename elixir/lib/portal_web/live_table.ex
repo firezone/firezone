@@ -329,7 +329,7 @@ defmodule PortalWeb.LiveTable do
     <div
       id={"#{@live_table_id}-#{@filter.name}-range"}
       phx-hook="DatetimeRangeFilter"
-      class="inline-flex flex-wrap items-center gap-2"
+      class="contents"
     >
       <div class="inline-flex h-8 items-center rounded border border-input-border bg-raised p-0.5 shrink-0">
         <label

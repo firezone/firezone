@@ -137,6 +137,29 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(input, "value") == ["tcp/443"]
     end
 
+    test "lets the time range controls wrap one by one in the filter row", %{assigns: assigns} do
+      assigns = %{
+        assigns
+        | filters: [
+            %Portal.Repo.Filter{
+              name: :timestamp,
+              title: "Timestamp",
+              type: {:range, :datetime}
+            }
+          ],
+          filter: filter_to_form(%{}, "table-id")
+      }
+
+      document = render_component(&live_table/1, assigns) |> Floki.parse_fragment!()
+      range = Floki.find(document, "form#table-id-filters #table-id-timestamp-range")
+
+      # `contents` removes the wrapper box, so the toggle and each bound are
+      # direct items of the filter row and wrap on their own.
+      assert Floki.attribute(range, "class") == ["contents"]
+      assert Floki.find(range, "input[type=radio]") != []
+      assert length(Floki.find(range, "input[type=datetime-local]")) == 2
+    end
+
     test "shows a running query status while loading", %{assigns: assigns} do
       html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
       document = Floki.parse_fragment!(html)
