@@ -23,6 +23,10 @@ defmodule PortalWeb.LiveTable do
     default: false,
     doc: "true while an async loader is running the table query"
 
+  attr :filtered_empty_hint, :string,
+    default: "Try adjusting your search or filters.",
+    doc: "the hint shown when filters are active and no rows match"
+
   attr :query_error, :atom,
     default: nil,
     doc: "set to :query_timeout when the table query was cancelled for taking too long"
@@ -149,7 +153,7 @@ defmodule PortalWeb.LiveTable do
             <div class="text-center">
               <p class="text-sm font-medium text-heading">No results found</p>
               <p class="text-xs text-subtle mt-0.5">
-                Try adjusting your search or filters.
+                {@filtered_empty_hint}
               </p>
             </div>
             <Form.button
@@ -170,11 +174,12 @@ defmodule PortalWeb.LiveTable do
     """
   end
 
+  # A filter that only holds its default value is not an active filter.
   defp has_filter?(filter, filters) do
     keys =
-      Enum.map(filters, fn filter ->
-        to_string(filter.name)
-      end)
+      filters
+      |> Enum.map(&to_string(&1.name))
+      |> Enum.reject(&Map.get(filter.params, "#{&1}_default", false))
 
     Map.take(filter.params, keys) != %{}
   end
@@ -842,12 +847,18 @@ defmodule PortalWeb.LiveTable do
       assigned to the socket when the task finishes. The assigns the table reads
       must be initialised in `mount/3`. `{:error, :query_timeout}` renders the
       "too many results" state.
+
+  `:default_filters` is a keyword list of `filter name => fn current -> effective end`.
+  `current` is the filter value from the URL, or nil when the URL does not set
+  it. The effective value shows in the filter form and is used for the query.
+  A filter that is absent from the URL does not count as an active filter.
   """
   def assign_live_table(socket, id, opts) do
     query_module = Keyword.fetch!(opts, :query_module)
     sortable_fields = Keyword.fetch!(opts, :sortable_fields)
     callback = Keyword.get(opts, :callback)
     loader = Keyword.get(opts, :loader)
+    default_filters = Keyword.get(opts, :default_filters, [])
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
     limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
@@ -860,6 +871,8 @@ defmodule PortalWeb.LiveTable do
     |> assign(
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
       loader_by_table_id: put_table_state(socket, id, :loader_by_table_id, loader),
+      default_filters_by_table_id:
+        put_table_state(socket, id, :default_filters_by_table_id, default_filters),
       loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false),
       query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil),
       query_module_by_table_id:
@@ -1000,7 +1013,10 @@ defmodule PortalWeb.LiveTable do
 
     raw_filter_params = Map.get(params, "#{id}_filter", %{})
 
+    default_filters = Map.get(socket.assigns[:default_filters_by_table_id] || %{}, id, [])
+
     with {:ok, filter} <- params_to_filter(id, params, filter_types),
+         {filter, defaulted} = apply_default_filters(filter, default_filters),
          filter = enforced_filters ++ filter,
          {:ok, page} <- params_to_page(id, limit, params),
          {:ok, order_by} <- params_to_order_by(sortable_fields, id, params) do
@@ -1019,7 +1035,7 @@ defmodule PortalWeb.LiveTable do
                 socket,
                 id,
                 :filter_form_by_table_id,
-                filter_to_form(filter, raw_filter_params, id)
+                filter_to_form(filter, raw_filter_params, id, defaulted)
               ),
             order_by_table_id:
               put_table_state(
@@ -1363,16 +1379,38 @@ defmodule PortalWeb.LiveTable do
   def filter_to_form(filter, as), do: filter_to_form(filter, %{}, as)
 
   @doc false
-  def filter_to_form(filter, raw_filter_params, as) do
+  def filter_to_form(filter, raw_filter_params, as), do: filter_to_form(filter, raw_filter_params, as, [])
+
+  @doc false
+  def filter_to_form(filter, raw_filter_params, as, defaulted) do
     # Note: we don't support nesting, :and or :where on the UI yet
     base =
       for {key, value} <- filter, into: %{} do
         {Atom.to_string(key), value}
       end
 
+    defaulted_marks = Map.new(defaulted, &{"#{&1}_default", true})
+
     base
+    |> Map.merge(defaulted_marks)
     |> add_filter_form_extras(raw_filter_params)
     |> to_form(as: as)
+  end
+
+  # Each default is a function from the filter value in the URL (nil when
+  # absent) to the effective value. A filter missing from the URL is only
+  # defaulted, so it does not count as an active filter.
+  defp apply_default_filters(filter, default_filters) do
+    Enum.reduce(default_filters, {filter, []}, fn {key, fun}, {filter, defaulted} ->
+      current = Keyword.get(filter, key)
+      filter = Keyword.put(filter, key, fun.(current))
+
+      if is_nil(current) do
+        {filter, [key | defaulted]}
+      else
+        {filter, defaulted}
+      end
+    end)
   end
 
   # Some sub-fields (e.g. the UTC/Local mode on a datetime range filter)

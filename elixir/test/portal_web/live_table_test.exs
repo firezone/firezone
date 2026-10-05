@@ -160,6 +160,50 @@ defmodule PortalWeb.LiveTableTest do
       assert length(Floki.find(range, "input[type=datetime-local]")) == 2
     end
 
+    test "uses the filtered empty hint when filters are active and nothing matches", %{
+      assigns: assigns
+    } do
+      assigns =
+        Map.merge(assigns, %{
+          rows: [],
+          filters: [
+            %Portal.Repo.Filter{name: :search, title: "Query", type: {:string, :websearch}}
+          ],
+          filter: filter_to_form(%{search: "foo"}, "table-id"),
+          filtered_empty_hint: "Try broadening the time window."
+        })
+
+      text =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+        |> Floki.find("#table-id-empty")
+        |> Floki.text()
+
+      assert text =~ "No results found"
+      assert text =~ "Try broadening the time window."
+    end
+
+    test "a filter that only holds its default is not an active filter", %{assigns: assigns} do
+      filters = [%Portal.Repo.Filter{name: :search, title: "Query", type: {:string, :websearch}}]
+
+      defaulted =
+        render_component(
+          &live_table/1,
+          Map.merge(assigns, %{
+            rows: [],
+            filters: filters,
+            filter: filter_to_form(%{search: "foo"}, %{}, "table-id", [:search])
+          })
+        )
+        |> Floki.parse_fragment!()
+
+      assert Floki.find(defaulted, "button[title='Clear all filters']") == []
+
+      # The table's own empty state shows, not the "No results found" one.
+      assert [_] = Floki.find(defaulted, "#table-id-empty")
+      refute defaulted |> Floki.find("#table-id-empty") |> Floki.text() =~ "No results found"
+    end
+
     test "shows a running query status while loading", %{assigns: assigns} do
       html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
       document = Floki.parse_fragment!(html)

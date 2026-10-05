@@ -61,6 +61,47 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ old.log_id
     end
 
+    test "fills the time range inputs with the effective 24 hour window", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      from = canonical_bound(lv, "from")
+      to = canonical_bound(lv, "to")
+
+      assert NaiveDateTime.diff(to, from) == 86_400
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), to)) < 60
+
+      # The default window is not an active filter.
+      refute has_element?(lv, "button[title='Clear all filters']")
+    end
+
+    test "fills the missing time range bound from the one in the URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][to]=2026-07-30T10:00:00")
+
+      assert canonical_bound(lv, "to") == ~N[2026-07-30 10:00:00]
+      assert canonical_bound(lv, "from") == ~N[2026-07-29 10:00:00]
+      assert has_element?(lv, "button[title='Clear all filters']")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][from]=2026-07-30T10:00:00")
+
+      assert canonical_bound(lv, "from") == ~N[2026-07-30 10:00:00]
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), canonical_bound(lv, "to"))) < 60
+    end
+
     test "lists each reporting side separately", %{conn: conn, account: account, actor: actor} do
       identity = %{
         account: account,
@@ -889,5 +930,16 @@ defmodule PortalWeb.Logs.FlowLogsTest do
     })
 
     render_async(lv)
+  end
+
+  defp canonical_bound(lv, bound) do
+    [value] =
+      lv
+      |> element("input[type='hidden'][data-canonical='#{bound}']")
+      |> render()
+      |> Floki.parse_fragment!()
+      |> Floki.attribute("value")
+
+    NaiveDateTime.from_iso8601!(value)
   end
 end

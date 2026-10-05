@@ -12,6 +12,7 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   def mount(_params, _session, socket) do
     browser_tz = LogComponents.browser_tz_from_connect(socket)
+    now = DateTime.utc_now()
 
     socket =
       socket
@@ -21,6 +22,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
+        default_filters: [timestamp: &default_window(&1, now)],
         sortable_fields: [
           {:flow_logs, :flow_start},
           {:flow_logs, :total_bytes},
@@ -99,7 +101,6 @@ defmodule PortalWeb.Logs.FlowLogs do
     list_opts =
       list_opts
       |> Keyword.update(:filter, [show_incomplete: false], &default_show_incomplete/1)
-      |> Keyword.update!(:filter, &default_window/1)
 
     with {:ok, logs, metadata} <- Database.list_flow_logs(subject, list_opts) do
       {:ok, %{flow_logs: logs, flow_logs_metadata: metadata}}
@@ -107,20 +108,20 @@ defmodule PortalWeb.Logs.FlowLogs do
   end
 
   # Without a lower bound on the partition key PostgreSQL scans every daily
-  # partition of the account, which times out on large accounts.
-  defp default_window(filter) do
-    case Keyword.get(filter, :timestamp) do
-      %Range{from: %DateTime{}} ->
-        filter
-
-      %Range{to: %DateTime{} = to} = range ->
-        Keyword.put(filter, :timestamp, %{range | from: DateTime.add(to, -@default_window_seconds)})
-
-      _none ->
-        from = DateTime.add(DateTime.utc_now(), -@default_window_seconds)
-        Keyword.put(filter, :timestamp, %Range{from: from})
-    end
+  # partition of the account, which times out on large accounts. The window
+  # is fixed when the page opens so the query does not change under the user.
+  defp default_window(nil, now) do
+    now = DateTime.truncate(now, :second)
+    %Range{from: DateTime.add(now, -@default_window_seconds), to: now}
   end
+
+  defp default_window(%Range{from: nil, to: %DateTime{} = to} = range, _now),
+    do: %{range | from: DateTime.add(to, -@default_window_seconds)}
+
+  defp default_window(%Range{to: nil} = range, now),
+    do: %{range | to: DateTime.truncate(now, :second)}
+
+  defp default_window(range, _now), do: range
 
   defp default_show_incomplete(filter) do
     if Keyword.has_key?(filter, :show_incomplete),
@@ -137,6 +138,7 @@ defmodule PortalWeb.Logs.FlowLogs do
         <LiveTable.live_table
           id="flow_logs"
           rows={@flow_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
           loading={@loading_by_table_id["flow_logs"]}
           query_error={@query_error_by_table_id["flow_logs"]}
           row_id={&"flow-log-#{&1.log.log_id}"}
