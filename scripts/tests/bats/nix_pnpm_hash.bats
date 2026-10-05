@@ -42,7 +42,7 @@ MOCK
   run bash check.sh --check
   [ "$status" -eq 1 ]
   [[ "$output" == *"hash is stale"* ]]
-  [[ "$output" == *"Merge the pnpm hash bump PR"* ]]
+  [[ "$output" == *"Merge the source PR"* ]]
   [[ "$output" == *"retry the release from the corrected commit"* ]]
   cmp "$FRONTEND" original
 }

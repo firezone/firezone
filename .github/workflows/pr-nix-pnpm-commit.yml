@@ -1,0 +1,34 @@
+name: Commit PR pnpm hash
+on:
+  workflow_run:
+    workflows: [Compute PR pnpm hash]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-pnpm-commit-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  commit:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # Execute only trusted workflow code; read PR contents through the API.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Validate and commit hash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIX_HASH_BOT_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+        run: bash scripts/nix/pr-pnpm-hash.sh commit

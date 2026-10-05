@@ -67,9 +67,8 @@ if [ "$new_hash" = "$current_hash" ]; then
   echo "pnpm-deps hash correct ($current_hash)"
 elif "$check"; then
   echo "pnpm-deps hash is stale: $current_hash -> $new_hash" >&2
-  echo "Merge the pnpm hash bump PR (chore/nix-pnpm-hash), then retry the release from the corrected commit." >&2
-  echo "Open PR: https://github.com/${GITHUB_REPOSITORY:-firezone/firezone}/pulls?q=is%3Apr+is%3Aopen+head%3Achore%2Fnix-pnpm-hash" >&2
-  echo "If no PR exists, run scripts/nix/update-pnpm-hash.sh on Linux and commit the updated pin." >&2
+  echo "Merge the source PR containing the Firezone bot's hash update, then retry the release from the corrected commit." >&2
+  echo "If the bot cannot update this PR, run scripts/nix/update-pnpm-hash.sh on Linux and commit the updated pin." >&2
   exit 1
 else
   sed "s|$current_hash|$new_hash|" "$original" > "$frontend_nix"
