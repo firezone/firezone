@@ -94,6 +94,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        pending_verification: nil,
        verifying: false,
        open_provider_actions_id: nil,
+       pending_confirm: nil,
        coming_soon_providers: @coming_soon_providers,
        feedback_enabled?: PostureProviderInterestEmail.enabled?(),
        feedback_max_length: @feedback_max_length,
@@ -464,23 +465,24 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
-  def handle_event("delete", %{"id" => id}, %{assigns: %{type: type}} = socket)
-      when type in @types do
-    provider = Database.get_provider!(type, id, socket.assigns.subject)
+  def handle_event("request_confirm", %{"id" => id, "action" => action}, socket)
+      when action in ["delete"] do
+    {:noreply,
+     assign(socket, pending_confirm: %{id: id, action: action}, open_provider_actions_id: nil)}
+  end
 
-    case Database.delete_provider(provider, socket.assigns.subject) do
-      {:ok, _provider} ->
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:success, "Posture provider deleted.")
-         |> push_patch(to: index_path(socket))}
+  def handle_event("cancel_confirm", _params, socket) do
+    {:noreply, assign(socket, pending_confirm: nil)}
+  end
 
-      {:error, :feature_disabled} ->
-        {:noreply, put_flash(socket, :error, @feature_disabled)}
+  def handle_event("delete", %{"id" => id}, socket) do
+    socket = assign(socket, pending_confirm: nil)
+    provider = Enum.find(socket.assigns.providers, &(&1.id == id))
 
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Could not delete the provider.")}
+    if provider do
+      delete_provider(provider, socket)
+    else
+      {:noreply, put_flash(socket, :error, "Could not delete the provider.")}
     end
   end
 
@@ -740,6 +742,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                     account={@account}
                     provider={provider}
                     open_actions_id={@open_provider_actions_id}
+                    pending_confirm={@pending_confirm}
                   />
                 </tbody>
               </table>
@@ -974,29 +977,19 @@ defmodule PortalWeb.Settings.DevicePosture do
             />
           </div>
 
-          <div class="shrink-0 flex items-center justify-between gap-2 px-5 py-4 border-t border-border">
-            <Form.button
-              :if={@live_action == :edit}
-              type="button"
-              style="danger"
-              phx-click="delete"
-              phx-value-id={@provider.id}
-              data-confirm="Delete this provider and all devices synced from it?"
+          <Form.panel_footer>
+            <Form.panel_footer_button type="button" phx-click="close_panel">
+              Cancel
+            </Form.panel_footer_button>
+            <Form.panel_footer_button
+              form="device-posture-form"
+              type="submit"
+              style="primary"
+              disabled={not @form.source.valid?}
             >
-              Delete
-            </Form.button>
-            <div class="ml-auto flex items-center gap-2">
-              <Form.button type="button" phx-click="close_panel">Cancel</Form.button>
-              <Form.button
-                form="device-posture-form"
-                type="submit"
-                style="primary"
-                disabled={not @form.source.valid?}
-              >
-                {if @live_action == :new, do: "Create", else: "Save"}
-              </Form.button>
-            </div>
-          </div>
+              {if @live_action == :new, do: "Create", else: "Save"}
+            </Form.panel_footer_button>
+          </Form.panel_footer>
         </div>
       </div>
     </div>
@@ -1118,39 +1111,70 @@ defmodule PortalWeb.Settings.DevicePosture do
   attr :provider, :map, required: true
   attr :account, :map, required: true
   attr :open_actions_id, :string, default: nil
+  attr :pending_confirm, :map, default: nil
 
   defp provider_row(assigns) do
+    assigns =
+      assign(assigns,
+        is_pending_delete: assigns.pending_confirm == %{id: assigns.provider.id, action: "delete"}
+      )
+
     ~H"""
-    <tr class="border-b border-border hover:bg-raised">
+    <tr class={[
+      "border-b transition-colors",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      !@is_pending_delete && "border-border hover:bg-raised"
+    ]}>
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
           <Core.provider_icon provider={@provider.type} size="lg" />
           <div class="min-w-0">
-            <span class="text-sm font-medium text-heading truncate block" title={@provider.name}>
+            <span
+              class={[
+                "text-sm font-medium truncate block",
+                (@is_pending_delete && "text-danger") || "text-heading"
+              ]}
+              title={@provider.name}
+            >
               {@provider.name}
             </span>
             <span class="text-xs text-subtle">{provider_title(@provider.type)}</span>
           </div>
         </div>
       </td>
-      <td class="px-6 py-3 w-28">
+      <td :if={@is_pending_delete} colspan="5" class="px-6 py-3">
+        <div class="flex items-center gap-4">
+          <span class="text-xs text-danger">
+            Delete this provider and all devices synced from it? This cannot be undone.
+          </span>
+          <div class="flex items-center gap-2 ml-auto shrink-0">
+            <Form.button phx-click="cancel_confirm" size="xs">
+              Cancel
+            </Form.button>
+            <Form.button phx-click="delete" phx-value-id={@provider.id} size="xs" style="danger">
+              Delete
+            </Form.button>
+          </div>
+        </div>
+      </td>
+      <td :if={not @is_pending_delete} class="px-6 py-3 w-28">
         <.provider_status provider={@provider} />
       </td>
-      <td class="px-6 py-3 w-48">
+      <td :if={not @is_pending_delete} class="px-6 py-3 w-48">
         <span class="text-sm text-body font-mono truncate block">
           {@provider.identifier || "—"}
         </span>
       </td>
-      <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
+      <td :if={not @is_pending_delete} class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
         {@provider.devices_count}
       </td>
-      <td class="px-6 py-3 w-40">
+      <td :if={not @is_pending_delete} class="px-6 py-3 w-40">
         <span :if={@provider.synced_at} class="text-xs text-body">
           <Core.relative_datetime datetime={@provider.synced_at} />
         </span>
         <span :if={is_nil(@provider.synced_at)} class="text-xs text-subtle">Never</span>
       </td>
-      <td class="px-6 py-3 w-14">
+      <td :if={not @is_pending_delete} class="px-6 py-3 w-14">
         <div class="flex justify-end">
           <Core.actions_dropdown
             open={@open_actions_id == @provider.id}
@@ -1196,6 +1220,15 @@ defmodule PortalWeb.Settings.DevicePosture do
                 class="w-3.5 h-3.5 shrink-0"
               />
               {if @provider.is_disabled, do: "Enable", else: "Disable"}
+            </button>
+            <button
+              type="button"
+              phx-click="request_confirm"
+              phx-value-id={@provider.id}
+              phx-value-action="delete"
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
+            >
+              <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
             </button>
           </Core.actions_dropdown>
         </div>
@@ -1898,6 +1931,23 @@ defmodule PortalWeb.Settings.DevicePosture do
       })
     else
       changeset
+    end
+  end
+
+  defp delete_provider(provider, socket) do
+    case Database.delete_provider(provider, socket.assigns.subject) do
+      {:ok, _provider} ->
+        {:noreply,
+         socket
+         |> init()
+         |> put_flash(:success, "Posture provider deleted.")
+         |> push_patch(to: index_path(socket))}
+
+      {:error, :feature_disabled} ->
+        {:noreply, put_flash(socket, :error, @feature_disabled)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not delete the provider.")}
     end
   end
 
