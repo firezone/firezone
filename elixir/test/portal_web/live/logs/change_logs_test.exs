@@ -432,7 +432,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         conn
         |> authorize_conn(actor)
         |> Phoenix.LiveViewTest.put_connect_params(%{"timezone" => "Asia/Tokyo"})
-        |> live(~p"/#{account}/logs/change_logs")
+        |> live(~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][preset]=7d")
 
       initial = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert initial =~ "12:00 PM"
@@ -539,7 +539,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
 
       # Format: "{assoc}:{dir}:{field}" per LiveTable.parse_order_by.
       for column <- ["timestamp", "log_id"], dir <- ["desc", "asc"] do
-        path = "#{base}?change_logs_order_by=change_logs:#{dir}:#{column}"
+        path =
+          "#{base}?change_logs_order_by=change_logs:#{dir}:#{column}&change_logs_filter[timestamp][preset]=7d"
 
         {:ok, _lv, html} = live(conn, path)
 
@@ -592,7 +593,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       assert html =~ new_cl.log_id
       refute html =~ old_cl.log_id
 
-      # to-bound only: includes oldest + middle, excludes newest
+      # to-bound only: the range starts a day before it, so it includes
+      # middle and excludes oldest and newest
       to = "#{DateTime.to_date(newest)}T00:00:00"
 
       {:ok, _lv, html} =
@@ -601,7 +603,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][to]=#{to}&change_logs_filter[timestamp][mode]=utc"
         )
 
-      assert html =~ old_cl.log_id
+      refute html =~ old_cl.log_id
       assert html =~ mid_cl.log_id
       refute html =~ new_cl.log_id
 

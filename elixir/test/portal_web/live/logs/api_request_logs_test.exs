@@ -22,6 +22,38 @@ defmodule PortalWeb.Logs.APIRequestLogsTest do
   end
 
   describe "index" do
+    test "shows the last 24 hours unless a wider preset is chosen", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      recent = api_request_log_fixture(account: account, path: "/recent")
+
+      older =
+        api_request_log_fixture(
+          account: account,
+          path: "/older",
+          inserted_at: DateTime.add(DateTime.utc_now(), -3 * 86_400, :second)
+        )
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/logs/api_request_logs")
+
+      assert html =~ recent.log_id
+      refute html =~ older.log_id
+      assert has_element?(lv, "#api_request_logs-timestamp-preset option[value='24h'][selected]")
+
+      {:ok, _lv, html} =
+        live(
+          conn,
+          ~p"/#{account}/logs/api_request_logs?api_request_logs_filter[timestamp][preset]=7d"
+        )
+
+      assert html =~ recent.log_id
+      assert html =~ older.log_id
+    end
+
     test "truncates the path and shows the full path on hover", %{
       conn: conn,
       account: account,

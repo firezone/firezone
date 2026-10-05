@@ -10,6 +10,17 @@ defmodule PortalWeb.LiveTable do
 
   @page_size_values ["10", "25", "50"]
 
+  @default_time_preset "24h"
+  @time_presets [
+    {"1h", "Last hour", 3_600},
+    {"12h", "Last 12 hours", 43_200},
+    {"24h", "Last 24 hours", 86_400},
+    {"3d", "Last 3 days", 259_200},
+    {"7d", "Last 7 days", 604_800},
+    {"30d", "Last 30 days", 2_592_000},
+    {"custom", "Custom", nil}
+  ]
+
   @doc """
   A drop-in replacement of `PortalWeb.Components.Table.table/1` component that adds sorting, filtering and pagination.
   """
@@ -322,12 +333,15 @@ defmodule PortalWeb.LiveTable do
     latest = today |> Date.add(1) |> Date.to_iso8601()
     mode_field = "#{assigns.filter.name}_mode"
     mode = if assigns.form[mode_field].value == "local", do: "local", else: "utc"
+    preset = assigns.form["#{assigns.filter.name}_preset"].value || @default_time_preset
 
     assigns =
       assign(assigns,
         min: "#{earliest}T00:00:00",
         max: "#{latest}T23:59:59",
-        mode: mode
+        mode: mode,
+        preset: preset,
+        presets: @time_presets
       )
 
     ~H"""
@@ -336,6 +350,31 @@ defmodule PortalWeb.LiveTable do
       phx-hook="DatetimeRangeFilter"
       class="contents"
     >
+      <label class="inline-flex items-center gap-1.5">
+        <span class="text-xs font-medium text-body select-none">{@filter.title}</span>
+        <div class="relative">
+          <select
+            id={"#{@live_table_id}-#{@filter.name}-preset"}
+            name={"#{@form[@filter.name].name}[preset]"}
+            class={[
+              "appearance-none bg-none bg-input border border-input-border text-heading text-xs font-medium",
+              "rounded h-8 pl-2 pr-7 outline-none transition-colors cursor-pointer",
+              "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
+            ]}
+          >
+            <option
+              :for={{value, label, _seconds} <- @presets}
+              value={value}
+              selected={value == @preset}
+            >
+              {label}
+            </option>
+          </select>
+          <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-subtle">
+            <Core.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
+          </span>
+        </div>
+      </label>
       <div class="inline-flex h-8 items-center rounded border border-input-border bg-raised p-0.5 shrink-0">
         <label
           :for={target <- ["utc", "local"]}
@@ -366,6 +405,7 @@ defmodule PortalWeb.LiveTable do
         </label>
       </div>
       <.datetime_input
+        :if={@preset == "custom"}
         field={@form[@filter.name]}
         filter={@filter}
         from_or_to={:from}
@@ -374,6 +414,7 @@ defmodule PortalWeb.LiveTable do
         label="From"
       />
       <.datetime_input
+        :if={@preset == "custom"}
         field={@form[@filter.name]}
         filter={@filter}
         from_or_to={:to}
@@ -848,17 +889,15 @@ defmodule PortalWeb.LiveTable do
       must be initialised in `mount/3`. `{:error, :query_timeout}` renders the
       "too many results" state.
 
-  `:default_filters` is a keyword list of `filter name => fn current -> effective end`.
-  `current` is the filter value from the URL, or nil when the URL does not set
-  it. The effective value shows in the filter form and is used for the query.
-  A filter that is absent from the URL does not count as an active filter.
+  A `{:range, :datetime}` filter renders a time range dropdown (last hour up to
+  last 30 days, or custom). It defaults to the last 24 hours, so the query is
+  always bounded. The From and To pickers only show for "Custom".
   """
   def assign_live_table(socket, id, opts) do
     query_module = Keyword.fetch!(opts, :query_module)
     sortable_fields = Keyword.fetch!(opts, :sortable_fields)
     callback = Keyword.get(opts, :callback)
     loader = Keyword.get(opts, :loader)
-    default_filters = Keyword.get(opts, :default_filters, [])
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
     limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
@@ -871,8 +910,6 @@ defmodule PortalWeb.LiveTable do
     |> assign(
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
       loader_by_table_id: put_table_state(socket, id, :loader_by_table_id, loader),
-      default_filters_by_table_id:
-        put_table_state(socket, id, :default_filters_by_table_id, default_filters),
       loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false),
       query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil),
       query_module_by_table_id:
@@ -1013,10 +1050,9 @@ defmodule PortalWeb.LiveTable do
 
     raw_filter_params = Map.get(params, "#{id}_filter", %{})
 
-    default_filters = Map.get(socket.assigns[:default_filters_by_table_id] || %{}, id, [])
-
     with {:ok, filter} <- params_to_filter(id, params, filter_types),
-         {filter, defaulted} = apply_default_filters(filter, default_filters),
+         {filter, time_presets} =
+           resolve_time_ranges(filter, raw_filter_params, filter_types, DateTime.utc_now()),
          filter = enforced_filters ++ filter,
          {:ok, page} <- params_to_page(id, limit, params),
          {:ok, order_by} <- params_to_order_by(sortable_fields, id, params) do
@@ -1035,7 +1071,7 @@ defmodule PortalWeb.LiveTable do
                 socket,
                 id,
                 :filter_form_by_table_id,
-                filter_to_form(filter, raw_filter_params, id, defaulted)
+                filter_to_form(filter, raw_filter_params, id, time_presets)
               ),
             order_by_table_id:
               put_table_state(
@@ -1277,6 +1313,13 @@ defmodule PortalWeb.LiveTable do
     end
   end
 
+  defp cast_filter(value, {:range, :datetime}) when is_map(value) do
+    case Map.drop(value, ["preset", "mode"]) do
+      bounds when map_size(bounds) == 0 -> {:ok, nil}
+      bounds -> cast_filter(bounds)
+    end
+  end
+
   defp cast_filter(value, _type), do: cast_filter(value)
 
   defp cast_filter(%{"from" => from_raw, "to" => to_raw}) do
@@ -1379,37 +1422,96 @@ defmodule PortalWeb.LiveTable do
   def filter_to_form(filter, as), do: filter_to_form(filter, %{}, as)
 
   @doc false
-  def filter_to_form(filter, raw_filter_params, as), do: filter_to_form(filter, raw_filter_params, as, [])
+  def filter_to_form(filter, raw_filter_params, as),
+    do: filter_to_form(filter, raw_filter_params, as, [])
 
   @doc false
-  def filter_to_form(filter, raw_filter_params, as, defaulted) do
+  def filter_to_form(filter, raw_filter_params, as, time_presets) do
     # Note: we don't support nesting, :and or :where on the UI yet
     base =
       for {key, value} <- filter, into: %{} do
         {Atom.to_string(key), value}
       end
 
-    defaulted_marks = Map.new(defaulted, &{"#{&1}_default", true})
+    # The default preset is not an active filter, see `has_filter?/2`.
+    preset_marks =
+      Enum.reduce(time_presets, %{}, fn {key, preset}, acc ->
+        acc
+        |> Map.put("#{key}_preset", preset)
+        |> Map.put("#{key}_default", preset == @default_time_preset)
+      end)
 
     base
-    |> Map.merge(defaulted_marks)
+    |> Map.merge(preset_marks)
     |> add_filter_form_extras(raw_filter_params)
     |> to_form(as: as)
   end
 
-  # Each default is a function from the filter value in the URL (nil when
-  # absent) to the effective value. A filter missing from the URL is only
-  # defaulted, so it does not count as an active filter.
-  defp apply_default_filters(filter, default_filters) do
-    Enum.reduce(default_filters, {filter, []}, fn {key, fun}, {filter, defaulted} ->
-      current = Keyword.get(filter, key)
-      filter = Keyword.put(filter, key, fun.(current))
+  # Every `{:range, :datetime}` filter is bounded below. A preset gives the
+  # last N hours or days, the custom range fills in whichever bound the user
+  # left out, and no setting at all means the default preset. Returns the
+  # effective ranges and the preset each filter ended up with.
+  defp resolve_time_ranges(filter, raw_filter_params, filter_types, now) do
+    now = DateTime.add(DateTime.truncate(now, :second), -now.second, :second)
 
-      if is_nil(current) do
-        {filter, [key | defaulted]}
-      else
-        {filter, defaulted}
-      end
+    for {name, {:range, :datetime}} <- filter_types, reduce: {filter, []} do
+      {filter, presets} ->
+        key = String.to_existing_atom(name)
+        preset = raw_filter_params |> Map.get(name) |> preset_param()
+        {range, preset} = resolve_time_range(preset, Keyword.get(filter, key), now)
+        {Keyword.put(filter, key, range), [{key, preset} | presets]}
+    end
+  end
+
+  defp preset_param(%{"preset" => preset}) when is_binary(preset), do: preset
+  defp preset_param(_raw), do: nil
+
+  defp resolve_time_range(preset, parsed, now) do
+    case List.keyfind(@time_presets, preset, 0) do
+      {preset, _label, seconds} when is_integer(seconds) ->
+        {%Portal.Repo.Filter.Range{from: DateTime.add(now, -seconds, :second)}, preset}
+
+      _custom_or_unset when preset == "custom" or not is_nil(parsed) ->
+        {fill_custom_bounds(parsed, now), "custom"}
+
+      _unset ->
+        {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+        {%Portal.Repo.Filter.Range{from: DateTime.add(now, -seconds, :second)}, @default_time_preset}
+    end
+  end
+
+  # `to` is rounded up to the next minute so flows from the current minute
+  # are inside the range.
+  defp fill_custom_bounds(nil, now) do
+    {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+    to = DateTime.add(now, 60, :second)
+    %Portal.Repo.Filter.Range{from: DateTime.add(to, -seconds, :second), to: to}
+  end
+
+  defp fill_custom_bounds(%Portal.Repo.Filter.Range{from: nil, to: to} = range, _now) do
+    {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+    %{range | from: DateTime.add(to, -seconds, :second)}
+  end
+
+  defp fill_custom_bounds(%Portal.Repo.Filter.Range{to: nil} = range, now),
+    do: %{range | to: DateTime.add(now, 60, :second)}
+
+  defp fill_custom_bounds(range, _now), do: range
+
+  # Only the Custom preset carries From and To. The default preset is the
+  # same as no setting, so it is left out of the URL.
+  defp normalize_time_presets(filter) do
+    Map.new(filter, fn
+      {key, %{"preset" => "custom"} = value} ->
+        {key, value}
+
+      {key, %{"preset" => preset} = value} when is_binary(preset) ->
+        value = Map.drop(value, ["from", "to"])
+        value = if preset == @default_time_preset, do: Map.delete(value, "preset"), else: value
+        {key, value}
+
+      other ->
+        other
     end)
   end
 
@@ -1500,7 +1602,7 @@ defmodule PortalWeb.LiveTable do
   end
 
   def handle_live_table_event("filter", %{"table_id" => id} = params, socket) do
-    filter = Map.get(params, id, %{})
+    filter = params |> Map.get(id, %{}) |> normalize_time_presets()
 
     update_query_params(socket, fn query_params ->
       query_params

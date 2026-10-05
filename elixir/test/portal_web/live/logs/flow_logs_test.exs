@@ -61,7 +61,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert html =~ old.log_id
     end
 
-    test "fills the time range inputs with the effective 24 hour window", %{
+    test "defaults to the last 24 hours with the pickers hidden", %{
       conn: conn,
       account: account,
       actor: actor
@@ -71,17 +71,78 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/flow_logs")
 
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='24h'][selected]")
+      refute has_element?(lv, "input[type='datetime-local']")
+
+      # The default preset is not an active filter.
+      refute has_element?(lv, "button[title='Clear all filters']")
+    end
+
+    test "choosing a preset widens the range and keeps the pickers hidden", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      recent = flow_log_fixture(account: account, flow_start: hours_ago(2), flow_end: hours_ago(1))
+      older = flow_log_fixture(account: account, flow_start: hours_ago(48), flow_end: hours_ago(47))
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      assert html =~ recent.log_id
+      refute html =~ older.log_id
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "7d"}})
+      |> render_change()
+
+      html = render_async(lv)
+
+      assert assert_patch(lv) =~ "flow_logs_filter%5Btimestamp%5D%5Bpreset%5D=7d"
+      assert html =~ recent.log_id
+      assert html =~ older.log_id
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='7d'][selected]")
+      refute has_element?(lv, "input[type='datetime-local']")
+      assert has_element?(lv, "button[title='Clear all filters']")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "1h"}})
+      |> render_change()
+
+      html = render_async(lv)
+
+      refute html =~ recent.log_id
+      refute html =~ older.log_id
+    end
+
+    test "the custom preset shows the pickers filled with the last 24 hours", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "custom"}})
+      |> render_change()
+
+      render_async(lv)
+
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='custom'][selected]")
+
       from = canonical_bound(lv, "from")
       to = canonical_bound(lv, "to")
 
       assert NaiveDateTime.diff(to, from) == 86_400
-      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), to)) < 60
-
-      # The default window is not an active filter.
-      refute has_element?(lv, "button[title='Clear all filters']")
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), to)) < 120
     end
 
-    test "fills the missing time range bound from the one in the URL", %{
+    test "fills the missing custom bound from the one in the URL", %{
       conn: conn,
       account: account,
       actor: actor
@@ -91,6 +152,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       {:ok, lv, _html} =
         live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][to]=2026-07-30T10:00:00")
 
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='custom'][selected]")
       assert canonical_bound(lv, "to") == ~N[2026-07-30 10:00:00]
       assert canonical_bound(lv, "from") == ~N[2026-07-29 10:00:00]
       assert has_element?(lv, "button[title='Clear all filters']")
@@ -99,7 +161,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][from]=2026-07-30T10:00:00")
 
       assert canonical_bound(lv, "from") == ~N[2026-07-30 10:00:00]
-      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), canonical_bound(lv, "to"))) < 60
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), canonical_bound(lv, "to"))) < 120
     end
 
     test "lists each reporting side separately", %{conn: conn, account: account, actor: actor} do

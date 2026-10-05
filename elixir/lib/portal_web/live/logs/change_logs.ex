@@ -97,6 +97,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
         <LiveTable.live_table
           id="change_logs"
           rows={@change_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
           loading={@loading_by_table_id["change_logs"]}
           query_error={@query_error_by_table_id["change_logs"]}
           row_id={&"change_log-#{&1.change_log.log_id}"}
@@ -153,7 +154,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No change logs</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Configuration changes will appear here as they happen.
+                  Configuration changes will appear here as they happen. Try broadening the time window to see older ones.
                 </p>
               </div>
             </div>

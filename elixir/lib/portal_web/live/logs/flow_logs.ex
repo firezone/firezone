@@ -2,17 +2,14 @@ defmodule PortalWeb.Logs.FlowLogs do
   use PortalWeb, :live_view
 
   alias PortalWeb.Logs.Components, as: LogComponents
-  alias Portal.Repo.Filter.Range
 
   alias __MODULE__.Database
 
-  @default_window_seconds 86_400
   @table_id "flow_logs"
   @filter_key "flow_logs_filter"
 
   def mount(_params, _session, socket) do
     browser_tz = LogComponents.browser_tz_from_connect(socket)
-    now = DateTime.utc_now()
 
     socket =
       socket
@@ -22,7 +19,6 @@ defmodule PortalWeb.Logs.FlowLogs do
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
-        default_filters: [timestamp: &default_window(&1, now)],
         sortable_fields: [
           {:flow_logs, :flow_start},
           {:flow_logs, :total_bytes},
@@ -106,22 +102,6 @@ defmodule PortalWeb.Logs.FlowLogs do
       {:ok, %{flow_logs: logs, flow_logs_metadata: metadata}}
     end
   end
-
-  # Without a lower bound on the partition key PostgreSQL scans every daily
-  # partition of the account, which times out on large accounts. The window
-  # is fixed when the page opens so the query does not change under the user.
-  defp default_window(nil, now) do
-    now = DateTime.truncate(now, :second)
-    %Range{from: DateTime.add(now, -@default_window_seconds), to: now}
-  end
-
-  defp default_window(%Range{from: nil, to: %DateTime{} = to} = range, _now),
-    do: %{range | from: DateTime.add(to, -@default_window_seconds)}
-
-  defp default_window(%Range{to: nil} = range, now),
-    do: %{range | to: DateTime.truncate(now, :second)}
-
-  defp default_window(range, _now), do: range
 
   defp default_show_incomplete(filter) do
     if Keyword.has_key?(filter, :show_incomplete),
@@ -212,7 +192,7 @@ defmodule PortalWeb.Logs.FlowLogs do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No flow logs found</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Flows from the last 24 hours show by default. Try broadening the time window or using a different filter.
+                  Try broadening the time window or using a different filter.
                 </p>
               </div>
             </div>

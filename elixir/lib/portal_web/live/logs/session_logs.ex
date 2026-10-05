@@ -97,6 +97,7 @@ defmodule PortalWeb.Logs.SessionLogs do
         <LiveTable.live_table
           id="session_logs"
           rows={@session_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
           loading={@loading_by_table_id["session_logs"]}
           query_error={@query_error_by_table_id["session_logs"]}
           row_id={&"session-log-#{&1.log_id}"}
@@ -150,7 +151,7 @@ defmodule PortalWeb.Logs.SessionLogs do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No sessions</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Client, Gateway, and Portal sessions will appear here as they're created.
+                  Client, Gateway, and Portal sessions will appear here as they're created. Try broadening the time window to see older ones.
                 </p>
               </div>
             </div>
