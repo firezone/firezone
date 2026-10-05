@@ -137,6 +137,28 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(input, "value") == ["tcp/443"]
     end
 
+    test "shows a running query status while loading", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert [_] = Floki.find(document, "#table-id-loading[role='status']")
+      assert Floki.text(Floki.find(document, "#table-id-loading")) =~ "Running query"
+      assert Floki.find(document, "#table-id-empty") == []
+    end
+
+    test "explains a timed out query and hides stale rows", %{assigns: assigns} do
+      html =
+        render_component(&live_table/1, Map.merge(assigns, %{query_error: :query_timeout}))
+
+      document = Floki.parse_fragment!(html)
+      text = document |> Floki.find("#table-id-query-timeout") |> Floki.text()
+
+      assert text =~ "Your query includes too many results"
+      assert text =~ "Try reducing the time window."
+      refute html =~ "foo"
+      assert Floki.find(document, "#table-id-loading") == []
+    end
+
     test "adds per-row classes", %{assigns: assigns} do
       html =
         render_component(

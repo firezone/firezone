@@ -18,6 +18,15 @@ defmodule PortalWeb.LiveTable do
   attr :filters, :list, required: true, doc: "the query filters enabled for the table"
   attr :filter, :map, required: true, doc: "the filter form for the table"
   attr :stale, :boolean, default: false, doc: "hint to the UI that the table data is stale"
+
+  attr :loading, :boolean,
+    default: false,
+    doc: "true while an async loader is running the table query"
+
+  attr :query_error, :atom,
+    default: nil,
+    doc: "set to :query_timeout when the table query was cancelled for taking too long"
+
   attr :class, :string, default: nil, doc: "additional classes for the live_table wrapper div"
 
   attr :metadata, :map,
@@ -53,10 +62,14 @@ defmodule PortalWeb.LiveTable do
   slot :footer, doc: "content rendered centered in the paginator bar"
 
   def live_table(assigns) do
+    assigns =
+      assign(assigns, rows: if(assigns.query_error, do: [], else: assigns.rows))
+
     ~H"""
     <div class={["flex flex-col", @class]}>
       <.resource_filter
         stale={@stale}
+        loading={@loading}
         live_table_id={@id}
         form={@filter}
         filters={@filters}
@@ -64,7 +77,10 @@ defmodule PortalWeb.LiveTable do
       />
       <div class="flex-1 overflow-auto flex flex-col">
         <table
-          class={["w-full text-sm text-left text-body table-fixed shrink-0"]}
+          class={[
+            "w-full text-sm text-left text-body table-fixed shrink-0 transition-opacity",
+            @loading && "opacity-50"
+          ]}
           id={@id}
         >
           <Table.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
@@ -90,14 +106,39 @@ defmodule PortalWeb.LiveTable do
           </tbody>
         </table>
         <div
-          :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)}
+          :if={@query_error == :query_timeout}
+          id={"#{@id}-query-timeout"}
+          class="flex flex-1 items-center justify-center"
+        >
+          <div class="flex flex-col items-center gap-3 py-16">
+            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+              <Core.icon name="ri-time-line" class="w-5 h-5 text-subtle" />
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-heading">
+                Your query includes too many results
+              </p>
+              <p class="text-xs text-subtle mt-0.5">
+                Try reducing the time window.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
+          :if={
+            Enum.empty?(@rows) and not @loading and is_nil(@query_error) and
+              not has_filter?(@filter, @filters)
+          }
           id={"#{@id}-empty"}
           class="flex flex-1 items-center justify-center"
         >
           {render_slot(@empty)}
         </div>
         <div
-          :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)}
+          :if={
+            Enum.empty?(@rows) and not @loading and is_nil(@query_error) and
+              has_filter?(@filter, @filters)
+          }
           id={"#{@id}-empty"}
           class="flex flex-1 items-center justify-center"
         >
@@ -234,6 +275,14 @@ defmodule PortalWeb.LiveTable do
           <Core.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
         </button>
       </.form>
+      <span
+        :if={@loading}
+        id={"#{@live_table_id}-loading"}
+        role="status"
+        class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-body"
+      >
+        <Core.icon name="ri-loader-4-line" class="w-3.5 h-3.5 animate-spin" /> Running query...
+      </span>
       <Form.button
         :if={@stale}
         id={"#{@live_table_id}-reload-btn"}
@@ -783,11 +832,22 @@ defmodule PortalWeb.LiveTable do
 
   @doc """
   Loads the initial state for a live table and persists it to the socket assigns.
+
+  Data is loaded with either:
+
+    * `:callback` - `fn socket, list_opts -> {:ok, socket} | {:error, reason} end`,
+      run synchronously inside `handle_params/3`.
+    * `:loader` - `fn subject, list_opts -> {:ok, assigns} | {:error, reason} end`,
+      run in an async task so the page can render a loading state. `assigns` is
+      assigned to the socket when the task finishes. The assigns the table reads
+      must be initialised in `mount/3`. `{:error, :query_timeout}` renders the
+      "too many results" state.
   """
   def assign_live_table(socket, id, opts) do
     query_module = Keyword.fetch!(opts, :query_module)
     sortable_fields = Keyword.fetch!(opts, :sortable_fields)
-    callback = Keyword.fetch!(opts, :callback)
+    callback = Keyword.get(opts, :callback)
+    loader = Keyword.get(opts, :loader)
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
     limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
@@ -795,8 +855,13 @@ defmodule PortalWeb.LiveTable do
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters
 
-    assign(socket,
+    socket
+    |> attach_async_hook(loader)
+    |> assign(
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
+      loader_by_table_id: put_table_state(socket, id, :loader_by_table_id, loader),
+      loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false),
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil),
       query_module_by_table_id:
         put_table_state(
           socket,
@@ -862,12 +927,11 @@ defmodule PortalWeb.LiveTable do
   end
 
   def reload_live_table!(socket, id) do
-    callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
     list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
     socket = assign(socket, stale: false)
 
-    case callback.(socket, list_opts) do
+    case load(socket, id, list_opts) do
       {:error, _reason} ->
         push_navigate(socket, to: socket.assigns.current_path)
 
@@ -973,24 +1037,8 @@ defmodule PortalWeb.LiveTable do
               )
           )
 
-        {:error, :invalid_page} ->
-          message = "The page was reset due to invalid pagination page."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:unknown_filter, _metadata}} ->
-          message = "The page was reset due to use of undefined pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:invalid_type, _metadata}} ->
-          message = "The page was reset due to invalid value of a pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:invalid_value, _metadata}} ->
-          message = "The page was reset due to invalid value of a pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, _reason} ->
-          raise PortalWeb.LiveErrors.NotFoundError
+        {:error, reason} ->
+          handle_load_error(socket, id, reason)
       end
     else
       {:error, :invalid_page} ->
@@ -1001,6 +1049,36 @@ defmodule PortalWeb.LiveTable do
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
     end
+  end
+
+  defp handle_load_error(socket, id, :invalid_page) do
+    message = "The page was reset due to invalid pagination page."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:unknown_filter, _metadata}) do
+    message = "The page was reset due to use of undefined pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:invalid_type, _metadata}) do
+    message = "The page was reset due to invalid value of a pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:invalid_value, _metadata}) do
+    message = "The page was reset due to invalid value of a pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, :query_timeout) do
+    assign(socket,
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, :query_timeout)
+    )
+  end
+
+  defp handle_load_error(_socket, _id, _reason) do
+    raise PortalWeb.LiveErrors.NotFoundError
   end
 
   defp maybe_use_default_order_by(query_module, order_by \\ nil)
@@ -1032,12 +1110,68 @@ defmodule PortalWeb.LiveTable do
     previous_list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
     if list_opts != previous_list_opts do
-      callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
-      callback.(socket, list_opts)
+      load(socket, id, list_opts)
     else
       {:ok, socket}
     end
   end
+
+  defp load(socket, id, list_opts) do
+    case Map.get(socket.assigns.loader_by_table_id, id) do
+      nil ->
+        callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
+        callback.(socket, list_opts)
+
+      loader ->
+        {:ok, start_load(socket, id, loader, list_opts)}
+    end
+  end
+
+  # A superseded query is cancelled so it stops holding a database connection.
+  defp start_load(socket, id, loader, list_opts) do
+    subject = socket.assigns.subject
+
+    socket
+    |> cancel_async({__MODULE__, id})
+    |> assign(
+      loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, true),
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil)
+    )
+    |> start_async({__MODULE__, id}, fn -> loader.(subject, list_opts) end)
+  end
+
+  defp attach_async_hook(socket, nil), do: socket
+
+  defp attach_async_hook(socket, _loader) do
+    if socket.assigns[:live_table_async_hook] do
+      socket
+    else
+      socket
+      |> assign(live_table_async_hook: true)
+      |> attach_hook(:live_table_async, :handle_async, &handle_live_table_async/3)
+    end
+  end
+
+  defp handle_live_table_async({__MODULE__, id}, {:ok, result}, socket) do
+    socket =
+      assign(socket,
+        loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false)
+      )
+
+    case result do
+      {:ok, assigns} -> {:halt, assign(socket, assigns)}
+      {:error, reason} -> {:halt, handle_load_error(socket, id, reason)}
+    end
+  end
+
+  # A superseded load is cancelled before its replacement starts.
+  defp handle_live_table_async({__MODULE__, _id}, {:exit, {:shutdown, :cancel}}, socket),
+    do: {:halt, socket}
+
+  # The loader crashed. Crash with it so the error reaches the error tracker.
+  defp handle_live_table_async({__MODULE__, _id}, {:exit, reason}, _socket), do: exit(reason)
+
+  defp handle_live_table_async(_name, _result, socket), do: {:cont, socket}
 
   defp put_table_state(socket, id, key, value) do
     Map.put(socket.assigns[key] || %{}, id, value)

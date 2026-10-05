@@ -1,9 +1,19 @@
 defmodule PortalWeb.Logs.ChangeLogsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ChangeLogFixtures
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
 
   setup do
     account = account_fixture()
@@ -337,7 +347,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       |> element("button[phx-click='filter'][title='Clear all filters']")
       |> render_click()
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ cl_a.log_id
       assert html =~ cl_b.log_id
     end
@@ -432,6 +442,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       |> form("form[phx-change='filter']", change_logs: %{timestamp: %{mode: "local"}})
       |> render_change()
 
+      render_async(lv)
+
       shifted = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert shifted =~ "9:00 PM"
       refute shifted =~ "12:00 PM"
@@ -491,10 +503,11 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       alice_tail = String.slice(alice.log_id, 16, 8)
 
       for query <- ["alice@", "Alice Admin", alice_id, alice_tail] do
-        html =
-          lv
-          |> form("form[phx-change='filter']", change_logs: %{actor: query})
-          |> render_change()
+        lv
+        |> form("form[phx-change='filter']", change_logs: %{actor: query})
+        |> render_change()
+
+        html = render_async(lv)
 
         assert html =~ alice.log_id, "expected alice match for query=#{inspect(query)}"
         refute html =~ bob.log_id, "expected bob NOT to match for query=#{inspect(query)}"

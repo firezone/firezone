@@ -16,11 +16,12 @@ defmodule PortalWeb.Logs.SessionLogs do
       socket
       |> assign(page_title: "Session Logs")
       |> assign(selected_log: nil, browser_tz: browser_tz)
+      |> assign(session_logs: [], session_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:session_logs, :timestamp}, {:session_logs, :log_id}],
-        callback: &handle_logs_update!/2
+        loader: &load_logs/2
       )
 
     {:ok, socket}
@@ -87,13 +88,6 @@ defmodule PortalWeb.Logs.SessionLogs do
     {:noreply, socket}
   end
 
-  def handle_logs_update!(socket, list_opts) do
-    with {:ok, logs, metadata} <-
-           Database.list_session_logs(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, session_logs: logs, session_logs_metadata: metadata)}
-    end
-  end
-
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
@@ -103,6 +97,8 @@ defmodule PortalWeb.Logs.SessionLogs do
         <LiveTable.live_table
           id="session_logs"
           rows={@session_logs}
+          loading={@loading_by_table_id["session_logs"]}
+          query_error={@query_error_by_table_id["session_logs"]}
           row_id={&"session-log-#{&1.log_id}"}
           row_click={
             fn row ->
@@ -334,6 +330,12 @@ defmodule PortalWeb.Logs.SessionLogs do
   defp format_coord(n) when is_number(n), do: :erlang.float_to_binary(n * 1.0, decimals: 3)
   defp format_coord(_), do: nil
 
+  defp load_logs(subject, list_opts) do
+    with {:ok, logs, metadata} <- Database.list_session_logs(subject, list_opts) do
+      {:ok, %{session_logs: logs, session_logs_metadata: metadata}}
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
 
@@ -344,7 +346,7 @@ defmodule PortalWeb.Logs.SessionLogs do
     def list_session_logs(subject, opts \\ []) do
       from(sl in SessionLog, as: :session_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
+      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
     end
 
     def fetch_log(log_id, subject) do
