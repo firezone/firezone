@@ -910,6 +910,8 @@ defmodule PortalWeb.LiveTable do
     |> assign(
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
       loader_by_table_id: put_table_state(socket, id, :loader_by_table_id, loader),
+      custom_timeranges_by_table_id:
+        put_table_state(socket, id, :custom_timeranges_by_table_id, %{}),
       loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false),
       query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil),
       query_module_by_table_id:
@@ -1051,6 +1053,7 @@ defmodule PortalWeb.LiveTable do
     raw_filter_params = Map.get(params, "#{id}_filter", %{})
 
     with {:ok, filter} <- params_to_filter(id, params, filter_types),
+         custom_ranges = remember_custom_ranges(socket, id, filter, raw_filter_params, filter_types),
          {filter, time_presets} =
            resolve_time_ranges(filter, raw_filter_params, filter_types, DateTime.utc_now()),
          filter = enforced_filters ++ filter,
@@ -1073,6 +1076,8 @@ defmodule PortalWeb.LiveTable do
                 :filter_form_by_table_id,
                 filter_to_form(filter, raw_filter_params, id, time_presets)
               ),
+            custom_timeranges_by_table_id:
+              put_table_state(socket, id, :custom_timeranges_by_table_id, custom_ranges),
             order_by_table_id:
               put_table_state(
                 socket,
@@ -1498,12 +1503,36 @@ defmodule PortalWeb.LiveTable do
 
   defp fill_custom_bounds(range, _now), do: range
 
+  # The last custom range the user set stays on the socket, so switching to a
+  # preset and back to Custom does not lose it. Only the bounds the user set
+  # are kept, not the ones filled in for display.
+  defp remember_custom_ranges(socket, id, filter, raw_filter_params, filter_types) do
+    remembered = Map.get(socket.assigns[:custom_timeranges_by_table_id] || %{}, id, %{})
+
+    for {name, {:range, :datetime}} <- filter_types, reduce: remembered do
+      remembered ->
+        key = String.to_existing_atom(name)
+        preset = raw_filter_params |> Map.get(name) |> preset_param()
+        parsed = Keyword.get(filter, key)
+
+        if not is_nil(parsed) and is_nil(duration(List.keyfind(@time_presets, preset, 0))) do
+          Map.put(remembered, key, parsed)
+        else
+          remembered
+        end
+    end
+  end
+
+  defp duration({_preset, _label, seconds}), do: seconds
+  defp duration(nil), do: nil
+
   # Only the Custom preset carries From and To. The default preset is the
-  # same as no setting, so it is left out of the URL.
-  defp normalize_time_presets(filter) do
+  # same as no setting, so it is left out of the URL. Switching back to
+  # Custom with no bounds in the form restores the remembered range.
+  defp normalize_time_presets(filter, remembered) do
     Map.new(filter, fn
       {key, %{"preset" => "custom"} = value} ->
-        {key, value}
+        {key, restore_custom_range(value, remembered_range(remembered, key))}
 
       {key, %{"preset" => preset} = value} when is_binary(preset) ->
         value = Map.drop(value, ["from", "to"])
@@ -1513,6 +1542,36 @@ defmodule PortalWeb.LiveTable do
       other ->
         other
     end)
+  end
+
+  defp remembered_range(remembered, key) do
+    Enum.find_value(remembered, fn {name, range} ->
+      if Atom.to_string(name) == key, do: range
+    end)
+  end
+
+  defp restore_custom_range(value, nil), do: value
+
+  defp restore_custom_range(value, range) do
+    if value["from"] in [nil, ""] and value["to"] in [nil, ""] do
+      value
+      |> put_bound("from", range.from)
+      |> put_bound("to", range.to)
+    else
+      value
+    end
+  end
+
+  defp put_bound(value, _name, nil), do: value
+
+  defp put_bound(value, name, %DateTime{} = datetime) do
+    iso =
+      datetime
+      |> DateTime.shift_zone!("Etc/UTC")
+      |> DateTime.to_naive()
+      |> NaiveDateTime.to_iso8601()
+
+    Map.put(value, name, iso)
   end
 
   # Some sub-fields (e.g. the UTC/Local mode on a datetime range filter)
@@ -1602,7 +1661,8 @@ defmodule PortalWeb.LiveTable do
   end
 
   def handle_live_table_event("filter", %{"table_id" => id} = params, socket) do
-    filter = params |> Map.get(id, %{}) |> normalize_time_presets()
+    remembered = Map.get(socket.assigns[:custom_timeranges_by_table_id] || %{}, id, %{})
+    filter = params |> Map.get(id, %{}) |> normalize_time_presets(remembered)
 
     update_query_params(socket, fn query_params ->
       query_params

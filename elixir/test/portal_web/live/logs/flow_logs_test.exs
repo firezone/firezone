@@ -142,6 +142,41 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), to)) < 120
     end
 
+    test "remembers the custom range while a preset is selected", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(
+          ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][preset]=custom&flow_logs_filter[timestamp][from]=2026-07-29T10:00:00&flow_logs_filter[timestamp][to]=2026-07-30T10:00:00"
+        )
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "7d"}})
+      |> render_change()
+
+      render_async(lv)
+
+      refute assert_patch(lv) =~ "timestamp%5D%5Bfrom%5D"
+      refute has_element?(lv, "input[type='datetime-local']")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "custom"}})
+      |> render_change()
+
+      render_async(lv)
+
+      assert canonical_bound(lv, "from") == ~N[2026-07-29 10:00:00]
+      assert canonical_bound(lv, "to") == ~N[2026-07-30 10:00:00]
+
+      path = assert_patch(lv)
+      assert path =~ "flow_logs_filter%5Btimestamp%5D%5Bfrom%5D=2026-07-29T10%3A00%3A00"
+      assert path =~ "flow_logs_filter%5Btimestamp%5D%5Bto%5D=2026-07-30T10%3A00%3A00"
+    end
+
     test "fills the missing custom bound from the one in the URL", %{
       conn: conn,
       account: account,
