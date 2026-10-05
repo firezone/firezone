@@ -760,6 +760,108 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 2
   end
 
+  describe "deleting a provider" do
+    test "deletes a provider from the row actions after confirming", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      refute has_element?(lv, "button[phx-click=delete]")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      assert render(lv) =~ "Delete this provider and all devices synced from it?"
+
+      html =
+        lv
+        |> element("button[phx-click=delete][phx-value-id='#{provider.id}']")
+        |> render_click()
+
+      assert html =~ "Posture provider deleted."
+      refute Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "cancelling the confirmation keeps the provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click=cancel_confirm]") |> render_click()
+
+      refute has_element?(lv, "button[phx-click=delete]")
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "refuses to delete another account's provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_account = device_posture_account_fixture()
+      other_provider = intune_posture_provider_fixture(account: other_account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      assert render_click(lv, "delete", %{"id" => other_provider.id}) =~
+               "Could not delete the provider."
+
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: other_provider.id)
+    end
+
+    test "refuses to delete when the feature is switched off mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      disable_device_posture(account)
+
+      render_click(lv, "delete", %{"id" => provider.id})
+
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "the edit panel has no delete button", %{conn: conn, account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+      refute has_element?(lv, "#device-posture-panel button[phx-click=delete]")
+    end
+  end
+
   describe "selecting a provider type" do
     test "lists every provider type", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
