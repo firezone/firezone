@@ -106,3 +106,31 @@ It runs from `.github/workflows/_nix.yml` on main and when a release is publishe
 NAR files are content-addressed and shared between releases; never apply age-based lifecycle rules to the container.
 
 Key rotation: generate `artifacts.firezone.dev/nix-2` with `nix key generate-secret`, sign with both keys for a transition period (signatures accumulate), publish both public keys, then retire `-1`.
+
+### Dependabot hash updates
+
+After the strict hash-validation change in [PR #15573](https://github.com/firezone/firezone/pull/15573) is merged, the `Compute Dependabot pnpm hash` workflow fetches dependencies on GUI npm Dependabot PRs with read-only repository permissions, no write credentials, and no OIDC access.
+The separate `Commit Dependabot pnpm hash` workflow runs trusted default-branch code and consumes only a bounded JSON artifact from that run.
+It checks the source workflow, repository, Dependabot PR owner, base/head branches, exact head commit, and changed files before obtaining a write token.
+Only modifications to `rust/gui-client/package.json`, `rust/gui-client/pnpm-lock.yaml`, and the frontend hash pin are eligible; mixed updates outside that list must be refreshed manually.
+The writer reads PR contents through GitHub's API, rejects frontend changes outside the pin, and creates a commit changing only that pin with the original PR head as its sole parent.
+It never executes PR code, force-pushes, approves, or merges the PR, and it revokes the installation token after use.
+Its commit message includes `[dependabot skip]` so Dependabot can discard the generated hash commit when rebasing; the automation then recomputes the hash for the new head.
+Strict CI validation still verifies the resulting commit; the computed hash is untrusted data, not dependency approval.
+
+One-time setup by a repository/organization administrator:
+
+1. Merge PR #15573 before this automation PR, so the dependency-only updater and strict validation are available on `main`.
+2. Create a dedicated GitHub App owned by `firezone`, with **Repository permissions → Contents: Read and write** and **Metadata: Read-only** (automatic).
+   Disable webhooks; no webhook events, organization permissions, or ruleset bypass are needed.
+   Install the App on **only `firezone/firezone`**.
+3. In repository **Settings → Secrets and variables → Actions → Variables**, add `NIX_HASH_APP_ID` with the App ID.
+4. Generate a private key for the App and add its complete PEM contents as the repository **Actions secret** `NIX_HASH_APP_PRIVATE_KEY`.
+   Do not add this key to Dependabot secrets: the computation workflow does not need it.
+5. Merge this automation PR, then ask Dependabot to rebase an open GUI npm PR (or wait for its next update).
+   Both workflows must be on the default branch before automatic commits can run.
+6. Verify that the writer commits only the frontend hash and that normal PR CI runs on that new commit before merging the dependency update.
+
+The writer is disabled while `NIX_HASH_APP_ID` is unset; remove that variable to pause automatic commits.
+The App token is short-lived and restricted to Contents write on this repository, and App-authenticated pushes trigger normal CI.
+The App's bot commit needs no bypass of the protected default branch: it updates the Dependabot branch and goes through normal review/merge requirements.
