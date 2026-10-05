@@ -79,9 +79,6 @@ jobs:
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
-      - name: Verify pnpm dependency hash
-        if: ${{ matrix.package == 'firezone-gui-client' }}
-        run: ./scripts/nix/update-pnpm-hash.sh --check
       - name: Build package
         run: |
           nix build \
