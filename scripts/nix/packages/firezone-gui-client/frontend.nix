@@ -24,7 +24,7 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pnpm = pnpm_10;
     fetcherVersion = 4;
     # Refresh with scripts/nix/update-pnpm-hash.sh when pnpm-lock.yaml changes.
-    # CI and GUI release drafting verify this pin without repairing it.
+    # Release preparation verifies this pin without repairing it.
     hash = "sha256-xmr2F67I1y7v99sS7hQKgl5auc9jI+l7jiQjfa4wfw8=";
   };
 

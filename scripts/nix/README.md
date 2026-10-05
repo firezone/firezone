@@ -93,8 +93,9 @@ Design goal: **zero Nix edits per release.**
   If CI fails with an unknown-toolchain error right after a toolchain bump, run `nix flake update rust-overlay`.
 - The **single maintained hash** is `pnpmDeps.hash` in `scripts/nix/packages/firezone-gui-client/frontend.nix`.
   Refresh it on Linux with `scripts/nix/update-pnpm-hash.sh` whenever `gui-client/pnpm-lock.yaml` changes.
-  Nix CI and GUI release drafting run `scripts/nix/update-pnpm-hash.sh --check`, which forces a fresh dependency fetch and fails on a stale pin or fetch error.
-  The release draft and artifact builds depend on this check; commit the corrected hash before retrying. CI never silently repairs the release checkout.
+  Ordinary Nix CI repairs stale pins locally; main cache-publish runs open `chore/nix-pnpm-hash` using the existing release bot credentials.
+  GUI release preparation and release cache publishing run `scripts/nix/update-pnpm-hash.sh --check`, which forces a fresh fetch and fails on a stale committed pin or fetch error.
+  Merge the hash-bump PR and retry the release from the corrected commit; release jobs never repair the checkout.
 - Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and the `postinstall` script in `gui-client/package.json`; keep them in sync when those change.
 - Hardcoded FHS paths in Rust code (like the IPC peer-check path, see `FIREZONE_GUI_PEER_EXE` in `gui-client/src-tauri/src/ipc/unix/peer_check/linux.rs`) break NixOS builds silently.
   The Nix CI job on `rust/` PRs is what catches these at review time.
@@ -106,12 +107,3 @@ It runs from `.github/workflows/_nix.yml` on main and when a release is publishe
 NAR files are content-addressed and shared between releases; never apply age-based lifecycle rules to the container.
 
 Key rotation: generate `artifacts.firezone.dev/nix-2` with `nix key generate-secret`, sign with both keys for a transition period (signatures accumulate), publish both public keys, then retire `-1`.
-
-### Dependabot hash updates
-
-1. Open [Firezone’s New GitHub App page](https://github.com/organizations/firezone/settings/apps/new), name it `firezone-nix-hash` (or another available name), set **Homepage URL** to `https://github.com/firezone/firezone`, and leave **Callback URL** empty.
-2. Uncheck **Webhook → Active**, set **Repository permissions → Contents** to **Read and write**, leave other permissions unchanged, select **Only on this account**, and click **Create GitHub App**.
-3. Copy the **App ID** and click **Generate a private key** to download its PEM file; under **Install App**, install on `firezone` with **Only select repositories → firezone/firezone**.
-4. In repository **Settings → Secrets and variables → Actions**, add variable `NIX_HASH_APP_ID` with the App ID and secret `NIX_HASH_APP_PRIVATE_KEY` with the complete PEM contents.
-5. For key rotation, generate a new key and replace the secret before revoking the old key; remove `NIX_HASH_APP_ID` to disable the writer.
-6. After #15573 and this automation are merged, rebase a GUI Dependabot PR and verify the hash commit triggers CI.

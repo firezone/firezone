@@ -113,6 +113,7 @@ jobs:
       id-token: write # OIDC auth for the Azure binary cache upload
     with:
       sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
+      require_committed_hash: true
       push_to_cache: true
 
   # WINGET_TOKEN requirements (read this before debugging auth failures):

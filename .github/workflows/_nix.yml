@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      require_committed_hash:
+        description: "Fail on a stale committed pnpm hash instead of repairing it"
+        required: false
+        type: boolean
+        default: false
       systems:
         description: "JSON list of Nix systems to build"
         required: false
@@ -25,6 +30,11 @@ on:
         type: string
       push_to_cache:
         description: "Sign and push the built closures to the binary cache"
+        required: false
+        type: boolean
+        default: false
+      require_committed_hash:
+        description: "Fail on a stale committed pnpm hash instead of repairing it"
         required: false
         type: boolean
         default: false
@@ -79,9 +89,17 @@ jobs:
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
-      - name: Verify pnpm dependency hash
-        if: ${{ matrix.package == 'firezone-gui-client' }}
+      - name: Verify committed pnpm dependency hash
+        if: ${{ inputs.require_committed_hash && matrix.package == 'firezone-gui-client' }}
         run: ./scripts/nix/update-pnpm-hash.sh --check
+      - name: Refresh pnpm pin for ordinary CI
+        id: pnpm-pin
+        if: ${{ !inputs.require_committed_hash && matrix.package == 'firezone-gui-client' }}
+        run: |
+          ./scripts/nix/update-pnpm-hash.sh
+          if ! git diff --quiet -- scripts/nix/packages/firezone-gui-client/frontend.nix; then
+            echo "hash_changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build package
         run: |
           nix build \
@@ -89,6 +107,52 @@ jobs:
             .#${{ matrix.package }}.cargoArtifacts \
             --print-build-logs
           nix build .#${{ matrix.package }} --print-build-logs
+      - name: Set up GnuPG for the bump commit
+        # Only a cache-publish build of the trusted main checkout gets
+        # bot credentials, and one matrix leg is enough to open the PR.
+        # The GUI client is the only package with a pnpm-deps input, so its
+        # leg is the only one that can set hash_changed.
+        if: ${{ inputs.push_to_cache && github.ref == 'refs/heads/main' && (!inputs.sha || inputs.sha == github.sha) && steps.pnpm-pin.outputs.hash_changed == 'true' && matrix.package == 'firezone-gui-client' && matrix.system == 'x86_64-linux' }}
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Open pnpm-deps hash bump PR
+        if: ${{ inputs.push_to_cache && github.ref == 'refs/heads/main' && (!inputs.sha || inputs.sha == github.sha) && steps.pnpm-pin.outputs.hash_changed == 'true' && matrix.package == 'firezone-gui-client' && matrix.system == 'x86_64-linux' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          branch="chore/nix-pnpm-hash"
+          git checkout -b "$branch"
+          git add scripts/nix/packages/firezone-gui-client/frontend.nix
+          git commit -m "fix(nix): bump gui-client pnpm-deps hash"
+
+          # The checkout persists the default (read-only) GITHUB_TOKEN as an
+          # http.extraheader, which git sends regardless of the remote URL's
+          # embedded credentials. Clear it so the bot token below is actually
+          # used, letting the PR's checks run (a GITHUB_TOKEN push would not
+          # trigger them). An empty value resets the extra headers to the
+          # empty list (see `git help config`), unlike `--unset-all`, which
+          # would fail if checkout didn't happen to set one.
+          git config --local http.https://github.com/.extraheader ""
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          remote_sha=$(git ls-remote --heads origin "refs/heads/$branch" | cut -f1)
+          git push -u origin "HEAD:refs/heads/$branch" --force-with-lease="refs/heads/$branch:$remote_sha"
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create \
+              --title "fix(nix): bump gui-client pnpm-deps hash" \
+              --body "rust/gui-client/pnpm-lock.yaml changed; refreshing the fetchPnpmDeps pin so local Nix builds match CI." \
+              --reviewer firezone/engineering
+          fi
       - name: Azure login (OIDC)
         if: ${{ inputs.push_to_cache }}
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
