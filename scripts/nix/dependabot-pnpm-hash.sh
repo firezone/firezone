@@ -79,7 +79,21 @@ base64url() {
     openssl base64 -A | tr '+/' '-_' | tr -d '='
 }
 
+jwt_api() {
+    local jwt="$1" endpoint="$2"
+    shift 2
+    # GitHub App JWTs require Bearer auth; gh defaults to token auth. Feed
+    # curl the header over stdin so the credential is not in process arguments.
+    printf 'header = "Authorization: Bearer %s"\n' "$jwt" |
+        curl --fail --silent --show-error --max-time 30 --config - \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            --header 'Content-Type: application/json' \
+            --url "https://api.github.com/$endpoint" "$@"
+}
+
 mint_token() {
+
     local now header claims signing_input signature jwt installation
     now=$(date +%s)
     header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | base64url)
@@ -91,13 +105,13 @@ mint_token() {
     signature=$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$task_tmp/key.pem" | base64url)
     rm "$task_tmp/key.pem"
     jwt="$signing_input.$signature"
-    installation=$(GH_TOKEN="$jwt" repo_api installation --jq '.id')
+    installation=$(jwt_api "$jwt" "repos/$repository/installation" | jq -er '.id')
     [[ "$installation" =~ ^[0-9]+$ ]]
     jq -n --arg repo "${repository#*/}" \
         '{repositories: [$repo], permissions: {contents: "write"}}' >"$task_tmp/token-request.json"
     # Assign in this shell so the EXIT trap can revoke the token on any failure.
-    write_token=$(GH_TOKEN="$jwt" api "app/installations/$installation/access_tokens" \
-        --method POST --input "$task_tmp/token-request.json" --jq '.token')
+    write_token=$(jwt_api "$jwt" "app/installations/$installation/access_tokens" \
+        --request POST --data-binary "@$task_tmp/token-request.json" | jq -er '.token')
     [[ -n "$write_token" && "$write_token" != "null" ]]
 }
 

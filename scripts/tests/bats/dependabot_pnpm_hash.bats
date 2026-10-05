@@ -45,6 +45,30 @@ else
     exec "$MOCK_OPENSSL" "$@"
 fi
 MOCK
+    cat >"$MOCK_DIR/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+config=$(cat)
+[[ "$config" == 'header = "Authorization: Bearer '* ]]
+touch "$MOCK_DIR/bearer-auth"
+endpoint=""
+input=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --url) endpoint="${2#https://api.github.com/}"; shift 2 ;;
+        --data-binary) input="${2#@}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '%s app-jwt\n' "$endpoint" >> "$MOCK_DIR/calls"
+case "$endpoint" in
+    repos/firezone/firezone/installation) printf '%s' '{"id":7}' ;;
+    app/installations/7/access_tokens)
+        cp "$input" "$MOCK_DIR/token-request.json"
+        printf '%s' '{"token":"write-token"}' ;;
+    *) echo "Unexpected JWT API call: $endpoint" >&2; exit 1 ;;
+esac
+CURL
     cat >"$MOCK_DIR/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -112,7 +136,7 @@ case "$endpoint" in
     *) echo "Unexpected API call: $endpoint" >&2; exit 1 ;;
 esac
 MOCK
-    chmod +x "$MOCK_DIR/bin/gh" "$MOCK_DIR/bin/openssl"
+    chmod +x "$MOCK_DIR/bin/gh" "$MOCK_DIR/bin/openssl" "$MOCK_DIR/bin/curl"
     export PATH="$MOCK_DIR/bin:$PATH"
 }
 
@@ -196,6 +220,7 @@ edit_json() {
     # Restore JWT padding before decoding with OpenSSL.
     while [[ $((${#claims} % 4)) -ne 0 ]]; do claims="${claims}="; done
     printf '%s' "$claims" | tr '_-' '/+' | "$MOCK_OPENSSL" base64 -d -A | jq -e '.iss == "123" and .exp - .iat == 600'
+    [ -f "$MOCK_DIR/bearer-auth" ]
     grep -q '^installation/token write-token$' "$MOCK_DIR/calls"
 }
 
