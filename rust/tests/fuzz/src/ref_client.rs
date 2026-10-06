@@ -98,6 +98,10 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) tcp_flows: BTreeMap<(SPort, DPort), TcpFlow>,
 
+    /// The data each TCP connection expects its resource to echo in the current transition.
+    #[debug(skip)]
+    pub(crate) expected_tcp_echoes: BTreeMap<(SPort, DPort), Vec<u8>>,
+
     /// Tracks TCP connections of the current transition expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
@@ -167,6 +171,7 @@ impl RefClient {
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
             tcp_flows: Default::default(),
+            expected_tcp_echoes: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
@@ -779,6 +784,39 @@ impl RefClient {
             }
             ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
             ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
+            ExpectedOutcome::Rejected { response, .. } => {
+                self.expected_tcp_rejections
+                    .insert((sport, dport), response);
+            }
+        }
+    }
+
+    /// Expects the resource to echo `payload` if the connection still reaches it through
+    /// the same Gateway. Any other outcome ends the connection.
+    pub(crate) fn expect_tcp_echo(
+        &mut self,
+        sport: SPort,
+        dport: DPort,
+        payload: Vec<u8>,
+        outcome: ExpectedOutcome,
+    ) {
+        let flow = self
+            .tcp_flows
+            .remove(&(sport, dport))
+            .expect("written TCP connection must exist");
+
+        match outcome {
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway })
+                if gateway == flow.gateway =>
+            {
+                self.tcp_flows
+                    .insert((sport, dport), TcpFlow { resource, ..flow });
+                self.expected_tcp_echoes.insert((sport, dport), payload);
+            }
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { .. }) => {}
+            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
+            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
+            ExpectedOutcome::Dropped => {}
             ExpectedOutcome::Rejected { response, .. } => {
                 self.expected_tcp_rejections
                     .insert((sport, dport), response);

@@ -98,6 +98,7 @@ impl ReferenceState {
         for (client_id, client) in &mut self.clients {
             client.exec_mut(|c| {
                 c.expected_tcp_rejections.clear();
+                c.expected_tcp_echoes.clear();
                 for _ in c
                     .tcp_flows
                     .extract_if(.., |_, flow| !transition.retains_tcp_flow(*client_id, flow))
@@ -364,6 +365,27 @@ impl ReferenceState {
                 self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
                     client.note_sent(outcome.remote(), now);
                     client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
+                });
+            }
+            Transition::SendTcpData {
+                client_id,
+                sport,
+                dport,
+                len,
+                seed,
+            } => {
+                let flow = self.clients[client_id].inner().tcp_flows[&(*sport, *dport)].clone();
+                let outcome = self.dispatch(
+                    portal,
+                    *client_id,
+                    flow.src,
+                    &flow.dst,
+                    Protocol::Tcp(dport.0),
+                );
+
+                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
+                    client.note_sent(outcome.remote(), now);
+                    client.expect_tcp_echo(*sport, *dport, tcp_payload(*len, *seed), outcome);
                 });
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -1087,6 +1109,18 @@ impl ReferenceState {
 
     pub(crate) fn udp_flows(&self) -> Vec<FlowId> {
         self.udp_flows.keys().copied().collect()
+    }
+
+    pub(crate) fn tcp_flows(&self) -> Vec<(ClientId, SPort, DPort)> {
+        self.clients
+            .iter()
+            .flat_map(|(id, c)| {
+                c.inner()
+                    .tcp_flows
+                    .keys()
+                    .map(|(sport, dport)| (*id, *sport, *dport))
+            })
+            .collect()
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {

@@ -7,7 +7,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq, tcp_payload};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -223,7 +223,7 @@ impl TunnelTest {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
                 c.clear_probe_observations();
-                c.failed_tcp_packets.clear();
+                c.clear_tcp_observations();
             });
         }
         for gateway in self.gateways.values_mut() {
@@ -473,6 +473,18 @@ impl TunnelTest {
                     .get_mut(&client_id)
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
+            }
+            Transition::SendTcpData {
+                client_id,
+                sport,
+                dport,
+                len,
+                seed,
+            } => {
+                self.clients
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .exec_mut(|sim| sim.send_tcp_data(sport, dport, &tcp_payload(len, seed)));
             }
             Transition::SendDnsQueries(queries) => {
                 for (

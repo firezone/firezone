@@ -11,7 +11,7 @@ use super::{
     sim_client::SimClient,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::Destination,
+    transition::{DPort, Destination, SPort},
 };
 use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -646,6 +646,32 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
             tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
         } else {
             tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
+        }
+    }
+
+    let received = sim_client
+        .tcp_client
+        .received()
+        .map(|((local, remote), data)| ((SPort(local.port()), DPort(remote.port())), data))
+        .collect::<BTreeMap<_, _>>();
+
+    for (ports, data) in &received {
+        if !ref_client.expected_tcp_echoes.contains_key(ports) {
+            tracing::error!(target: "assertions", sport = ports.0.0, dport = ports.1.0, len = data.len(), "Unexpected TCP data");
+        }
+    }
+
+    for ((sport, dport), payload) in &ref_client.expected_tcp_echoes {
+        match received.get(&(*sport, *dport)) {
+            Some(data) if data == payload => {
+                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP data was echoed");
+            }
+            Some(data) => {
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, expected = payload.len(), actual = data.len(), "TCP echo does not match the written data");
+            }
+            None => {
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, "Missing TCP echo");
+            }
         }
     }
 }

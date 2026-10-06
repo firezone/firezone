@@ -248,6 +248,12 @@ impl SimClient {
         }
     }
 
+    pub fn send_tcp_data(&mut self, sport: SPort, dport: DPort, data: &[u8]) {
+        if let Err(e) = self.tcp_client.send(sport.0, dport.0, data) {
+            tracing::error!("TCP send failed: {e:#}")
+        }
+    }
+
     pub(crate) fn encapsulate(
         &mut self,
         packet: IpPacket,
@@ -626,6 +632,11 @@ impl SimClient {
 
     pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
+    }
+
+    pub(crate) fn clear_tcp_observations(&mut self) {
+        self.failed_tcp_packets.clear();
+        self.tcp_client.clear_received();
     }
 
     fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {

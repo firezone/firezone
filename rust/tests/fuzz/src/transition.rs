@@ -14,6 +14,7 @@ use super::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
+    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
@@ -68,6 +69,14 @@ pub enum Transition {
         dst: Destination,
         sport: SPort,
         dport: DPort,
+    },
+    /// Writes [`tcp_payload`] to an existing TCP connection; the resource echoes it back.
+    SendTcpData {
+        client_id: ClientId,
+        sport: SPort,
+        dport: DPort,
+        len: u16,
+        seed: u8,
     },
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
@@ -145,6 +154,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => false,
             Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
+            Transition::SendTcpData { .. } => false,
             Transition::SendDnsQueries(_) => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
@@ -199,6 +209,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => true,
             Transition::SendUdpPacketOnExistingFlow { .. } => true,
             Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
             Transition::SendDnsQueries(_) => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
             Transition::UpdateSystemDnsServers { .. } => true,
@@ -256,6 +267,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => true,
             Transition::SendUdpPacketOnExistingFlow { .. } => true,
             Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
             Transition::SendDnsQueries(_) => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
             Transition::UpdateSystemDnsServers { .. } => true,
@@ -311,6 +323,13 @@ impl Transition {
             Transition::UpdateDnsRecords { .. } => true,
         }
     }
+}
+
+/// Returns the `len` bytes a [`Transition::SendTcpData`] with `seed` writes.
+pub(crate) fn tcp_payload(len: u16, seed: u8) -> Vec<u8> {
+    iter::successors(Some(seed), |byte| Some(byte.wrapping_add(1)))
+        .take(usize::from(len))
+        .collect()
 }
 
 fn is_device_pool(resource: &Resource) -> bool {

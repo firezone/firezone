@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
@@ -12,6 +12,8 @@ pub struct Client {
     ///
     /// Closed connections are kept so late packets for them are still consumed.
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
+    /// The data each connection received since [`Client::clear_received`].
+    received: BTreeMap<(SocketAddr, SocketAddr), Vec<u8>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
     os: SimulatedOs,
@@ -36,6 +38,7 @@ impl Client {
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
             sockets_by_conn: Default::default(),
+            received: Default::default(),
             device,
             interface,
             os,
@@ -64,6 +67,27 @@ impl Client {
         let handle = self.sockets.add(socket);
 
         self.sockets_by_conn.insert((local, remote), Some(handle));
+
+        Ok(())
+    }
+
+    /// Writes `data` to the open connection between `local_port` and `remote_port`.
+    pub fn send(&mut self, local_port: u16, remote_port: u16, data: &[u8]) -> Result<()> {
+        let handle = self
+            .sockets_by_conn
+            .iter()
+            .find_map(|((local, remote), handle)| {
+                (local.port() == local_port && remote.port() == remote_port).then_some(*handle)
+            })
+            .flatten()
+            .context("No open TCP connection")?;
+
+        let socket = self.sockets.get_mut::<Socket>(handle);
+        socket.set_timeout(Some(self.os.tcp_timeout()));
+        let written = socket
+            .send_slice(data)
+            .context("Failed to write TCP data")?;
+        ensure!(written == data.len(), "TCP send buffer is full");
 
         Ok(())
     }
@@ -117,8 +141,19 @@ impl Client {
             &mut self.sockets,
         );
 
-        for (_, socket) in self.sockets.iter_mut() {
-            let l3_tcp::AnySocket::Tcp(socket) = socket;
+        for (conn, handle) in &self.sockets_by_conn {
+            let Some(handle) = handle else {
+                continue;
+            };
+            let socket = self.sockets.get_mut::<Socket>(*handle);
+
+            while let Ok(data) = socket.recv(|buf| (buf.len(), buf.to_vec())) {
+                if data.is_empty() {
+                    break;
+                }
+
+                self.received.entry(*conn).or_default().extend(data);
+            }
 
             if socket.state() == l3_tcp::State::Established && socket.send_queue() == 0 {
                 socket.set_timeout(None);
@@ -134,6 +169,16 @@ impl Client {
         self.sockets.iter().map(|(_, s)| match s {
             l3_tcp::AnySocket::Tcp(socket) => socket,
         })
+    }
+
+    pub fn received(&self) -> impl Iterator<Item = ((SocketAddr, SocketAddr), &[u8])> {
+        self.received
+            .iter()
+            .map(|(conn, data)| (*conn, data.as_slice()))
+    }
+
+    pub fn clear_received(&mut self) {
+        self.received.clear();
     }
 
     /// Silently drops every connection for which `keep` returns `false`.
@@ -187,12 +232,30 @@ impl Server {
         self.device.receive(packet);
     }
 
+    /// Echoes everything a connection receives back to its remote.
     pub fn handle_timeout(&mut self, now: Instant) {
-        let _result = self.interface.poll(
-            l3_tcp::now(self.created_at, now),
-            &mut self.device,
-            &mut self.sockets,
-        );
+        let now = l3_tcp::now(self.created_at, now);
+
+        let _result = self
+            .interface
+            .poll(now, &mut self.device, &mut self.sockets);
+
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            while let Ok(data) = socket.recv(|buf| (buf.len(), buf.to_vec())) {
+                if data.is_empty() {
+                    break;
+                }
+                if socket.send_slice(&data) != Ok(data.len()) {
+                    tracing::error!("Failed to echo TCP data");
+                }
+            }
+        }
+
+        let _result = self
+            .interface
+            .poll(now, &mut self.device, &mut self.sockets);
 
         // Every address in `listen_endpoints` always has one socket in `Listen`:
         // a listener that accepted a connection is replaced by a fresh one.

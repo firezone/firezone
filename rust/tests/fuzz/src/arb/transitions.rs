@@ -48,6 +48,7 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendPacketOnExistingFlow,
+    SendTcpData,
     SendDnsQueries,
     UpdateDevicePoolMembers,
 }
@@ -91,6 +92,7 @@ pub(super) fn generate(
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
+    let tcp_flows = state.tcp_flows();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
 
@@ -123,6 +125,7 @@ pub(super) fn generate(
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
+        (!tcp_flows.is_empty()).then_some((K::SendTcpData, 10)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
     ]
@@ -285,6 +288,17 @@ pub(super) fn generate(
                     seq,
                     probe_id,
                 },
+            }
+        }
+        K::SendTcpData => {
+            let (client_id, sport, dport) = tcp_flows[g.choose_index(tcp_flows.len())];
+
+            Transition::SendTcpData {
+                client_id,
+                sport,
+                dport,
+                len: g.u16_in(1..=4000),
+                seed: g.u8(),
             }
         }
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
