@@ -1,9 +1,19 @@
 defmodule PortalWeb.Logs.ChangeLogsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ChangeLogFixtures
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
 
   setup do
     account = account_fixture()
@@ -337,7 +347,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       |> element("button[phx-click='filter'][title='Clear all filters']")
       |> render_click()
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ cl_a.log_id
       assert html =~ cl_b.log_id
     end
@@ -422,7 +432,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
         conn
         |> authorize_conn(actor)
         |> Phoenix.LiveViewTest.put_connect_params(%{"timezone" => "Asia/Tokyo"})
-        |> live(~p"/#{account}/logs/change_logs")
+        |> live(~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][preset]=7d")
 
       initial = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert initial =~ "12:00 PM"
@@ -431,6 +441,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       lv
       |> form("form[phx-change='filter']", change_logs: %{timestamp: %{mode: "local"}})
       |> render_change()
+
+      render_async(lv)
 
       shifted = lv |> element("#timestamp-#{cl.log_id}") |> render()
       assert shifted =~ "9:00 PM"
@@ -491,10 +503,11 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       alice_tail = String.slice(alice.log_id, 16, 8)
 
       for query <- ["alice@", "Alice Admin", alice_id, alice_tail] do
-        html =
-          lv
-          |> form("form[phx-change='filter']", change_logs: %{actor: query})
-          |> render_change()
+        lv
+        |> form("form[phx-change='filter']", change_logs: %{actor: query})
+        |> render_change()
+
+        html = render_async(lv)
 
         assert html =~ alice.log_id, "expected alice match for query=#{inspect(query)}"
         refute html =~ bob.log_id, "expected bob NOT to match for query=#{inspect(query)}"
@@ -526,7 +539,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
 
       # Format: "{assoc}:{dir}:{field}" per LiveTable.parse_order_by.
       for column <- ["timestamp", "log_id"], dir <- ["desc", "asc"] do
-        path = "#{base}?change_logs_order_by=change_logs:#{dir}:#{column}"
+        path =
+          "#{base}?change_logs_order_by=change_logs:#{dir}:#{column}&change_logs_filter[timestamp][preset]=7d"
 
         {:ok, _lv, html} = live(conn, path)
 
@@ -579,7 +593,8 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
       assert html =~ new_cl.log_id
       refute html =~ old_cl.log_id
 
-      # to-bound only: includes oldest + middle, excludes newest
+      # to-bound only: the range starts a day before it, so it includes
+      # middle and excludes oldest and newest
       to = "#{DateTime.to_date(newest)}T00:00:00"
 
       {:ok, _lv, html} =
@@ -588,7 +603,7 @@ defmodule PortalWeb.Logs.ChangeLogsTest do
           ~p"/#{account}/logs/change_logs?change_logs_filter[timestamp][to]=#{to}&change_logs_filter[timestamp][mode]=utc"
         )
 
-      assert html =~ old_cl.log_id
+      refute html =~ old_cl.log_id
       assert html =~ mid_cl.log_id
       refute html =~ new_cl.log_id
 

@@ -109,6 +109,33 @@ defmodule Portal.RepoTest do
       refute metadata.count_limited
     end
 
+    test "cancels the query and returns :query_timeout when the statement budget is used up", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      actor_fixture(account: account)
+
+      slow =
+        where(
+          queryable,
+          [actors: actor],
+          actor.account_id == ^account.id and fragment("pg_sleep(0.5)::text IS NOT NULL")
+        )
+
+      assert list_offset(slow, query_module, statement_timeout: 50, timeout: 5_000) ==
+               {:error, :query_timeout}
+
+      # The connection survives the cancelled statement.
+      assert {:ok, [_actor], _metadata} =
+               list_offset(
+                 where(queryable, [actors: actor], actor.account_id == ^account.id),
+                 query_module,
+                 statement_timeout: 5_000,
+                 timeout: 10_000
+               )
+    end
+
     test "returns paged results with offset metadata", %{
       account: account,
       query_module: query_module,
