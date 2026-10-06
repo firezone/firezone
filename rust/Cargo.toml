@@ -277,8 +277,8 @@ uuid = "1.23.2"
 webpki-roots = "1.0.7"
 which = "8.0.5"
 windows = "0.62.2"
-windows-core = "0.62.2"
-windows-implement = "0.60.2"
+windows-core = "0.100.0"
+windows-implement = "0.100.0"
 windows-native-keyring-store = "1.1.0"
 windows-package-identity = { path = "gui-client/src-package-identity" }
 windows-security = { path = "libs/windows-security" }
