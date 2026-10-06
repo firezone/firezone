@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#MISE description="Run the tests of `client-ffi` and its workspace dependencies one crate at a time on a dinghy platform"
+set -euo pipefail
+
+platform="${1:?usage: mise run //rust:mobile-test <dinghy-platform> <triple>}"
+triple="${2:?usage: mise run //rust:mobile-test <dinghy-platform> <triple>}"
+timeout_secs="${MOBILE_TEST_TIMEOUT_SECS:-300}"
+failed=()
+
+read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
+
+set -m # Each crate's run gets its own process group, so a timeout kills cargo and dinghy alike.
+
+for ((i = 1; i < ${#flags[@]}; i += 2)); do
+    package="${flags[$i]}"
+    echo "::group::$package"
+
+    cargo dinghy -p "$platform" test -p "$package" -- --test-threads=1 --nocapture </dev/null &
+    pid=$!
+    (sleep "$timeout_secs" && echo "::error::$package timed out after ${timeout_secs}s" && kill -- "-$pid") &
+    watchdog=$!
+    disown "$watchdog"
+
+    if ! wait "$pid"; then
+        failed+=("$package")
+    fi
+    kill -- "-$watchdog" 2>/dev/null || true
+
+    echo "::endgroup::"
+done
+
+if ((${#failed[@]} > 0)); then
+    echo "::error::Failed crates: ${failed[*]}"
+    exit 1
+fi

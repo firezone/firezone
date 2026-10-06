@@ -122,7 +122,7 @@ jobs:
   test-android:
     name: test-android
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     env:
       DINGHY_PLATFORM: auto-android-x86_64-api26
     steps:
@@ -156,12 +156,12 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
-          script: cargo dinghy -p "$DINGHY_PLATFORM" test --no-fail-fast ${{ steps.packages.outputs.packages }} -- --nocapture
+          script: mise run //rust:mobile-test "$DINGHY_PLATFORM" x86_64-linux-android
 
   test-ios:
     name: test-ios
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 30
     env:
       XCODE_VERSION: "26.2"
     steps:
@@ -184,10 +184,8 @@ jobs:
             jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
-      - id: packages
-        run: echo "packages=$(mise run -q //rust:mobile-test-packages aarch64-apple-ios-sim)" >> "$GITHUB_OUTPUT"
       - name: Run tests
-        run: cargo dinghy -p auto-ios-aarch64-sim test --no-fail-fast ${{ steps.packages.outputs.packages }} -- --nocapture
+        run: mise run //rust:mobile-test auto-ios-aarch64-sim aarch64-apple-ios-sim
 
   fuzz-targets:
     name: fuzz-targets
