@@ -119,6 +119,79 @@ jobs:
           parallel: true
           fail-on-error: false
 
+  test-android:
+    name: test-android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      DINGHY_PLATFORM: auto-android-x86_64-api26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/free-disk-space
+        with:
+          keep-android: "true"
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: x86_64-linux-android
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - id: packages
+        run: echo "packages=$(mise run -q //rust:mobile-test-packages x86_64-linux-android)" >> "$GITHUB_OUTPUT"
+      - name: Build tests
+        run: cargo dinghy -p "$DINGHY_PLATFORM" test --no-run ${{ steps.packages.outputs.packages }}
+      - name: Grant access to KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ./rust
+          script: cargo dinghy -p "$DINGHY_PLATFORM" test ${{ steps.packages.outputs.packages }} -- --nocapture
+
+  test-ios-simulator:
+    name: test-ios-simulator
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json |
+            jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+      - id: packages
+        run: echo "packages=$(mise run -q //rust:mobile-test-packages aarch64-apple-ios-sim)" >> "$GITHUB_OUTPUT"
+      - name: Run tests
+        run: cargo dinghy -p auto-ios-aarch64-sim test ${{ steps.packages.outputs.packages }} -- --nocapture
+
   fuzz-targets:
     name: fuzz-targets
     runs-on: ubuntu-24.04
