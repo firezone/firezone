@@ -291,7 +291,14 @@ impl SimGateway {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
 
             if let Some(server) = self.tcp_resources.get_mut(&socket) {
-                server.handle_inbound(packet);
+                let remote = SocketAddr::new(packet.source(), tcp.source_port());
+                let connected = server.is_connected(socket, remote);
+                server.handle_inbound(packet.clone());
+
+                if connected {
+                    self.record_received_tcp_request(&packet, now);
+                }
+
                 return None;
             }
 
@@ -330,6 +337,23 @@ impl SimGateway {
         if let Some(udp) = packet.as_udp() {
             self.record_received_request(udp.payload(), packet.clone(), now);
         }
+        if packet.is_tcp() {
+            self.record_received_tcp_request(packet, now);
+        }
+    }
+
+    fn record_received_tcp_request(&mut self, packet: &IpPacket, now: Instant) {
+        let Some(tcp) = packet.as_tcp() else {
+            return;
+        };
+        // A retransmitted segment carries a probe the Gateway already received.
+        if ProbeId::from_payload(tcp.payload())
+            .is_none_or(|id| self.probe_observations.iter().any(|o| o.id() == id))
+        {
+            return;
+        }
+
+        self.record_received_request(tcp.payload(), packet.clone(), now);
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {

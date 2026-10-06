@@ -8,12 +8,10 @@ use crate::os::SimulatedOs;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    /// The socket for each connection, or `None` for one that [`Client::retain`] dropped.
+    /// The socket for each connection, or `None` for one that was dropped.
     ///
     /// Closed connections are kept so late packets for them are still consumed.
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
-    /// The data each connection received since [`Client::clear_received`].
-    received: BTreeMap<(SocketAddr, SocketAddr), Vec<u8>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
     os: SimulatedOs,
@@ -38,7 +36,6 @@ impl Client {
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
             sockets_by_conn: Default::default(),
-            received: Default::default(),
             device,
             interface,
             os,
@@ -119,7 +116,7 @@ impl Client {
             return;
         }
 
-        // A packet for a connection that [`Client::retain`] dropped has no socket to
+        // A packet for a connection that was dropped has no socket to
         // receive it. Feeding it to the TCP stack would answer it with an RST.
         if let Some(tcp) = packet.as_tcp()
             && let local = SocketAddr::new(packet.destination(), tcp.destination_port())
@@ -141,19 +138,8 @@ impl Client {
             &mut self.sockets,
         );
 
-        for (conn, handle) in &self.sockets_by_conn {
-            let Some(handle) = handle else {
-                continue;
-            };
-            let socket = self.sockets.get_mut::<Socket>(*handle);
-
-            while let Ok(data) = socket.recv(|buf| (buf.len(), buf.to_vec())) {
-                if data.is_empty() {
-                    break;
-                }
-
-                self.received.entry(*conn).or_default().extend(data);
-            }
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
 
             if socket.state() == l3_tcp::State::Established && socket.send_queue() == 0 {
                 socket.set_timeout(None);
@@ -171,23 +157,20 @@ impl Client {
         })
     }
 
-    pub fn received(&self) -> impl Iterator<Item = ((SocketAddr, SocketAddr), &[u8])> {
-        self.received
-            .iter()
-            .map(|(conn, data)| (*conn, data.as_slice()))
-    }
-
-    pub fn clear_received(&mut self) {
-        self.received.clear();
-    }
-
-    /// Silently drops every connection for which `keep` returns `false`.
-    pub fn retain(&mut self, mut keep: impl FnMut(SocketAddr, SocketAddr) -> bool) {
+    /// Silently drops every connection that is not established or still waits for an ACK.
+    ///
+    /// Like an application giving up on a connect or write that did not complete in time,
+    /// this keeps a failed connection from retransmitting into later transitions.
+    pub fn drop_unfinished(&mut self) {
         let dropped = self
             .sockets_by_conn
             .iter()
             .filter_map(|((local, remote), handle)| Some((*local, *remote, (*handle)?)))
-            .filter(|(local, remote, _)| !keep(*local, *remote))
+            .filter(|(_, _, handle)| {
+                let socket = self.sockets.get::<Socket>(*handle);
+
+                socket.state() != l3_tcp::State::Established || socket.send_queue() > 0
+            })
             .collect::<Vec<_>>();
 
         for (local, remote, handle) in dropped {
@@ -230,6 +213,17 @@ impl Server {
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         self.device.receive(packet);
+    }
+
+    /// Returns whether a connection between `local` and `remote` is established.
+    pub fn is_connected(&self, local: SocketAddr, remote: SocketAddr) -> bool {
+        self.sockets.iter().any(|(_, socket)| {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            socket.state() == l3_tcp::State::Established
+                && socket.local_endpoint() == Some(local.into())
+                && socket.remote_endpoint() == Some(remote.into())
+        })
     }
 
     /// Echoes everything a connection receives back to its remote.

@@ -44,6 +44,7 @@ impl FlowId {
 pub(crate) enum ProbeProtocol {
     Icmp { seq: Seq, identifier: Identifier },
     Udp { sport: SPort, dport: DPort },
+    Tcp { sport: SPort, dport: DPort },
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +110,12 @@ pub(crate) enum ProbeRequest {
         sport: SPort,
         dport: DPort,
     },
+    Tcp {
+        src: IpAddr,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
+    },
 }
 
 impl ProbeRequest {
@@ -116,6 +123,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { src, .. } => *src,
             ProbeRequest::Udp { src, .. } => *src,
+            ProbeRequest::Tcp { src, .. } => *src,
         }
     }
 
@@ -123,6 +131,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { dst, .. } => dst,
             ProbeRequest::Udp { dst, .. } => dst,
+            ProbeRequest::Tcp { dst, .. } => dst,
         }
     }
 
@@ -130,6 +139,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { identifier, .. } => Protocol::IcmpEcho(identifier.0),
             ProbeRequest::Udp { dport, .. } => Protocol::Udp(dport.0),
+            ProbeRequest::Tcp { dport, .. } => Protocol::Tcp(dport.0),
         }
     }
 
@@ -142,6 +152,10 @@ impl ProbeRequest {
                 identifier: *identifier,
             },
             ProbeRequest::Udp { sport, dport, .. } => ProbeProtocol::Udp {
+                sport: *sport,
+                dport: *dport,
+            },
+            ProbeRequest::Tcp { sport, dport, .. } => ProbeProtocol::Tcp {
                 sport: *sport,
                 dport: *dport,
             },
@@ -233,6 +247,8 @@ pub(crate) fn remote_responds_with_icmp_error(
         (ProbeRequest::Icmp { .. }, Remote::Client(_)) => true,
         (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => false,
         (ProbeRequest::Udp { .. }, Remote::Client(_)) => false,
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(_)) => false,
+        (ProbeRequest::Tcp { .. }, Remote::Client(_)) => false,
     };
 
     !is_icmp_peer

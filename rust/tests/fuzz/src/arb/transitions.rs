@@ -297,8 +297,8 @@ pub(super) fn generate(
                 client_id,
                 sport,
                 dport,
-                len: g.u16_in(1..=4000),
-                seed: g.u8(),
+                len: g.u16_in(0..=1200),
+                probe_id: g.fresh_probe_id(),
             }
         }
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),

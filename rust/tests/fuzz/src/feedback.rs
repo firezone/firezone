@@ -248,27 +248,7 @@ impl Recorder {
                     dst: dst.clone(),
                     sport: *sport,
                     dport: *dport,
-                    sends_data: false,
                 });
-            }
-            Transition::SendTcpData {
-                client_id,
-                sport,
-                dport,
-                ..
-            } => {
-                self.current_tcp_connection = reference.clients[client_id]
-                    .inner()
-                    .tcp_flows
-                    .get(&(*sport, *dport))
-                    .map(|flow| TcpConnectionAttempt {
-                        client: *client_id,
-                        src: flow.src,
-                        dst: flow.dst.clone(),
-                        sport: *sport,
-                        dport: *dport,
-                        sends_data: true,
-                    });
             }
             Transition::SendDnsQueries(queries) => {
                 self.current_dns_queries.clone_from(queries);
@@ -297,6 +277,7 @@ impl Recorder {
             | Transition::RemoveResource(_)
             | Transition::SendIcmpPacketOnNewFlow { .. }
             | Transition::SendUdpPacketOnNewFlow { .. }
+            | Transition::SendTcpData { .. }
             | Transition::SendDnsResourcePtrQuery { .. }
             | Transition::UpdateUpstreamSearchDomain(_) => {}
         }
@@ -517,10 +498,7 @@ impl Recorder {
                         .is_some_and(|remote| remote.port == attempt.dport.0)
                     && socket.state() == l3_tcp::State::Established
             });
-        let echoed = reference_client
-            .expected_tcp_echoes
-            .contains_key(&(attempt.sport, attempt.dport));
-        if !established || (attempt.sends_data && !echoed) {
+        if !established {
             return;
         }
 
@@ -533,7 +511,6 @@ impl Recorder {
             attempt.src.is_ipv6(),
             matches!(attempt.dst, Destination::DomainName { .. }),
             reference_client.internet_resource() == Some(flow.resource),
-            attempt.sends_data,
         );
         self.record_recovery(
             reference,
@@ -629,7 +606,6 @@ struct TcpConnectionAttempt {
     dst: Destination,
     sport: SPort,
     dport: DPort,
-    sends_data: bool,
 }
 
 #[derive(Clone, Copy)]

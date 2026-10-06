@@ -258,8 +258,6 @@ impl TunnelTest {
         let utc_now = self.flux_capacitor.now();
         let mut application_probe = None;
 
-        self.drop_tcp_connections_unknown_to(ref_state);
-
         // Act: Apply the transition
         match transition {
             Transition::AddResource(resource) => {
@@ -479,12 +477,16 @@ impl TunnelTest {
                 sport,
                 dport,
                 len,
-                seed,
+                probe_id,
             } => {
-                self.clients
-                    .get_mut(&client_id)
-                    .unwrap()
-                    .exec_mut(|sim| sim.send_tcp_data(sport, dport, &tcp_payload(len, seed)));
+                let payload = tcp_payload(probe_id, len);
+                let client = self.clients.get_mut(&client_id).unwrap();
+                let transmits = client
+                    .exec_mut(|sim| sim.send_tcp_probe(probe_id, sport, dport, &payload, now));
+
+                for transmit in transmits {
+                    buffered_transmits.push_from(transmit, client, now);
+                }
             }
             Transition::SendDnsQueries(queries) => {
                 for (
@@ -819,26 +821,16 @@ impl TunnelTest {
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);
-        self.drop_tcp_connections_unknown_to(ref_state);
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| c.tcp_client.drop_unfinished());
+        }
 
         if let Some((probe_id, flow_id)) = application_probe {
             self.record_dns_nat_observation(ref_state, probe_id, flow_id);
         }
 
         self
-    }
-
-    /// Silently drops the TCP connections the reference model does not track.
-    fn drop_tcp_connections_unknown_to(&mut self, ref_state: &ReferenceState) {
-        for (client_id, client) in &mut self.clients {
-            let flows = &ref_state.clients[client_id].inner().tcp_flows;
-
-            client.exec_mut(|c| {
-                c.tcp_client.retain(|local, remote| {
-                    flows.contains_key(&(SPort(local.port()), DPort(remote.port())))
-                })
-            });
-        }
     }
 
     fn send_icmp_probe(

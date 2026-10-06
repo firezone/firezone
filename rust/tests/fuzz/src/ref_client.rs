@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
-    probe::{ExpectedOutcome, RejectionResponse, Remote, Route, TcpFlow},
+    probe::{ExpectedOutcome, Remote, Route, TcpFlow},
     reference::PrivateKey,
     resource::{
         CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
@@ -98,14 +98,6 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) tcp_flows: BTreeMap<(SPort, DPort), TcpFlow>,
 
-    /// The data each TCP connection expects its resource to echo in the current transition.
-    #[debug(skip)]
-    pub(crate) expected_tcp_echoes: BTreeMap<(SPort, DPort), Vec<u8>>,
-
-    /// Tracks TCP connections of the current transition expected to receive an ICMP error response.
-    #[debug(skip)]
-    pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
-
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
@@ -171,8 +163,6 @@ impl RefClient {
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
             tcp_flows: Default::default(),
-            expected_tcp_echoes: Default::default(),
-            expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
             resources: Default::default(),
@@ -752,22 +742,21 @@ impl RefClient {
             }
             ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
             ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
-            ExpectedOutcome::Rejected { response, .. } => {
-                self.expected_tcp_rejections
-                    .insert((sport, dport), response);
-            }
+            ExpectedOutcome::Rejected { .. } => {}
         }
     }
 
-    /// Expects the resource to echo `payload` if the connection still reaches it through
-    /// the same Gateway. Any other outcome ends the connection.
-    pub(crate) fn expect_tcp_echo(
+    /// Returns what data written to a TCP connection observes, given the `outcome` of its packet.
+    ///
+    /// The connection survives only if the data reaches its resource through the same Gateway,
+    /// or any Gateway if no server is `listening` and the resource mirrors it.
+    pub(crate) fn write_tcp_flow(
         &mut self,
         sport: SPort,
         dport: DPort,
-        payload: Vec<u8>,
         outcome: ExpectedOutcome,
-    ) {
+        listening: bool,
+    ) -> ExpectedOutcome {
         let flow = self
             .tcp_flows
             .remove(&(sport, dport))
@@ -775,20 +764,25 @@ impl RefClient {
 
         match outcome {
             ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway })
-                if gateway == flow.gateway =>
+                if gateway == flow.gateway || !listening =>
             {
-                self.tcp_flows
-                    .insert((sport, dport), TcpFlow { resource, ..flow });
-                self.expected_tcp_echoes.insert((sport, dport), payload);
+                self.tcp_flows.insert(
+                    (sport, dport),
+                    TcpFlow {
+                        resource,
+                        gateway,
+                        ..flow
+                    },
+                );
+
+                outcome
             }
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { .. }) => {}
-            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
-            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
-            ExpectedOutcome::Dropped => {}
-            ExpectedOutcome::Rejected { response, .. } => {
-                self.expected_tcp_rejections
-                    .insert((sport, dport), response);
-            }
+            // The server behind any other Gateway resets the connection.
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { .. }) => ExpectedOutcome::Dropped,
+            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => outcome,
+            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => outcome,
+            ExpectedOutcome::Dropped => outcome,
+            ExpectedOutcome::Rejected { .. } => outcome,
         }
     }
 
@@ -1645,16 +1639,6 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
-    }
-
-    /// Drops the TCP connections whose resource the client no longer reaches through their Gateway.
-    pub(crate) fn drop_tcp_flows_without_gateway(&mut self) {
-        let flows = mem::take(&mut self.tcp_flows);
-
-        self.tcp_flows = flows
-            .into_iter()
-            .filter(|(_, flow)| self.gateway_for_resource(flow.resource) == Some(flow.gateway))
-            .collect();
     }
 }
 

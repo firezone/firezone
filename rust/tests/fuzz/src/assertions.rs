@@ -45,7 +45,12 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         let ref_client = ref_client_host.inner();
         let sut_client = state.clients[client_id].inner();
 
-        assert_tcp_connections(ref_client, sut_client);
+        assert_tcp_connections(
+            ref_client,
+            sut_client,
+            &ref_state.expected_tcp_rejections,
+            *client_id,
+        );
         assert_udp_dns_packets_properties(ref_client, sut_client);
         assert_tcp_dns(ref_client, sut_client);
         assert_dns_servers_are_valid(ref_client, sut_client, portal);
@@ -348,6 +353,16 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
                 tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
             }
         },
+        ProbeRequest::Tcp { sport, dport, .. } => match submitted_request.packet.as_tcp() {
+            Some(tcp) => {
+                if (tcp.source_port(), tcp.destination_port()) != (sport.0, dport.0) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "TCP probe ports do not match");
+                }
+            }
+            None => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not TCP");
+            }
+        },
     }
 }
 
@@ -461,6 +476,24 @@ fn assert_echo_response(
                 }
             }
         }
+        ProbeRequest::Tcp { .. } => {
+            let (Some(request), Some(reply)) = (
+                submitted_request.packet.as_tcp(),
+                received_response.packet.as_tcp(),
+            ) else {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP probe or its echo is not TCP");
+                return;
+            };
+
+            if (request.source_port(), request.destination_port())
+                != (reply.destination_port(), reply.source_port())
+            {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP echo ports do not match");
+            }
+            if request.payload() != reply.payload() {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP echo payload does not match");
+            }
+        }
     }
 }
 
@@ -505,6 +538,13 @@ fn assert_icmp_error_response(
                 dst: actual_dport,
             } if (actual_sport, actual_dport) == (sport.0, dport.0)
         ),
+        ProbeProtocol::Tcp { sport, dport } => matches!(
+            actual_protocol,
+            Layer4Protocol::Tcp {
+                src: actual_sport,
+                dst: actual_dport,
+            } if (actual_sport, actual_dport) == (sport.0, dport.0)
+        ),
     };
 
     if !protocol_matches {
@@ -526,6 +566,9 @@ fn assert_probe_payload(expected: ProbeId, packet: &IpPacket) {
 fn probe_payload(packet: &IpPacket) -> Option<&[u8]> {
     if let Some(udp) = packet.as_udp() {
         return Some(udp.payload());
+    }
+    if let Some(tcp) = packet.as_tcp() {
+        return Some(tcp.payload());
     }
     if let Some(icmp) = packet.as_icmpv4() {
         return Some(icmp.payload());
@@ -580,11 +623,14 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     None
 }
 
-fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_tcp_connections(
+    ref_client: &RefClient,
+    sim_client: &SimClient,
+    expected_rejections: &BTreeMap<(ClientId, SPort, DPort), RejectionResponse>,
+    client_id: ClientId,
+) {
     for ((sport, dport), error) in &sim_client.failed_tcp_packets {
-        let expected_rejection = ref_client
-            .expected_tcp_rejections
-            .contains_key(&(*sport, *dport));
+        let expected_rejection = expected_rejections.contains_key(&(client_id, *sport, *dport));
         let expected_connection = ref_client.tcp_flows.contains_key(&(*sport, *dport));
 
         if !expected_rejection && !expected_connection {
@@ -592,7 +638,10 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
         }
     }
 
-    for ((sport, dport), response) in &ref_client.expected_tcp_rejections {
+    for ((_, sport, dport), response) in expected_rejections
+        .iter()
+        .filter(|((client, _, _), _)| *client == client_id)
+    {
         match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
             Some(error)
                 if match response {
@@ -646,32 +695,6 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
             tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
         } else {
             tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
-        }
-    }
-
-    let received = sim_client
-        .tcp_client
-        .received()
-        .map(|((local, remote), data)| ((SPort(local.port()), DPort(remote.port())), data))
-        .collect::<BTreeMap<_, _>>();
-
-    for (ports, data) in &received {
-        if !ref_client.expected_tcp_echoes.contains_key(ports) {
-            tracing::error!(target: "assertions", sport = ports.0.0, dport = ports.1.0, len = data.len(), "Unexpected TCP data");
-        }
-    }
-
-    for ((sport, dport), payload) in &ref_client.expected_tcp_echoes {
-        match received.get(&(*sport, *dport)) {
-            Some(data) if data == payload => {
-                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP data was echoed");
-            }
-            Some(data) => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, expected = payload.len(), actual = data.len(), "TCP echo does not match the written data");
-            }
-            None => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, "Missing TCP echo");
-            }
         }
     }
 }

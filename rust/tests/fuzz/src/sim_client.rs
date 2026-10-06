@@ -19,6 +19,7 @@ use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Lay
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    iter,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -248,10 +249,38 @@ impl SimClient {
         }
     }
 
-    pub fn send_tcp_data(&mut self, sport: SPort, dport: DPort, data: &[u8]) {
-        if let Err(e) = self.tcp_client.send(sport.0, dport.0, data) {
-            tracing::error!("TCP send failed: {e:#}")
+    /// Writes `payload` to a TCP connection and submits the segment carrying it as probe `id`.
+    pub(crate) fn send_tcp_probe(
+        &mut self,
+        id: ProbeId,
+        sport: SPort,
+        dport: DPort,
+        payload: &[u8],
+        now: Instant,
+    ) -> Vec<Transmit> {
+        if let Err(e) = self.tcp_client.send(sport.0, dport.0, payload) {
+            tracing::error!("TCP send failed: {e:#}");
+            return Vec::new();
         }
+        self.tcp_client.handle_timeout(now);
+
+        let mut probe = Some(id);
+        let packets = iter::from_fn(|| self.tcp_client.poll_outbound()).collect::<Vec<_>>();
+
+        packets
+            .into_iter()
+            .filter_map(|packet| {
+                let carries_payload = packet.as_tcp().is_some_and(|tcp| {
+                    (tcp.source_port(), tcp.destination_port()) == (sport.0, dport.0)
+                        && !tcp.payload().is_empty()
+                });
+
+                match probe.take_if(|_| carries_payload) {
+                    Some(id) => self.encapsulate_probe(id, packet, now),
+                    None => self.encapsulate(packet, now),
+                }
+            })
+            .collect()
     }
 
     pub(crate) fn encapsulate(
@@ -281,7 +310,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         let protocol = probe_protocol_from_request(&packet)
-            .expect("probe packets must be ICMP echo requests or UDP packets");
+            .expect("probe packets must be ICMP echo requests, UDP or TCP packets");
         assert!(
             self.sent_probes.iter().all(|(sent, _)| *sent != id),
             "probe IDs must be unique"
@@ -376,8 +405,18 @@ impl SimClient {
                         }
                     }
                     Layer4Protocol::Tcp { src, dst } => {
-                        self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), icmp_error);
+                        let protocol = ProbeProtocol::Tcp {
+                            sport: SPort(src),
+                            dport: DPort(dst),
+                        };
+
+                        match self.submitted_probe_for(protocol) {
+                            Some(id) => self.record_received_response(id, packet.clone(), now),
+                            None => {
+                                self.failed_tcp_packets
+                                    .insert((SPort(src), DPort(dst)), icmp_error);
+                            }
+                        }
 
                         // Allow the client to process the ICMP error.
                         self.tcp_client.handle_inbound(packet);
@@ -454,6 +493,9 @@ impl SimClient {
         }
 
         if self.tcp_client.accepts(&packet) {
+            if let Some(id) = self.echoed_tcp_probe(&packet) {
+                self.record_received_response(id, packet.clone(), now);
+            }
             self.tcp_client.handle_inbound(packet);
             return None;
         }
@@ -636,7 +678,35 @@ impl SimClient {
 
     pub(crate) fn clear_tcp_observations(&mut self) {
         self.failed_tcp_packets.clear();
-        self.tcp_client.clear_received();
+    }
+
+    /// Returns the probe a TCP segment echoes, unless an earlier segment already echoed it.
+    fn echoed_tcp_probe(&self, packet: &IpPacket) -> Option<ProbeId> {
+        let tcp = packet.as_tcp()?;
+        let id = self.submitted_probe_for(ProbeProtocol::Tcp {
+            sport: SPort(tcp.destination_port()),
+            dport: DPort(tcp.source_port()),
+        })?;
+
+        if ProbeId::from_payload(tcp.payload()) != Some(id) {
+            return None;
+        }
+
+        let echoed = self.probe_observations.iter().any(|observation| {
+            observation.id() == id && observation.as_received_response().is_some()
+        });
+
+        (!echoed).then_some(id)
+    }
+
+    /// Returns the probe for `protocol` if it was submitted in the current transition.
+    fn submitted_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
+        let id = self.latest_probe_for(protocol)?;
+
+        self.probe_observations
+            .iter()
+            .any(|observation| observation.id() == id)
+            .then_some(id)
     }
 
     fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
@@ -663,6 +733,13 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
         return Some(ProbeProtocol::Icmp {
             seq: Seq(echo.seq),
             identifier: Identifier(echo.id),
+        });
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        return Some(ProbeProtocol::Tcp {
+            sport: SPort(tcp.source_port()),
+            dport: DPort(tcp.destination_port()),
         });
     }
 

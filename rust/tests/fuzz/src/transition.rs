@@ -76,7 +76,7 @@ pub enum Transition {
         sport: SPort,
         dport: DPort,
         len: u16,
-        seed: u8,
+        probe_id: ProbeId,
     },
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
@@ -325,10 +325,14 @@ impl Transition {
     }
 }
 
-/// Returns the `len` bytes a [`Transition::SendTcpData`] with `seed` writes.
-pub(crate) fn tcp_payload(len: u16, seed: u8) -> Vec<u8> {
-    iter::successors(Some(seed), |byte| Some(byte.wrapping_add(1)))
-        .take(usize::from(len))
+/// Returns the bytes a [`Transition::SendTcpData`] writes: the probe ID followed by `len` bytes.
+///
+/// Small enough to fit a single segment, so every segment of it starts with the probe ID.
+pub(crate) fn tcp_payload(probe_id: ProbeId, len: u16) -> Vec<u8> {
+    probe_id
+        .to_be_bytes()
+        .into_iter()
+        .chain(iter::repeat_n(0x5a, usize::from(len)))
         .collect()
 }
 
