@@ -807,6 +807,7 @@ impl TunnelTest {
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);
+        self.drop_tcp_connections_unknown_to(ref_state);
 
         if let Some((probe_id, flow_id)) = application_probe {
             self.record_dns_nat_observation(ref_state, probe_id, flow_id);
@@ -815,7 +816,7 @@ impl TunnelTest {
         self
     }
 
-    /// Silently drops the TCP connections the reference model no longer tracks.
+    /// Silently drops the TCP connections the reference model does not track.
     fn drop_tcp_connections_unknown_to(&mut self, ref_state: &ReferenceState) {
         for (client_id, client) in &mut self.clients {
             let flows = &ref_state.clients[client_id].inner().tcp_flows;

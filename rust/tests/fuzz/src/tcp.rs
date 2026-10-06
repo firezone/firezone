@@ -56,12 +56,10 @@ impl Client {
             .connect(self.interface.context(), remote, local)
             .context("Failed to create TCP connection")?;
 
-        socket.set_timeout(Some(self.os.tcp_timeout()));
         // `smoltcp`'s abort timer counts from the last packet received from the
-        // remote, whether or not anything is outstanding. Keep-alive round-trips
-        // keep an idle connection's timer fresh, so the socket only aborts once
-        // the path has actually been dead for the OS' timeout.
-        socket.set_keep_alive(Some(l3_tcp::Duration::from_secs(5)));
+        // remote, whether or not anything is outstanding. Without keep-alives, an
+        // idle connection must therefore only arm it while it waits for an ACK.
+        socket.set_timeout(Some(self.os.tcp_timeout()));
 
         let handle = self.sockets.add(socket);
 
@@ -91,7 +89,10 @@ impl Client {
         {
             tracing::debug!(%local, %remote, "Received ICMP error");
 
-            self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
+            let handle = *handle;
+            self.forget(local, remote, handle);
+
+            return;
         }
 
         // A packet for a connection that [`Client::retain`] dropped has no socket to
@@ -115,6 +116,14 @@ impl Client {
             &mut self.device,
             &mut self.sockets,
         );
+
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            if socket.state() == l3_tcp::State::Established && socket.send_queue() == 0 {
+                socket.set_timeout(None);
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -129,16 +138,22 @@ impl Client {
 
     /// Silently drops every connection for which `keep` returns `false`.
     pub fn retain(&mut self, mut keep: impl FnMut(SocketAddr, SocketAddr) -> bool) {
-        for ((local, remote), maybe_socket) in &mut self.sockets_by_conn {
-            if keep(*local, *remote) {
-                continue;
-            }
-            let Some(handle) = maybe_socket.take() else {
-                continue;
-            };
+        let dropped = self
+            .sockets_by_conn
+            .iter()
+            .filter_map(|((local, remote), handle)| Some((*local, *remote, (*handle)?)))
+            .filter(|(local, remote, _)| !keep(*local, *remote))
+            .collect::<Vec<_>>();
 
-            self.sockets.remove(handle);
+        for (local, remote, handle) in dropped {
+            self.forget(local, remote, handle);
         }
+    }
+
+    /// Drops a connection without telling the remote, but keeps consuming its late packets.
+    fn forget(&mut self, local: SocketAddr, remote: SocketAddr, handle: l3_tcp::SocketHandle) {
+        self.sockets.remove(handle);
+        self.sockets_by_conn.insert((local, remote), None);
     }
 }
 
