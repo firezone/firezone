@@ -4,27 +4,61 @@ set -euo pipefail
 
 platform="${1:?usage: mise run //rust:mobile-test <dinghy-platform> <triple>}"
 triple="${2:?usage: mise run //rust:mobile-test <dinghy-platform> <triple>}"
-timeout_secs="${MOBILE_TEST_TIMEOUT_SECS:-300}"
+crate_timeout="${MOBILE_TEST_CRATE_TIMEOUT_SECS:-300}"
+test_timeout="${MOBILE_TEST_TIMEOUT_SECS:-60}"
 failed=()
 
 read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
 
-set -m # Each crate's run gets its own process group, so a timeout kills cargo and dinghy alike.
+set -m # Each run gets its own process group, so a timeout kills cargo and dinghy alike.
+
+# Exits with 124 if the command is still running after the given number of seconds.
+run_with_timeout() {
+    local secs="$1"
+    shift
+
+    "$@" </dev/null &
+    local pid=$!
+    (sleep "$secs" && kill -- "-$pid") &
+    local watchdog=$!
+    disown "$watchdog"
+
+    local status=0
+    wait "$pid" || status=$?
+    if ! kill -- "-$watchdog" 2>/dev/null; then
+        return 124
+    fi
+    return "$status"
+}
 
 for ((i = 1; i < ${#flags[@]}; i += 2)); do
     package="${flags[$i]}"
     echo "::group::$package"
 
-    cargo dinghy -p "$platform" test -p "$package" -- --test-threads=1 --nocapture </dev/null &
-    pid=$!
-    (sleep "$timeout_secs" && echo "::error::$package timed out after ${timeout_secs}s" && kill -- "-$pid") &
-    watchdog=$!
-    disown "$watchdog"
+    status=0
+    run_with_timeout "$crate_timeout" cargo dinghy -p "$platform" test -p "$package" -- --test-threads=1 --nocapture || status=$?
 
-    if ! wait "$pid"; then
+    if ((status == 124)); then
+        # The device only hands back a test binary's output once it exits, so find the test that hangs by running each on its own.
+        echo "::error::$package timed out after ${crate_timeout}s, running its tests one by one"
+
+        mapfile -t tests < <(cargo dinghy -p "$platform" test -p "$package" -- --list --format terse 2>/dev/null </dev/null | sed -n 's/: test$//p' | sort -u)
+
+        for test in "${tests[@]}"; do
+            test_status=0
+            run_with_timeout "$test_timeout" cargo dinghy -p "$platform" test -p "$package" -- --exact "$test" --nocapture || test_status=$?
+
+            case "$test_status" in
+            0) ;;
+            124) echo "::error::$package: $test timed out after ${test_timeout}s" ;;
+            *) echo "::error::$package: $test failed" ;;
+            esac
+        done
+    fi
+
+    if ((status != 0)); then
         failed+=("$package")
     fi
-    kill -- "-$watchdog" 2>/dev/null || true
 
     echo "::endgroup::"
 done
