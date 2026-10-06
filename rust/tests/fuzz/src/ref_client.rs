@@ -623,10 +623,6 @@ impl RefClient {
 
         self.resources.push(r);
         self.routes.push((rid, address));
-
-        if self.tcp_flows.values().any(|flow| flow.resource == rid) {
-            self.set_resource_online(rid);
-        }
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
@@ -640,10 +636,6 @@ impl RefClient {
         }
 
         self.resources.push(r);
-
-        if self.tcp_flows.values().any(|flow| flow.resource == rid) {
-            self.set_resource_online(rid);
-        }
     }
 
     pub(crate) fn add_device_pool_resource(&mut self, r: DevicePoolResource) {
@@ -710,30 +702,6 @@ impl RefClient {
         }
 
         ResourceStatus::Unknown
-    }
-
-    /// Returns the list of resources where we are not "sure" whether they are online or unknown.
-    ///
-    /// Resources with TCP connections have an automatic retry and therefore, modelling their exact online/unknown state is difficult.
-    pub(crate) fn maybe_online_resources(&self) -> BTreeSet<ResourceId> {
-        let resources_with_tcp_connections = self
-            .tcp_flows
-            .values()
-            .map(|flow| flow.resource)
-            .collect::<BTreeSet<_>>();
-
-        let maybe_online_sites = resources_with_tcp_connections
-            .into_iter()
-            .filter_map(|r| self.site_for_resource(r).ok())
-            .collect::<BTreeSet<_>>();
-
-        self.resources
-            .iter()
-            .filter_map(move |r| {
-                let site = r.site().ok()?;
-                maybe_online_sites.contains(site).then_some(r.id())
-            })
-            .collect()
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {

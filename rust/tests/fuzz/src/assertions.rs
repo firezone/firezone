@@ -679,7 +679,6 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
 fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
     let expected_resources = ref_client.expected_resources();
     let actual_resources = &sim_client.observed_resource_list;
-    let maybe_online_resources = ref_client.maybe_online_resources();
     let expected_ids = expected_resources
         .iter()
         .map(ResourceView::id)
@@ -703,12 +702,7 @@ fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
         };
 
         assert_resource_definition(expected, actual);
-        assert_resource_status(
-            resource,
-            expected.status(),
-            actual.status(),
-            maybe_online_resources.contains(&resource),
-        );
+        assert_resource_status(resource, expected.status(), actual.status());
     }
 
     for actual in actual_resources {
@@ -829,24 +823,17 @@ where
     }
 }
 
-fn assert_resource_status(
-    resource: ResourceId,
-    expected: ResourceStatus,
-    actual: ResourceStatus,
-    maybe_online: bool,
-) {
+fn assert_resource_status(resource: ResourceId, expected: ResourceStatus, actual: ResourceStatus) {
     use ResourceStatus::*;
 
     match (expected, actual) {
         (Unknown, Unknown) => {}
-        (Unknown, Online) if maybe_online => {}
         (Unknown, Online) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
         (Unknown, Offline) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
-        (Online, Unknown) if maybe_online => {}
         (Online, Unknown) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
