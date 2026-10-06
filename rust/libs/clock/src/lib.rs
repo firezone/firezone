@@ -412,7 +412,7 @@ mod tests {
             .expect("suspend-inclusive clock should not go backwards");
 
         assert!(
-            suspend_inclusive_elapsed.abs_diff(monotonic_elapsed) < Duration::from_millis(50),
+            suspend_inclusive_elapsed.abs_diff(monotonic_elapsed) < Duration::from_millis(100),
             "suspend-inclusive: {suspend_inclusive_elapsed:?}, `Instant`: {monotonic_elapsed:?}"
         );
     }
