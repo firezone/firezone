@@ -395,6 +395,16 @@ pub(crate) struct Gc<RId> {
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
 
+    use stun_codec::{
+        Message, MessageClass,
+        rfc5389::{
+            attributes::{ErrorCode, XorMappedAddress},
+            errors::ServerError,
+            methods::BINDING,
+        },
+        rfc5766::methods::ALLOCATE,
+    };
+
     use super::*;
 
     #[test]
@@ -523,10 +533,7 @@ mod tests {
         let now = Instant::now();
         upsert(&mut allocations, 1, SERVER_V4, now);
 
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .fail(FreeReason::UnhandledResponse);
+        reject_allocation(&mut allocations, 1, now);
         allocations.gc(now);
 
         assert_eq!(allocations.blocked(now).collect::<Vec<_>>(), [1]);
@@ -566,10 +573,7 @@ mod tests {
         let now = Instant::now();
         upsert(&mut allocations, 1, SERVER_V4, now);
 
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .fail(FreeReason::UnhandledResponse);
+        reject_allocation(&mut allocations, 1, now);
         allocations.gc(now);
         allocations.restart(now);
 
@@ -593,6 +597,34 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         )
+    }
+
+    /// Rejects the allocation's ALLOCATE request with an unhandled error.
+    fn reject_allocation(allocations: &mut Allocations<u64>, rid: u64, now: Instant) {
+        let allocation = allocations.get_mut_by_id(&rid).unwrap();
+        let local = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 33333));
+
+        let binding = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            binding.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(local));
+        allocation.handle_input(SERVER_V4, local, response, now);
+
+        let allocate = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            allocate.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(ServerError));
+        allocation.handle_input(SERVER_V4, local, response, now);
     }
 
     /// Advances time without ever answering the relays, failing all current allocations.

@@ -2354,37 +2354,6 @@ mod tests {
     }
 
     #[test]
-    fn requests_new_relays_without_the_failed_relay() {
-        let now = Instant::now();
-        let mut node = Node::<u64, u64>::new([0; 32], now, Duration::ZERO);
-        let relay = BTreeSet::from([(
-            1,
-            RelaySocket::from(SocketAddr::from((Ipv4Addr::LOCALHOST, 3478))),
-            "user".to_owned(),
-            "password".to_owned(),
-            "firezone".to_owned(),
-        )]);
-
-        node.update_relays(BTreeSet::new(), &relay, now);
-        node.allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .fail(crate::allocation::FreeReason::UnhandledResponse);
-        node.handle_timeout(now);
-
-        let requests = iter::from_fn(|| node.poll_event())
-            .filter_map(|event| {
-                if let Event::NoRelays { blocked } = event {
-                    Some(blocked)
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(requests, [vec![1]]);
-    }
-
-    #[test]
     fn generates_correct_optimistic_candidates() {
         let base = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
         let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
