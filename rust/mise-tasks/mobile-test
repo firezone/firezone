@@ -7,8 +7,11 @@ triple="${2:?usage: mise run //rust:mobile-test <dinghy-platform> <triple>}"
 crate_timeout="${MOBILE_TEST_CRATE_TIMEOUT_SECS:-300}"
 test_timeout="${MOBILE_TEST_TIMEOUT_SECS:-60}"
 failed=()
+tests_file="$(mktemp)"
 
 read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
+
+cargo dinghy -p "$platform" test --no-run "${flags[@]}"
 
 set -m # Each run gets its own process group, so a timeout kills cargo and dinghy alike.
 
@@ -42,9 +45,9 @@ for ((i = 1; i < ${#flags[@]}; i += 2)); do
         # The device only hands back a test binary's output once it exits, so find the test that hangs by running each on its own.
         echo "::error::$package timed out after ${crate_timeout}s, running its tests one by one"
 
-        mapfile -t tests < <(cargo dinghy -p "$platform" test -p "$package" -- --list --format terse 2>/dev/null </dev/null | sed -n 's/: test$//p' | sort -u)
+        cargo dinghy -p "$platform" test -p "$package" -- --list --format terse 2>/dev/null </dev/null | sed -n 's/: test$//p' | sort -u >"$tests_file"
 
-        for test in "${tests[@]}"; do
+        while read -r test; do
             test_status=0
             run_with_timeout "$test_timeout" cargo dinghy -p "$platform" test -p "$package" -- --exact "$test" --nocapture || test_status=$?
 
@@ -53,7 +56,7 @@ for ((i = 1; i < ${#flags[@]}; i += 2)); do
             124) echo "::error::$package: $test timed out after ${test_timeout}s" ;;
             *) echo "::error::$package: $test failed" ;;
             esac
-        done
+        done <"$tests_file"
     fi
 
     if ((status != 0)); then
