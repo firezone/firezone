@@ -968,6 +968,7 @@ impl TunnelTest {
                     &mut self.clients,
                     gateway,
                     &self.relays,
+                    portal,
                     &ref_state.global_dns_records,
                     now,
                 );
@@ -1438,6 +1439,7 @@ impl TunnelTest {
                         &mut self.clients,
                         gateway,
                         &self.relays,
+                        portal,
                         &ref_state.global_dns_records,
                         now,
                     );
@@ -1601,19 +1603,14 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::NoRelays { excluded_relay_ids } => {
-                // Mimic the portal: reply with the current set of relays, except the excluded ones.
-                let mut relays = self
-                    .relays
-                    .iter()
-                    .filter(|(id, _)| !excluded_relay_ids.contains(id))
-                    .peekable();
+                let relays = portal.request_relays(
+                    ClientOrGatewayId::Client(src),
+                    &excluded_relay_ids,
+                    &self.relays,
+                    now,
+                );
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| {
-                    if relays.peek().is_some() {
-                        c.answerable_relay_requests.push(now);
-                    }
-                    c.update_relays(iter::empty(), relays, now)
-                });
+                client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
 
                 Ok(())
             }
@@ -1826,6 +1823,7 @@ fn on_gateway_event(
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
+    portal: &mut StubPortal,
     global_dns_records: &DnsRecords,
     now: Instant,
 ) {
@@ -1868,17 +1866,13 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::NoRelays { excluded_relay_ids } => {
-            // Mimic the portal: reply with the current set of relays, except the excluded ones.
-            let mut relays = relays
-                .iter()
-                .filter(|(id, _)| !excluded_relay_ids.contains(id))
-                .peekable();
-            gateway.exec_mut(|g| {
-                if relays.peek().is_some() {
-                    g.answerable_relay_requests.push(now);
-                }
-                g.update_relays(iter::empty(), relays, now)
-            });
+            let relays = portal.request_relays(
+                ClientOrGatewayId::Gateway(src),
+                &excluded_relay_ids,
+                relays,
+                now,
+            );
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
     }
 }

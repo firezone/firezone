@@ -42,9 +42,6 @@ pub(crate) struct SimGateway {
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
-
-    /// When the node asked the portal for relays while the portal had some to give it.
-    pub(crate) answerable_relay_requests: Vec<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,7 +88,6 @@ impl SimGateway {
                 })
                 .collect(),
             transmit_buffer: snownet::TransmitBuffer::new(),
-            answerable_relay_requests: Default::default(),
         }
     }
 

@@ -43,11 +43,8 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
     );
     assert_dns_nat(state);
 
-    for (id, client) in &state.clients {
-        assert_relay_requests_do_not_loop(id, &client.inner().answerable_relay_requests);
-    }
-    for (id, gateway) in &state.gateways {
-        assert_relay_requests_do_not_loop(id, &gateway.inner().answerable_relay_requests);
+    for (node, handed_out_at) in portal.relay_handouts() {
+        assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
     }
 
     for (client_id, ref_client_host) in &ref_state.clients {
@@ -313,15 +310,15 @@ fn assert_dns_nat(state: &TunnelTest) {
     }
 }
 
-/// Asserts that a node does not ask the portal in a loop for relays the portal can give it.
-fn assert_relay_requests_do_not_loop(node: impl fmt::Display, requested_at: &[Instant]) {
-    const MAX_REQUESTS_PER_MINUTE: usize = 10;
+/// Asserts that the portal does not hand a node relays in a loop.
+fn assert_relays_are_not_handed_out_in_a_loop(node: impl fmt::Display, handed_out_at: &[Instant]) {
+    const MAX_HANDOUTS_PER_MINUTE: usize = 10;
 
-    if requested_at
-        .windows(MAX_REQUESTS_PER_MINUTE + 1)
-        .any(|w| w[MAX_REQUESTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
+    if handed_out_at
+        .windows(MAX_HANDOUTS_PER_MINUTE + 1)
+        .any(|w| w[MAX_HANDOUTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
     {
-        tracing::error!(target: "assertions", %node, "Node asks the portal for relays in a loop despite getting some");
+        tracing::error!(target: "assertions", %node, "Portal handed the node relays more than {MAX_HANDOUTS_PER_MINUTE} times within a minute");
     }
 }
 

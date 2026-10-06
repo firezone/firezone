@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -6,12 +6,15 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    time::Instant,
 };
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
+use crate::sim_net::Host;
+use crate::sim_relay::SimRelay;
 use crate::transition::Transition;
 
 /// Stub implementation of the portal.
@@ -49,6 +52,9 @@ pub struct StubPortal {
     /// How often each Client was handed a Gateway it did not prefer since it started, per site.
     #[debug(skip)]
     load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
+    /// When the portal handed each node relays.
+    #[debug(skip)]
+    relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
 
     /// Stable index used to pick a resource candidate (`index % len`).
     resource_selector: u32,
@@ -176,6 +182,7 @@ impl StubPortal {
             regular_sites,
             gateway_selector,
             load_balanced_requests: Default::default(),
+            relay_handouts: Default::default(),
             resource_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
@@ -638,6 +645,30 @@ impl StubPortal {
         );
 
         (gateway, site_id)
+    }
+
+    /// Answers `node`'s request for relays with every relay it did not exclude.
+    pub(crate) fn request_relays<'a>(
+        &mut self,
+        node: ClientOrGatewayId,
+        excluded_relay_ids: &[RelayId],
+        relays: &'a BTreeMap<RelayId, Host<SimRelay>>,
+        now: Instant,
+    ) -> Vec<(&'a RelayId, &'a Host<SimRelay>)> {
+        let relays = relays
+            .iter()
+            .filter(|(id, _)| !excluded_relay_ids.contains(id))
+            .collect::<Vec<_>>();
+
+        if !relays.is_empty() {
+            self.relay_handouts.entry(node).or_default().push(now);
+        }
+
+        relays
+    }
+
+    pub(crate) fn relay_handouts(&self) -> &BTreeMap<ClientOrGatewayId, Vec<Instant>> {
+        &self.relay_handouts
     }
 
     pub(crate) fn map_client_resource_to_gateway_resource(
