@@ -127,9 +127,6 @@ jobs:
       DINGHY_PLATFORM: auto-android-x86_64-api26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/free-disk-space
-        with:
-          keep-android: "true"
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: x86_64-linux-android
@@ -161,8 +158,8 @@ jobs:
           working-directory: ./rust
           script: cargo dinghy -p "$DINGHY_PLATFORM" test ${{ steps.packages.outputs.packages }} -- --nocapture
 
-  test-ios-simulator:
-    name: test-ios-simulator
+  test-ios:
+    name: test-ios
     runs-on: macos-26
     timeout-minutes: 90
     env:
