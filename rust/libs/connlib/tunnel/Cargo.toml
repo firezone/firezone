@@ -9,6 +9,7 @@ anyhow = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 bufferpool = { workspace = true }
 connlib-model = { workspace = true }
+crossbeam-channel = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
 futures = { workspace = true }
@@ -32,6 +33,7 @@ tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
 [dev-dependencies]
+boringtun = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
 rustls = { workspace = true }

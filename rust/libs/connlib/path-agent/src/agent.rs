@@ -476,13 +476,7 @@ impl PathAgent {
             Ok(Packet::HandshakeInit(_)) => {
                 self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
 
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
+                self.send_on_primary(Payload::Ciphertext(bytes));
 
                 // The second unanswered re-key is WireGuard telling us the path
                 // is dead: drop the primary and re-probe. Fire once on the
@@ -501,14 +495,18 @@ impl PathAgent {
             // without one there is nothing to send (WireGuard buffers it and
             // re-sends once a path exists).
             _ => {
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
+                self.send_on_primary(Payload::Ciphertext(bytes));
             }
+        }
+    }
+
+    fn send_on_primary(&mut self, payload: Payload) {
+        if let Some((local, remote)) = self.primary {
+            self.pending_transmits.push_back(Transmit {
+                local,
+                remote,
+                payload,
+            });
         }
     }
 
@@ -629,7 +627,10 @@ impl PathAgent {
                 self.promote_from_handshake(path);
 
                 for b in outbound {
-                    self.handle_outbound(b, now);
+                    match b {
+                        Payload::Ciphertext(bytes) => self.handle_outbound(bytes, now),
+                        payload => self.send_on_primary(payload),
+                    }
                 }
 
                 ControlFlow::Break(())
@@ -678,7 +679,9 @@ impl PathAgent {
                 tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
                 return None;
             }
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+            TunnResult::WriteToTunnelV4(_, _)
+            | TunnResult::WriteToTunnelV6(_, _)
+            | TunnResult::KeepaliveDue => {
                 tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeInit");
                 return None;
             }
@@ -704,24 +707,25 @@ impl PathAgent {
     }
 
     /// Authenticates an inbound response, returning the packets boringtun wants
-    /// to send afterwards (e.g. queued data). `None` means it was rejected.
+    /// to send afterwards (e.g. a keepalive). `None` means it was rejected.
     fn decapsulate_response(
         &mut self,
         tunnel: &mut Tunn,
         bytes: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> Option<Vec<Vec<u8>>> {
+    ) -> Option<Vec<Payload>> {
         let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-        let mut outbound = Vec::<Vec<u8>>::new();
+        let mut outbound = Vec::new();
         match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
             TunnResult::Done => {}
+            TunnResult::KeepaliveDue => outbound.push(Payload::Keepalive),
             TunnResult::WriteToNetwork(first) => {
-                outbound.push(first.to_vec());
+                outbound.push(Payload::Ciphertext(first.to_vec()));
                 while let TunnResult::WriteToNetwork(more) =
                     tunnel.decapsulate_at(Some(path.1.ip()), &[], &mut buf, now)
                 {
-                    outbound.push(more.to_vec());
+                    outbound.push(Payload::Ciphertext(more.to_vec()));
                 }
             }
             TunnResult::Err(e) => {

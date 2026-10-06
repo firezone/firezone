@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
+use crate::buffer::{DataMessage, Outgoing, SealJob, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -22,7 +22,8 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
-    HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
+    HandshakeResponse, Index, Opened, Packet, PacketCookieReply, PacketData, PendingOpen,
+    PendingSeal, Tunn, TunnResult,
 };
 use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
@@ -42,6 +43,7 @@ use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
+use std::range::Range;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use std::{iter, mem};
@@ -470,21 +472,16 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(
-            cid,
-            peer_socket,
-            &goodbye,
-            now,
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-        ) {
-            Ok(Some(_)) => {
+        match connection.encapsulate(cid, peer_socket, goodbye, now, &mut self.allocations) {
+            Ok(Some(message)) => {
+                self.buffered_transmits.push_data(message);
+
                 tracing::info!("Connection closed proactively (sent goodbye)");
             }
             Ok(None) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye)");
             }
-            Err(e) => {
+            Err((_, e)) => {
                 tracing::info!("Connection closed proactively (failed to send goodbye: {e:#})");
             }
         }
@@ -573,18 +570,20 @@ where
     /// # Returns
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
-    /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted.
+    /// - `Ok(Some)` if the packet was a wireguard data message from a peer.
+    ///   Decrypt it from `datagram` with [`EncryptedPacket::decrypt`], on any thread, and pass the
+    ///   result to [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: &[u8],
+        datagram: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<Option<EncryptedPacket<TId>>> {
         self.last_now = now;
 
-        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, datagram, now)
+        {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
         };
@@ -598,47 +597,93 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
+        let (cid, open) = match self.connections_try_handle(from, destination, packet, now) {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
+        let start = (packet.as_ptr() as usize)
+            .checked_sub(datagram.as_ptr() as usize)
+            .expect("the payload of a TURN channel is part of its datagram");
+        let message = Range {
+            start,
+            end: start + packet.len(),
+        };
+        debug_assert!(message.end <= datagram.len());
 
-        Ok(Some((id, packet)))
+        Ok(Some(EncryptedPacket {
+            cid,
+            from,
+            destination,
+            message,
+            open,
+        }))
     }
 
-    /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
+    /// Completes the decapsulation of a packet decrypted by [`EncryptedPacket::decrypt`].
+    ///
+    /// Packets of the same connection must be handed back in the order in which they were
+    /// decapsulated, otherwise they are delivered out of order.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
+    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    pub fn handle_decrypted(
+        &mut self,
+        packet: DecryptedPacket<TId>,
+        now: Instant,
+    ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
+        let cid = packet.cid;
+        let conn = self.connections.get_mut(&cid, now)?;
+
+        match conn.handle_decrypted(cid, packet, now) {
+            ControlFlow::Continue(packet) => Ok(Some((cid, packet))),
+            ControlFlow::Break(Ok(())) => Ok(None),
+            ControlFlow::Break(Err(e)) => Err(e.context(format!("cid={cid}"))),
+        }
+    }
+
+    /// Encapsulates an outgoing IP packet into a [`DataMessage`], to be sealed on any thread.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    ///
+    /// # Errors
+    ///
+    /// Hands the packet back together with the error, e.g. to buffer it on [`StillConnecting`].
     pub fn encapsulate(
         &mut self,
         cid: TId,
-        packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>> {
+    ) -> Result<Option<DataMessage>, (IpPacket, anyhow::Error)> {
         self.last_now = now;
 
-        let conn = self.connections.get_mut(&cid, now)?;
+        let conn = match self.connections.get_mut(&cid, now) {
+            Ok(conn) => conn,
+            Err(e) => return Err((packet, e)),
+        };
 
         let socket = match &conn.state {
             ConnectionState::Connecting { .. } => {
-                return Err(StillConnecting.into());
+                return Err((packet, StillConnecting.into()));
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
             ConnectionState::Failed => {
-                return Err(anyhow!("Connection {cid} failed"));
+                return Err((packet, anyhow!("Connection {cid} failed")));
             }
         };
 
-        let info = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
-            .with_context(|| format!("cid={cid}"))?;
+        let message = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+            .map_err(|(packet, e)| (packet, e.context(format!("cid={cid}"))))?;
 
-        Ok(info)
+        Ok(message)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -740,18 +785,14 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
-    pub fn poll_transmit(&mut self) -> Option<Transmit> {
+    pub fn poll_transmit(&mut self) -> Option<Outgoing> {
         if let Some(transmit) = self.allocations.poll_transmit() {
             tracing::trace!(?transmit);
 
-            return Some(transmit);
+            return Some(Outgoing::Control(transmit));
         }
 
-        let transmit = self.buffered_transmits.poll_transmit()?;
-
-        tracing::trace!(?transmit);
-
-        Some(transmit)
+        self.buffered_transmits.poll_transmit()
     }
 
     pub fn update_relays(
@@ -901,6 +942,7 @@ where
             relay: SelectedRelay { id: relay },
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
+                keepalive_due: false,
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
@@ -1065,7 +1107,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, (TId, PendingOpen)> {
         // If the packet is not a WireGuard packet, bail early.
         let Ok(parsed_packet) = boringtun::noise::Tunn::parse_incoming_packet(packet) else {
             tracing::debug!(packet = %hex::encode(packet));
@@ -1138,7 +1180,7 @@ where
         }
 
         control_flow
-            .map_continue(|c| (cid, c))
+            .map_continue(|open| (cid, open))
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
@@ -1366,10 +1408,62 @@ impl fmt::Debug for Transmit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EncapsulateInfo {
-    pub src: Option<SocketAddr>,
-    pub dst: SocketAddr,
+/// A WireGuard data message received from a peer, ready to be decrypted.
+#[must_use = "the packet is lost unless it is decrypted and handed back to the `Node`"]
+pub struct EncryptedPacket<TId> {
+    cid: TId,
+    from: SocketAddr,
+    destination: SocketAddr,
+    /// Where the data message is in the datagram passed to [`Node::decapsulate`].
+    message: Range<usize>,
+    open: PendingOpen,
+}
+
+impl<TId> EncryptedPacket<TId> {
+    /// Decrypts the packet from `datagram`, the bytes it was decapsulated from.
+    ///
+    /// This does not touch the [`Node`] and can therefore run on any thread.
+    pub fn decrypt(self, datagram: &[u8]) -> DecryptedPacket<TId> {
+        let mut buffer = IpPacketBuf::new();
+        let opened = self.open.open_into(&datagram[self.message], buffer.buf());
+
+        DecryptedPacket {
+            cid: self.cid,
+            from: self.from,
+            destination: self.destination,
+            buffer,
+            opened,
+        }
+    }
+}
+
+/// A WireGuard data message decrypted by [`EncryptedPacket::decrypt`].
+#[must_use = "the packet is lost unless it is handed back to the `Node`"]
+pub struct DecryptedPacket<TId> {
+    cid: TId,
+    from: SocketAddr,
+    destination: SocketAddr,
+    buffer: IpPacketBuf,
+    opened: Opened,
+}
+
+/// A data message whose counter is assigned, waiting for its plaintext.
+struct PreparedDataMessage {
+    src: Option<SocketAddr>,
+    dst: SocketAddr,
+    channel_data_header: Option<[u8; 4]>,
+    seal: PendingSeal,
+}
+
+impl PreparedDataMessage {
+    fn into_message(self, ecn: Ecn, packet: Option<IpPacket>) -> DataMessage {
+        DataMessage {
+            src: self.src,
+            dst: self.dst,
+            ecn,
+            job: SealJob::new(self.channel_data_header, packet, self.seal),
+        }
+    }
 }
 
 #[derive(derive_more::Debug)]
@@ -1530,7 +1624,10 @@ where
                         self.peer_socket_for_tuple(allocations, source, destination);
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting { wg_buffer } => {
+                        ConnectionState::Connecting {
+                            wg_buffer,
+                            keepalive_due,
+                        } => {
                             tracing::debug!(
                                 num_buffered = %wg_buffer.len(),
                                 "Flushing WireGuard packets buffered during ICE"
@@ -1551,6 +1648,10 @@ where
                                 peer_socket: remote_socket,
                                 last_activity: now,
                             };
+
+                            if keepalive_due {
+                                self.send_keepalive(remote_socket, allocations, transmits, now);
+                            }
 
                             // If the WireGuard handshake already completed while we were still
                             // running ICE, the connection only becomes usable now that a socket is
@@ -1643,8 +1744,15 @@ where
                         transmits.push(transmit);
                     }
                 }
-                path_agent::Payload::Plaintext(ref ip) => {
-                    let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
+                path_agent::Payload::Plaintext(ip) => {
+                    if let Ok(Some(message)) =
+                        self.encapsulate(cid, peer_socket, *ip, now, allocations)
+                    {
+                        transmits.push_data(message);
+                    }
+                }
+                path_agent::Payload::Keepalive => {
+                    self.send_keepalive(peer_socket, allocations, transmits, now);
                 }
             }
         }
@@ -1720,6 +1828,11 @@ where
             TunnResult::Err(e) => {
                 tracing::warn!("boringtun error: {e}");
             }
+            TunnResult::KeepaliveDue => {
+                if let Some(socket) = self.socket() {
+                    self.send_keepalive(socket, allocations, transmits, now);
+                }
+            }
             TunnResult::WriteToNetwork(b) => {
                 if self.agent.is_iceless() {
                     self.agent.handle_outbound(b.to_vec(), now);
@@ -1752,7 +1865,10 @@ where
         TId: Copy + fmt::Display,
     {
         match mem::replace(&mut self.state, ConnectionState::Failed) {
-            ConnectionState::Connecting { wg_buffer } => {
+            ConnectionState::Connecting {
+                wg_buffer,
+                keepalive_due,
+            } => {
                 tracing::debug!(
                     %cid,
                     num_wg = wg_buffer.len(),
@@ -1772,6 +1888,10 @@ where
                     peer_socket,
                     last_activity: now,
                 };
+
+                if keepalive_due {
+                    self.send_keepalive(peer_socket, allocations, transmits, now);
+                }
 
                 // The connection only becomes usable now that a socket is
                 // selected, so this is when we signal establishment if the
@@ -1804,28 +1924,57 @@ where
         }
     }
 
-    /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
         socket: PeerSocket,
-        packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>>
+    ) -> Result<Option<DataMessage>, (IpPacket, anyhow::Error)>
     where
         TId: fmt::Display,
     {
         self.state
-            .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
+            .on_outgoing(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
+        let prepared =
+            match self.prepare_data_message(socket, packet.packet().len(), now, allocations) {
+                Ok(Some(prepared)) => prepared,
+                Ok(None) => return Ok(None),
+                Err(e) => return Err((packet, e)),
+            };
+
+        Ok(Some(prepared.into_message(packet.ecn(), Some(packet))))
+    }
+
+    /// A keepalive is a data message like any other, but does not count as activity.
+    fn send_keepalive(
+        &mut self,
+        socket: PeerSocket,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+        now: Instant,
+    ) {
+        match self.prepare_data_message(socket, 0, now, allocations) {
+            Ok(Some(prepared)) => transmits.push_data(prepared.into_message(Ecn::NonEct, None)),
+            Ok(None) => {}
+            Err(e) => tracing::debug!("Failed to send keepalive: {e:#}"),
+        }
+    }
+
+    fn prepare_data_message(
+        &mut self,
+        socket: PeerSocket,
+        payload_len: usize,
+        now: Instant,
+        allocations: &mut Allocations<RId>,
+    ) -> Result<Option<PreparedDataMessage>> {
         let relay_id = self.relay.id;
-        let ecn = packet.ecn();
 
-        let (src, dst, packet_start, relay) = match socket {
+        let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
-                (Some(source), dest, 0, None)
+                (Some(source), dest, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let allocation = allocations
@@ -1835,40 +1984,33 @@ where
                     .active_socket()
                     .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                (
-                    None,
-                    dst,
-                    ip_packet::DATA_CHANNEL_OVERHEAD,
-                    Some((peer, allocation)),
-                )
+                (None, dst, Some((peer, allocation)))
             }
         };
 
-        let reserve_len = packet_start + packet.packet().len() + ip_packet::WG_OVERHEAD;
-        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
+        let seal = self.tunnel.encapsulate_data_deferred_at(payload_len, now)?;
 
-        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
-        let len = self.tunnel.encapsulate_data_at(
-            packet.packet(),
-            &mut reservation.buffer()[packet_start..],
-            now,
-        )?;
-        debug_assert_eq!(packet_start + len, reserve_len);
+        let channel_data_header = match relay {
+            Some((peer, allocation)) => {
+                let message_len = payload_len + ip_packet::WG_OVERHEAD;
 
-        if let Some((peer, allocation)) = relay {
-            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
-            // logs it and queues a binding), so drop the packet instead of surfacing an error.
-            if allocation
-                .encode_channel_data_header(peer, reservation.buffer(), now)
-                .is_none()
-            {
-                return Ok(None);
+                // A missing channel is an expected part of channel setup (`channel_data_header`
+                // logs it and queues a binding), so drop the packet instead of surfacing an error.
+                let Some(header) = allocation.channel_data_header(peer, message_len, now) else {
+                    return Ok(None);
+                };
+
+                Some(header)
             }
-        }
+            None => None,
+        };
 
-        reservation.commit();
-
-        Ok(Some(EncapsulateInfo { src, dst }))
+        Ok(Some(PreparedDataMessage {
+            src,
+            dst,
+            channel_data_header,
+            seal,
+        }))
     }
 
     fn decapsulate<TId>(
@@ -1880,7 +2022,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> ControlFlow<Result<()>, PendingOpen>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1895,53 +2037,45 @@ where
             ControlFlow::Continue(packet) => packet,
         };
 
-        let mut ip_packet = IpPacketBuf::new();
+        if let Ok(Packet::PacketData(data)) = Tunn::parse_incoming_packet(packet) {
+            let open = match self.tunnel.decapsulate_data_deferred(data) {
+                Ok(open) => open,
+                Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+            };
 
-        let control_flow = match self.tunnel.decapsulate_at(
-            Some(from.ip()),
-            packet,
-            ip_packet.buf(),
-            now,
-        ) {
+            return ControlFlow::Continue(open);
+        }
+
+        let mut buffer = IpPacketBuf::new();
+
+        match self
+            .tunnel
+            .decapsulate_at(Some(from.ip()), packet, buffer.buf(), now)
+        {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) if crate::is_handshake(packet) => {
                 ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")))
             }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+            TunnResult::WriteToTunnelV4(..) => ControlFlow::Break(Err(anyhow!(
+                "Unexpected IPv4 packet from WireGuard control message"
+            ))),
+            TunnResult::WriteToTunnelV6(..) => ControlFlow::Break(Err(anyhow!(
+                "Unexpected IPv6 packet from WireGuard control message"
+            ))),
 
-            // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-            // I am guessing this was done for convenience reasons.
-            // In our API, we parse the packets directly as an IpPacket.
-            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
-            TunnResult::WriteToTunnelV4(packet, ip) => {
-                let packet_len = packet.len();
-
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
-                    Ok(p) => {
-                        debug_assert_eq!(p.source(), IpAddr::V4(ip));
-
-                        ControlFlow::Continue(p)
-                    }
-                    Err(e) => ControlFlow::Break(Err(e)),
+            TunnResult::KeepaliveDue => {
+                if let ConnectionState::Connecting { keepalive_due, .. } = &mut self.state {
+                    *keepalive_due = true;
+                } else if let Some(socket) = self.socket() {
+                    self.send_keepalive(socket, allocations, transmits, now);
                 }
-            }
-            TunnResult::WriteToTunnelV6(packet, ip) => {
-                let packet_len = packet.len();
 
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
-                    Ok(p) => {
-                        debug_assert_eq!(p.source(), IpAddr::V6(ip));
-
-                        ControlFlow::Continue(p)
-                    }
-                    Err(e) => ControlFlow::Break(Err(e)),
-                }
+                ControlFlow::Break(Ok(()))
             }
 
-            // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
-            // However, in case `Tunn` has buffered packets, they may be returned here instead.
-            // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-            // Overall, this results in a much nicer API for our caller and should not affect performance.
+            // Handshake messages yield a response for the peer.
+            // This is rare enough that we just allocate these and return them from `poll_transmit`.
             TunnResult::WriteToNetwork(bytes) => {
                 match &mut self.state {
                     ConnectionState::Connecting { wg_buffer, .. } => {
@@ -1986,6 +2120,64 @@ where
 
                 ControlFlow::Break(Ok(()))
             }
+        }
+    }
+
+    fn handle_decrypted<TId>(
+        &mut self,
+        cid: TId,
+        packet: DecryptedPacket<TId>,
+        now: Instant,
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+    {
+        let DecryptedPacket {
+            from,
+            destination,
+            mut buffer,
+            opened,
+            ..
+        } = packet;
+
+        let control_flow = match self
+            .tunnel
+            .finish_decapsulate_data_at(opened, buffer.buf(), now)
+        {
+            TunnResult::Done => ControlFlow::Break(Ok(())),
+            TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+
+            // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
+            // I am guessing this was done for convenience reasons.
+            // In our API, we parse the packets directly as an IpPacket.
+            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
+            TunnResult::WriteToTunnelV4(packet, ip) => {
+                let packet_len = packet.len();
+
+                match IpPacket::new(buffer, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V4(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
+            }
+            TunnResult::WriteToTunnelV6(packet, ip) => {
+                let packet_len = packet.len();
+
+                match IpPacket::new(buffer, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V6(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
+            }
+            TunnResult::WriteToNetwork(_) | TunnResult::KeepaliveDue => ControlFlow::Break(Err(
+                anyhow!("Unexpected datagram from WireGuard data message"),
+            )),
         };
 
         match control_flow {

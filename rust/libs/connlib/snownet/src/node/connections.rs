@@ -676,6 +676,7 @@ mod tests {
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),
+                keepalive_due: false,
             },
             disconnected_at: None,
             intent_sent_at: Instant::now(),

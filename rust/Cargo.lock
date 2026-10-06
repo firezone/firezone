@@ -919,8 +919,8 @@ dependencies = [
 
 [[package]]
 name = "boringtun"
-version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#a050cff8fd3c55e3a7f426b9463adcbdc05c7762"
+version = "0.8.0"
+source = "git+https://github.com/firezone/boringtun?branch=parallel-encryption#dd33844cc09294a8b3b7cf2ff6bdc563be0fb46c"
 dependencies = [
  "aead",
  "blake2",
@@ -8840,8 +8840,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bootstrap-dns-client",
+ "boringtun",
  "bufferpool",
  "connlib-model",
+ "crossbeam-channel",
  "dns-types",
  "eventloop-budget",
  "futures",
