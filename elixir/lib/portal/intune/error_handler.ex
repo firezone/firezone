@@ -13,17 +13,47 @@ defmodule Portal.Intune.ErrorHandler do
   @disable_transient_errors_after_hours 24
 
   @doc "Returns `:disabled` when this error disables the provider, or `:ok` otherwise."
-  def handle(%Intune.SyncError{error: error}, provider_id) do
-    action(classify(error), format(error), provider_id)
+  def handle(%Intune.SyncError{error: error} = sync_error, provider_id) do
+    with_provider(provider_id, fn provider ->
+      type = classify(sync_error, provider)
+      update_provider(provider, type, message(type, error), DateTime.utc_now())
+    end)
   end
 
   def handle(error, provider_id) do
-    action(:transient, format_generic(error), provider_id)
+    with_provider(provider_id, fn provider ->
+      update_provider(provider, :transient, format_generic(error), DateTime.utc_now())
+    end)
+  end
+
+  defp with_provider(provider_id, fun) do
+    case Database.get_provider(provider_id) do
+      nil ->
+        Logger.info("Intune provider not found, skipping error update",
+          posture_provider_id: provider_id
+        )
+
+        :ok
+
+      provider ->
+        fun.(provider)
+    end
   end
 
   # Classification
 
-  # Req has already retried these four times, honouring Retry-After, before the
+  # The first sync is queued the moment admin consent completes, before Intune
+  # honors the new grant, so a provider that has never synced is denied as a
+  # matter of course. It rides out the transient window instead of disabling
+  # and sending the admin back through a consent flow that already worked. Once
+  # a provider has synced, a denial means the grant was revoked.
+  defp classify(%Intune.SyncError{error: error} = sync_error, provider) do
+    if is_nil(provider.synced_at) and Intune.SyncError.graph_access_denied?(sync_error),
+      do: :propagating,
+      else: classify(error)
+  end
+
+  # Req has already retried these four times, honoring Retry-After, before the
   # response gets here, so an exhausted throttle is a busy tenant rather than a
   # misconfigured one. Disabling would make a large tenant re-run the admin
   # consent flow to recover from being rate limited.
@@ -43,6 +73,14 @@ defmodule Portal.Intune.ErrorHandler do
   defp classify(_unrecognized), do: :transient
 
   # Formatting
+
+  defp message(:propagating, _error) do
+    "Microsoft Intune denied access. Admin consent can take up to 30 minutes to take effect, " <>
+      "so Firezone will keep retrying. If this persists, verify the Firezone app registration " <>
+      "has admin consent for DeviceManagementManagedDevices.Read.All in Microsoft Entra."
+  end
+
+  defp message(_type, error), do: format(error)
 
   defp format(%Req.TransportError{} = error), do: SharedErrorHandler.format_transport_error(error)
 
@@ -97,20 +135,6 @@ defmodule Portal.Intune.ErrorHandler do
 
   # Action
 
-  defp action(type, message, provider_id) do
-    case Database.get_provider(provider_id) do
-      nil ->
-        Logger.info("Intune provider not found, skipping error update",
-          posture_provider_id: provider_id
-        )
-
-        :ok
-
-      provider ->
-        update_provider(provider, type, message, DateTime.utc_now())
-    end
-  end
-
   defp update_provider(provider, :client_error, message, now) do
     Database.update_provider(
       provider,
@@ -121,7 +145,7 @@ defmodule Portal.Intune.ErrorHandler do
   # A single failed run should not take the provider down, so transient
   # errors only disable it once they have persisted for a full day. Keeping the
   # first errored_at is what makes that window measurable.
-  defp update_provider(provider, :transient, message, now) do
+  defp update_provider(provider, type, message, now) when type in [:transient, :propagating] do
     errored_at = provider.errored_at || now
     updates = %{"errored_at" => errored_at, "error_message" => message}
 
