@@ -23,7 +23,7 @@ pub(crate) struct SimRelay {
 
     /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
     /// as if the relay had run out of ports. Existing allocations keep working.
-    pub(crate) rejects_allocations: bool,
+    pub(crate) out_of_capacity: bool,
 
     created_at: SystemTime,
 }
@@ -63,7 +63,7 @@ impl SimRelay {
         Self {
             sut,
             allocations: Default::default(),
-            rejects_allocations: false,
+            out_of_capacity: false,
             created_at,
         }
     }
@@ -130,7 +130,7 @@ impl SimRelay {
         now: Instant,
         now_utc: SystemTime,
     ) -> Option<Transmit> {
-        if self.rejects_allocations
+        if self.out_of_capacity
             && let Some(response) = self.reject_allocation(&payload)
         {
             payload.clear();

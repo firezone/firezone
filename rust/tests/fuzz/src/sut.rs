@@ -705,13 +705,13 @@ impl TunnelTest {
                 self.relays
                     .get_mut(&relay)
                     .unwrap()
-                    .exec_mut(|r| r.rejects_allocations = true);
+                    .exec_mut(|r| r.out_of_capacity = true);
             }
             Transition::FreeRelayPorts(relay) => {
                 self.relays
                     .get_mut(&relay)
                     .unwrap()
-                    .exec_mut(|r| r.rejects_allocations = false);
+                    .exec_mut(|r| r.out_of_capacity = false);
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self
