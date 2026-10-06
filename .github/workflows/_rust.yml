@@ -161,7 +161,7 @@ jobs:
   test-ios:
     name: test-ios
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 50
     env:
       XCODE_VERSION: "26.2"
     steps:
