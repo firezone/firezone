@@ -156,7 +156,7 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
-          script: cargo dinghy -p "$DINGHY_PLATFORM" test ${{ steps.packages.outputs.packages }} -- --nocapture
+          script: cargo dinghy -p "$DINGHY_PLATFORM" test --no-fail-fast ${{ steps.packages.outputs.packages }} -- --nocapture
 
   test-ios:
     name: test-ios
@@ -187,7 +187,7 @@ jobs:
       - id: packages
         run: echo "packages=$(mise run -q //rust:mobile-test-packages aarch64-apple-ios-sim)" >> "$GITHUB_OUTPUT"
       - name: Run tests
-        run: cargo dinghy -p auto-ios-aarch64-sim test ${{ steps.packages.outputs.packages }} -- --nocapture
+        run: cargo dinghy -p auto-ios-aarch64-sim test --no-fail-fast ${{ steps.packages.outputs.packages }} -- --nocapture
 
   fuzz-targets:
     name: fuzz-targets
