@@ -476,15 +476,9 @@ impl Recorder {
             return;
         };
         let reference_client = reference_client.inner();
-        let Some(resource) = reference_client
-            .expected_tcp_connections
-            .get(&(
-                attempt.src,
-                attempt.dst.clone(),
-                attempt.sport,
-                attempt.dport,
-            ))
-            .copied()
+        let Some(flow) = reference_client
+            .tcp_flows
+            .get(&(attempt.sport, attempt.dport))
         else {
             return;
         };
@@ -507,22 +501,23 @@ impl Recorder {
             return;
         }
 
-        let Some(gateway) = reference_client.gateway_for_resource(resource) else {
-            return;
-        };
-        let Some(path) = gateway_path_feedback(reference, state, attempt.client, gateway) else {
+        let Some(path) = gateway_path_feedback(reference, state, attempt.client, flow.gateway)
+        else {
             return;
         };
 
         record_with_path!(path;
             attempt.src.is_ipv6(),
             matches!(attempt.dst, Destination::DomainName { .. }),
-            reference_client.internet_resource() == Some(resource),
+            reference_client.internet_resource() == Some(flow.resource),
         );
         self.record_recovery(
             reference,
             attempt.client,
-            Route::Resource { resource, gateway },
+            Route::Resource {
+                resource: flow.resource,
+                gateway: flow.gateway,
+            },
             path,
         );
     }

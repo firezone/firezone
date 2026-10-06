@@ -66,6 +66,15 @@ pub(crate) struct UdpFlow {
     pub(crate) route: Route,
 }
 
+/// A TCP connection from a client to a resource through a Gateway.
+#[derive(Debug, Clone)]
+pub(crate) struct TcpFlow {
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) resource: ResourceId,
+    pub(crate) gateway: GatewayId,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Route {
     Resource {

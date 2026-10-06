@@ -332,12 +332,6 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn clear_packets(&mut self) {
-        for server in self.tcp_resources.values_mut() {
-            server.reset();
-        }
-    }
-
     pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
     }

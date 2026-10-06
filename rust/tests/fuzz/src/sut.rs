@@ -221,7 +221,10 @@ impl TunnelTest {
     /// Runs after the reference model invalidated, so the flows it dropped are known.
     pub fn invalidate(&mut self, transition: &Transition, ref_state: &ReferenceState) {
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| c.clear_probe_observations());
+            client.exec_mut(|c| {
+                c.clear_probe_observations();
+                c.failed_tcp_packets.clear();
+            });
         }
         for gateway in self.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
@@ -230,9 +233,6 @@ impl TunnelTest {
         if transition.clears_packets() {
             for client in self.clients.values_mut() {
                 client.exec_mut(|c| c.clear_packets());
-            }
-            for gateway in self.gateways.values_mut() {
-                gateway.exec_mut(|g| g.clear_packets());
             }
         }
 
@@ -257,6 +257,8 @@ impl TunnelTest {
         let now = self.flux_capacitor.now();
         let utc_now = self.flux_capacitor.now();
         let mut application_probe = None;
+
+        self.drop_tcp_connections_unknown_to(ref_state);
 
         // Act: Apply the transition
         match transition {
@@ -811,6 +813,19 @@ impl TunnelTest {
         }
 
         self
+    }
+
+    /// Silently drops the TCP connections the reference model no longer tracks.
+    fn drop_tcp_connections_unknown_to(&mut self, ref_state: &ReferenceState) {
+        for (client_id, client) in &mut self.clients {
+            let flows = &ref_state.clients[client_id].inner().tcp_flows;
+
+            client.exec_mut(|c| {
+                c.tcp_client.retain(|local, remote| {
+                    flows.contains_key(&(SPort(local.port()), DPort(remote.port())))
+                })
+            });
+        }
     }
 
     fn send_icmp_probe(

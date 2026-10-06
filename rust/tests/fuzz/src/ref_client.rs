@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
-    probe::{ExpectedOutcome, RejectionResponse, Remote, Route},
+    probe::{ExpectedOutcome, RejectionResponse, Remote, Route, TcpFlow},
     reference::PrivateKey,
     resource::{
         CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
@@ -94,11 +94,11 @@ pub struct RefClient {
     #[debug(skip)]
     gateways_by_site: BTreeMap<SiteId, GatewayId>,
 
-    /// The expected TCP connections.
+    /// The TCP connections this client keeps to resources, by port pair.
     #[debug(skip)]
-    pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
+    pub(crate) tcp_flows: BTreeMap<(SPort, DPort), TcpFlow>,
 
-    /// Tracks TCP connections expected to receive an ICMP error response.
+    /// Tracks TCP connections of the current transition expected to receive an ICMP error response.
     #[debug(skip)]
     pub(crate) expected_tcp_rejections: BTreeMap<(SPort, DPort), RejectionResponse>,
 
@@ -166,7 +166,7 @@ impl RefClient {
             connected_dns_resources: Default::default(),
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
-            expected_tcp_connections: Default::default(),
+            tcp_flows: Default::default(),
             expected_tcp_rejections: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
@@ -542,6 +542,10 @@ impl RefClient {
         resources: &BTreeSet<ResourceId>,
     ) {
         self.gateway_send_times.remove(&gateway);
+        for _ in self
+            .tcp_flows
+            .extract_if(.., |_, flow| flow.gateway == gateway)
+        {}
 
         let connected = self.connected_resources().collect::<BTreeSet<_>>();
         let affected = resources
@@ -615,7 +619,7 @@ impl RefClient {
         self.resources.push(r);
         self.routes.push((rid, address));
 
-        if self.expected_tcp_connections.values().contains(&rid) {
+        if self.tcp_flows.values().any(|flow| flow.resource == rid) {
             self.set_resource_online(rid);
         }
     }
@@ -632,7 +636,7 @@ impl RefClient {
 
         self.resources.push(r);
 
-        if self.expected_tcp_connections.values().contains(&rid) {
+        if self.tcp_flows.values().any(|flow| flow.resource == rid) {
             self.set_resource_online(rid);
         }
     }
@@ -708,9 +712,9 @@ impl RefClient {
     /// Resources with TCP connections have an automatic retry and therefore, modelling their exact online/unknown state is difficult.
     pub(crate) fn maybe_online_resources(&self) -> BTreeSet<ResourceId> {
         let resources_with_tcp_connections = self
-            .expected_tcp_connections
+            .tcp_flows
             .values()
-            .copied()
+            .map(|flow| flow.resource)
             .collect::<BTreeSet<_>>();
 
         let maybe_online_sites = resources_with_tcp_connections
@@ -762,9 +766,16 @@ impl RefClient {
     ) {
         match outcome {
             ExpectedOutcome::Dropped => {}
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, .. }) => {
-                self.expected_tcp_connections
-                    .insert((src, dst, sport, dport), resource);
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }) => {
+                self.tcp_flows.insert(
+                    (sport, dport),
+                    TcpFlow {
+                        src,
+                        dst,
+                        resource,
+                        gateway,
+                    },
+                );
             }
             ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
             ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
@@ -1591,15 +1602,6 @@ impl RefClient {
         self.system_dns_resolvers = servers.to_vec();
     }
 
-    pub(crate) fn tcp_connection_tuple_to_resource(
-        &self,
-        resource: ResourceId,
-    ) -> Option<(SPort, DPort)> {
-        self.expected_tcp_connections
-            .iter()
-            .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
-    }
-
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
         gateway: GatewayId,
@@ -1637,8 +1639,16 @@ impl RefClient {
     pub(crate) fn clear_packets(&mut self) {
         self.expected_udp_dns_handshakes.clear();
         self.expected_tcp_dns_handshakes.clear();
-        self.expected_tcp_connections.clear();
-        self.expected_tcp_rejections.clear();
+    }
+
+    /// Drops the TCP connections whose resource the client no longer reaches through their Gateway.
+    pub(crate) fn drop_tcp_flows_without_gateway(&mut self) {
+        let flows = mem::take(&mut self.tcp_flows);
+
+        self.tcp_flows = flows
+            .into_iter()
+            .filter(|(_, flow)| self.gateway_for_resource(flow.resource) == Some(flow.gateway))
+            .collect();
     }
 }
 

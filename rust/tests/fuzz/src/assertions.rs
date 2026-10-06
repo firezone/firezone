@@ -585,11 +585,7 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
         let expected_rejection = ref_client
             .expected_tcp_rejections
             .contains_key(&(*sport, *dport));
-        let expected_connection = ref_client.expected_tcp_connections.keys().any(
-            |(_, _, expected_sport, expected_dport)| {
-                (expected_sport, expected_dport) == (sport, dport)
-            },
-        );
+        let expected_connection = ref_client.tcp_flows.contains_key(&(*sport, *dport));
 
         if !expected_rejection && !expected_connection {
             tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Unexpected failed TCP connection");
@@ -615,8 +611,8 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
         }
     }
 
-    for (src, _, sport, dport) in ref_client.expected_tcp_connections.keys() {
-        let src = SocketAddr::new(*src, sport.0);
+    for ((sport, dport), flow) in &ref_client.tcp_flows {
+        let src = SocketAddr::new(flow.src, sport.0);
         let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
 
         // Several sockets can share a local endpoint (one port, several remotes),

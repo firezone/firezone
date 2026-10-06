@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, mem, net::SocketAddr, time::Instant};
+use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
 
 use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
@@ -8,7 +8,7 @@ use crate::os::SimulatedOs;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    /// The socket for each connection, or `None` for one that [`Client::reset`] dropped.
+    /// The socket for each connection, or `None` for one that [`Client::retain`] dropped.
     ///
     /// Closed connections are kept so late packets for them are still consumed.
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
@@ -94,7 +94,7 @@ impl Client {
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
         }
 
-        // A packet for a connection that [`Client::reset`] dropped has no socket to
+        // A packet for a connection that [`Client::retain`] dropped has no socket to
         // receive it. Feeding it to the TCP stack would answer it with an RST.
         if let Some(tcp) = packet.as_tcp()
             && let local = SocketAddr::new(packet.destination(), tcp.destination_port())
@@ -127,12 +127,17 @@ impl Client {
         })
     }
 
-    pub fn reset(&mut self) {
-        self.sockets = l3_tcp::SocketSet::new(Vec::default());
-        self.device.clear();
+    /// Silently drops every connection for which `keep` returns `false`.
+    pub fn retain(&mut self, mut keep: impl FnMut(SocketAddr, SocketAddr) -> bool) {
+        for ((local, remote), maybe_socket) in &mut self.sockets_by_conn {
+            if keep(*local, *remote) {
+                continue;
+            }
+            let Some(handle) = maybe_socket.take() else {
+                continue;
+            };
 
-        for maybe_socket in self.sockets_by_conn.values_mut() {
-            *maybe_socket = None;
+            self.sockets.remove(handle);
         }
     }
 }
@@ -194,20 +199,5 @@ impl Server {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
-    }
-
-    /// Drops all connections but keeps listening on the same addresses.
-    pub fn reset(&mut self) {
-        self.sockets = l3_tcp::SocketSet::new(Vec::default());
-        self.device.clear();
-
-        let addresses = mem::take(&mut self.listen_endpoints)
-            .into_values()
-            .collect::<Vec<_>>();
-
-        for address in addresses {
-            self.listen(address)
-                .expect("re-listening on a previously bound address to succeed");
-        }
     }
 }

@@ -65,7 +65,7 @@ pub(super) fn generate(
 ) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients(portal);
     let editable_resources = state.editable_resources_on_any_client(portal);
-    let removable_resources = state.removable_resource_ids();
+    let removable_resources = state.all_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
     let revocable_resources = state.revocable_resource_ids(portal);
     let expirable_peers = state.expirable_peer_authorizations();

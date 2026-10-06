@@ -95,6 +95,17 @@ impl ReferenceState {
             }
         }
 
+        for (client_id, client) in &mut self.clients {
+            client.exec_mut(|c| {
+                c.expected_tcp_rejections.clear();
+                for _ in c
+                    .tcp_flows
+                    .extract_if(.., |_, flow| !transition.retains_tcp_flow(*client_id, flow))
+                {
+                }
+            });
+        }
+
         let iceless = portal.iceless();
         for _ in self.icmp_flows.extract_if(.., |_, flow| {
             !transition.retains_flow(flow.client_id, flow.route, iceless)
@@ -351,6 +362,7 @@ impl ReferenceState {
                 let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
 
                 self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
+                    client.note_sent(outcome.remote(), now);
                     client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
                 });
             }
@@ -513,6 +525,10 @@ impl ReferenceState {
                     .replace(domain.clone(), records.clone());
             }
         };
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|c| c.drop_tcp_flows_without_gateway());
+        }
 
         self
     }
@@ -1016,22 +1032,8 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn removable_resource_ids(&self) -> Vec<ResourceId> {
-        self.all_resource_ids()
-            .into_iter()
-            .filter(|resource| {
-                self.clients.values().all(|client| {
-                    client
-                        .inner()
-                        .tcp_connection_tuple_to_resource(*resource)
-                        .is_none()
-                })
-            })
-            .collect()
-    }
-
     pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
-        self.removable_resource_ids()
+        self.all_resource_ids()
             .into_iter()
             .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()

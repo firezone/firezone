@@ -622,8 +622,6 @@ impl SimClient {
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
-        self.tcp_client.reset();
-        self.failed_tcp_packets.clear();
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {
