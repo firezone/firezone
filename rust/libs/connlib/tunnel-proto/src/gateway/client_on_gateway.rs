@@ -201,11 +201,38 @@ impl ClientOnGateway {
             existing.update(&resource);
             self.resources.update_expiry(&rid, now, ttl);
         } else {
-            self.resources
-                .insert(rid, ResourceOnGateway::new(resource), now, ttl);
+            let resource = ResourceOnGateway::new(resource);
+            self.remove_stale_translations(rid, &resource);
+            self.resources.insert(rid, resource, now, ttl);
         }
 
         self.recalculate_filters();
+    }
+
+    /// Removes `rid` from translations for domains the newly authorized resource does not cover.
+    ///
+    /// Translations outlive the authorization of their resource so that a re-authorized DNS
+    /// resource keeps working without the Client re-sending its proxy IPs. The resource ID may
+    /// however come back with a different type or address.
+    fn remove_stale_translations(&mut self, rid: ResourceId, resource: &ResourceOnGateway) {
+        for state in self.permanent_translations.values_mut() {
+            let covered = match resource {
+                ResourceOnGateway::Dns { address, .. } => {
+                    crate::dns::is_subdomain(&state.domain, address)
+                }
+                ResourceOnGateway::Cidr { .. } => false,
+                ResourceOnGateway::Internet => false,
+            };
+
+            if !covered {
+                state.resources.remove(&rid);
+            }
+        }
+
+        for _ in self
+            .permanent_translations
+            .extract_if(.., |_, state| state.resources.is_empty())
+        {}
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
