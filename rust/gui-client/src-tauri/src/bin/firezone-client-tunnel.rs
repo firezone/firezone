@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     }
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
-    let cli = Cli::try_parse()?;
+    let cli = Cli::parse();
 
     match cli.command {
         Cmd::Install => service::install(),
