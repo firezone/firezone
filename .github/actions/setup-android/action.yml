@@ -29,9 +29,14 @@ runs:
         # These consume lots of disk space
         packages: ""
 
-    # No NDK install step: we always pin `ndkVersion` in app/build.gradle.kts to a
-    # version preinstalled on the ubuntu-24.04 runner (currently 28.2.13676358), so
-    # there is nothing to download. Keep them in sync when bumping runner images.
+    - name: Install the pinned NDK
+      shell: bash
+      run: |
+        NDK_VERSION="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' kotlin/android/mise.toml)"
+        export NDK_VERSION
+        if [[ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
+          kotlin/android/mise-tasks/setup-ndk.sh
+        fi
 
     - name: Validate Gradle wrapper
       uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
