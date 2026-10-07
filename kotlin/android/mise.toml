@@ -9,7 +9,7 @@ auto_install = false
 [env]
 # Single source of truth for the Android tool versions the setup tasks install.
 # Keep the NDK version in sync with `ndkVersion` in `app/build.gradle.kts`.
-NDK_VERSION = "28.2.13676358"
+NDK_VERSION = "29.0.14206865"
 ANDROID_CMD_TOOLS_VERSION = "11076708"
 
 # Resolved in the order `resolveNdkDir` in `app/build.gradle.kts` uses, so the tasks, Gradle and
