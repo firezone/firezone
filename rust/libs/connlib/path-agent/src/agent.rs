@@ -19,13 +19,15 @@ pub struct PathAgent {
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
     primary: Option<(SocketAddr, SocketAddr)>,
 
-    /// `true` once a handshake (init or response) has been seen and a WireGuard
-    /// session therefore exists, so probes can ride it. Survives a
-    /// [`Self::rebuild`] because the session key does.
-    has_session: bool,
+    /// `true` once the session is usable, so probes can ride it: our init was
+    /// answered, or the peer's transport data decrypted under the session we
+    /// answered. Accepting a peer's init alone is not enough: the peer may not
+    /// know that session (e.g. a stale init from a connection it replaced).
+    /// Survives a [`Self::rebuild`] because the session key does.
+    session_confirmed: bool,
 
-    /// Buffered `init` fanned out over relay pairs during bootstrap only. Once
-    /// established, a re-key rides the primary instead.
+    /// Buffered `init` fanned out over relay pairs until the session is
+    /// confirmed. Afterwards, a re-key rides the primary instead.
     outbound_init: Option<OutboundInit>,
 
     /// Our own re-keys sent since the last one was answered. The second one
@@ -307,9 +309,9 @@ impl PathAgent {
         self.clear_and_reprobe(now);
     }
 
-    /// Creates a pair. It probes once there is a session to ride: if one exists
-    /// it starts hunting now, otherwise `on_session_established` starts it when
-    /// the session appears. Cross-family pairs are unusable.
+    /// Creates a pair. It probes once there is a session to ride: if one is
+    /// confirmed it starts hunting now, otherwise `confirm_session` starts it
+    /// when the session is confirmed. Cross-family pairs are unusable.
     fn add_pair(&mut self, local: Candidate, remote: Candidate, now: Instant) {
         let pair = (local.local(), remote.addr());
 
@@ -330,7 +332,7 @@ impl PathAgent {
             id,
             next_seq: 0,
         };
-        if self.has_session {
+        if self.session_confirmed {
             state.restart(now);
         }
 
@@ -399,11 +401,11 @@ impl PathAgent {
             .filter(|c| !drop_local(c))
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
-        let had_session = self.has_session;
+        let session_confirmed = self.session_confirmed;
 
         *self = Self::new();
 
-        self.has_session = had_session;
+        self.session_confirmed = session_confirmed;
 
         for local in locals {
             self.add_local_candidate(local, now);
@@ -456,9 +458,10 @@ impl PathAgent {
         self.last_now = Some(now);
 
         match Tunn::parse_incoming_packet(&bytes) {
-            // Before a session exists we cannot probe: fan the init out over the
-            // relay pairs to bootstrap one. This is the *only* use of the fan-out.
-            Ok(Packet::HandshakeInit(_)) if !self.has_session => {
+            // Before the session is confirmed we cannot probe: fan the init out
+            // over the relay pairs to bootstrap one. This is the *only* use of
+            // the fan-out.
+            Ok(Packet::HandshakeInit(_)) if !self.session_confirmed => {
                 tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
                 self.forwarded_response = None;
                 match &mut self.outbound_init {
@@ -560,14 +563,11 @@ impl PathAgent {
 
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
-                let had_session = self.has_session;
-
                 // Remembered so fanned-out duplicates arriving on other pairs in
                 // this tick are dropped (see the duplicate-init arm above).
                 self.responder.last_init = Some(bytes.to_vec());
 
                 self.register_peer_reflexive(path, now);
-                self.on_session_established(now);
 
                 // The init that *establishes* the session hands us a working
                 // path for free: it arrived over the relay fan-out (the worst
@@ -580,7 +580,10 @@ impl PathAgent {
                 // peer's primary, which may be a better tier we haven't validated
                 // for our own sending, so it must not move our primary — probing
                 // decides. Hence we only adopt on the establishing init.
-                if !had_session && self.primary.is_none() && self.pairs.contains_key(&path) {
+                if !self.session_confirmed
+                    && self.primary.is_none()
+                    && self.pairs.contains_key(&path)
+                {
                     self.set_primary(path);
                 }
 
@@ -622,7 +625,7 @@ impl PathAgent {
                 self.outbound_init = None;
                 self.unanswered_rekeys = 0;
                 self.forwarded_response = Some(bytes.to_vec());
-                self.on_session_established(now);
+                self.confirm_session(now);
 
                 // A response is bidirectionally validated, so it is safe to
                 // adopt as a (tier-ranked) preliminary primary before probing.
@@ -814,15 +817,37 @@ impl PathAgent {
         ControlFlow::Break(())
     }
 
+    /// Records that the session is confirmed, which starts probing and ends the
+    /// bootstrap fan-out.
+    ///
+    /// [`Self::handle_inbound_network`] detects an answered init itself; the
+    /// caller reports the other case: the peer's transport data decrypting
+    /// under a session we answered.
+    pub fn confirm_session(&mut self, now: Instant) {
+        self.last_now = Some(now);
+
+        if self.session_confirmed {
+            return;
+        }
+        self.session_confirmed = true;
+        // Bootstrap is over; a re-key now rides the primary, not the fan-out.
+        self.outbound_init = None;
+        // Every pair was created without a schedule (probing waits for a
+        // confirmed session); now that we have one, start them all hunting.
+        for state in self.pairs.values_mut() {
+            state.restart(now);
+        }
+    }
+
     pub fn poll_timeout(&self) -> Option<Instant> {
         let next_retransmit = self
             .outbound_init
             .as_ref()
-            .filter(|_| !self.has_session)
+            .filter(|_| !self.session_confirmed)
             .and_then(|i| i.ladder.values().filter_map(|r| r.next_fire_at).min());
-        // Probes wait for the first handshake exchange; see `drive_probes`.
+        // Probes wait for a confirmed session; see `drive_probes`.
         let next_probe = self
-            .has_session
+            .session_confirmed
             .then(|| self.pairs.values().filter_map(|s| s.probes.due()).min())
             .flatten();
         // Wake immediately if a buffered bootstrap init is waiting on a relay
@@ -830,7 +855,7 @@ impl PathAgent {
         let pending_fanout = self
             .outbound_init
             .as_ref()
-            .filter(|_| !self.has_session)
+            .filter(|_| !self.session_confirmed)
             .and_then(|i| {
                 self.pairs
                     .iter()
@@ -873,10 +898,10 @@ impl PathAgent {
     }
 
     /// Fans the buffered init out over relay pairs — bootstrap only. Once
-    /// established the re-key rides the primary, and a distress-cleared primary
+    /// confirmed the re-key rides the primary, and a distress-cleared primary
     /// is recovered by probing over the still-valid session, not a fan-out.
     fn drive_bootstrap_fanout(&mut self, now: Instant) {
-        if self.has_session {
+        if self.session_confirmed {
             return;
         }
 
@@ -932,9 +957,8 @@ impl PathAgent {
     }
 
     fn drive_probes(&mut self, now: Instant) {
-        // Probes ride the session; encapsulating before the first handshake
-        // would make boringtun queue them and initiate handshakes on its own.
-        if !self.has_session {
+        // Probes ride the session, so they wait until it is confirmed.
+        if !self.session_confirmed {
             return;
         }
 
@@ -989,9 +1013,9 @@ impl PathAgent {
 
     fn clear_and_reprobe(&mut self, now: Instant) {
         let former = self.primary.take();
-        // Before a session exists there is nothing to probe;
-        // `on_session_established` starts every pair once one appears.
-        if !self.has_session {
+        // Before the session is confirmed there is nothing to probe;
+        // `confirm_session` starts every pair once it is.
+        if !self.session_confirmed {
             return;
         }
 
@@ -1016,20 +1040,6 @@ impl PathAgent {
             );
             self.peer_reflexive_addrs.insert(pair.1);
             self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1), now);
-        }
-    }
-
-    fn on_session_established(&mut self, now: Instant) {
-        if self.has_session {
-            return;
-        }
-        self.has_session = true;
-        // Bootstrap is over; a re-key now rides the primary, not the fan-out.
-        self.outbound_init = None;
-        // Every pair was created without a schedule (probing waits for a
-        // session); now that we have one, start them all hunting.
-        for state in self.pairs.values_mut() {
-            state.restart(now);
         }
     }
 
@@ -1130,7 +1140,7 @@ mod tests {
     #[test]
     fn inflight_probes_stay_capped_while_hunting_forever() {
         let mut a = PathAgent {
-            has_session: true,
+            session_confirmed: true,
             ..Default::default()
         };
 

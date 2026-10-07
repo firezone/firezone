@@ -14,6 +14,14 @@ defmodule PortalWeb.Logs.Components do
   alias PortalWeb.Components.Navigation
 
   @doc """
+  Options every logs list query runs with. PostgreSQL cancels a query after
+  25 seconds. The 30 second connection deadline is a backstop above that.
+  """
+  def list_opts do
+    [count_limit: 10_000, statement_timeout: 25_000, timeout: 30_000]
+  end
+
+  @doc """
   Single timestamp cell, abbreviated with the full value in a hover popover.
   `log_id` keeps the wrapper's id unique so LV's diff can patch it
   independently. `tz_mode`/`display_tz` flow as explicit props so column

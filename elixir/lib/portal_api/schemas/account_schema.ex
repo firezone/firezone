@@ -29,6 +29,7 @@ defmodule PortalAPI.Schemas.Account do
       properties: %{
         users: PortalAPI.Schemas.Account.LimitSchema,
         monthly_active_users: PortalAPI.Schemas.Account.LimitSchema,
+        adhoc_service_accounts: PortalAPI.Schemas.Account.LimitSchema,
         service_accounts: PortalAPI.Schemas.Account.LimitSchema,
         account_admin_users: PortalAPI.Schemas.Account.LimitSchema,
         sites: PortalAPI.Schemas.Account.LimitSchema
