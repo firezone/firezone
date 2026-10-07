@@ -334,10 +334,13 @@ defmodule Portal.DirectorySyncTest do
       upsert(account, directory, [user("user-1")], -60)
       actor = promote(actor_for("user-1"))
 
-      log =
-        ExUnit.CaptureLog.capture_log(fn ->
+      {result, log} =
+        ExUnit.CaptureLog.with_log(fn ->
           upsert(account, directory, [user("user-1", disabled: true)], 0)
         end)
+
+      assert {:ok, %{kept_admin_ids: [actor_id]}} = result
+      assert actor_id == actor.id
 
       actor = Repo.get_by!(Actor, id: actor.id)
       refute actor.is_disabled
@@ -351,8 +354,10 @@ defmodule Portal.DirectorySyncTest do
       first = promote(actor_for("user-1"))
       second = promote(actor_for("user-2"))
 
-      upsert(account, directory, [user("user-1", disabled: true), user("user-2", disabled: true)], 0)
+      {:ok, %{kept_admin_ids: kept_admin_ids}} =
+        upsert(account, directory, [user("user-1", disabled: true), user("user-2", disabled: true)], 0)
 
+      assert Enum.sort(kept_admin_ids) == Enum.sort([first.id, second.id])
       refute Repo.get_by!(Actor, id: first.id).is_disabled
       refute Repo.get_by!(Actor, id: second.id).is_disabled
     end
@@ -363,7 +368,7 @@ defmodule Portal.DirectorySyncTest do
       upsert(account, directory, [user("user-1")], -60)
       actor = promote(actor_for("user-1"))
 
-      upsert(account, directory, [user("user-1", disabled: true)], 0)
+      assert {:ok, %{kept_admin_ids: []}} = upsert(account, directory, [user("user-1", disabled: true)], 0)
 
       assert Repo.get_by!(Actor, id: actor.id).is_disabled
     end

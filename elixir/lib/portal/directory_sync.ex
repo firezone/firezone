@@ -144,13 +144,11 @@ defmodule Portal.DirectorySync do
   it. The last enabled admin of an account is never disabled.
   """
   def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
-    result = Database.upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields)
-
-    with {:ok, _} <- result do
-      warn_kept_admins(account_id, issuer, directory_id, identities)
+    with {:ok, %{kept_admin_ids: kept_admin_ids}} = result <-
+           Database.upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
+      warn_kept_admins(account_id, directory_id, kept_admin_ids)
+      result
     end
-
-    result
   end
 
   @doc """
@@ -166,22 +164,16 @@ defmodule Portal.DirectorySync do
 
   # The upsert keeps the last enabled admin enabled rather than lock everyone
   # out of the account, so say why the actor survived its user's suspension.
-  defp warn_kept_admins(account_id, issuer, directory_id, identities) do
-    case for(%{disabled: true, idp_id: idp_id} <- identities, do: idp_id) do
-      [] ->
-        :ok
-
-      idp_ids ->
-        for actor_id <- Database.enabled_admin_ids(account_id, issuer, directory_id, idp_ids) do
-          Logger.warning("Kept the last enabled admin enabled although the IdP deactivated its user",
-            account_id: account_id,
-            directory_id: directory_id,
-            actor_id: actor_id
-          )
-        end
-
-        :ok
+  defp warn_kept_admins(account_id, directory_id, kept_admin_ids) do
+    for actor_id <- kept_admin_ids do
+      Logger.warning("Kept the last enabled admin enabled although the IdP deactivated its user",
+        account_id: account_id,
+        directory_id: directory_id,
+        actor_id: actor_id
+      )
     end
+
+    :ok
   end
 
   defp workers(provider), do: Map.fetch!(@workers, provider)
@@ -240,7 +232,7 @@ defmodule Portal.DirectorySync do
     end
 
     def upsert_identities(_account_id, _issuer, _directory_id, _synced_at, [], _fields),
-      do: {:ok, %{upserted_identities: 0}}
+      do: {:ok, %{upserted_identities: 0, kept_admin_ids: []}}
 
     def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
       query = identity_upsert_query(length(identities), fields)
@@ -313,8 +305,8 @@ defmodule Portal.DirectorySync do
     # it, so we retry once before surfacing the error.
     defp run_identity_upsert(query, params, retry? \\ true) do
       case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %Postgrex.Result{rows: rows}} ->
-          {:ok, %{upserted_identities: length(rows)}}
+        {:ok, %Postgrex.Result{rows: [[count, kept_admin_ids]]}} ->
+          {:ok, %{upserted_identities: count, kept_admin_ids: Enum.map(kept_admin_ids, &Ecto.UUID.load!/1)}}
 
         {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
           run_identity_upsert(query, params, false)
@@ -328,15 +320,6 @@ defmodule Portal.DirectorySync do
       owned_identities(account_id, issuer, directory_id)
       |> where([i], i.idp_id in ^idp_ids)
       |> select([i], i.idp_id)
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def enabled_admin_ids(account_id, issuer, directory_id, idp_ids) do
-      owned_identities(account_id, issuer, directory_id)
-      |> where([i], i.idp_id in ^idp_ids)
-      |> where([_i, a], a.type == :account_admin_user and a.is_disabled == false)
-      |> select([_i, a], a.id)
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -580,13 +563,20 @@ defmodule Portal.DirectorySync do
         FROM pre_existing_identities pei
         WHERE pei.idp_id NOT IN (SELECT idp_id FROM upserted_identities)
           AND pei.idp_id IN (SELECT idp_id FROM all_actor_mappings)
+      ),
+      synced_identities AS (
+        INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
+        SELECT id, account_id, $#{synced_at} FROM all_identity_ids
+        ON CONFLICT (account_id, external_identity_id) DO UPDATE SET
+          synced_at = EXCLUDED.synced_at
+        WHERE external_identity_sync_states.synced_at < EXCLUDED.synced_at
+        RETURNING 1
       )
-      INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
-      SELECT id, account_id, $#{synced_at} FROM all_identity_ids
-      ON CONFLICT (account_id, external_identity_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE external_identity_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING 1
+      -- The kept admins come back so the caller can say why they survived
+      -- their user's suspension, without a second query.
+      SELECT
+        (SELECT count(*) FROM synced_identities)::integer,
+        ARRAY(SELECT id FROM kept_admins)
       """
     end
 
