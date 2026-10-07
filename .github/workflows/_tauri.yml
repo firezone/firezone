@@ -257,7 +257,7 @@ jobs:
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
         # `tauri build` signs Firezone.exe (after Tauri patches it) and the
         # MSI via `bundle.windows.signCommand`.
-        run: pnpm build
+        run: pnpm build ${{ runner.os == 'Linux' && '--config ../../scripts/build/tauri-release-linux.conf.json' || '' }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
       - name: Rename artifacts and compute SHA256
@@ -268,6 +268,13 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
+          if-no-files-found: error
+      - name: Upload debug info
+        if: "${{ runner.os == 'Linux' }}"
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.ARTIFACT_DST }}-debug
+          path: rust/target/release/*.debug
           if-no-files-found: error
       - name: Upload rpm package
         if: "${{ runner.os == 'Linux' }}"
