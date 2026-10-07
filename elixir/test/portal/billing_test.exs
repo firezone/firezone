@@ -1200,6 +1200,28 @@ defmodule Portal.BillingTest do
     end
   end
 
+  describe "monthly_active_usage/1" do
+    test "splits active service accounts between ad hoc ones and seats", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 2}})
+
+      for type <- [:account_user, :service_account, :service_account, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 2, adhoc_service_accounts: 2}
+    end
+
+    test "counts no ad hoc service accounts without the add-on", %{account: account} do
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 1, adhoc_service_accounts: 0}
+    end
+  end
+
   describe "count_monthly_active_users/1" do
     test "counts distinct active users within last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
