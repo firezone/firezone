@@ -5,9 +5,7 @@ set -euo pipefail
 triple="${1:?usage: mise run //rust:mobile-test-run <triple>}"
 binaries_file="${CARGO_TARGET_DIR:-target}/$triple/mobile-test-binaries.tsv"
 binary_timeout="${MOBILE_TEST_BINARY_TIMEOUT_SECS:-300}"
-test_timeout="${MOBILE_TEST_TIMEOUT_SECS:-60}"
 failed=()
-tests_file="$(mktemp)"
 
 set -m # Each run gets its own process group, so a timeout kills the runner and whatever it spawned.
 
@@ -51,36 +49,15 @@ run_on_device() {
     esac
 }
 
-run_binary() {
-    local secs="$1"
-    shift
-
-    run_with_timeout "$secs" run_on_device "$@"
-}
-
 while IFS=$'\t' read -r dir exe; do
     name="$(basename "$dir")/$(basename "$exe")"
     echo "::group::$name"
 
     status=0
-    run_binary "$binary_timeout" --nocapture || status=$?
+    run_with_timeout "$binary_timeout" run_on_device --nocapture || status=$?
 
     if ((status == 124)); then
-        # Runners may only hand back a binary's output once it exits, so find the test that hangs by running each on its own.
-        echo "::error::$name timed out after ${binary_timeout}s, running its tests one by one"
-
-        run_binary "$test_timeout" --list --format terse >"$tests_file" 2>/dev/null || true
-
-        while read -r test; do
-            test_status=0
-            run_binary "$test_timeout" --exact "$test" --nocapture || test_status=$?
-
-            case "$test_status" in
-            0) ;;
-            124) echo "::error::$name: $test timed out after ${test_timeout}s" ;;
-            *) echo "::error::$name: $test failed" ;;
-            esac
-        done < <(sed -n 's/: test$//p' "$tests_file")
+        echo "::error::$name timed out after ${binary_timeout}s"
     fi
 
     if ((status != 0)); then
