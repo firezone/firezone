@@ -127,8 +127,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { arch: x86_64, triple: x86_64-linux-android }
-          - { arch: i686, triple: i686-linux-android }
+          - arch: x86_64
+            triple: x86_64-linux-android
+            api-level: 34
+            emulator-arch: x86_64
+          # The API 34 x86_64 image only runs 64-bit binaries; API 30 is the newest x86 image.
+          - arch: i686
+            triple: i686-linux-android
+            api-level: 30
+            emulator-arch: x86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
@@ -148,8 +155,8 @@ jobs:
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.emulator-arch }}
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
