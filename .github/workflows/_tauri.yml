@@ -257,7 +257,8 @@ jobs:
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
         # `tauri build` signs Firezone.exe (after Tauri patches it) and the
         # MSI via `bundle.windows.signCommand`.
-        run: pnpm build ${{ runner.os == 'Linux' && '--config ../../scripts/build/tauri-release-linux.conf.json' || '' }}
+        # Not via `pnpm build` on Linux: `run-script-os` hands the args to `npm`, which swallows `--config`.
+        run: ${{ runner.os == 'Linux' && './build.sh --config ../../scripts/build/tauri-release-linux.conf.json' || 'pnpm build' }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
       - name: Rename artifacts and compute SHA256
