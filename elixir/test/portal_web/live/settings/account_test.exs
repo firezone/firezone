@@ -170,6 +170,38 @@ defmodule PortalWeb.Settings.AccountTest do
       refute html =~ "Ad hoc Service Accounts"
     end
 
+    test "hides seats when the plan has no active seat limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{monthly_active_users_count: nil}})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Seats"
+      refute html =~ "Monthly Active Users"
+    end
+
+    test "renders seats when the plan has an active seat limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 25}})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Seats"
+      assert html =~ "0 / 25"
+    end
+
     test "renders add-ons and ad hoc service account usage", %{
       conn: conn,
       account: account,
@@ -207,6 +239,7 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "× 10000"
       assert html =~ "Ad hoc Service Accounts"
       assert html =~ "1 / 10000"
+      assert html =~ "Seats"
       assert html =~ "0 / 100"
     end
   end
