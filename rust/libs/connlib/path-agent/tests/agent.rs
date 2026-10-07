@@ -143,6 +143,35 @@ fn inbound_handshake_response_stops_the_fanout() {
 }
 
 #[test]
+fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
+    let mut a = agent_with_relay_pairs();
+    let now = Instant::now();
+    a.handle_outbound(handshake_init_bytes(), now);
+
+    // The peer's init lands before ours went out, e.g. a stale re-key from a
+    // connection the peer has since replaced and no longer knows the session of.
+    let mut hs = Handshake::new(now);
+    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), now);
+    a.drain_events();
+    let _ = a.transmits();
+
+    let fanout = a.tick(now);
+    let init = Payload::Ciphertext(handshake_init_bytes());
+    assert_eq!(
+        fanout.iter().filter(|t| t.payload == init).count(),
+        3,
+        "our own init still reaches every relay pair",
+    );
+
+    a.confirm_session(now + ms(10));
+    let later = a.advance(now + ms(10), now + secs(3));
+    assert!(
+        later.transmits.iter().all(|(_, t)| t.payload != init),
+        "a confirmed session ends the fan-out",
+    );
+}
+
+#[test]
 fn rejected_handshake_leaves_state_untouched() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
@@ -284,6 +313,7 @@ fn a_pathless_agent_probes_forever() {
     let t0 = Instant::now();
     let mut hs = Handshake::new(t0);
     let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t0);
+    a.confirm_session(t0);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
     let _ = a.transmits();
@@ -619,6 +649,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // and, as the establishing init, adopts the pair as the primary.
     let mut hs = Handshake::new(t0);
     let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(9)), t0);
+    a.confirm_session(t0);
     assert_eq!(a.primary(), Some((addr(1), addr(9))));
 
     // Measure the pair so it carries an RTT worth preserving.

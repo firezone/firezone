@@ -270,15 +270,10 @@ defmodule PortalWeb.Settings.Account do
             Usage
           </h3>
           <div class="space-y-4 max-w-2xl">
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :monthly_active_users_count))}
-              label="Monthly Active Users"
-              used={@active_users_count}
-            />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :monthly_active_users_count))}
-              label="Monthly Active Users"
-              description="Users that have signed in from a device within the last month"
+              label="Seats"
+              description="Users and service accounts with a device active in the last month"
               used={@active_users_count}
               limit={effective_limit(@account, :monthly_active_users_count)}
             />

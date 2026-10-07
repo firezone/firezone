@@ -416,6 +416,35 @@ defmodule Portal.Intune.SyncTest do
     end
   end
 
+  describe "backoff/1" do
+    test "waits for a fresh grant to take effect when Intune denies access" do
+      for status <- [401, 403] do
+        error = sync_error(:list_managed_devices, %Req.Response{status: status})
+
+        assert Sync.backoff(failed_job(error)) == 15 * 60
+      end
+    end
+
+    test "uses the default backoff for every other failure" do
+      for error <- [
+            sync_error(:get_access_token, %Req.Response{status: 401}),
+            sync_error(:list_managed_devices, %Req.Response{status: 503}),
+            sync_error(:validate_managed_devices, :missing_device_id),
+            %RuntimeError{message: "boom"}
+          ] do
+        assert Sync.backoff(failed_job(error)) < 60
+      end
+    end
+  end
+
+  defp sync_error(step, error) do
+    Portal.Intune.SyncError.exception(provider_id: Ecto.UUID.generate(), step: step, error: error)
+  end
+
+  defp failed_job(reason) do
+    %Oban.Job{attempt: 1, max_attempts: 3, unsaved_error: %{kind: :error, reason: reason, stacktrace: []}}
+  end
+
   defp stub_managed_devices(devices) do
     Req.Test.stub(APIClient, fn conn ->
       if String.ends_with?(conn.request_path, "/oauth2/v2.0/token") do
