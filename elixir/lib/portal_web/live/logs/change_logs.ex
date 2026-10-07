@@ -16,11 +16,12 @@ defmodule PortalWeb.Logs.ChangeLogs do
       socket
       |> assign(page_title: "Change Logs")
       |> assign(selected_change_log: nil, browser_tz: browser_tz)
+      |> assign(change_logs: [], change_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:change_logs, :timestamp}, {:change_logs, :log_id}],
-        callback: &handle_change_logs_update!/2
+        loader: &load_change_logs/2
       )
 
     {:ok, socket}
@@ -87,27 +88,6 @@ defmodule PortalWeb.Logs.ChangeLogs do
     {:noreply, socket}
   end
 
-  def handle_change_logs_update!(socket, list_opts) do
-    list_opts = Keyword.update(list_opts, :filter, [show_system: false], &default_show_system/1)
-
-    with {:ok, change_logs, metadata} <-
-           Database.list_change_logs(socket.assigns.subject, list_opts) do
-      change_logs_with_meta =
-        Enum.map(change_logs, fn cl ->
-          %{
-            change_log: cl,
-            changed_count: JSONDiff.changed_field_count(cl.before, cl.after)
-          }
-        end)
-
-      {:ok,
-       assign(socket,
-         change_logs: change_logs_with_meta,
-         change_logs_metadata: metadata
-       )}
-    end
-  end
-
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
@@ -117,6 +97,9 @@ defmodule PortalWeb.Logs.ChangeLogs do
         <LiveTable.live_table
           id="change_logs"
           rows={@change_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
+          loading={@loading_by_table_id["change_logs"]}
+          query_error={@query_error_by_table_id["change_logs"]}
           row_id={&"change_log-#{&1.change_log.log_id}"}
           row_click={
             fn row ->
@@ -171,7 +154,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No change logs</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Configuration changes will appear here as they happen.
+                  Configuration changes will appear here as they happen. Try broadening the time window to see older ones.
                 </p>
               </div>
             </div>
@@ -375,6 +358,22 @@ defmodule PortalWeb.Logs.ChangeLogs do
     if Keyword.has_key?(filter, :show_system), do: filter, else: [{:show_system, false} | filter]
   end
 
+  defp load_change_logs(subject, list_opts) do
+    list_opts = Keyword.update(list_opts, :filter, [show_system: false], &default_show_system/1)
+
+    with {:ok, change_logs, metadata} <- Database.list_change_logs(subject, list_opts) do
+      change_logs_with_meta =
+        Enum.map(change_logs, fn cl ->
+          %{
+            change_log: cl,
+            changed_count: JSONDiff.changed_field_count(cl.before, cl.after)
+          }
+        end)
+
+      {:ok, %{change_logs: change_logs_with_meta, change_logs_metadata: metadata}}
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
 
@@ -385,7 +384,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
+      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
     end
 
     def fetch_change_log(log_id, subject) do

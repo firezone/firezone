@@ -664,6 +664,61 @@ defmodule PortalAPI.MCPControllerTest do
       assert challenge =~ "oauth-protected-resource"
     end
 
+    test "charges read tools to the account read rate limit", %{conn: conn} do
+      account =
+        account_fixture(
+          limits: %{
+            monthly_active_users_count: 100,
+            api_capacity: PortalAPI.RateLimit.default_cost(),
+            api_refill_rate: 1,
+            api_read_capacity: PortalAPI.RateLimit.default_cost() * 2,
+            api_read_refill_rate: 1
+          }
+        )
+
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      for _ <- 1..2 do
+        conn = conn |> authorize_mcp_conn(actor) |> call_tool("list_resources", %{})
+        assert %{"result" => %{"isError" => false}} = json_response(conn, 200)
+      end
+
+      limited = conn |> authorize_mcp_conn(actor) |> call_tool("list_resources", %{})
+      assert json_response(limited, 429)
+    end
+
+    test "charges write tools to the account write rate limit", %{conn: conn} do
+      account =
+        account_fixture(
+          limits: %{
+            monthly_active_users_count: 100,
+            api_capacity: PortalAPI.RateLimit.default_cost(),
+            api_refill_rate: 1,
+            api_read_capacity: PortalAPI.RateLimit.default_cost() * 10,
+            api_read_refill_rate: 1
+          }
+        )
+
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      [first, second] = for _ <- 1..2, do: resource_fixture(account: account)
+      scopes = ~w[resources:read resources:write]
+
+      deleted = conn |> authorize_mcp_conn(actor, scopes) |> call_tool("delete_resource", %{"id" => first.id})
+      assert %{"result" => %{"isError" => false}} = json_response(deleted, 200)
+
+      limited =
+        conn |> authorize_mcp_conn(actor, scopes) |> call_tool("delete_resource", %{"id" => second.id})
+
+      assert [retry_after] = get_resp_header(limited, "retry-after")
+      assert {seconds, ""} = Integer.parse(retry_after)
+      assert seconds > 0
+      assert json_response(limited, 429)["retry_after_seconds"] == seconds
+      assert Portal.Repo.get_by(Portal.Resource, id: second.id, account_id: account.id)
+
+      conn = conn |> authorize_mcp_conn(actor, scopes) |> call_tool("list_resources", %{})
+      assert %{"result" => %{"isError" => false}} = json_response(conn, 200)
+    end
+
     test "returns a protocol error for an unknown tool", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> call_tool("drop_database", %{})
 

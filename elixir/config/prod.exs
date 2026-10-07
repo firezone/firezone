@@ -30,9 +30,7 @@ config :portal, Portal.Billing,
     "prod_VMyGOVTAFNKIPP",
     # Enterprise
     "prod_PY9QUBMAlUEYes"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrOXz3nZyOI15i"
+  ]
 
 ###############################
 ##### Third-party configs #####
