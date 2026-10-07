@@ -66,7 +66,7 @@ fn assert_probes(
 
     for id in observations
         .iter()
-        .map(|observation| observation.id())
+        .filter_map(|observation| observation.id())
         .unique()
         .filter(|id| !expected_probes.contains_key(id))
     {
@@ -379,12 +379,12 @@ fn assert_received_request(
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
 ) {
-    assert_probe_payload(expected.id, &received_request.packet);
+    if !is_tcp_syn(&submitted_request.packet) {
+        assert_probe_payload(expected.id, &received_request.packet);
 
-    if !is_tcp_syn(&submitted_request.packet)
-        && probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet)
-    {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
+        if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
+            tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
+        }
     }
 
     let ref_client = &ref_clients[&expected.origin];
@@ -498,6 +498,9 @@ fn assert_echo_response(
                 != (reply.destination_port(), reply.source_port())
             {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP echo ports do not match");
+            }
+            if request.syn() && !(reply.syn() && reply.ack()) {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP connect was not answered with a SYN-ACK");
             }
             if !request.syn() && request.payload() != reply.payload() {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP echo payload does not match");

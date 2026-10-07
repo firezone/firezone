@@ -16,7 +16,7 @@ use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
-use ip_packet::Ecn;
+use ip_packet::{Ecn, IpPacket};
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -205,11 +205,24 @@ impl TunnelTest {
             )
     }
 
+    /// Returns the observations of probe `id`.
+    ///
+    /// A received TCP SYN carries no probe ID, so it belongs to the connect probe that
+    /// submitted a SYN with the same source and ports.
     pub(crate) fn probe_trace(&self, id: ProbeId) -> ProbeTrace<'_> {
-        ProbeTrace::new(
-            self.probe_observations()
-                .filter(|observation| observation.id() == id),
-        )
+        let syn = self
+            .probe_observations()
+            .filter_map(ProbeObservation::as_submitted_request)
+            .find(|submitted| submitted.id == id)
+            .and_then(|submitted| syn_key(&submitted.packet));
+
+        ProbeTrace::new(self.probe_observations().filter(move |observation| {
+            match (observation.id(), observation.as_received_request()) {
+                (Some(observed), _) => observed == id,
+                (None, Some(received)) => syn.is_some() && syn_key(&received.packet) == syn,
+                (None, None) => false,
+            }
+        }))
     }
 
     pub(crate) fn dns_nat_observations(&self) -> &[DnsNatObservation] {
@@ -481,15 +494,10 @@ impl TunnelTest {
                 let previous = self.tcp_flows.insert(flow_id, flow);
                 assert!(previous.is_none(), "TCP flow IDs must be unique");
 
-                self.clients.get_mut(&client_id).unwrap().exec_mut(|sim| {
-                    sim.connect_tcp(src, dst, sport, dport);
-                    sim.write_tcp_probe(
-                        probe_id,
-                        flow.local,
-                        flow.remote,
-                        &tcp_payload(probe_id, 0),
-                    );
-                });
+                self.clients
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .exec_mut(|sim| sim.connect_tcp_probe(probe_id, flow.local, flow.remote));
             }
             Transition::SendTcpData {
                 flow_id,
@@ -1942,4 +1950,10 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::TunInterfaceUpdated(_) => false,
         ClientEvent::NoRelays => true,
     }
+}
+
+fn syn_key(packet: &IpPacket) -> Option<(IpAddr, u16, u16)> {
+    let tcp = packet.as_tcp()?;
+
+    (tcp.syn() && !tcp.ack()).then(|| (packet.source(), tcp.source_port(), tcp.destination_port()))
 }

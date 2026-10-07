@@ -270,7 +270,8 @@ pub(crate) struct SubmittedRequest {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReceivedRequest {
-    pub(crate) id: ProbeId,
+    /// The probe ID in the request's payload, or `None` for a TCP SYN.
+    pub(crate) id: Option<ProbeId>,
     pub(crate) at: Instant,
     pub(crate) remote: Remote,
     pub(crate) gateway_order: Option<u64>,
@@ -433,11 +434,11 @@ impl DnsNatObservation {
 }
 
 impl ProbeObservation {
-    pub(crate) fn id(&self) -> ProbeId {
+    pub(crate) fn id(&self) -> Option<ProbeId> {
         match self {
-            ProbeObservation::RequestSubmitted(observation) => observation.id,
+            ProbeObservation::RequestSubmitted(observation) => Some(observation.id),
             ProbeObservation::RequestReceived(observation) => observation.id,
-            ProbeObservation::ResponseReceived(observation) => observation.id,
+            ProbeObservation::ResponseReceived(observation) => Some(observation.id),
         }
     }
 

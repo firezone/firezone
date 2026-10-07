@@ -12,8 +12,6 @@ pub struct Client {
     ///
     /// Closed connections are kept so late packets for them are still consumed.
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
-    /// Data written to a connection that cannot send yet.
-    unsent: BTreeMap<l3_tcp::SocketHandle, Vec<u8>>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
     os: SimulatedOs,
@@ -38,7 +36,6 @@ impl Client {
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
             sockets_by_conn: Default::default(),
-            unsent: Default::default(),
             device,
             interface,
             os,
@@ -71,9 +68,7 @@ impl Client {
         Ok(())
     }
 
-    /// Writes `data` to the open connection between `local` and `remote`.
-    ///
-    /// The data is sent by the next [`Client::handle_timeout`] once the connection is established.
+    /// Writes `data` to the established connection between `local` and `remote`.
     pub fn send(&mut self, local: SocketAddr, remote: SocketAddr, data: &[u8]) -> Result<()> {
         let handle = self
             .sockets_by_conn
@@ -81,11 +76,17 @@ impl Client {
             .copied()
             .flatten()
             .context("No open TCP connection")?;
+        let socket = self.sockets.get_mut::<Socket>(handle);
+        socket.set_timeout(Some(self.os.tcp_timeout()));
 
-        self.unsent
-            .entry(handle)
-            .or_default()
-            .extend_from_slice(data);
+        let sent = socket
+            .send_slice(data)
+            .context("Failed to write TCP data")?;
+        anyhow::ensure!(
+            sent == data.len(),
+            "Wrote only {sent} of {} bytes",
+            data.len()
+        );
 
         Ok(())
     }
@@ -139,25 +140,6 @@ impl Client {
             .interface
             .poll(now, &mut self.device, &mut self.sockets);
 
-        let writable = self
-            .unsent
-            .extract_if(.., |handle, _| {
-                self.sockets.get::<Socket>(*handle).may_send()
-            })
-            .collect::<Vec<_>>();
-        for (handle, data) in writable {
-            let socket = self.sockets.get_mut::<Socket>(handle);
-            socket.set_timeout(Some(self.os.tcp_timeout()));
-
-            if socket.send_slice(&data) != Ok(data.len()) {
-                tracing::error!("Failed to write TCP data");
-            }
-        }
-
-        let _result = self
-            .interface
-            .poll(now, &mut self.device, &mut self.sockets);
-
         for (_, socket) in self.sockets.iter_mut() {
             let l3_tcp::AnySocket::Tcp(socket) = socket;
 
@@ -195,7 +177,6 @@ impl Client {
     /// Drops a connection without telling the remote, but keeps consuming its late packets.
     fn forget(&mut self, local: SocketAddr, remote: SocketAddr, handle: l3_tcp::SocketHandle) {
         self.sockets.remove(handle);
-        self.unsent.remove(&handle);
         self.sockets_by_conn.insert((local, remote), None);
     }
 }
@@ -231,12 +212,13 @@ impl Server {
         self.device.receive(packet);
     }
 
-    /// Returns whether the server accepted a connection between `local` and `remote`.
-    pub fn has_connection(&self, local: SocketAddr, remote: SocketAddr) -> bool {
+    /// Returns whether a connection between `local` and `remote` is established.
+    pub fn is_established(&self, local: SocketAddr, remote: SocketAddr) -> bool {
         self.sockets.iter().any(|(_, socket)| {
             let l3_tcp::AnySocket::Tcp(socket) = socket;
 
-            socket.local_endpoint() == Some(local.into())
+            socket.state() == l3_tcp::State::Established
+                && socket.local_endpoint() == Some(local.into())
                 && socket.remote_endpoint() == Some(remote.into())
         })
     }

@@ -240,13 +240,15 @@ impl SimClient {
         }
     }
 
-    pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
-        let local = SocketAddr::new(src, sport.0);
-        let remote = SocketAddr::new(dst, dport.0);
-
+    /// Connects `local` to `remote`; the SYN submits probe `id`.
+    pub(crate) fn connect_tcp_probe(&mut self, id: ProbeId, local: SocketAddr, remote: SocketAddr) {
         if let Err(e) = self.tcp_client.connect(local, remote) {
-            tracing::error!("TCP connect failed: {e:#}")
+            tracing::error!("TCP connect failed: {e:#}");
+            return;
         }
+
+        self.unsubmitted_tcp_probes
+            .insert((SPort(local.port()), DPort(remote.port())), id);
     }
 
     /// Writes `payload` to a TCP connection; the segment that carries it submits probe `id`.
@@ -637,7 +639,7 @@ impl SimClient {
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
             .push(ProbeObservation::RequestReceived(ReceivedRequest {
-                id,
+                id: Some(id),
                 at,
                 remote: Remote::Client(self.id),
                 gateway_order: None,
@@ -668,13 +670,21 @@ impl SimClient {
         self.unsubmitted_tcp_probes.clear();
     }
 
-    /// Returns the probe a TCP segment echoes or resets, unless it was already answered.
+    /// Returns the probe a TCP segment accepts, echoes or resets, unless it was already answered.
     fn answered_tcp_probe(&self, packet: &IpPacket) -> Option<ProbeId> {
         let tcp = packet.as_tcp()?;
         let id =
             self.unanswered_tcp_probe(SPort(tcp.destination_port()), DPort(tcp.source_port()))?;
+        let accepts_connect = tcp.syn()
+            && tcp.ack()
+            && self.probe_observations.iter().any(|observation| {
+                observation
+                    .as_submitted_request()
+                    .is_some_and(|submitted| submitted.id == id && is_tcp_syn(&submitted.packet))
+            });
 
-        (tcp.rst() || ProbeId::from_payload(tcp.payload()) == Some(id)).then_some(id)
+        (tcp.rst() || accepts_connect || ProbeId::from_payload(tcp.payload()) == Some(id))
+            .then_some(id)
     }
 
     /// Returns the TCP probe submitted in the current transition if it has no response yet.
@@ -683,7 +693,7 @@ impl SimClient {
     fn unanswered_tcp_probe(&self, sport: SPort, dport: DPort) -> Option<ProbeId> {
         let id = self.submitted_probe_for(ProbeProtocol::Tcp { sport, dport })?;
         let answered = self.probe_observations.iter().any(|observation| {
-            observation.id() == id && observation.as_received_response().is_some()
+            observation.id() == Some(id) && observation.as_received_response().is_some()
         });
 
         (!answered).then_some(id)
@@ -695,7 +705,7 @@ impl SimClient {
 
         self.probe_observations
             .iter()
-            .any(|observation| observation.id() == id)
+            .any(|observation| observation.id() == Some(id))
             .then_some(id)
     }
 
@@ -747,4 +757,8 @@ impl ExecMutScope for SimClient {
     fn enter(&self) -> Self::Guard {
         self.malicious_behaviour.guard()
     }
+}
+
+fn is_tcp_syn(packet: &IpPacket) -> bool {
+    packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack())
 }

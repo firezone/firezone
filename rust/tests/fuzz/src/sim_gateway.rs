@@ -305,10 +305,12 @@ impl SimGateway {
             if icmp_error.is_none()
                 && let Some(server) = self.tcp_server_for(socket, remote)
             {
-                let connected = server.has_connection(socket, remote);
+                let established = server.is_established(socket, remote);
                 server.handle_inbound(packet.clone());
 
-                if connected {
+                if tcp.syn() && !tcp.ack() {
+                    self.record_received_tcp_syn(&packet, now);
+                } else if established {
                     self.record_received_tcp_request(&packet, now);
                 }
 
@@ -351,7 +353,7 @@ impl SimGateway {
         let key = self
             .tcp_servers
             .iter()
-            .find(|(_, server)| server.has_connection(local, remote))
+            .find(|(_, server)| server.is_established(local, remote))
             .or_else(|| {
                 self.tcp_servers.iter().find(|((domain, port), _)| {
                     *port == local.port() && self.resolved_to(domain, local.ip())
@@ -395,12 +397,25 @@ impl SimGateway {
         };
         // A retransmitted segment carries a probe the Gateway already received.
         if ProbeId::from_payload(tcp.payload())
-            .is_none_or(|id| self.probe_observations.iter().any(|o| o.id() == id))
+            .is_none_or(|id| self.probe_observations.iter().any(|o| o.id() == Some(id)))
         {
             return;
         }
 
         self.record_received_request(tcp.payload(), packet.clone(), now);
+    }
+
+    fn record_received_tcp_syn(&mut self, packet: &IpPacket, now: Instant) {
+        let retransmitted = self.probe_observations.iter().any(|observation| {
+            observation.as_received_request().is_some_and(|received| {
+                received.id.is_none() && tcp_tuple(&received.packet) == tcp_tuple(packet)
+            })
+        });
+        if retransmitted {
+            return;
+        }
+
+        self.push_received_request(None, packet.clone(), now);
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {
@@ -550,6 +565,11 @@ impl SimGateway {
             tracing::error!("Probe payload does not contain a probe ID");
             return;
         };
+
+        self.push_received_request(Some(id), packet, at);
+    }
+
+    fn push_received_request(&mut self, id: Option<ProbeId>, packet: IpPacket, at: Instant) {
         let gateway_order = Some(self.next_observation_order());
         let dns_nat_generation = self
             .clients_by_ip
@@ -627,4 +647,15 @@ impl ExecMutScope for SimGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
+}
+
+fn tcp_tuple(packet: &IpPacket) -> Option<(IpAddr, u16, IpAddr, u16)> {
+    let tcp = packet.as_tcp()?;
+
+    Some((
+        packet.source(),
+        tcp.source_port(),
+        packet.destination(),
+        tcp.destination_port(),
+    ))
 }
