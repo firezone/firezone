@@ -311,7 +311,8 @@ defmodule Portal.Billing.EventHandler do
         "subscription_id" => subscription_id,
         "subscription_status" => status,
         "product_name" => product_name,
-        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end))
+        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end)),
+        "add_ons" => add_ons
       }
 
       attrs =
@@ -346,16 +347,23 @@ defmodule Portal.Billing.EventHandler do
 
   # Add-on products name the limit their quantity adds to in `adds_to_limit` metadata.
   defp fetch_add_ons(items) do
-    Enum.reduce_while(items, {:ok, []}, fn item, {:ok, add_ons} ->
-      case Billing.fetch_product(get_in(item, ["price", "product"])) do
-        {:ok, product} -> {:cont, {:ok, put_add_on(add_ons, product, item)}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
+    result =
+      Enum.reduce_while(items, {:ok, []}, fn item, {:ok, add_ons} ->
+        case Billing.fetch_product(get_in(item, ["price", "product"])) do
+          {:ok, product} -> {:cont, {:ok, put_add_on(add_ons, product, item)}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
+
+    with {:ok, add_ons} <- result, do: {:ok, Enum.reverse(add_ons)}
   end
 
-  defp put_add_on(add_ons, %{"metadata" => %{"adds_to_limit" => limit}}, %{"quantity" => quantity}),
-    do: [{limit, quantity} | add_ons]
+  defp put_add_on(
+         add_ons,
+         %{"name" => name, "metadata" => %{"adds_to_limit" => limit}},
+         %{"quantity" => quantity}
+       ),
+       do: [%{"name" => name, "limit" => limit, "quantity" => quantity} | add_ons]
 
   defp put_add_on(add_ons, product, item) do
     Logger.warning("Ignoring unrecognized product in subscription",
@@ -698,7 +706,7 @@ defmodule Portal.Billing.EventHandler do
   defp add_to_limits(limits, add_ons) do
     defaults = Map.new(Map.from_struct(%Accounts.Limits{}), fn {k, v} -> {to_string(k), v} end)
 
-    Enum.reduce(add_ons, limits, fn {limit, quantity}, limits ->
+    Enum.reduce(add_ons, limits, fn %{"limit" => limit, "quantity" => quantity}, limits ->
       if Map.has_key?(defaults, limit) do
         add_to_limit(limits, limit, Map.get(limits, limit, defaults[limit]), quantity)
       else

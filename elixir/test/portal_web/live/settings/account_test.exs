@@ -6,6 +6,8 @@ defmodule PortalWeb.Settings.AccountTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
+  import Portal.DeviceFixtures
   import Portal.ObanJobFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SubjectFixtures
@@ -165,6 +167,47 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Usage"
+      refute html =~ "Ad hoc Service Accounts"
+    end
+
+    test "renders add-ons and ad hoc service account usage", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 100, adhoc_service_accounts_count: 10_000},
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_test",
+              product_name: "Enterprise",
+              add_ons: [
+                %{
+                  name: "Ad hoc service account + device",
+                  quantity: 10_000,
+                  limit: "adhoc_service_accounts_count"
+                }
+              ]
+            }
+          }
+        })
+
+      service_account = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: service_account)
+      client_session_fixture(account: account, actor: service_account, client: client)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Add-ons"
+      assert html =~ "Ad hoc service account + device"
+      assert html =~ "× 10000"
+      assert html =~ "Ad hoc Service Accounts"
+      assert html =~ "1 / 10000"
+      assert html =~ "0 / 100"
     end
   end
 
