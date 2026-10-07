@@ -317,9 +317,31 @@ impl TunnelTest {
                         }
                     }
                     GatewayAction::RemoveAllAccess => {
-                        for client_id in self.clients.keys() {
+                        // On a Gateway that serves both, the Client's new authorization can
+                        // overtake the `reject_access` for its old one.
+                        let reauthorization = (edit.old.sites() == updated.sites())
+                            .then(|| portal.map_client_resource_to_gateway_resource(resource_id));
+
+                        for (client_id, client) in &self.clients {
                             for gateway in self.gateways.values_mut() {
                                 gateway.exec_mut(|gateway| {
+                                    if let Some(resource) = &reauthorization
+                                        && gateway.is_authorized(*client_id, resource_id)
+                                    {
+                                        gateway
+                                            .sut
+                                            .allow_access(
+                                                *client_id,
+                                                client.inner().sut.tunnel_ip_config().unwrap(),
+                                                test_ingest_token(),
+                                                None,
+                                                resource.clone(),
+                                                None,
+                                                now,
+                                            )
+                                            .unwrap();
+                                    }
+
                                     gateway.remove_access(client_id, &resource_id, now)
                                 });
                             }

@@ -197,8 +197,9 @@ impl ClientOnGateway {
             .map(|e| e.saturating_duration_since(now))
             .unwrap_or(NEVER_EXPIRES_TTL);
 
-        if let Some(existing) = self.resources.get_mut(&rid) {
-            existing.update(&resource);
+        if let Some(existing) = self.resources.get_mut(&rid)
+            && existing.update_filters(&resource)
+        {
             self.resources.update_expiry(&rid, now, ttl);
         } else {
             let resource = ResourceOnGateway::new(resource);
@@ -247,7 +248,10 @@ impl ClientOnGateway {
             return;
         };
 
-        resource.update(new_description);
+        if !resource.update_filters(new_description) {
+            tracing::warn!(rid = %new_description.id(), "Resources cannot change type or address");
+            return;
+        }
 
         self.recalculate_filters();
     }
@@ -639,21 +643,28 @@ impl ResourceOnGateway {
         }
     }
 
-    fn update(&mut self, resource: &ResourceDescription) {
+    /// Replaces the filters if `resource` has the same type and address.
+    ///
+    /// Returns `false` and leaves the resource untouched otherwise.
+    fn update_filters(&mut self, resource: &ResourceDescription) -> bool {
         match (self, resource) {
-            (ResourceOnGateway::Cidr { filters, .. }, ResourceDescription::Cidr(new)) => {
+            (ResourceOnGateway::Cidr { network, filters }, ResourceDescription::Cidr(new))
+                if *network == new.address =>
+            {
                 *filters = new.filters.clone();
+                true
             }
-            (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
+            (
+                ResourceOnGateway::Dns {
+                    address, filters, ..
+                },
+                ResourceDescription::Dns(new),
+            ) if *address == new.address => {
                 *filters = new.filters.clone();
+                true
             }
-            (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => {
-                // No-op.
-            }
-            (current, new) => {
-                tracing::error!(?current, ?new, "Resources cannot change type");
-                // TODO: This could be enforced at compile-time if we had typed resource IDs.
-            }
+            (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => true,
+            _ => false,
         }
     }
 
