@@ -11,6 +11,7 @@ shift 2
     exit 1
 }
 
+mkdir -p "$(dirname "$binaries_file")"
 read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
 
 "$@" test --no-run --message-format=json --target "$triple" "${flags[@]}" |

@@ -137,10 +137,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # The same NDK and API level as the app build in `kotlin/android/app/build.gradle.kts`.
-      - name: Configure NDK toolchain
+      - name: Set up NDK toolchain
         run: |
-          ndk_version=$(sed -n 's/^ *ndkVersion = "\([^"]*\)".*/\1/p' ../kotlin/android/app/build.gradle.kts)
-          bin="$ANDROID_HOME/ndk/$ndk_version/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          NDK_VERSION="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' ../kotlin/android/mise.toml)"
+          export NDK_VERSION
+          if [[ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
+            ../kotlin/android/mise-tasks/setup-ndk.sh
+          fi
+          bin="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
           {
             echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$bin/x86_64-linux-android26-clang"
             echo "CC_x86_64_linux_android=$bin/x86_64-linux-android26-clang"
