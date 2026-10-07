@@ -176,6 +176,16 @@ defmodule Portal.Config.Definitions do
   defconfig(:api_capacity, :integer, default: 200)
 
   @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the rate the read bucket is refilled.
+  """
+  defconfig(:api_read_refill_rate, :integer, default: 10)
+
+  @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the capacity of the read bucket.
+  """
+  defconfig(:api_read_capacity, :integer, default: 200)
+
+  @doc """
   The API socket rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_socket_refill_rate, :integer, default: 1)

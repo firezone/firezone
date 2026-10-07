@@ -52,7 +52,8 @@ defmodule PortalAPI.Router do
   # The IP bucket precedes all attacker-controlled work. Once a
   # token is authenticated, every request is charged to its account and logged
   # before controller dispatch. Synthetic REST requests carry private skip
-  # markers so this outer metering is never duplicated.
+  # markers so this outer metering is never duplicated; only write tools are
+  # charged again, to the write bucket.
   pipeline :mcp do
     plug PortalAPI.Plugs.MCPRateLimit
     plug :accepts, ["json"]

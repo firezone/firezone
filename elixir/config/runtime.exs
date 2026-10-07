@@ -625,7 +625,9 @@ if config_env() == :prod do
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
-      capacity: env_var_to_config!(:api_capacity)
+      capacity: env_var_to_config!(:api_capacity),
+      read_refill_rate: env_var_to_config!(:api_read_refill_rate),
+      read_capacity: env_var_to_config!(:api_read_capacity)
 
     config :portal, PortalAPI.Plugs.MCPRateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
