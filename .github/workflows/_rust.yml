@@ -131,11 +131,13 @@ jobs:
             triple: x86_64-linux-android
             api-level: 34
             emulator-arch: x86_64
-          # The API 34 x86_64 image only runs 64-bit binaries; API 30 is the newest x86 image.
+            target: default
+          # The API 34 x86_64 image only runs 64-bit binaries, and the newest x86 image is API 30's Google APIs one.
           - arch: i686
             triple: i686-linux-android
             api-level: 30
             emulator-arch: x86
+            target: google_apis
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
@@ -157,7 +159,7 @@ jobs:
         with:
           api-level: ${{ matrix.api-level }}
           arch: ${{ matrix.emulator-arch }}
-          target: default
+          target: ${{ matrix.target }}
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
           script: adb shell getprop ro.product.cpu.abilist && mise run //rust:mobile-test-run ${{ matrix.triple }}
