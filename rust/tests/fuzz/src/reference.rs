@@ -356,21 +356,28 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let outcome = self.record_probe(
+                let request = ProbeRequest::Tcp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                };
+                let outcome = self.dispatch(
                     portal,
-                    *probe_id,
                     *client_id,
-                    ProbeRequest::Tcp {
-                        src: *src,
-                        dst: dst.clone(),
-                        sport: *sport,
-                        dport: *dport,
-                    },
-                    now,
+                    request.source(),
+                    request.destination(),
+                    request.protocol(),
                 );
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
 
-                match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) => {
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route)
+                        if self.tcp_listener_at(dst, *dport) =>
+                    {
                         let flow = TcpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -381,10 +388,14 @@ impl ReferenceState {
                         };
                         let previous = self.tcp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "TCP flow IDs must be unique");
+
+                        outcome
                     }
-                    ExpectedOutcome::Dropped => {}
-                    ExpectedOutcome::Rejected { .. } => {}
-                }
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
             }
             Transition::SendTcpData {
                 flow_id, probe_id, ..
@@ -411,12 +422,9 @@ impl ReferenceState {
                     .unwrap()
                     .exec_mut(|client| client.note_sent(outcome.remote(), now));
 
-                // The connection survives only if the data reaches its resource through the
-                // same Gateway, or any Gateway if no server listens and the resource mirrors it.
-                let listening = self.tcp_listener_at(request.destination(), flow.dport);
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route)
-                        if route.remote() == flow.route.remote() || !listening =>
+                        if route.remote() == flow.route.remote() =>
                     {
                         self.tcp_flows.insert(
                             *flow_id,
@@ -428,8 +436,7 @@ impl ReferenceState {
 
                         outcome
                     }
-                    // The server behind any other Gateway resets the connection.
-                    ExpectedOutcome::RoundTripCompleted(_) => ExpectedOutcome::Dropped,
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
@@ -592,6 +599,20 @@ impl ReferenceState {
             Transition::UpdateDnsRecords { domain, records } => {
                 self.global_dns_records
                     .replace(domain.clone(), records.clone());
+
+                // A Gateway may translate a connection to any address the domain resolved to.
+                if let Some(addresses) = self.tcp_resources.get_mut(domain) {
+                    let ports = addresses
+                        .iter()
+                        .map(SocketAddr::port)
+                        .collect::<BTreeSet<_>>();
+                    addresses.extend(
+                        self.global_dns_records
+                            .domain_ips_iter(domain)
+                            .cartesian_product(&ports)
+                            .map(|(ip, port)| SocketAddr::new(ip, *port)),
+                    );
+                }
             }
         };
 
@@ -1158,7 +1179,7 @@ impl ReferenceState {
         self.udp_flows.keys().copied().collect()
     }
 
-    /// Returns whether a TCP server listens at `dst`; every other destination mirrors packets.
+    /// Returns whether a TCP server listens at `dst`; every other destination resets connections.
     fn tcp_listener_at(&self, dst: &Destination, dport: DPort) -> bool {
         match dst {
             Destination::DomainName { name, .. } => self
@@ -1586,4 +1607,18 @@ fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
             Filter::Udp(_) => true,
             Filter::Tcp(_) => false,
         })
+}
+
+/// The outcome of a TCP segment that the remote end of `route` has no connection for.
+fn reset_by(route: Route) -> ExpectedOutcome {
+    let by = match route {
+        Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
+        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
+        Route::Peer(client) => RejectionRemote::Client(client),
+    };
+
+    ExpectedOutcome::Rejected {
+        by,
+        response: RejectionResponse::Reset,
+    }
 }

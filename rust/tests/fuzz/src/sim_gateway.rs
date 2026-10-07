@@ -39,6 +39,8 @@ pub(crate) struct SimGateway {
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
     tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
+    /// Answers TCP to any address without a listening server with a reset.
+    closed_tcp_ports: crate::tcp::Server,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -63,7 +65,7 @@ impl SimGateway {
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
-        Self {
+        let mut gateway = Self {
             id,
             sut,
             site_specific_dns_records,
@@ -76,19 +78,28 @@ impl SimGateway {
             next_observation_order: 0,
             authorized_resources: Default::default(),
             clients_by_ip: Default::default(),
-            tcp_resources: tcp_resources
-                .into_iter()
-                .map(|address| {
-                    let mut server = crate::tcp::Server::new(now);
-                    if let Err(e) = server.listen(address) {
-                        tracing::error!(%address, "Failed to listen on address: {e}")
-                    }
-
-                    (address, server)
-                })
-                .collect(),
+            tcp_resources: Default::default(),
+            closed_tcp_ports: crate::tcp::Server::new(now),
             transmit_buffer: snownet::TransmitBuffer::new(),
+        };
+
+        for address in tcp_resources {
+            gateway.listen_tcp(address, now);
         }
+
+        gateway
+    }
+
+    /// Starts a TCP server at `address` unless one already listens there.
+    pub(crate) fn listen_tcp(&mut self, address: SocketAddr, now: Instant) {
+        self.tcp_resources.entry(address).or_insert_with(|| {
+            let mut server = crate::tcp::Server::new(now);
+            if let Err(e) = server.listen(address) {
+                tracing::error!(%address, "Failed to listen on address: {e}")
+            }
+
+            server
+        });
     }
 
     pub(crate) fn receive(
@@ -145,11 +156,15 @@ impl SimGateway {
 
                     std::iter::from_fn(|| server.poll_outbound())
                 });
-        let tcp_resource_packets = self.tcp_resources.values_mut().flat_map(|server| {
-            server.handle_timeout(now);
+        let tcp_resource_packets = self
+            .tcp_resources
+            .values_mut()
+            .chain([&mut self.closed_tcp_ports])
+            .flat_map(|server| {
+                server.handle_timeout(now);
 
-            std::iter::from_fn(|| server.poll_outbound())
-        });
+                std::iter::from_fn(|| server.poll_outbound())
+            });
 
         // Collect first to end the mutable borrows of the resource maps before encapsulating.
         let packets = udp_server_packets
@@ -307,6 +322,11 @@ impl SimGateway {
                 server.handle_input(packet, now);
                 return None;
             }
+
+            if icmp_error.is_none() {
+                self.closed_tcp_ports.handle_inbound(packet);
+                return None;
+            }
         }
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
@@ -336,9 +356,6 @@ impl SimGateway {
     fn request_received(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(udp) = packet.as_udp() {
             self.record_received_request(udp.payload(), packet.clone(), now);
-        }
-        if packet.is_tcp() {
-            self.record_received_tcp_request(packet, now);
         }
     }
 

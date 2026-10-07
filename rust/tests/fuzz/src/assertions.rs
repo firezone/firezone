@@ -157,12 +157,23 @@ fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Rejection response was received by the wrong client");
                 }
 
-                assert_icmp_error_response(
-                    expected,
-                    submitted_request,
-                    received_response,
-                    Some(response),
-                );
+                match response {
+                    RejectionResponse::Prohibited => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Unreachable => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Reset => {
+                        assert_reset_response(expected, submitted_request, received_response)
+                    }
+                }
             }
         }
     }
@@ -547,6 +558,31 @@ fn assert_icmp_error_response(
 
     if !protocol_matches {
         tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong transport tuple");
+    }
+}
+
+fn assert_reset_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+) {
+    assert_correct_src_and_dst_ips(&submitted_request.packet, &received_response.packet);
+
+    let (Some(request), Some(reply)) = (
+        submitted_request.packet.as_tcp(),
+        received_response.packet.as_tcp(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP probe or its reset is not TCP");
+        return;
+    };
+
+    if !reply.rst() {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not a TCP reset");
+    }
+    if (request.source_port(), request.destination_port())
+        != (reply.destination_port(), reply.source_port())
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP reset ports do not match");
     }
 }
 

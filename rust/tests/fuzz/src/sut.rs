@@ -844,7 +844,13 @@ impl TunnelTest {
                     c.update_relays(iter::empty(), self.relays.iter(), now);
                 });
             }
-            Transition::UpdateDnsRecords { .. } => {}
+            Transition::UpdateDnsRecords { domain, .. } => {
+                for address in ref_state.tcp_resources.get(&domain).into_iter().flatten() {
+                    for gateway in self.gateways.values_mut() {
+                        gateway.exec_mut(|g| g.listen_tcp(*address, now));
+                    }
+                }
+            }
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);

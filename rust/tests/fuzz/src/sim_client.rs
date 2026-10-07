@@ -484,7 +484,7 @@ impl SimClient {
         }
 
         if self.tcp_client.accepts(&packet) {
-            if let Some(id) = self.echoed_tcp_probe(&packet) {
+            if let Some(id) = self.answered_tcp_probe(&packet) {
                 self.record_received_response(id, packet.clone(), now);
             }
             self.tcp_client.handle_inbound(packet);
@@ -668,13 +668,13 @@ impl SimClient {
         self.unsubmitted_tcp_probes.clear();
     }
 
-    /// Returns the probe a TCP segment echoes, unless it was already answered.
-    fn echoed_tcp_probe(&self, packet: &IpPacket) -> Option<ProbeId> {
+    /// Returns the probe a TCP segment echoes or resets, unless it was already answered.
+    fn answered_tcp_probe(&self, packet: &IpPacket) -> Option<ProbeId> {
         let tcp = packet.as_tcp()?;
         let id =
             self.unanswered_tcp_probe(SPort(tcp.destination_port()), DPort(tcp.source_port()))?;
 
-        (ProbeId::from_payload(tcp.payload()) == Some(id)).then_some(id)
+        (tcp.rst() || ProbeId::from_payload(tcp.payload()) == Some(id)).then_some(id)
     }
 
     /// Returns the TCP probe submitted in the current transition if it has no response yet.

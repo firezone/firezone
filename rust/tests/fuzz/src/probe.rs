@@ -213,6 +213,8 @@ pub(crate) enum RejectionRemote {
 pub(crate) enum RejectionResponse {
     Prohibited,
     Unreachable,
+    /// A TCP reset.
+    Reset,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
