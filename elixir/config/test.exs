@@ -387,6 +387,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ]
 
 config :portal, :constant_execution_time, 1
+config :portal, :pending_verification_timeout, 1_000
 
 ###############################
 ##### PortalAPI Endpoint ######

@@ -14,6 +14,11 @@ defmodule PortalWeb.OIDCController do
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
   @unverified_email_error "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
   @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 3000)
+  @pending_verification_timeout Application.compile_env(
+                                  :portal,
+                                  :pending_verification_timeout,
+                                  5_000
+                                )
   @sign_up_provider_types ~w[google github]
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -1819,7 +1824,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, pending} when is_map(pending) -> {:ok, pending}
       {:pending_verification, _} -> {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
@@ -1835,7 +1840,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, _} ->
         {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
@@ -1851,7 +1856,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, _} ->
         {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
