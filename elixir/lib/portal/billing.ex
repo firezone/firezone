@@ -367,9 +367,10 @@ defmodule Portal.Billing do
       |> Map.get(account.id, @no_active_actors)
 
     counts =
-      case Database.fetch_actor_type(account, actor_id) do
-        :service_account -> Map.update!(counts, :service_accounts, &(&1 + 1))
-        _type -> Map.update!(counts, :users, &(&1 + 1))
+      if Database.service_account?(account, actor_id) do
+        Map.update!(counts, :service_accounts, &(&1 + 1))
+      else
+        Map.update!(counts, :users, &(&1 + 1))
       end
 
     seats_used(account, counts)
@@ -915,14 +916,14 @@ defmodule Portal.Billing do
       |> Safe.exists?()
     end
 
-    def fetch_actor_type(%Account{} = account, actor_id) do
+    def service_account?(%Account{} = account, actor_id) do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.id == ^actor_id,
-        select: a.type
+        where: a.type == :service_account
       )
       |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.exists?()
     end
 
     def count_monthly_active_actors_by_account(account_ids) do
