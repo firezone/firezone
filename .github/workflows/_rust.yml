@@ -137,14 +137,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # The same NDK and API level as the app build in `kotlin/android/app/build.gradle.kts`.
-      - name: Set up NDK toolchain
+      - name: Configure NDK toolchain
         run: |
-          NDK_VERSION="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' ../kotlin/android/mise.toml)"
-          export NDK_VERSION
-          if [[ ! -d "$ANDROID_HOME/ndk/$NDK_VERSION" ]]; then
-            ../kotlin/android/mise-tasks/setup-ndk.sh
-          fi
-          bin="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          ndk_version="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' ../kotlin/android/mise.toml)"
+          bin="$ANDROID_HOME/ndk/$ndk_version/toolchains/llvm/prebuilt/linux-x86_64/bin"
           {
             echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$bin/x86_64-linux-android26-clang"
             echo "CC_x86_64_linux_android=$bin/x86_64-linux-android26-clang"
@@ -178,12 +174,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
-      # Booting takes minutes, so start it now and only wait for it before running the tests.
       - name: Boot simulator
         run: |
           udid=$(xcrun simctl list devices available --json |
             jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
           xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
           echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup-rust-stable
         with:
@@ -199,9 +195,7 @@ jobs:
       - name: Build tests
         run: mise run //rust:mobile-test-build aarch64-apple-ios-sim target/mobile-test-binaries.tsv cargo
       - name: Run tests
-        run: |
-          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-          mise run //rust:mobile-test-run target/mobile-test-binaries.tsv xcrun simctl spawn "$SIMULATOR_UDID"
+        run: mise run //rust:mobile-test-run target/mobile-test-binaries.tsv xcrun simctl spawn "$SIMULATOR_UDID"
 
   fuzz-targets:
     name: fuzz-targets
