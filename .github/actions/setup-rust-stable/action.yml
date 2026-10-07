@@ -42,6 +42,14 @@ runs:
           | sh -s -- -y --no-modify-path --default-toolchain none --profile minimal
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+    # `line-tables-only` keeps file:line in backtraces but makes the debug
+    # builds of every CI job much faster to compile and link.
+    - name: Reduce debug info
+      shell: bash
+      run: |
+        echo "CARGO_PROFILE_DEV_DEBUG=line-tables-only" >> "$GITHUB_ENV"
+        echo "CARGO_PROFILE_TEST_DEBUG=line-tables-only" >> "$GITHUB_ENV"
+
     - name: Extract pinned Rust channel
       id: rust
       shell: bash
