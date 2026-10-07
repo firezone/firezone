@@ -583,7 +583,9 @@ config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
-  capacity: 200
+  capacity: 200,
+  read_refill_rate: 10,
+  read_capacity: 200
 
 # MCP has an additional pre-authentication IP bucket. Its cost is one token,
 # versus ten for the authenticated per-account API bucket, allowing a modest
