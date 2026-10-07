@@ -637,11 +637,7 @@ impl PathAgent {
 
                 ControlFlow::Break(())
             }
-            // Peer data proves the peer is hearing us: not in distress.
-            Packet::PacketData(_) => {
-                self.peer_rekeys = 0;
-                ControlFlow::Continue(bytes)
-            }
+            Packet::PacketData(_) => ControlFlow::Continue(bytes),
             Packet::PacketCookieReply(_) => ControlFlow::Continue(bytes),
         }
     }
@@ -755,6 +751,8 @@ impl PathAgent {
         now: Instant,
     ) -> ControlFlow<(), ip_packet::IpPacket> {
         self.last_now = Some(now);
+        // Decrypted peer data proves the peer is hearing us: not in distress.
+        self.peer_rekeys = 0;
 
         let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
             return ControlFlow::Continue(packet);
