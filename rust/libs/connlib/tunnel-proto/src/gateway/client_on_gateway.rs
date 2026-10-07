@@ -197,14 +197,16 @@ impl ClientOnGateway {
             .map(|e| e.saturating_duration_since(now))
             .unwrap_or(NEVER_EXPIRES_TTL);
 
-        if let Some(existing) = self.resources.get_mut(&rid)
-            && existing.update_filters(&resource)
-        {
-            self.resources.update_expiry(&rid, now, ttl);
-        } else {
-            let resource = ResourceOnGateway::new(resource);
-            self.remove_stale_translations(rid, &resource);
-            self.resources.insert(rid, resource, now, ttl);
+        match self.resources.get_mut(&rid) {
+            Some(existing) if existing.has_same_address(&resource) => {
+                existing.set_filters(resource.filters());
+                self.resources.update_expiry(&rid, now, ttl);
+            }
+            _ => {
+                let resource = ResourceOnGateway::new(resource);
+                self.remove_stale_translations(rid, &resource);
+                self.resources.insert(rid, resource, now, ttl);
+            }
         }
 
         self.recalculate_filters();
@@ -248,10 +250,12 @@ impl ClientOnGateway {
             return;
         };
 
-        if !resource.update_filters(new_description) {
+        if !resource.has_same_address(new_description) {
             tracing::warn!(rid = %new_description.id(), "Resources cannot change type or address");
             return;
         }
+
+        resource.set_filters(new_description.filters());
 
         self.recalculate_filters();
     }
@@ -643,28 +647,26 @@ impl ResourceOnGateway {
         }
     }
 
-    /// Replaces the filters if `resource` has the same type and address.
-    ///
-    /// Returns `false` and leaves the resource untouched otherwise.
-    fn update_filters(&mut self, resource: &ResourceDescription) -> bool {
+    /// Whether `resource` is of the same type and, for DNS and CIDR resources, has the same address.
+    fn has_same_address(&self, resource: &ResourceDescription) -> bool {
         match (self, resource) {
-            (ResourceOnGateway::Cidr { network, filters }, ResourceDescription::Cidr(new))
-                if *network == new.address =>
-            {
-                *filters = new.filters.clone();
-                true
+            (ResourceOnGateway::Cidr { network, .. }, ResourceDescription::Cidr(new)) => {
+                *network == new.address
             }
-            (
-                ResourceOnGateway::Dns {
-                    address, filters, ..
-                },
-                ResourceDescription::Dns(new),
-            ) if *address == new.address => {
-                *filters = new.filters.clone();
-                true
+            (ResourceOnGateway::Dns { address, .. }, ResourceDescription::Dns(new)) => {
+                *address == new.address
             }
             (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => true,
             _ => false,
+        }
+    }
+
+    fn set_filters(&mut self, new: Vec<Filter>) {
+        match self {
+            ResourceOnGateway::Cidr { filters, .. } | ResourceOnGateway::Dns { filters, .. } => {
+                *filters = new;
+            }
+            ResourceOnGateway::Internet => {}
         }
     }
 
