@@ -324,8 +324,6 @@ defmodule Portal.DirectorySync do
       end
     end
 
-    # Reads with the primary on purpose: the sync writes right after, and a
-    # lagging replica would drop a user whose actor was just created.
     def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
       owned_identities(account_id, issuer, directory_id)
       |> where([i], i.idp_id in ^idp_ids)
