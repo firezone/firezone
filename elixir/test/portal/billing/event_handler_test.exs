@@ -336,6 +336,14 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.limits.adhoc_service_accounts_count == 10_000
+
+      assert [
+               %Portal.Account.Metadata.Stripe.AddOn{
+                 name: "Add-on",
+                 quantity: 10_000,
+                 limit: "adhoc_service_accounts_count"
+               }
+             ] = updated.metadata.stripe.add_ons
       assert updated.limits.monthly_active_users_count == 100
     end
 
@@ -405,7 +413,9 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      assert Portal.Repo.get!(Portal.Account, account.id).limits.adhoc_service_accounts_count == 0
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.adhoc_service_accounts_count == 0
+      assert updated.metadata.stripe.add_ons == []
     end
 
     test "ignores an add-on for an unknown limit", %{

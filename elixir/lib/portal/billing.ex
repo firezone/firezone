@@ -132,9 +132,27 @@ defmodule Portal.Billing do
   """
   @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
   def count_monthly_active_users(%Portal.Account{} = account) do
-    [account]
-    |> count_monthly_active_users_by_account()
-    |> Map.fetch!(account.id)
+    monthly_active_usage(account).seats
+  end
+
+  @doc """
+  The seats used, as `count_monthly_active_users/1` returns them, and the active
+  service accounts that take no seat because of `adhoc_service_accounts_count`.
+  """
+  @spec monthly_active_usage(Portal.Account.t()) :: %{
+          seats: non_neg_integer(),
+          adhoc_service_accounts: non_neg_integer()
+        }
+  def monthly_active_usage(%Portal.Account{} = account) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    seats = seats_used(account, counts)
+    service_accounts_in_seats = seats - counts.users
+
+    %{seats: seats, adhoc_service_accounts: counts.service_accounts - service_accounts_in_seats}
   end
 
   @doc """
