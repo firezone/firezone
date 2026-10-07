@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#MISE description="Run the tests built by `mobile-test-build` on the booted Android emulator or iOS simulator, one binary at a time"
+set -euo pipefail
+
+triple="${1:?usage: mise run //rust:mobile-test-run <triple>}"
+binaries_file="${CARGO_TARGET_DIR:-target}/$triple/mobile-test-binaries.tsv"
+binary_timeout="${MOBILE_TEST_BINARY_TIMEOUT_SECS:-300}"
+failed=()
+
+set -m # Each run gets its own process group, so a timeout kills the runner and whatever it spawned.
+
+# Exits with 124 if the command is still running after the given number of seconds.
+run_with_timeout() {
+    local secs="$1"
+    shift
+
+    "$@" </dev/null &
+    local pid=$!
+    (sleep "$secs" && kill -- "-$pid") &
+    local watchdog=$!
+    disown "$watchdog"
+
+    local status=0
+    wait "$pid" || status=$?
+    if ! kill -- "-$watchdog" 2>/dev/null; then
+        return 124
+    fi
+    return "$status"
+}
+
+run_on_device() {
+    case "$triple" in
+    *-android*)
+        local remote command arg
+        remote="/data/local/tmp/$(basename "$exe")"
+        adb push "$exe" "$remote" >/dev/null
+
+        command="$remote"
+        for arg in "$@"; do
+            command+=" '${arg//\'/\'\\\'\'}'"
+        done
+        adb shell "cd /data/local/tmp && $command"
+        ;;
+    *-apple-ios-sim) xcrun simctl spawn "${SIMULATOR_UDID:-booted}" "$exe" "$@" ;;
+    *)
+        echo "Don't know how to run tests for $triple" >&2
+        return 1
+        ;;
+    esac
+}
+
+while IFS=$'\t' read -r dir exe; do
+    name="$(basename "$dir")/$(basename "$exe")"
+    echo "::group::$name"
+
+    status=0
+    run_with_timeout "$binary_timeout" run_on_device --nocapture || status=$?
+
+    if ((status == 124)); then
+        echo "::error::$name timed out after ${binary_timeout}s"
+    fi
+
+    if ((status != 0)); then
+        failed+=("$name")
+    fi
+
+    echo "::endgroup::"
+done <"$binaries_file"
+
+if ((${#failed[@]} > 0)); then
+    echo "::error::Failed test binaries: ${failed[*]}"
+    exit 1
+fi

@@ -87,12 +87,10 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
 /// to the Portal-generated OpenAPI schema committed at the workspace root.
 #[test]
 fn spooled_reports_conform_to_the_committed_ingest_contract() {
-    let openapi = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../elixir/priv/static/openapi.json"),
-    )
+    let openapi = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../../elixir/priv/static/openapi.json"
+    ))
     .unwrap();
-    let openapi = serde_json::from_slice::<serde_json::Value>(&openapi).unwrap();
     let schema = openapi
         .pointer("/components/schemas/FlowLogIngestRecord")
         .expect("Portal OpenAPI spec contains the flow-log ingest contract");
