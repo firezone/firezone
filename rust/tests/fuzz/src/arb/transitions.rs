@@ -15,6 +15,7 @@ use super::values::{
     arb_dns_resource_address, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
+use crate::dns_records::record_ip;
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
@@ -268,7 +269,14 @@ pub(super) fn generate(
         }
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
-            let records = arb_dns_record_set(g);
+            let mut records = arb_dns_record_set(g);
+            // Like at the start, a TCP-serving domain never resolves to an ICMP-error host.
+            if state.tcp_resources.contains_key(&domain) {
+                for _ in records.extract_if(.., |record| {
+                    record_ip(record)
+                        .is_some_and(|ip| state.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+                }) {}
+            }
             Transition::UpdateDnsRecords { domain, records }
         }
         K::SendPacket => {
