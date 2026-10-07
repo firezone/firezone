@@ -7,6 +7,7 @@ defmodule Portal.Accounts.Limits do
     field :users_count, :integer
     field :monthly_active_users_count, :integer
     field :service_accounts_count, :integer
+    field :service_account_seats, :integer, default: 0
     field :sites_count, :integer
     field :account_admin_users_count, :integer
     field :connected_devices_per_actor, :integer
@@ -23,6 +24,7 @@ defmodule Portal.Accounts.Limits do
       users_count
       monthly_active_users_count
       service_accounts_count
+      service_account_seats
       sites_count
       account_admin_users_count
       connected_devices_per_actor
@@ -39,6 +41,7 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:users_count, greater_than_or_equal_to: 0)
     |> validate_number(:monthly_active_users_count, greater_than_or_equal_to: 0)
     |> validate_number(:service_accounts_count, greater_than_or_equal_to: 0)
+    |> validate_number(:service_account_seats, greater_than_or_equal_to: 0)
     |> validate_number(:sites_count, greater_than_or_equal_to: 0)
     |> validate_number(:account_admin_users_count, greater_than_or_equal_to: 0)
     |> validate_number(:connected_devices_per_actor, greater_than_or_equal_to: 0)

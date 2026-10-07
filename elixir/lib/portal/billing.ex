@@ -19,10 +19,6 @@ defmodule Portal.Billing do
     fetch_config!(:plan_product_ids)
   end
 
-  def adhoc_device_product_id do
-    fetch_config!(:adhoc_device_product_id)
-  end
-
   # Limits and Features
 
   @doc """
@@ -127,25 +123,44 @@ defmodule Portal.Billing do
       users_count > account.limits.users_count
   end
 
+  @no_active_actors %{users: 0, service_accounts: 0}
+
   @doc """
   Monthly active seats: distinct enabled users, admins and service accounts
-  with a client device seen in the last month.
+  with a client device seen in the last month. Service accounts use the
+  account's `service_account_seats` first and take a seat only beyond them.
   """
   @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
-  def count_monthly_active_users(%Portal.Account{id: account_id}) do
-    [account_id]
-    |> Database.count_monthly_active_users_by_account()
-    |> Map.get(account_id, 0)
+  def count_monthly_active_users(%Portal.Account{} = account) do
+    [account]
+    |> count_monthly_active_users_by_account()
+    |> Map.fetch!(account.id)
   end
 
   @doc """
   Same as `count_monthly_active_users/1` for many accounts at once, as a map of
-  account id to count. Accounts without active users are missing from the map.
+  account id to count.
   """
-  @spec count_monthly_active_users_by_account([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => integer()}
-  def count_monthly_active_users_by_account(account_ids) do
-    Database.count_monthly_active_users_by_account(account_ids)
+  @spec count_monthly_active_users_by_account([Portal.Account.t()]) :: %{
+          Ecto.UUID.t() => non_neg_integer()
+        }
+  def count_monthly_active_users_by_account(accounts) do
+    counts =
+      accounts
+      |> Enum.map(& &1.id)
+      |> Database.count_monthly_active_actors_by_account()
+
+    Map.new(accounts, fn account ->
+      {account.id, seats_used(account, Map.get(counts, account.id, @no_active_actors))}
+    end)
   end
+
+  defp seats_used(%{limits: %{service_account_seats: nil}}, counts), do: counts.users
+
+  defp seats_used(%{limits: %{service_account_seats: seats}}, counts),
+    do: counts.users + max(counts.service_accounts - seats, 0)
+
+  defp seats_used(_account, counts), do: counts.users + counts.service_accounts
 
   def seats_limit_exceeded?(%Portal.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
@@ -342,7 +357,22 @@ defmodule Portal.Billing do
 
     plan_type(account) == :business and is_integer(limit) and
       not Database.actor_active_in_last_month?(account, actor_id) and
-      count_monthly_active_users(account) >= limit
+      seats_used_with_actor(account, actor_id) > limit
+  end
+
+  defp seats_used_with_actor(account, actor_id) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    counts =
+      case Database.fetch_actor_type(account, actor_id) do
+        :service_account -> Map.update!(counts, :service_accounts, &(&1 + 1))
+        _type -> Map.update!(counts, :users, &(&1 + 1))
+      end
+
+    seats_used(account, counts)
   end
 
   @low_seats_threshold 0.1
@@ -885,7 +915,17 @@ defmodule Portal.Billing do
       |> Safe.exists?()
     end
 
-    def count_monthly_active_users_by_account(account_ids) do
+    def fetch_actor_type(%Account{} = account, actor_id) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.id == ^actor_id,
+        select: a.type
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    def count_monthly_active_actors_by_account(account_ids) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.account_id in ^account_ids)
@@ -897,7 +937,13 @@ defmodule Portal.Billing do
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
       |> group_by([devices: d], d.account_id)
-      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
+      |> select([devices: d, actor: a], {
+        d.account_id,
+        %{
+          users: filter(count(d.actor_id, :distinct), a.type != :service_account),
+          service_accounts: filter(count(d.actor_id, :distinct), a.type == :service_account)
+        }
+      })
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()

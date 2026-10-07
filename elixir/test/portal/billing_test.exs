@@ -591,6 +591,31 @@ defmodule Portal.BillingTest do
       assert client_seat_restricted?(account, new_actor.id)
     end
 
+    test "does not restrict a new service account while service account seats remain" do
+      account =
+        update_account(business_account_fixture(), %{
+          limits: %{monthly_active_users_count: 1, service_account_seats: 1}
+        })
+
+      make_active(account, actor_fixture(account: account))
+      new_service_account = actor_fixture(account: account, type: :service_account)
+
+      refute client_seat_restricted?(account, new_service_account.id)
+    end
+
+    test "restricts a new service account when service account seats and seats are full" do
+      account =
+        update_account(business_account_fixture(), %{
+          limits: %{monthly_active_users_count: 1, service_account_seats: 1}
+        })
+
+      make_active(account, actor_fixture(account: account))
+      make_active(account, actor_fixture(account: account, type: :service_account))
+      new_service_account = actor_fixture(account: account, type: :service_account)
+
+      assert client_seat_restricted?(account, new_service_account.id)
+    end
+
     test "never restricts an already active user, even when over the limit" do
       account = business_account_with_seats(1)
       active = actor_fixture(account: account)
@@ -1254,6 +1279,32 @@ defmodule Portal.BillingTest do
 
     test "returns 0 for account with no active users", %{account: account} do
       assert Portal.Billing.count_monthly_active_users(account) == 0
+    end
+
+    test "service accounts take a seat only beyond service_account_seats", %{account: account} do
+      account = update_account(account, %{limits: %{service_account_seats: 1}})
+
+      for type <- [:account_user, :service_account, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.count_monthly_active_users(account) == 2
+    end
+
+    test "service accounts never take a seat with unlimited service_account_seats", %{
+      account: account
+    } do
+      account = update_account(account, %{limits: %{service_account_seats: nil}})
+
+      for type <- [:account_user, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.count_monthly_active_users(account) == 1
     end
   end
 

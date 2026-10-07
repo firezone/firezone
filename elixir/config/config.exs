@@ -413,9 +413,7 @@ config :portal, Portal.Billing,
     "prod_VMyDXDNwtDbpYa",
     # Enterprise
     "prod_PZdb7NJhcdyjRV"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
+  ]
 
 config :portal, Portal.Crl.Sync, req_opts: []
 
