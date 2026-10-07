@@ -278,7 +278,6 @@ skip = [
     "windows-targets",
     "windows_x86_64_msvc",
     "winnow",
-    "winreg",
 ] # Certain crates/versions that will be skipped when doing duplicate detection.
 # Similarly to `skip` allows you to skip certain crates during duplicate
 # detection. Unlike skip, it also includes the entire tree of transitive

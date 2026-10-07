@@ -2,10 +2,11 @@ defmodule PortalAPI.MCPController do
   @moduledoc """
   The MCP endpoint: one stateless POST that speaks JSON-RPC 2.0.
 
-  Rate limiting and request logging are charged exactly once per request by the
-  MCP router pipeline. Tool attempts and REST execution outcomes are recorded
-  separately on that row. The inner dispatch carries private markers that
-  prevent duplicate metering.
+  Request logging is charged exactly once per request by the MCP router
+  pipeline. Tool attempts and REST execution outcomes are recorded separately
+  on that row. The pipeline charges every request to the account's read rate
+  limit, and a write tool call is also charged to the write rate limit by the
+  inner dispatch.
   """
 
   use PortalAPI, :controller
@@ -203,6 +204,10 @@ defmodule PortalAPI.MCPController do
   # tool error it cannot act on.
   defp send_tool_result(conn, id, 401, body) do
     send_rpc(conn, 401, MCP.error(id, MCP.invalid_request(), detail(body, "Unauthorized")))
+  end
+
+  defp send_tool_result(conn, _id, 429, %{"retry_after_seconds" => seconds}) do
+    PortalAPI.ProblemDetails.rate_limited(conn, :timer.seconds(seconds))
   end
 
   defp send_tool_result(conn, id, status, body) when status >= 400 do
