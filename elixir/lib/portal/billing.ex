@@ -127,8 +127,8 @@ defmodule Portal.Billing do
 
   @doc """
   Monthly active seats: distinct enabled users, admins and service accounts
-  with a client device seen in the last month. Service accounts use the
-  account's `service_account_seats` first and take a seat only beyond them.
+  with a client device seen in the last month. Up to `adhoc_service_accounts_count`
+  active service accounts take no seat, the others take one each.
   """
   @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
   def count_monthly_active_users(%Portal.Account{} = account) do
@@ -155,10 +155,10 @@ defmodule Portal.Billing do
     end)
   end
 
-  defp seats_used(%{limits: %{service_account_seats: nil}}, counts), do: counts.users
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: nil}}, counts), do: counts.users
 
-  defp seats_used(%{limits: %{service_account_seats: seats}}, counts),
-    do: counts.users + max(counts.service_accounts - seats, 0)
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: adhoc}}, counts),
+    do: counts.users + max(counts.service_accounts - adhoc, 0)
 
   defp seats_used(_account, counts), do: counts.users + counts.service_accounts
 

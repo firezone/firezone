@@ -7,7 +7,9 @@ defmodule Portal.Accounts.Limits do
     field :users_count, :integer
     field :monthly_active_users_count, :integer
     field :service_accounts_count, :integer
-    field :service_account_seats, :integer, default: 0
+    # Sold as "additional service account + device": this many active service
+    # accounts take no seat, the others take a seat each.
+    field :adhoc_service_accounts_count, :integer, default: 0
     field :sites_count, :integer
     field :account_admin_users_count, :integer
     field :connected_devices_per_actor, :integer
@@ -24,7 +26,7 @@ defmodule Portal.Accounts.Limits do
       users_count
       monthly_active_users_count
       service_accounts_count
-      service_account_seats
+      adhoc_service_accounts_count
       sites_count
       account_admin_users_count
       connected_devices_per_actor
@@ -41,7 +43,7 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:users_count, greater_than_or_equal_to: 0)
     |> validate_number(:monthly_active_users_count, greater_than_or_equal_to: 0)
     |> validate_number(:service_accounts_count, greater_than_or_equal_to: 0)
-    |> validate_number(:service_account_seats, greater_than_or_equal_to: 0)
+    |> validate_number(:adhoc_service_accounts_count, greater_than_or_equal_to: 0)
     |> validate_number(:sites_count, greater_than_or_equal_to: 0)
     |> validate_number(:account_admin_users_count, greater_than_or_equal_to: 0)
     |> validate_number(:connected_devices_per_actor, greater_than_or_equal_to: 0)

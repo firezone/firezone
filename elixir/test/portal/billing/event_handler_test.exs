@@ -321,7 +321,7 @@ defmodule Portal.Billing.EventHandlerTest do
       {product, _price, subscription} =
         Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 100)
 
-      add_on = add_on_product("service_account_seats")
+      add_on = add_on_product("adhoc_service_accounts_count")
       subscription = add_items(subscription, [{add_on, 10_000}])
 
       event = Stripe.build_event("customer.subscription.created", subscription)
@@ -335,7 +335,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.limits.service_account_seats == 10_000
+      assert updated.limits.adhoc_service_accounts_count == 10_000
       assert updated.limits.monthly_active_users_count == 100
     end
 
@@ -391,7 +391,7 @@ defmodule Portal.Billing.EventHandlerTest do
       account: account,
       customer: customer
     } do
-      update_account(account, %{limits: %{service_account_seats: 50}})
+      update_account(account, %{limits: %{adhoc_service_accounts_count: 50}})
 
       {product, _price, subscription} =
         Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
@@ -405,7 +405,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      assert Portal.Repo.get!(Portal.Account, account.id).limits.service_account_seats == 0
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.adhoc_service_accounts_count == 0
     end
 
     test "ignores an add-on for an unknown limit", %{

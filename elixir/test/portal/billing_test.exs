@@ -591,10 +591,10 @@ defmodule Portal.BillingTest do
       assert client_seat_restricted?(account, new_actor.id)
     end
 
-    test "does not restrict a new service account while service account seats remain" do
+    test "does not restrict a new service account while adhoc service accounts remain" do
       account =
         update_account(business_account_fixture(), %{
-          limits: %{monthly_active_users_count: 1, service_account_seats: 1}
+          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 1}
         })
 
       make_active(account, actor_fixture(account: account))
@@ -603,10 +603,10 @@ defmodule Portal.BillingTest do
       refute client_seat_restricted?(account, new_service_account.id)
     end
 
-    test "restricts a new service account when service account seats and seats are full" do
+    test "restricts a new service account when adhoc service accounts and seats are full" do
       account =
         update_account(business_account_fixture(), %{
-          limits: %{monthly_active_users_count: 1, service_account_seats: 1}
+          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 1}
         })
 
       make_active(account, actor_fixture(account: account))
@@ -1281,8 +1281,8 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 0
     end
 
-    test "service accounts take a seat only beyond service_account_seats", %{account: account} do
-      account = update_account(account, %{limits: %{service_account_seats: 1}})
+    test "service accounts take a seat only beyond adhoc_service_accounts_count", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 1}})
 
       for type <- [:account_user, :service_account, :service_account] do
         actor = actor_fixture(type: type, account: account)
@@ -1293,10 +1293,10 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 
-    test "service accounts never take a seat with unlimited service_account_seats", %{
+    test "service accounts never take a seat with unlimited adhoc_service_accounts_count", %{
       account: account
     } do
-      account = update_account(account, %{limits: %{service_account_seats: nil}})
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: nil}})
 
       for type <- [:account_user, :service_account] do
         actor = actor_fixture(type: type, account: account)

@@ -40,9 +40,9 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
                CheckAccountLimits.Database.fetch_counts_for_accounts([account])[account.id]
     end
 
-    test "counts only service accounts beyond service_account_seats as monthly active users" do
+    test "counts only service accounts beyond adhoc_service_accounts_count as monthly active users" do
       account =
-        update_account(provisioned_account_fixture(), %{limits: %{service_account_seats: 1}})
+        update_account(provisioned_account_fixture(), %{limits: %{adhoc_service_accounts_count: 1}})
 
       for type <- [:account_user, :service_account, :service_account] do
         actor = actor_fixture(account: account, type: type)
