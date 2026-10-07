@@ -1,15 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Run the test binaries listed by `mobile-test-build` one at a time with the given runner command"
+#MISE description="Run the tests built by `mobile-test-build` on the booted Android emulator or iOS simulator, one binary at a time"
 set -euo pipefail
 
-usage="usage: mise run //rust:mobile-test-run <binaries-file> <runner-command...>"
-binaries_file="${1:?$usage}"
-shift
-(($# > 0)) || {
-    echo "$usage" >&2
-    exit 1
-}
-runner=("$@")
+triple="${1:?usage: mise run //rust:mobile-test-run <triple>}"
+binaries_file="${CARGO_TARGET_DIR:-target}/$triple/mobile-test-binaries.tsv"
 binary_timeout="${MOBILE_TEST_BINARY_TIMEOUT_SECS:-300}"
 test_timeout="${MOBILE_TEST_TIMEOUT_SECS:-60}"
 failed=()
@@ -36,11 +30,32 @@ run_with_timeout() {
     return "$status"
 }
 
+run_on_device() {
+    case "$triple" in
+    *-android*)
+        local remote command arg
+        remote="/data/local/tmp/$(basename "$exe")"
+        adb push "$exe" "$remote" >/dev/null
+
+        command="$remote"
+        for arg in "$@"; do
+            command+=" '${arg//\'/\'\\\'\'}'"
+        done
+        adb shell "cd /data/local/tmp && $command"
+        ;;
+    *-apple-ios-sim) xcrun simctl spawn "${SIMULATOR_UDID:-booted}" "$exe" "$@" ;;
+    *)
+        echo "Don't know how to run tests for $triple" >&2
+        return 1
+        ;;
+    esac
+}
+
 run_binary() {
     local secs="$1"
     shift
 
-    run_with_timeout "$secs" "${runner[@]}" "$exe" "$@"
+    run_with_timeout "$secs" run_on_device "$@"
 }
 
 while IFS=$'\t' read -r dir exe; do

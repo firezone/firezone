@@ -136,25 +136,9 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # The same NDK and API level as the app build in `kotlin/android/app/build.gradle.kts`.
-      - name: Configure NDK toolchain
-        run: |
-          ndk_version="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' ../kotlin/android/mise.toml)"
-          bin="$ANDROID_HOME/ndk/$ndk_version/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          {
-            echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$bin/x86_64-linux-android26-clang"
-            echo "CC_x86_64_linux_android=$bin/x86_64-linux-android26-clang"
-            echo "CXX_x86_64_linux_android=$bin/x86_64-linux-android26-clang++"
-            echo "AR_x86_64_linux_android=$bin/llvm-ar"
-          } >> "$GITHUB_ENV"
       - name: Build tests
-        run: mise run //rust:mobile-test-build x86_64-linux-android target/mobile-test-binaries.tsv cargo
-      - name: Grant access to KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
+        run: mise run //rust:mobile-test-build x86_64-linux-android
+      - uses: ./.github/actions/enable-kvm
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -163,7 +147,7 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
-          script: mise run //rust:mobile-test-run target/mobile-test-binaries.tsv "$PWD/mise-tasks/android-run"
+          script: mise run //rust:mobile-test-run x86_64-linux-android
 
   test-ios:
     name: test-ios
@@ -174,28 +158,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Boot simulator
-        run: |
-          udid=$(xcrun simctl list devices available --json |
-            jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
-          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+        run: mise run //swift/apple:boot-simulator
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: aarch64-apple-ios-sim
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build tests
-        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim target/mobile-test-binaries.tsv cargo
+        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim
       - name: Run tests
-        run: mise run //rust:mobile-test-run target/mobile-test-binaries.tsv xcrun simctl spawn "$SIMULATOR_UDID"
+        run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
 
   fuzz-targets:
     name: fuzz-targets

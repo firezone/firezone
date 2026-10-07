@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
-#MISE description="Build the tests of `client-ffi` and its workspace dependencies for a mobile target and list the test binaries"
+#MISE description="Build the tests of `client-ffi` and its workspace dependencies for a mobile target"
 set -euo pipefail
 
-usage="usage: mise run //rust:mobile-test-build <triple> <binaries-file> <cargo-command...>"
-triple="${1:?$usage}"
-binaries_file="${2:?$usage}"
-shift 2
-(($# > 0)) || {
-    echo "$usage" >&2
-    exit 1
-}
+triple="${1:?usage: mise run //rust:mobile-test-build <triple>}"
+binaries_file="${CARGO_TARGET_DIR:-target}/$triple/mobile-test-binaries.tsv"
+android_dir="$(dirname "$0")/../../kotlin/android"
+
+# Compile and link with the NDK and API level the Android app is built with.
+if [[ "$triple" == *-android* ]]; then
+    ndk_version="$(sed -n 's/^NDK_VERSION = "\(.*\)"$/\1/p' "$android_dir/mise.toml")"
+    min_sdk="$(sed -n 's/^ *minSdk = \([0-9]*\)$/\1/p' "$android_dir/app/build.gradle.kts")"
+    host="$(uname -s | tr '[:upper:]' '[:lower:]')-x86_64"
+    bin="${ANDROID_HOME:?ANDROID_HOME must point at the Android SDK}/ndk/$ndk_version/toolchains/llvm/prebuilt/$host/bin"
+    clang="$bin/${triple/armv7-/armv7a-}$min_sdk-clang"
+    env_triple="${triple//-/_}"
+    upper_triple="$(echo "$env_triple" | tr '[:lower:]' '[:upper:]')"
+
+    export "CARGO_TARGET_${upper_triple}_LINKER=$clang"
+    export "CC_$env_triple=$clang"
+    export "CXX_$env_triple=$clang++"
+    export "AR_$env_triple=$bin/llvm-ar"
+fi
 
 mkdir -p "$(dirname "$binaries_file")"
 read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
 
-"$@" test --no-run --message-format=json --target "$triple" "${flags[@]}" |
-    grep '^{' |
+cargo test --no-run --message-format=json --target "$triple" "${flags[@]}" |
     jq -r 'select(.reason == "compiler-artifact" and .executable != null and .profile.test) | "\(.manifest_path | sub("/Cargo.toml$"; ""))\t\(.executable)"' \
         >"$binaries_file"
