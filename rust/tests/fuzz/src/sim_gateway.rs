@@ -292,7 +292,7 @@ impl SimGateway {
 
             if let Some(server) = self.tcp_resources.get_mut(&socket) {
                 let remote = SocketAddr::new(packet.source(), tcp.source_port());
-                let connected = server.is_connected(socket, remote);
+                let connected = server.has_connection(socket, remote);
                 server.handle_inbound(packet.clone());
 
                 if connected {

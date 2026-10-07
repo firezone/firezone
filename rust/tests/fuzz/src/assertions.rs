@@ -11,7 +11,7 @@ use super::{
     sim_client::SimClient,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{DPort, Destination, SPort},
+    transition::Destination,
 };
 use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -19,7 +19,7 @@ use itertools::Itertools;
 use std::{
     collections::BTreeMap,
     marker::PhantomData,
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
 };
 use tracing::{Level, Subscriber};
@@ -45,12 +45,6 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         let ref_client = ref_client_host.inner();
         let sut_client = state.clients[client_id].inner();
 
-        assert_tcp_connections(
-            ref_client,
-            sut_client,
-            &ref_state.expected_tcp_rejections,
-            *client_id,
-        );
         assert_udp_dns_packets_properties(ref_client, sut_client);
         assert_tcp_dns(ref_client, sut_client);
         assert_dns_servers_are_valid(ref_client, sut_client, portal);
@@ -328,7 +322,9 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
         tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong destination");
     }
 
-    assert_probe_payload(expected.id, &submitted_request.packet);
+    if !is_tcp_syn(&submitted_request.packet) {
+        assert_probe_payload(expected.id, &submitted_request.packet);
+    }
 
     match &expected.request {
         ProbeRequest::Icmp {
@@ -374,7 +370,9 @@ fn assert_received_request(
 ) {
     assert_probe_payload(expected.id, &received_request.packet);
 
-    if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
+    if !is_tcp_syn(&submitted_request.packet)
+        && probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet)
+    {
         tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
     }
 
@@ -490,7 +488,7 @@ fn assert_echo_response(
             {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP echo ports do not match");
             }
-            if request.payload() != reply.payload() {
+            if !request.syn() && request.payload() != reply.payload() {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP echo payload does not match");
             }
         }
@@ -563,6 +561,11 @@ fn assert_probe_payload(expected: ProbeId, packet: &IpPacket) {
     }
 }
 
+/// Returns whether `packet` opens a TCP connection, which submits a probe before carrying its ID.
+fn is_tcp_syn(packet: &IpPacket) -> bool {
+    packet.as_tcp().is_some_and(|tcp| tcp.syn())
+}
+
 fn probe_payload(packet: &IpPacket) -> Option<&[u8]> {
     if let Some(udp) = packet.as_udp() {
         return Some(udp.payload());
@@ -621,82 +624,6 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     }
 
     None
-}
-
-fn assert_tcp_connections(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
-    expected_rejections: &BTreeMap<(ClientId, SPort, DPort), RejectionResponse>,
-    client_id: ClientId,
-) {
-    for ((sport, dport), error) in &sim_client.failed_tcp_packets {
-        let expected_rejection = expected_rejections.contains_key(&(client_id, *sport, *dport));
-        let expected_connection = ref_client.tcp_flows.contains_key(&(*sport, *dport));
-
-        if !expected_rejection && !expected_connection {
-            tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Unexpected failed TCP connection");
-        }
-    }
-
-    for ((_, sport, dport), response) in expected_rejections
-        .iter()
-        .filter(|((client, _, _), _)| *client == client_id)
-    {
-        match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
-            Some(error)
-                if match response {
-                    RejectionResponse::Prohibited => error.is_unreachable_prohibited(),
-                    RejectionResponse::Unreachable => error.is_unreachable_network(),
-                } =>
-            {
-                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was rejected as expected");
-            }
-            Some(error) => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, ?error, "Received wrong ICMP error for rejected TCP connection");
-            }
-            None => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, "Missing ICMP error for rejected TCP connection");
-            }
-        }
-    }
-
-    for ((sport, dport), flow) in &ref_client.tcp_flows {
-        let src = SocketAddr::new(flow.src, sport.0);
-        let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
-
-        // Several sockets can share a local endpoint (one port, several remotes),
-        // so the remote port is needed to pick the right connection.
-        let Some((socket, local, remote)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
-            let local = s.local_endpoint()?;
-            let remote = s.remote_endpoint()?;
-
-            (l3_tcp::IpEndpoint::from(src) == local && remote.port == dport.0)
-                .then_some((s, local, remote))
-        }) else {
-            if let Some(icmp_error) = received_icmp_error_for_tuple
-                && icmp_error.is_unreachable_prohibited()
-            {
-                tracing::error!(target: "assertions", %src, port = %dport.0, "Received ICMP prohibited error for a TCP connection expected to reach the resource");
-                continue;
-            }
-
-            if received_icmp_error_for_tuple.is_some() {
-                continue;
-            }
-
-            tracing::error!(target: "assertions", %src, "Missing TCP connection");
-            continue;
-        };
-
-        let actual = socket.state();
-        let expected = l3_tcp::State::Established;
-
-        if actual == expected {
-            tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
-        } else {
-            tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
-        }
-    }
 }
 
 fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {

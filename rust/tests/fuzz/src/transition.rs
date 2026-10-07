@@ -63,18 +63,19 @@ pub enum Transition {
         flow_id: FlowId,
         probe_id: ProbeId,
     },
+    /// Opens a TCP connection and writes the probe ID to it; the resource echoes it back.
     ConnectTcp {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
     },
     /// Writes [`tcp_payload`] to an existing TCP connection; the resource echoes it back.
     SendTcpData {
-        client_id: ClientId,
-        sport: SPort,
-        dport: DPort,
+        flow_id: FlowId,
         len: u16,
         probe_id: ProbeId,
     },
@@ -176,16 +177,13 @@ impl Transition {
         }
     }
 
-    /// Returns whether `client_id` keeps its TCP connection `flow` across this transition.
+    /// Returns whether the TCP connection `flow` survives this transition.
     ///
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
     /// survives as long as the client reaches its resource through the same Gateway with
     /// the same authorization.
-    pub(crate) fn retains_tcp_flow(&self, client_id: ClientId, flow: &TcpFlow) -> bool {
-        let route = Route::Resource {
-            resource: flow.resource,
-            gateway: flow.gateway,
-        };
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+        let (client_id, route) = (flow.client_id, flow.route);
 
         match self {
             Transition::AddResource(Resource::Dns(added)) => match &flow.dst {

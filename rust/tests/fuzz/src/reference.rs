@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
-    RejectionRemote, RejectionResponse, Remote, Route, TraceRequirement, UdpFlow,
+    RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
@@ -48,10 +48,10 @@ pub struct ReferenceState {
     pub(crate) network: RoutingTable,
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
-    pub(crate) expected_tcp_rejections: BTreeMap<(ClientId, SPort, DPort), RejectionResponse>,
 
     pub(crate) icmp_flows: BTreeMap<FlowId, IcmpFlow>,
     pub(crate) udp_flows: BTreeMap<FlowId, UdpFlow>,
+    pub(crate) tcp_flows: BTreeMap<FlowId, TcpFlow>,
 }
 
 /// Implementation of our reference state machine.
@@ -81,31 +81,20 @@ impl ReferenceState {
             icmp_error_hosts,
             network,
             expected_probes: Default::default(),
-            expected_tcp_rejections: Default::default(),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
+            tcp_flows: Default::default(),
         }
     }
 
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
     pub fn invalidate(&mut self, transition: &Transition, portal: &StubPortal) {
         self.expected_probes.clear();
-        self.expected_tcp_rejections.clear();
 
         if transition.clears_packets() {
             for client in self.clients.values_mut() {
                 client.exec_mut(|c| c.clear_packets())
             }
-        }
-
-        for (client_id, client) in &mut self.clients {
-            client.exec_mut(|c| {
-                for _ in c
-                    .tcp_flows
-                    .extract_if(.., |_, flow| !transition.retains_tcp_flow(*client_id, flow))
-                {
-                }
-            });
         }
 
         let iceless = portal.iceless();
@@ -115,6 +104,10 @@ impl ReferenceState {
         for _ in self.udp_flows.extract_if(.., |_, flow| {
             !transition.retains_flow(flow.client_id, flow.route, iceless)
         }) {}
+        for _ in self
+            .tcp_flows
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow))
+        {}
     }
 
     /// Applies the transition to the reference state.
@@ -355,50 +348,92 @@ impl ReferenceState {
                 }
             }
             Transition::ConnectTcp {
+                flow_id,
                 client_id,
                 src,
                 dst,
                 sport,
                 dport,
+                probe_id,
             } => {
-                let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
-                if let ExpectedOutcome::Rejected { response, .. } = outcome {
-                    self.expected_tcp_rejections
-                        .insert((*client_id, *sport, *dport), response);
-                }
+                let outcome = self.record_probe(
+                    portal,
+                    *probe_id,
+                    *client_id,
+                    ProbeRequest::Tcp {
+                        src: *src,
+                        dst: dst.clone(),
+                        sport: *sport,
+                        dport: *dport,
+                    },
+                    now,
+                );
 
-                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
-                    client.note_sent(outcome.remote(), now);
-                    client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
-                });
+                match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route) => {
+                        let flow = TcpFlow {
+                            client_id: *client_id,
+                            src: *src,
+                            dst: dst.clone(),
+                            sport: *sport,
+                            dport: *dport,
+                            route,
+                        };
+                        let previous = self.tcp_flows.insert(*flow_id, flow);
+                        assert!(previous.is_none(), "TCP flow IDs must be unique");
+                    }
+                    ExpectedOutcome::Dropped => {}
+                    ExpectedOutcome::Rejected { .. } => {}
+                }
             }
             Transition::SendTcpData {
-                client_id,
-                sport,
-                dport,
-                probe_id,
-                ..
+                flow_id, probe_id, ..
             } => {
-                let flow = &self.clients[client_id].inner().tcp_flows[&(*sport, *dport)];
+                let flow = self
+                    .tcp_flows
+                    .remove(flow_id)
+                    .expect("written TCP flow must exist");
                 let request = ProbeRequest::Tcp {
                     src: flow.src,
                     dst: flow.dst.clone(),
-                    sport: *sport,
-                    dport: *dport,
+                    sport: flow.sport,
+                    dport: flow.dport,
                 };
                 let outcome = self.dispatch(
                     portal,
-                    *client_id,
+                    flow.client_id,
                     request.source(),
                     request.destination(),
                     request.protocol(),
                 );
-                let listening = self.tcp_listener_at(request.destination(), *dport);
-                let outcome = self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
-                    client.note_sent(outcome.remote(), now);
-                    client.write_tcp_flow(*sport, *dport, outcome, listening)
-                });
-                self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
+                self.clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
+
+                // The connection survives only if the data reaches its resource through the
+                // same Gateway, or any Gateway if no server listens and the resource mirrors it.
+                let listening = self.tcp_listener_at(request.destination(), flow.dport);
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route)
+                        if route.remote() == flow.route.remote() || !listening =>
+                    {
+                        self.tcp_flows.insert(
+                            *flow_id,
+                            TcpFlow {
+                                route,
+                                ..flow.clone()
+                            },
+                        );
+
+                        outcome
+                    }
+                    // The server behind any other Gateway resets the connection.
+                    ExpectedOutcome::RoundTripCompleted(_) => ExpectedOutcome::Dropped,
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, flow.client_id, request, now, outcome);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
@@ -572,6 +607,10 @@ impl ReferenceState {
             };
 
             client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
+            for _ in self.tcp_flows.extract_if(.., |_, flow| {
+                flow.client_id == closed.client
+                    && flow.route.remote() == Remote::Gateway(closed.gateway)
+            }) {}
         }
     }
 
@@ -1132,18 +1171,6 @@ impl ReferenceState {
                 .flatten()
                 .any(|address| *address == SocketAddr::new(*ip, dport.0)),
         }
-    }
-
-    pub(crate) fn tcp_flows(&self) -> Vec<(ClientId, SPort, DPort)> {
-        self.clients
-            .iter()
-            .flat_map(|(id, c)| {
-                c.inner()
-                    .tcp_flows
-                    .keys()
-                    .map(|(sport, dport)| (*id, *sport, *dport))
-            })
-            .collect()
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {

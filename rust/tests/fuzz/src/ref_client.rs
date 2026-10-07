@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
-    probe::{ExpectedOutcome, Remote, Route, TcpFlow},
+    probe::Remote,
     reference::PrivateKey,
     resource::{
         CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
@@ -10,7 +10,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
+    transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, dns,
@@ -94,10 +94,6 @@ pub struct RefClient {
     #[debug(skip)]
     gateways_by_site: BTreeMap<SiteId, GatewayId>,
 
-    /// The TCP connections this client keeps to resources, by port pair.
-    #[debug(skip)]
-    pub(crate) tcp_flows: BTreeMap<(SPort, DPort), TcpFlow>,
-
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
@@ -162,7 +158,6 @@ impl RefClient {
             connected_dns_resources: Default::default(),
             dns_resource_resolutions: Default::default(),
             connected_internet_resource: Default::default(),
-            tcp_flows: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
             resources: Default::default(),
@@ -537,10 +532,6 @@ impl RefClient {
         resources: &BTreeSet<ResourceId>,
     ) {
         self.gateway_send_times.remove(&gateway);
-        for _ in self
-            .tcp_flows
-            .extract_if(.., |_, flow| flow.gateway == gateway)
-        {}
 
         let connected = self.connected_resources().collect::<BTreeSet<_>>();
         let affected = resources
@@ -716,73 +707,6 @@ impl RefClient {
                     .insert(now);
             }
             None => {}
-        }
-    }
-
-    pub(crate) fn expect_tcp_outcome(
-        &mut self,
-        src: IpAddr,
-        dst: Destination,
-        sport: SPort,
-        dport: DPort,
-        outcome: ExpectedOutcome,
-    ) {
-        match outcome {
-            ExpectedOutcome::Dropped => {}
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }) => {
-                self.tcp_flows.insert(
-                    (sport, dport),
-                    TcpFlow {
-                        src,
-                        dst,
-                        resource,
-                        gateway,
-                    },
-                );
-            }
-            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
-            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
-            ExpectedOutcome::Rejected { .. } => {}
-        }
-    }
-
-    /// Returns what data written to a TCP connection observes, given the `outcome` of its packet.
-    ///
-    /// The connection survives only if the data reaches its resource through the same Gateway,
-    /// or any Gateway if no server is `listening` and the resource mirrors it.
-    pub(crate) fn write_tcp_flow(
-        &mut self,
-        sport: SPort,
-        dport: DPort,
-        outcome: ExpectedOutcome,
-        listening: bool,
-    ) -> ExpectedOutcome {
-        let flow = self
-            .tcp_flows
-            .remove(&(sport, dport))
-            .expect("written TCP connection must exist");
-
-        match outcome {
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway })
-                if gateway == flow.gateway || !listening =>
-            {
-                self.tcp_flows.insert(
-                    (sport, dport),
-                    TcpFlow {
-                        resource,
-                        gateway,
-                        ..flow
-                    },
-                );
-
-                outcome
-            }
-            // The server behind any other Gateway resets the connection.
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { .. }) => ExpectedOutcome::Dropped,
-            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => outcome,
-            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => outcome,
-            ExpectedOutcome::Dropped => outcome,
-            ExpectedOutcome::Rejected { .. } => outcome,
         }
     }
 

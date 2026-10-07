@@ -498,11 +498,13 @@ fn arb_tcp_connection(
     let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
     Transition::ConnectTcp {
+        flow_id: g.fresh_flow_id(),
         client_id,
         src,
         dst,
         sport,
         dport,
+        probe_id: g.fresh_probe_id(),
     }
 }
 

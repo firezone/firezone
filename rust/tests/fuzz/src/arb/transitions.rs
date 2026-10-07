@@ -92,7 +92,7 @@ pub(super) fn generate(
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
-    let tcp_flows = state.tcp_flows();
+    let tcp_flows = state.tcp_flows.keys().copied().collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
 
@@ -290,17 +290,11 @@ pub(super) fn generate(
                 },
             }
         }
-        K::SendTcpData => {
-            let (client_id, sport, dport) = tcp_flows[g.choose_index(tcp_flows.len())];
-
-            Transition::SendTcpData {
-                client_id,
-                sport,
-                dport,
-                len: g.u16_in(0..=1200),
-                probe_id: g.fresh_probe_id(),
-            }
-        }
+        K::SendTcpData => Transition::SendTcpData {
+            flow_id: tcp_flows[g.choose_index(tcp_flows.len())],
+            len: g.u16_in(0..=1200),
+            probe_id: g.fresh_probe_id(),
+        },
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
         K::UpdateDevicePoolMembers => {
             let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];

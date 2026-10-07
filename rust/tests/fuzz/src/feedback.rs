@@ -18,7 +18,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
@@ -39,7 +38,7 @@ use crate::{
     sim_net::EdgeConfig,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
+    transition::{Destination, DnsQuery, DnsTransport, Transition},
 };
 
 // The AFL runtime defines this symbol weakly. Rust's IJON macros already emit
@@ -136,7 +135,6 @@ pub struct Recorder {
     successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
     current_probe_on_idled_flow: Option<IdleFlowAttempt>,
     current_dns_queries: Vec<(ClientId, DnsQuery)>,
-    current_tcp_connection: Option<TcpConnectionAttempt>,
 }
 
 impl Recorder {
@@ -144,7 +142,6 @@ impl Recorder {
     pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState) {
         self.current_probe_on_idled_flow = None;
         self.current_dns_queries.clear();
-        self.current_tcp_connection = None;
 
         match transition {
             Transition::EditResource(edit) => {
@@ -235,21 +232,6 @@ impl Recorder {
                     });
                 }
             }
-            Transition::ConnectTcp {
-                client_id,
-                src,
-                dst,
-                sport,
-                dport,
-            } => {
-                self.current_tcp_connection = Some(TcpConnectionAttempt {
-                    client: *client_id,
-                    src: *src,
-                    dst: dst.clone(),
-                    sport: *sport,
-                    dport: *dport,
-                });
-            }
             Transition::SendDnsQueries(queries) => {
                 self.current_dns_queries.clone_from(queries);
             }
@@ -277,6 +259,7 @@ impl Recorder {
             | Transition::RemoveResource(_)
             | Transition::SendIcmpPacketOnNewFlow { .. }
             | Transition::SendUdpPacketOnNewFlow { .. }
+            | Transition::ConnectTcp { .. }
             | Transition::SendTcpData { .. }
             | Transition::SendDnsResourcePtrQuery { .. }
             | Transition::UpdateUpstreamSearchDomain(_) => {}
@@ -309,8 +292,6 @@ impl Recorder {
             self.record_existing_flow_after_idle(&completed, path);
             self.record_gateway_failover(&completed, path);
         }
-
-        self.record_tcp_connectivity(reference, state);
     }
 
     /// Records the kinds of change a route has recovered from since it last carried traffic.
@@ -468,60 +449,6 @@ impl Recorder {
             );
         }
     }
-
-    fn record_tcp_connectivity(&mut self, reference: &ReferenceState, state: &TunnelTest) {
-        let Some(attempt) = &self.current_tcp_connection else {
-            return;
-        };
-        let Some(reference_client) = reference.clients.get(&attempt.client) else {
-            return;
-        };
-        let reference_client = reference_client.inner();
-        let Some(flow) = reference_client
-            .tcp_flows
-            .get(&(attempt.sport, attempt.dport))
-        else {
-            return;
-        };
-        let Some(simulated_client) = state.clients.get(&attempt.client) else {
-            return;
-        };
-        let source = l3_tcp::IpEndpoint::from(SocketAddr::new(attempt.src, attempt.sport.0));
-        let established = simulated_client
-            .inner()
-            .tcp_client
-            .iter_sockets()
-            .any(|socket| {
-                socket.local_endpoint() == Some(source)
-                    && socket
-                        .remote_endpoint()
-                        .is_some_and(|remote| remote.port == attempt.dport.0)
-                    && socket.state() == l3_tcp::State::Established
-            });
-        if !established {
-            return;
-        }
-
-        let Some(path) = gateway_path_feedback(reference, state, attempt.client, flow.gateway)
-        else {
-            return;
-        };
-
-        record_with_path!(path;
-            attempt.src.is_ipv6(),
-            matches!(attempt.dst, Destination::DomainName { .. }),
-            reference_client.internet_resource() == Some(flow.resource),
-        );
-        self.record_recovery(
-            reference,
-            attempt.client,
-            Route::Resource {
-                resource: flow.resource,
-                gateway: flow.gateway,
-            },
-            path,
-        );
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -598,14 +525,6 @@ enum RouteKey {
 struct ClientResource {
     client: ClientId,
     resource: ResourceId,
-}
-
-struct TcpConnectionAttempt {
-    client: ClientId,
-    src: IpAddr,
-    dst: Destination,
-    sport: SPort,
-    dport: DPort,
 }
 
 #[derive(Clone, Copy)]
