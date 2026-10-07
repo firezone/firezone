@@ -125,7 +125,8 @@ pub struct Node<TId, RId> {
 pub struct NoTurnServers {}
 
 /// The connection exists but is not yet ready to send application packets because ICE is
-/// still in progress (no socket has been nominated yet).
+/// still in progress (no socket has been nominated yet) or the WireGuard handshake has not
+/// completed.
 ///
 /// Callers should buffer the packet and retry once the connection is established.
 #[derive(thiserror::Error, Debug)]
@@ -634,6 +635,10 @@ where
             }
         };
 
+        if conn.first_handshake_completed_at.is_none() {
+            return Err(StillConnecting.into());
+        }
+
         let info = conn
             .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
             .with_context(|| format!("cid={cid}"))?;
@@ -1117,14 +1122,21 @@ where
             now,
         );
 
-        if let ControlFlow::Break(Ok(())) = &control_flow
+        // A responder completes the handshake on the initiator's first transport data (key
+        // confirmation), not on the init.
+        let confirms_session = match parsed_packet {
+            Packet::HandshakeResponse(_) => true,
+            Packet::PacketData(_) => true,
+            Packet::HandshakeInit(_) => false,
+            Packet::PacketCookieReply(_) => false,
+        };
+
+        if confirms_session
+            && !matches!(control_flow, ControlFlow::Break(Err(_)))
             && conn.first_handshake_completed_at.is_none()
-            && matches!(
-                parsed_packet,
-                Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
-            )
         {
             conn.first_handshake_completed_at = Some(now);
+            conn.agent.confirm_session(now);
 
             tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 

@@ -2,11 +2,11 @@ use std::{
     future::Future as _,
     pin::Pin,
     task::{Context, Poll, ready},
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 
-/// Differences smaller than this are assumed to be clock resolution, sampling jitter, or clock
-/// slewing rather than time spent suspended.
+/// Differences smaller than this are assumed to be clock resolution, sampling jitter or rate
+/// differences between the two clocks rather than time spent suspended.
 const CLOCK_DRIFT_TOLERANCE: Duration = Duration::from_secs(1);
 
 /// How far past its deadline a sample may land before the event loop counts as stalled.
@@ -28,12 +28,11 @@ pub enum Event {
 /// A monotonic clock that also advances while the system is suspended.
 ///
 /// [`Instant`] does not consistently include time spent suspended across supported platforms.
-/// [`SystemTime`] does, but can move backwards and is therefore unsuitable for state-machine
-/// deadlines. This clock retains [`Instant`] as its clock domain and adds any elapsed time observed
-/// by [`SystemTime`] but not by [`Instant`].
+/// This clock retains [`Instant`] as its clock domain and adds any elapsed time observed by the
+/// operating system's suspend-inclusive monotonic clock but not by [`Instant`].
 pub struct Clock {
     last_monotonic: Instant,
-    last_system: SystemTime,
+    last_suspend_inclusive: Duration,
     suspend_offset: Duration,
     /// The deadline the event loop asked to be woken at, in this clock's domain.
     alarm_at: Option<Instant>,
@@ -50,7 +49,7 @@ impl Clock {
 
     /// Returns a monotonic timestamp that includes time spent suspended.
     pub fn now(&mut self) -> Instant {
-        self.sample(Instant::now(), SystemTime::now())
+        self.sample(Instant::now(), suspend_inclusive_now())
     }
 
     /// Arms the alarm for `deadline`, which is in this clock's domain, and registers interest in
@@ -118,16 +117,15 @@ impl Clock {
         alarm.as_mut().poll(cx)
     }
 
-    fn sample(&mut self, monotonic: Instant, system: SystemTime) -> Instant {
+    fn sample(&mut self, monotonic: Instant, suspend_inclusive: Duration) -> Instant {
         let monotonic_elapsed = monotonic.saturating_duration_since(self.last_monotonic);
-        let system_elapsed = system.duration_since(self.last_system).ok();
+        let suspend_inclusive_elapsed =
+            suspend_inclusive.saturating_sub(self.last_suspend_inclusive);
 
         self.last_monotonic = monotonic;
-        self.last_system = system;
+        self.last_suspend_inclusive = suspend_inclusive;
 
-        let missing = system_elapsed
-            .unwrap_or(monotonic_elapsed)
-            .saturating_sub(monotonic_elapsed);
+        let missing = suspend_inclusive_elapsed.saturating_sub(monotonic_elapsed);
 
         if missing >= CLOCK_DRIFT_TOLERANCE {
             let offset = self.suspend_offset.saturating_add(missing);
@@ -137,7 +135,7 @@ impl Clock {
                 tracing::debug!(
                     advanced_by = ?missing,
                     total_advance = ?self.suspend_offset,
-                    "Advancing suspend-aware clock after system suspend or wall-clock adjustment"
+                    "Advancing suspend-aware clock after system suspend"
                 );
             } else {
                 tracing::warn!(
@@ -167,7 +165,7 @@ impl Default for Clock {
     fn default() -> Self {
         Self {
             last_monotonic: Instant::now(),
-            last_system: SystemTime::now(),
+            last_suspend_inclusive: suspend_inclusive_now(),
             suspend_offset: Duration::ZERO,
             alarm_at: None,
             raw_alarm_at: None,
@@ -175,6 +173,35 @@ impl Default for Clock {
             lateness: None,
         }
     }
+}
+
+/// Returns the time since an arbitrary point, including time spent suspended.
+fn suspend_inclusive_now() -> Duration {
+    cfg_select! {
+        any(target_os = "linux", target_os = "android") => clock_gettime(libc::CLOCK_BOOTTIME),
+        target_vendor = "apple" => clock_gettime(libc::CLOCK_MONOTONIC_RAW),
+        windows => {
+            // SAFETY: `QueryInterruptTime` has no preconditions.
+            let hundred_nanos =
+                unsafe { windows::Win32::System::WindowsProgramming::QueryInterruptTime() };
+
+            Duration::from_nanos(hundred_nanos * 100)
+        }
+    }
+}
+
+#[cfg(unix)]
+fn clock_gettime(clock: libc::clockid_t) -> Duration {
+    let mut time = std::mem::MaybeUninit::<libc::timespec>::uninit();
+
+    // SAFETY: `time` is valid for writing one `timespec`.
+    let ret = unsafe { libc::clock_gettime(clock, time.as_mut_ptr()) };
+    assert_eq!(ret, 0, "suspend-inclusive clock should be available");
+
+    // SAFETY: `clock_gettime` succeeded and therefore initialised `time`.
+    let time = unsafe { time.assume_init() };
+
+    Duration::new(time.tv_sec as u64, time.tv_nsec as u32)
 }
 
 #[cfg(test)]
@@ -186,13 +213,13 @@ mod tests {
     #[test]
     fn follows_monotonic_clock_during_normal_operation() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         assert_eq!(
             clock.sample(
                 monotonic + Duration::from_secs(5),
-                system + Duration::from_secs(5)
+                suspend_inclusive + Duration::from_secs(5)
             ),
             monotonic + Duration::from_secs(5)
         );
@@ -201,12 +228,12 @@ mod tests {
     #[test]
     fn adds_time_missing_from_monotonic_clock() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         let now = clock.sample(
             monotonic + Duration::from_secs(1),
-            system + Duration::from_secs(3 * 60 * 60 + 1),
+            suspend_inclusive + Duration::from_secs(3 * 60 * 60 + 1),
         );
 
         assert_eq!(now, monotonic + Duration::from_secs(3 * 60 * 60 + 1));
@@ -216,7 +243,7 @@ mod tests {
         assert_eq!(
             clock.sample(
                 monotonic + Duration::from_secs(2),
-                system + Duration::from_secs(3 * 60 * 60 + 2),
+                suspend_inclusive + Duration::from_secs(3 * 60 * 60 + 2),
             ),
             monotonic + Duration::from_secs(3 * 60 * 60 + 2)
         );
@@ -225,57 +252,35 @@ mod tests {
     #[test]
     fn ignores_small_clock_differences_without_accumulating_them() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         assert_eq!(
             clock.sample(
                 monotonic + Duration::from_secs(1),
-                system + Duration::from_millis(1_500),
+                suspend_inclusive + Duration::from_millis(1_500),
             ),
             monotonic + Duration::from_secs(1)
         );
         assert_eq!(
             clock.sample(
                 monotonic + Duration::from_secs(2),
-                system + Duration::from_millis(2_500),
+                suspend_inclusive + Duration::from_millis(2_500),
             ),
             monotonic + Duration::from_secs(2)
-        );
-    }
-
-    #[test]
-    fn ignores_backward_system_clock_adjustments() {
-        let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
-
-        assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(5),
-                system - Duration::from_secs(60),
-            ),
-            monotonic + Duration::from_secs(5)
-        );
-        assert_eq!(
-            clock.sample(
-                monotonic + Duration::from_secs(6),
-                system - Duration::from_secs(59),
-            ),
-            monotonic + Duration::from_secs(6)
         );
     }
 
     #[tokio::test(start_paused = true)]
     async fn reports_a_sample_that_overshoots_its_deadline() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(45),
-            system + Duration::from_secs(45),
+            suspend_inclusive + Duration::from_secs(45),
         );
 
         assert_eq!(
@@ -292,13 +297,13 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn does_not_report_a_sample_that_roughly_meets_its_deadline() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(11),
-            system + Duration::from_secs(11),
+            suspend_inclusive + Duration::from_secs(11),
         );
 
         assert_eq!(poll_once(&mut clock), Poll::Pending);
@@ -307,14 +312,14 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn does_not_report_an_overshoot_against_a_deadline_that_had_already_passed() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         // Arming a deadline in the past says there is work waiting, not that we will sleep.
         set_alarm(&mut clock, Some(monotonic - Duration::from_secs(120)));
         clock.sample(
             monotonic + Duration::from_secs(1),
-            system + Duration::from_secs(1),
+            suspend_inclusive + Duration::from_secs(1),
         );
 
         assert_eq!(
@@ -333,12 +338,12 @@ mod tests {
     #[test]
     fn does_not_report_a_long_gap_without_a_deadline() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         clock.sample(
             monotonic + Duration::from_secs(600),
-            system + Duration::from_secs(600),
+            suspend_inclusive + Duration::from_secs(600),
         );
 
         assert_eq!(poll_once(&mut clock), Poll::Pending);
@@ -347,15 +352,15 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn counts_time_spent_suspended_towards_the_overshoot() {
         let monotonic = Instant::now();
-        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
-        let mut clock = clock_at(monotonic, system);
+        let suspend_inclusive = Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, suspend_inclusive);
 
         set_alarm(&mut clock, Some(monotonic + Duration::from_secs(10)));
 
-        // A suspend barely advances the monotonic clock but does not stop the system clock.
+        // A suspend pauses the monotonic clock but not the suspend-inclusive one.
         clock.sample(
             monotonic + Duration::from_secs(1),
-            system + Duration::from_secs(120),
+            suspend_inclusive + Duration::from_secs(120),
         );
 
         assert_eq!(
@@ -394,6 +399,36 @@ mod tests {
         assert_eq!(poll_once(&mut clock), Poll::Pending);
     }
 
+    #[test]
+    fn suspend_inclusive_clock_advances_with_instant_while_awake() {
+        let monotonic_start = Instant::now();
+        let suspend_inclusive_start = suspend_inclusive_now();
+
+        std::thread::sleep(Duration::from_millis(200));
+
+        let monotonic_elapsed = monotonic_start.elapsed();
+        let suspend_inclusive_elapsed = suspend_inclusive_now()
+            .checked_sub(suspend_inclusive_start)
+            .expect("suspend-inclusive clock should not go backwards");
+
+        assert!(
+            suspend_inclusive_elapsed.abs_diff(monotonic_elapsed) < Duration::from_millis(100),
+            "suspend-inclusive: {suspend_inclusive_elapsed:?}, `Instant`: {monotonic_elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn now_tracks_instant_while_awake() {
+        let mut clock = Clock::new();
+
+        std::thread::sleep(Duration::from_millis(200));
+        let before = Instant::now();
+        let now = clock.now();
+        let after = Instant::now();
+
+        assert!((before..=after).contains(&now));
+    }
+
     fn poll_once(clock: &mut Clock) -> Poll<Event> {
         clock.poll_event(&mut Context::from_waker(Waker::noop()))
     }
@@ -402,10 +437,10 @@ mod tests {
         clock.set_alarm(&mut Context::from_waker(Waker::noop()), deadline);
     }
 
-    fn clock_at(monotonic: Instant, system: SystemTime) -> Clock {
+    fn clock_at(monotonic: Instant, suspend_inclusive: Duration) -> Clock {
         Clock {
             last_monotonic: monotonic,
-            last_system: system,
+            last_suspend_inclusive: suspend_inclusive,
             suspend_offset: Duration::ZERO,
             alarm_at: None,
             raw_alarm_at: None,

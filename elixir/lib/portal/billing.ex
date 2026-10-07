@@ -19,10 +19,6 @@ defmodule Portal.Billing do
     fetch_config!(:plan_product_ids)
   end
 
-  def adhoc_device_product_id do
-    fetch_config!(:adhoc_device_product_id)
-  end
-
   # Limits and Features
 
   @doc """
@@ -127,25 +123,62 @@ defmodule Portal.Billing do
       users_count > account.limits.users_count
   end
 
+  @no_active_actors %{users: 0, service_accounts: 0}
+
   @doc """
   Monthly active seats: distinct enabled users, admins and service accounts
-  with a client device seen in the last month.
+  with a client device seen in the last month. Up to `adhoc_service_accounts_count`
+  active service accounts take no seat, the others take one each.
   """
   @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
-  def count_monthly_active_users(%Portal.Account{id: account_id}) do
-    [account_id]
-    |> Database.count_monthly_active_users_by_account()
-    |> Map.get(account_id, 0)
+  def count_monthly_active_users(%Portal.Account{} = account) do
+    monthly_active_usage(account).seats
+  end
+
+  @doc """
+  The seats used, as `count_monthly_active_users/1` returns them, and the active
+  service accounts that take no seat because of `adhoc_service_accounts_count`.
+  """
+  @spec monthly_active_usage(Portal.Account.t()) :: %{
+          seats: non_neg_integer(),
+          adhoc_service_accounts: non_neg_integer()
+        }
+  def monthly_active_usage(%Portal.Account{} = account) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    seats = seats_used(account, counts)
+    service_accounts_in_seats = seats - counts.users
+
+    %{seats: seats, adhoc_service_accounts: counts.service_accounts - service_accounts_in_seats}
   end
 
   @doc """
   Same as `count_monthly_active_users/1` for many accounts at once, as a map of
-  account id to count. Accounts without active users are missing from the map.
+  account id to count.
   """
-  @spec count_monthly_active_users_by_account([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => integer()}
-  def count_monthly_active_users_by_account(account_ids) do
-    Database.count_monthly_active_users_by_account(account_ids)
+  @spec count_monthly_active_users_by_account([Portal.Account.t()]) :: %{
+          Ecto.UUID.t() => non_neg_integer()
+        }
+  def count_monthly_active_users_by_account(accounts) do
+    counts =
+      accounts
+      |> Enum.map(& &1.id)
+      |> Database.count_monthly_active_actors_by_account()
+
+    Map.new(accounts, fn account ->
+      {account.id, seats_used(account, Map.get(counts, account.id, @no_active_actors))}
+    end)
   end
+
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: nil}}, counts), do: counts.users
+
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: adhoc}}, counts),
+    do: counts.users + max(counts.service_accounts - adhoc, 0)
+
+  defp seats_used(_account, counts), do: counts.users + counts.service_accounts
 
   def seats_limit_exceeded?(%Portal.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
@@ -342,7 +375,23 @@ defmodule Portal.Billing do
 
     plan_type(account) == :business and is_integer(limit) and
       not Database.actor_active_in_last_month?(account, actor_id) and
-      count_monthly_active_users(account) >= limit
+      seats_used_with_actor(account, actor_id) > limit
+  end
+
+  defp seats_used_with_actor(account, actor_id) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    counts =
+      if Database.service_account?(account, actor_id) do
+        Map.update!(counts, :service_accounts, &(&1 + 1))
+      else
+        Map.update!(counts, :users, &(&1 + 1))
+      end
+
+    seats_used(account, counts)
   end
 
   @low_seats_threshold 0.1
@@ -885,7 +934,17 @@ defmodule Portal.Billing do
       |> Safe.exists?()
     end
 
-    def count_monthly_active_users_by_account(account_ids) do
+    def service_account?(%Account{} = account, actor_id) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.id == ^actor_id,
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def count_monthly_active_actors_by_account(account_ids) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.account_id in ^account_ids)
@@ -897,7 +956,13 @@ defmodule Portal.Billing do
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
       |> group_by([devices: d], d.account_id)
-      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
+      |> select([devices: d, actor: a], {
+        d.account_id,
+        %{
+          users: filter(count(d.actor_id, :distinct), a.type != :service_account),
+          service_accounts: filter(count(d.actor_id, :distinct), a.type == :service_account)
+        }
+      })
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()

@@ -42,8 +42,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         :ok
 
       accounts ->
-        account_ids = Enum.map(accounts, & &1.id)
-        counts = Database.fetch_counts_for_accounts(account_ids)
+        counts = Database.fetch_counts_for_accounts(accounts)
 
         Enum.each(accounts, &check_account_limits(&1, counts))
         last_account = List.last(accounts)
@@ -289,10 +288,12 @@ defmodule Portal.Workers.CheckAccountLimits do
     """
     def fetch_counts_for_accounts([]), do: %{}
 
-    def fetch_counts_for_accounts(account_ids) do
+    def fetch_counts_for_accounts(accounts) do
+      account_ids = Enum.map(accounts, & &1.id)
+
       results = %{
         users: count_users_by_account(account_ids),
-        active_users: Billing.count_monthly_active_users_by_account(account_ids),
+        active_users: Billing.count_monthly_active_users_by_account(accounts),
         service_accounts: count_service_accounts_by_account(account_ids),
         sites: count_sites_by_account(account_ids),
         admins: count_admins_by_account(account_ids)

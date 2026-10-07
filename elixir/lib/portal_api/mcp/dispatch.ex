@@ -11,6 +11,10 @@ defmodule PortalAPI.MCP.Dispatch do
   Dispatching this way rather than calling controller actions directly is what
   keeps MCP from becoming a second, subtly different API surface.
 
+  A read tool is metered only by the outer request. A write tool is also
+  charged to the account's REST write bucket, so it has the same write limit
+  as the REST API.
+
   The subject authenticated for the MCP request is handed to the inner one
   rather than being derived again. Re-authenticating would fail outright, since
   an OAuth access token is not a credential the REST pipeline accepts, and even
@@ -129,7 +133,7 @@ defmodule PortalAPI.MCP.Dispatch do
         resp_body: nil,
         resp_headers: correlation_headers(conn),
         resp_cookies: %{},
-        private: inner_private(conn)
+        private: inner_private(tool, conn)
     }
   end
 
@@ -138,10 +142,11 @@ defmodule PortalAPI.MCP.Dispatch do
   # particular keeps whatever view is already there, so leaving the MCP
   # controller's view in place would make every operation render through it.
   # `before_send` callbacks belong to the outer response, not to this one.
-  defp inner_private(%Plug.Conn{} = conn) do
+  defp inner_private(%Tool{} = tool, %Plug.Conn{} = conn) do
     conn.private
     |> Map.put(PortalAPI.Plugs.Auth.subject_key(), conn.assigns.subject)
-    |> Map.put(PortalAPI.Plugs.RateLimit.skip_key(), true)
+    |> Map.put(PortalAPI.Plugs.RateLimit.skip_key(), not tool.write?)
+    |> Map.put(PortalAPI.Plugs.RateLimit.mcp_dispatch_key(), true)
     |> Map.put(PortalAPI.Plugs.RequestLog.skip_key(), true)
     |> Map.drop([
       :before_send,

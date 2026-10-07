@@ -98,13 +98,6 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           # Needed to create utun devices in the Apple TUN integration tests
           CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: "sudo --preserve-env"
-          # Minimise DWARF debuginfo for the coverage build: source-based
-          # coverage data lives in __llvm_covmap, independent of debug info, so
-          # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.
-          # `line-tables-only` keeps file:line in panic backtraces. eBPF BTF is
-          # unaffected (built separately under the release profile via aya_build).
-          CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
-          CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
@@ -118,6 +111,78 @@ jobs:
           flag-name: rust-test-${{ runner.os }}
           parallel: true
           fail-on-error: false
+
+  test-android:
+    name: test-android (${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            triple: x86_64-linux-android
+            api-level: 34
+            emulator-arch: x86_64
+            target: default
+          # The API 34 x86_64 image only runs 64-bit binaries, and the newest x86 image is API 30's Google APIs one.
+          - arch: i686
+            triple: i686-linux-android
+            api-level: 30
+            emulator-arch: x86
+            target: google_apis
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: ${{ matrix.triple }}
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build tests
+        run: mise run //rust:mobile-test-build ${{ matrix.triple }}
+      - uses: ./.github/actions/enable-kvm
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.emulator-arch }}
+          target: ${{ matrix.target }}
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ./rust
+          script: adb shell getprop ro.product.cpu.abilist && mise run //rust:mobile-test-run ${{ matrix.triple }}
+
+  test-ios:
+    name: test-ios
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Boot simulator
+        run: mise run //swift/apple:boot-simulator
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Build tests
+        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim
+      - name: Run tests
+        run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
 
   fuzz-targets:
     name: fuzz-targets
