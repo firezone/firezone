@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 use connlib_model::ClientId;
@@ -92,7 +92,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
                 .map(|(client_id, domain, filters)| PacketTarget::Dns {
                     client_id,
                     src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
-                    tcp_service_ports: tcp_service_ports(state, &domain, true),
+                    tcp_service_ports: tcp_service_ports(state, &domain),
                     domain,
                     filters,
                 }),
@@ -104,7 +104,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
                 .map(|(client_id, domain, filters)| PacketTarget::Dns {
                     client_id,
                     src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
-                    tcp_service_ports: tcp_service_ports(state, &domain, false),
+                    tcp_service_ports: tcp_service_ports(state, &domain),
                     domain,
                     filters,
                 }),
@@ -399,17 +399,14 @@ fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
     }
 }
 
-fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) -> Vec<u16> {
+fn tcp_service_ports(state: &ReferenceState, domain: &DomainName) -> Vec<u16> {
     state
         .tcp_resources
         .get(domain)
         .into_iter()
         .flatten()
-        .filter(|address| address.is_ipv4() == ipv4)
-        .map(SocketAddr::port)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
+        .copied()
+        .collect()
 }
 
 fn arb_filtered_packet(

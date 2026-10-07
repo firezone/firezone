@@ -38,7 +38,8 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
+    /// The TCP server of each `(domain, port)`, listening on every address the Gateway resolved the domain to.
+    tcp_servers: BTreeMap<(DomainName, u16), crate::tcp::Server>,
     /// Answers TCP to any address without a listening server with a reset.
     closed_tcp_ports: crate::tcp::Server,
 
@@ -59,13 +60,26 @@ impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
         mut sut: GatewayState,
-        tcp_resources: BTreeSet<SocketAddr>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         site_specific_dns_records: DnsRecords,
         now: Instant,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
-        let mut gateway = Self {
+        let tcp_servers = tcp_services
+            .into_iter()
+            .flat_map(|(domain, ports)| ports.into_iter().map(move |port| (domain.clone(), port)))
+            .map(|(domain, port)| {
+                let mut server = crate::tcp::Server::new(now);
+                if let Err(e) = server.listen(port) {
+                    tracing::error!(%domain, %port, "Failed to listen: {e}")
+                }
+
+                ((domain, port), server)
+            })
+            .collect();
+
+        Self {
             id,
             sut,
             site_specific_dns_records,
@@ -78,28 +92,10 @@ impl SimGateway {
             next_observation_order: 0,
             authorized_resources: Default::default(),
             clients_by_ip: Default::default(),
-            tcp_resources: Default::default(),
+            tcp_servers,
             closed_tcp_ports: crate::tcp::Server::new(now),
             transmit_buffer: snownet::TransmitBuffer::new(),
-        };
-
-        for address in tcp_resources {
-            gateway.listen_tcp(address, now);
         }
-
-        gateway
-    }
-
-    /// Starts a TCP server at `address` unless one already listens there.
-    pub(crate) fn listen_tcp(&mut self, address: SocketAddr, now: Instant) {
-        self.tcp_resources.entry(address).or_insert_with(|| {
-            let mut server = crate::tcp::Server::new(now);
-            if let Err(e) = server.listen(address) {
-                tracing::error!(%address, "Failed to listen on address: {e}")
-            }
-
-            server
-        });
     }
 
     pub(crate) fn receive(
@@ -157,7 +153,7 @@ impl SimGateway {
                     std::iter::from_fn(|| server.poll_outbound())
                 });
         let tcp_resource_packets = self
-            .tcp_resources
+            .tcp_servers
             .values_mut()
             .chain([&mut self.closed_tcp_ports])
             .flat_map(|server| {
@@ -304,9 +300,11 @@ impl SimGateway {
 
         if let Some(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
+            let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
-            if let Some(server) = self.tcp_resources.get_mut(&socket) {
-                let remote = SocketAddr::new(packet.source(), tcp.source_port());
+            if icmp_error.is_none()
+                && let Some(server) = self.tcp_server_for(socket, remote)
+            {
                 let connected = server.has_connection(socket, remote);
                 server.handle_inbound(packet.clone());
 
@@ -338,6 +336,38 @@ impl SimGateway {
 
         tracing::error!(?packet, "Unhandled packet");
         None
+    }
+
+    /// Returns the server of the connection between `local` and `remote`, or else the server
+    /// of a domain the Gateway resolved to `local`'s IP that serves `local`'s port.
+    ///
+    /// A host keeps serving after its domain points elsewhere: a Gateway translates to the
+    /// addresses it last resolved until the Client re-resolves the domain.
+    fn tcp_server_for(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+    ) -> Option<&mut crate::tcp::Server> {
+        let key = self
+            .tcp_servers
+            .iter()
+            .find(|(_, server)| server.has_connection(local, remote))
+            .or_else(|| {
+                self.tcp_servers.iter().find(|((domain, port), _)| {
+                    *port == local.port() && self.resolved_to(domain, local.ip())
+                })
+            })
+            .map(|(key, _)| key.clone())?;
+
+        self.tcp_servers.get_mut(&key)
+    }
+
+    fn resolved_to(&self, domain: &DomainName, ip: IpAddr) -> bool {
+        self.dns_resolutions
+            .iter()
+            .filter(|((_, resolved), _)| resolved == domain)
+            .flat_map(|(_, resolutions)| resolutions)
+            .any(|resolution| resolution.addresses.contains(&ip))
     }
 
     pub(crate) fn update_relays<'a>(

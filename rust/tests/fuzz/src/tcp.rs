@@ -23,7 +23,7 @@ pub struct Client {
 
 pub struct Server {
     sockets: l3_tcp::SocketSet<'static>,
-    listen_endpoints: BTreeMap<l3_tcp::SocketHandle, SocketAddr>,
+    listen_ports: BTreeMap<l3_tcp::SocketHandle, u16>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -207,21 +207,22 @@ impl Server {
 
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
-            listen_endpoints: Default::default(),
+            listen_ports: Default::default(),
             device,
             interface,
             created_at: now,
         }
     }
 
-    pub fn listen(&mut self, address: SocketAddr) -> Result<()> {
+    /// Listens on `port` of every address.
+    pub fn listen(&mut self, port: u16) -> Result<()> {
         let mut socket = l3_tcp::create_tcp_socket();
         socket
-            .listen(address)
-            .with_context(|| format!("Failed to listen on {address}"))?;
+            .listen(port)
+            .with_context(|| format!("Failed to listen on port {port}"))?;
 
         let handle = self.sockets.add(socket);
-        self.listen_endpoints.insert(handle, address);
+        self.listen_ports.insert(handle, port);
 
         Ok(())
     }
@@ -265,21 +266,21 @@ impl Server {
             .interface
             .poll(now, &mut self.device, &mut self.sockets);
 
-        // Every address in `listen_endpoints` always has one socket in `Listen`:
+        // Every port in `listen_ports` always has one socket in `Listen`:
         // a listener that accepted a connection is replaced by a fresh one.
         let accepted = self
-            .listen_endpoints
+            .listen_ports
             .iter()
             .filter(|(handle, _)| {
                 self.sockets.get::<l3_tcp::Socket>(**handle).state() != l3_tcp::State::Listen
             })
-            .map(|(handle, address)| (*handle, *address))
+            .map(|(handle, port)| (*handle, *port))
             .collect::<Vec<_>>();
 
-        for (handle, address) in accepted {
-            self.listen_endpoints.remove(&handle);
-            self.listen(address)
-                .expect("re-listening on a previously bound address to succeed");
+        for (handle, port) in accepted {
+            self.listen_ports.remove(&handle);
+            self.listen(port)
+                .expect("re-listening on a previously bound port to succeed");
         }
     }
 

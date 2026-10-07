@@ -39,8 +39,8 @@ pub struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
 
-    /// DNS Resources that listen for TCP connections.
-    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+    /// The ports each DNS Resource domain serves TCP on.
+    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
 
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
@@ -68,7 +68,7 @@ impl ReferenceState {
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         icmp_error_hosts: IcmpErrorHosts,
         network: RoutingTable,
     ) -> Self {
@@ -599,20 +599,6 @@ impl ReferenceState {
             Transition::UpdateDnsRecords { domain, records } => {
                 self.global_dns_records
                     .replace(domain.clone(), records.clone());
-
-                // A Gateway may translate a connection to any address the domain resolved to.
-                if let Some(addresses) = self.tcp_resources.get_mut(domain) {
-                    let ports = addresses
-                        .iter()
-                        .map(SocketAddr::port)
-                        .collect::<BTreeSet<_>>();
-                    addresses.extend(
-                        self.global_dns_records
-                            .domain_ips_iter(domain)
-                            .cartesian_product(&ports)
-                            .map(|(ip, port)| SocketAddr::new(ip, *port)),
-                    );
-                }
             }
         };
 
@@ -1185,12 +1171,8 @@ impl ReferenceState {
             Destination::DomainName { name, .. } => self
                 .tcp_resources
                 .get(name)
-                .is_some_and(|addresses| addresses.iter().any(|a| a.port() == dport.0)),
-            Destination::IpAddr(ip) => self
-                .tcp_resources
-                .values()
-                .flatten()
-                .any(|address| *address == SocketAddr::new(*ip, dport.0)),
+                .is_some_and(|ports| ports.contains(&dport.0)),
+            Destination::IpAddr(_) => false,
         }
     }
 
