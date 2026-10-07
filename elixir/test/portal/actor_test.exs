@@ -254,6 +254,15 @@ defmodule Portal.ActorTest do
       assert actor.disabled_by_directory_id == directory.id
     end
 
+    test "is cleared when the directory is deleted", %{actor: actor, directory: directory} do
+      Repo.delete!(directory)
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+      assert actor.account_id == directory.account_id
+    end
+
     test "rejects it on an enabled actor", %{account: account, directory: directory} do
       actor = actor_fixture(account: account)
 

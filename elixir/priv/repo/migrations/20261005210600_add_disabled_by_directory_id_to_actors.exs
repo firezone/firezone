@@ -4,38 +4,43 @@ defmodule Portal.Repo.Migrations.AddDisabledByDirectoryIdToActors do
   actors it disabled itself and never one an admin disabled.
 
   The column starts out NULL everywhere, so the constraints are added NOT VALID
-  and validated afterwards without blocking writes for the scan.
+  and validated afterwards without blocking writes for the scan. The partial
+  index keeps the ON DELETE SET NULL from scanning actors when a directory is
+  deleted.
   """
   use Ecto.Migration
 
   @disable_ddl_transaction true
 
-  def up do
-    execute("ALTER TABLE actors ADD COLUMN IF NOT EXISTS disabled_by_directory_id uuid")
+  def change do
+    alter table(:actors) do
+      add(
+        :disabled_by_directory_id,
+        references(:directories,
+          type: :binary_id,
+          with: [account_id: :account_id],
+          on_delete: {:nilify, [:disabled_by_directory_id]},
+          validate: false
+        )
+      )
+    end
 
-    execute("""
-    ALTER TABLE actors
-      ADD CONSTRAINT actors_disabled_by_directory_id_fkey
-      FOREIGN KEY (account_id, disabled_by_directory_id)
-      REFERENCES directories (account_id, id)
-      ON DELETE SET NULL (disabled_by_directory_id)
-      NOT VALID
-    """)
+    create(
+      constraint(:actors, :disabled_by_directory_requires_disabled,
+        check: "disabled_by_directory_id IS NULL OR is_disabled",
+        validate: false
+      )
+    )
 
-    execute("""
-    ALTER TABLE actors
-      ADD CONSTRAINT disabled_by_directory_requires_disabled
-      CHECK (disabled_by_directory_id IS NULL OR is_disabled)
-      NOT VALID
-    """)
+    create(
+      index(:actors, [:account_id, :disabled_by_directory_id],
+        name: :actors_disabled_by_directory_id_index,
+        where: "disabled_by_directory_id IS NOT NULL",
+        concurrently: true
+      )
+    )
 
-    execute("ALTER TABLE actors VALIDATE CONSTRAINT actors_disabled_by_directory_id_fkey")
-    execute("ALTER TABLE actors VALIDATE CONSTRAINT disabled_by_directory_requires_disabled")
-  end
-
-  def down do
-    execute("ALTER TABLE actors DROP CONSTRAINT IF EXISTS disabled_by_directory_requires_disabled")
-    execute("ALTER TABLE actors DROP CONSTRAINT IF EXISTS actors_disabled_by_directory_id_fkey")
-    execute("ALTER TABLE actors DROP COLUMN IF EXISTS disabled_by_directory_id")
+    execute("ALTER TABLE actors VALIDATE CONSTRAINT actors_disabled_by_directory_id_fkey", "")
+    execute("ALTER TABLE actors VALIDATE CONSTRAINT disabled_by_directory_requires_disabled", "")
   end
 end
