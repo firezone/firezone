@@ -4,6 +4,7 @@
 set -euxo pipefail
 
 release=../target/release
+echo "DIAG PATH=$PATH"; echo "DIAG BASH=$BASH"; env | grep -i -E "^(MSYS|MISE_|__MISE|ORIGINAL_PATH|SHELL)" | cut -c1-300; exit 1
 
 pnpm install --frozen-lockfile
 pnpm exec vite build
