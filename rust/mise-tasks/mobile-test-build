@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="Build the tests of `client-ffi` and its workspace dependencies for a mobile target and list the test binaries"
+set -euo pipefail
+
+usage="usage: mise run //rust:mobile-test-build <triple> <binaries-file> <cargo-command...>"
+triple="${1:?$usage}"
+binaries_file="${2:?$usage}"
+shift 2
+(($# > 0)) || {
+    echo "$usage" >&2
+    exit 1
+}
+
+read -ra flags <<<"$(mise run -q //rust:mobile-test-packages "$triple")"
+
+"$@" test --no-run --message-format=json --target "$triple" "${flags[@]}" |
+    grep '^{' |
+    jq -r 'select(.reason == "compiler-artifact" and .executable != null and .profile.test) | "\(.manifest_path | sub("/Cargo.toml$"; ""))\t\(.executable)"' \
+        >"$binaries_file"

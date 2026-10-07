@@ -8,7 +8,6 @@ auto_install = false
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
-"cargo:cargo-dinghy" = { version = "0.8.6", os = ["linux", "macos"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.

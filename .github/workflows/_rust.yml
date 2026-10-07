@@ -123,8 +123,6 @@ jobs:
     name: test-android
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      DINGHY_PLATFORM: auto-android-x86_64-api26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
@@ -138,10 +136,19 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - id: packages
-        run: echo "packages=$(mise run -q //rust:mobile-test-packages x86_64-linux-android)" >> "$GITHUB_OUTPUT"
+      # The same NDK and API level as the app build in `kotlin/android/app/build.gradle.kts`.
+      - name: Configure NDK toolchain
+        run: |
+          ndk_version=$(sed -n 's/^ *ndkVersion = "\([^"]*\)".*/\1/p' ../kotlin/android/app/build.gradle.kts)
+          bin="$ANDROID_HOME/ndk/$ndk_version/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          {
+            echo "CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=$bin/x86_64-linux-android26-clang"
+            echo "CC_x86_64_linux_android=$bin/x86_64-linux-android26-clang"
+            echo "CXX_x86_64_linux_android=$bin/x86_64-linux-android26-clang++"
+            echo "AR_x86_64_linux_android=$bin/llvm-ar"
+          } >> "$GITHUB_ENV"
       - name: Build tests
-        run: cargo dinghy -p "$DINGHY_PLATFORM" test --no-run ${{ steps.packages.outputs.packages }}
+        run: mise run //rust:mobile-test-build x86_64-linux-android target/mobile-test-binaries.tsv cargo
       - name: Grant access to KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -156,17 +163,24 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
-          script: mise run //rust:mobile-test "$DINGHY_PLATFORM" x86_64-linux-android
+          script: mise run //rust:mobile-test-run target/mobile-test-binaries.tsv "$PWD/mise-tasks/android-run"
 
   test-ios:
     name: test-ios
     runs-on: macos-26
-    timeout-minutes: 50
+    timeout-minutes: 30
     env:
       XCODE_VERSION: "26.2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      # Booting takes minutes, so start it now and only wait for it before running the tests.
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json |
+            jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
+          xcrun simctl boot "$udid"
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
       - uses: ./.github/actions/setup-rust-stable
         with:
           targets: aarch64-apple-ios-sim
@@ -178,14 +192,12 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Boot simulator
-        run: |
-          udid=$(xcrun simctl list devices available --json |
-            jq -r '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))] | last | .udid')
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+      - name: Build tests
+        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim target/mobile-test-binaries.tsv cargo
       - name: Run tests
-        run: mise run //rust:mobile-test auto-ios-aarch64-sim aarch64-apple-ios-sim
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          mise run //rust:mobile-test-run target/mobile-test-binaries.tsv xcrun simctl spawn "$SIMULATOR_UDID"
 
   fuzz-targets:
     name: fuzz-targets

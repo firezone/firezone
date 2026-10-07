@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#MISE description="Run the test binaries listed by `mobile-test-build` one at a time with the given runner command"
+set -euo pipefail
+
+usage="usage: mise run //rust:mobile-test-run <binaries-file> <runner-command...>"
+binaries_file="${1:?$usage}"
+shift
+(($# > 0)) || {
+    echo "$usage" >&2
+    exit 1
+}
+runner=("$@")
+binary_timeout="${MOBILE_TEST_BINARY_TIMEOUT_SECS:-300}"
+test_timeout="${MOBILE_TEST_TIMEOUT_SECS:-60}"
+failed=()
+tests_file="$(mktemp)"
+
+set -m # Each run gets its own process group, so a timeout kills the runner and whatever it spawned.
+
+# Exits with 124 if the command is still running after the given number of seconds.
+run_with_timeout() {
+    local secs="$1"
+    shift
+
+    "$@" </dev/null &
+    local pid=$!
+    (sleep "$secs" && kill -- "-$pid") &
+    local watchdog=$!
+    disown "$watchdog"
+
+    local status=0
+    wait "$pid" || status=$?
+    if ! kill -- "-$watchdog" 2>/dev/null; then
+        return 124
+    fi
+    return "$status"
+}
+
+run_binary() {
+    local secs="$1"
+    shift
+
+    run_with_timeout "$secs" "${runner[@]}" "$exe" "$@"
+}
+
+while IFS=$'\t' read -r dir exe; do
+    name="$(basename "$dir")/$(basename "$exe")"
+    echo "::group::$name"
+
+    status=0
+    run_binary "$binary_timeout" --nocapture || status=$?
+
+    if ((status == 124)); then
+        # Runners may only hand back a binary's output once it exits, so find the test that hangs by running each on its own.
+        echo "::error::$name timed out after ${binary_timeout}s, running its tests one by one"
+
+        run_binary "$test_timeout" --list --format terse >"$tests_file" 2>/dev/null || true
+
+        while read -r test; do
+            test_status=0
+            run_binary "$test_timeout" --exact "$test" --nocapture || test_status=$?
+
+            case "$test_status" in
+            0) ;;
+            124) echo "::error::$name: $test timed out after ${test_timeout}s" ;;
+            *) echo "::error::$name: $test failed" ;;
+            esac
+        done < <(sed -n 's/: test$//p' "$tests_file")
+    fi
+
+    if ((status != 0)); then
+        failed+=("$name")
+    fi
+
+    echo "::endgroup::"
+done <"$binaries_file"
+
+if ((${#failed[@]} > 0)); then
+    echo "::error::Failed test binaries: ${failed[*]}"
+    exit 1
+fi

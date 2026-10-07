@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Run a binary on the connected Android device or emulator"
+#MISE hide=true
+set -euo pipefail
+
+exe="${1:?usage: mise-tasks/android-run <binary> [args...]}"
+shift
+remote="/data/local/tmp/$(basename "$exe")"
+
+adb push "$exe" "$remote" >/dev/null
+
+command="$remote"
+for arg in "$@"; do
+    command+=" '${arg//\'/\'\\\'\'}'"
+done
+
+adb shell "cd /data/local/tmp && $command"
