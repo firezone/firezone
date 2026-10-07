@@ -246,6 +246,12 @@ impl Agent {
         }
     }
 
+    pub(crate) fn confirm_session(&mut self, now: Instant) {
+        if let Self::Path(path) = self {
+            path.confirm_session(now);
+        }
+    }
+
     pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
         if let Self::Path(path) = self {
             path.initiate_handshake(tunnel, now);
