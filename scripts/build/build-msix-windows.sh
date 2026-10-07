@@ -3,8 +3,8 @@
 # place it where the Tauri/WiX bundler picks it up (`target/release/
 # firezone.msix`).
 #
-# Driven from `tauri-pre-bundle-windows.sh`, which the Tauri build
-# pipeline invokes via `tauri.windows.conf.json:beforeBundleCommand`.
+# Driven from the GUI client's `build` mise task, before Tauri bundles
+# the MSI.
 # Requires:
 #
 # - MakeAppx.exe in PATH (or under `WIX_PATH`/`WindowsSdkPath`)

@@ -73,9 +73,6 @@ importers:
       remixicon:
         specifier: 4.9.1
         version: 4.9.1
-      run-script-os:
-        specifier: ^1.1.6
-        version: 1.1.6
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -1524,10 +1521,6 @@ packages:
   rolldown@1.2.11:
     resolution: {integrity: sha512-qpSwIyz0jHQq5qXBTNxFmE6664rJ7O+4TvPFOiOaBSrz8IOHc1koKKSqTM2H6u1UG1+TveuC6vaDHKXFOvb1Kw==}
     engines: {node: ^20.19.0 || >=22.12.0}
-    hasBin: true
-
-  run-script-os@1.1.6:
-    resolution: {integrity: sha512-ql6P2LzhBTTDfzKts+Qo4H94VUKpxKDFz6QxxwaUZN0mwvi7L3lpOI7BqPCq7lgDh3XLl0dpeXwfcVIitlrYrw==}
     hasBin: true
 
   safe-array-concat@1.1.3:
@@ -3313,8 +3306,6 @@ snapshots:
       '@rolldown/binding-openharmony-arm64': 1.2.11
       '@rolldown/binding-win32-arm64-msvc': 1.2.11
       '@rolldown/binding-win32-x64-msvc': 1.2.11
-
-  run-script-os@1.1.6: {}
 
   safe-array-concat@1.1.3:
     dependencies:
