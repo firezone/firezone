@@ -248,8 +248,8 @@ jobs:
           # For Sentry. Ends up in the pdb on Windows and a `.debug` file on Linux.
           CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
-        shell: bash
-        run: mise run build --out "$BINARY_DEST_PATH"
+        # Not Git Bash: it hands `mise` a POSIX `PATH` that then reaches cargo unconverted.
+        run: mise run build --out ${{ env.BINARY_DEST_PATH }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
       - name: Upload deb / msi package
@@ -326,7 +326,6 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: firezone-inc
-        shell: bash
         run: mise run symbols
 
       - name: Upload Release Assets
@@ -334,8 +333,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        shell: bash
-        run: mise run upload "gui-client-$FIREZONE_GUI_VERSION" "$BINARY_DEST_PATH"
+        run: mise run upload gui-client-${{ env.FIREZONE_GUI_VERSION }} ${{ env.BINARY_DEST_PATH }}
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
