@@ -56,7 +56,7 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 37
-    ndkVersion = "28.2.13676358" // Must be a version preinstalled on the CI runner (see setup-android)
+    ndkVersion = "28.2.13676358" // Keep in sync with NDK_VERSION in mise.toml.
 
     defaultConfig {
         applicationId = "dev.firezone.android"
