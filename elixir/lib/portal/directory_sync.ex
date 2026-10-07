@@ -316,6 +316,11 @@ defmodule Portal.DirectorySync do
       end
     end
 
+    # A candidate for removal if sync query volume becomes a concern. The
+    # identity upsert already decides ownership inline; this lookup exists only
+    # because the membership upserts do not, so it could go once they take each
+    # user's inactive flag and skip the inactive users whose actor this
+    # directory did not create.
     def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
       owned_identities(account_id, issuer, directory_id)
       |> where([i], i.idp_id in ^idp_ids)
