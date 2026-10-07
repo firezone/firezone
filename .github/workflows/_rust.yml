@@ -120,14 +120,20 @@ jobs:
           fail-on-error: false
 
   test-android:
-    name: test-android
+    name: test-android (${{ matrix.arch }})
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, triple: x86_64-linux-android }
+          - { arch: i686, triple: i686-linux-android }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
         with:
-          targets: x86_64-linux-android
+          targets: ${{ matrix.triple }}
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -137,7 +143,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build tests
-        run: mise run //rust:mobile-test-build x86_64-linux-android
+        run: mise run //rust:mobile-test-build ${{ matrix.triple }}
       - uses: ./.github/actions/enable-kvm
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -147,7 +153,7 @@ jobs:
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           working-directory: ./rust
-          script: mise run //rust:mobile-test-run x86_64-linux-android
+          script: adb shell getprop ro.product.cpu.abilist && mise run //rust:mobile-test-run ${{ matrix.triple }}
 
   test-ios:
     name: test-ios
