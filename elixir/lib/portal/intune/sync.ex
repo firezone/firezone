@@ -31,6 +31,21 @@ defmodule Portal.Intune.Sync do
 
   def perform(_), do: :ok
 
+  # Intune can take several minutes after admin consent to honor the new
+  # grant, and the first sync is queued the moment the provider is saved, so a
+  # denial is retried late enough for the grant to have taken effect instead of
+  # burning every attempt within the first minute.
+  @access_denied_backoff_seconds 15 * 60
+
+  @impl Oban.Worker
+  def backoff(%Oban.Job{unsaved_error: %{reason: reason}} = job) do
+    if Intune.SyncError.graph_access_denied?(reason),
+      do: @access_denied_backoff_seconds,
+      else: Oban.Worker.backoff(job)
+  end
+
+  def backoff(job), do: Oban.Worker.backoff(job)
+
   # A downgrade has to stop the syncing that is already queued, not just the
   # scheduling of new runs, so the account is re-checked here rather than only
   # in the scheduler.

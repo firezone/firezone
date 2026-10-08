@@ -10,6 +10,17 @@ defmodule PortalWeb.LiveTable do
 
   @page_size_values ["10", "25", "50"]
 
+  @default_time_preset "24h"
+  @time_presets [
+    {"1h", "Last hour", 3_600},
+    {"12h", "Last 12 hours", 43_200},
+    {"24h", "Last 24 hours", 86_400},
+    {"3d", "Last 3 days", 259_200},
+    {"7d", "Last 7 days", 604_800},
+    {"30d", "Last 30 days", 2_592_000},
+    {"custom", "Custom", nil}
+  ]
+
   @doc """
   A drop-in replacement of `PortalWeb.Components.Table.table/1` component that adds sorting, filtering and pagination.
   """
@@ -18,6 +29,19 @@ defmodule PortalWeb.LiveTable do
   attr :filters, :list, required: true, doc: "the query filters enabled for the table"
   attr :filter, :map, required: true, doc: "the filter form for the table"
   attr :stale, :boolean, default: false, doc: "hint to the UI that the table data is stale"
+
+  attr :loading, :boolean,
+    default: false,
+    doc: "true while an async loader is running the table query"
+
+  attr :filtered_empty_hint, :string,
+    default: "Try adjusting your search or filters.",
+    doc: "the hint shown when filters are active and no rows match"
+
+  attr :query_error, :atom,
+    default: nil,
+    doc: "set to :query_timeout when the table query was cancelled for taking too long"
+
   attr :class, :string, default: nil, doc: "additional classes for the live_table wrapper div"
 
   attr :metadata, :map,
@@ -53,10 +77,14 @@ defmodule PortalWeb.LiveTable do
   slot :footer, doc: "content rendered centered in the paginator bar"
 
   def live_table(assigns) do
+    assigns =
+      assign(assigns, rows: if(assigns.query_error, do: [], else: assigns.rows))
+
     ~H"""
     <div class={["flex flex-col", @class]}>
       <.resource_filter
         stale={@stale}
+        loading={@loading}
         live_table_id={@id}
         form={@filter}
         filters={@filters}
@@ -64,7 +92,10 @@ defmodule PortalWeb.LiveTable do
       />
       <div class="flex-1 overflow-auto flex flex-col">
         <table
-          class={["w-full text-sm text-left text-body table-fixed shrink-0"]}
+          class={[
+            "w-full text-sm text-left text-body table-fixed shrink-0 transition-opacity",
+            @loading && "opacity-50"
+          ]}
           id={@id}
         >
           <Table.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
@@ -90,14 +121,39 @@ defmodule PortalWeb.LiveTable do
           </tbody>
         </table>
         <div
-          :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)}
+          :if={@query_error == :query_timeout}
+          id={"#{@id}-query-timeout"}
+          class="flex flex-1 items-center justify-center"
+        >
+          <div class="flex flex-col items-center gap-3 py-16">
+            <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+              <Core.icon name="ri-time-line" class="w-5 h-5 text-subtle" />
+            </div>
+            <div class="text-center">
+              <p class="text-sm font-medium text-heading">
+                Your query includes too many results
+              </p>
+              <p class="text-xs text-subtle mt-0.5">
+                Try reducing the time window.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div
+          :if={
+            Enum.empty?(@rows) and not @loading and is_nil(@query_error) and
+              not has_filter?(@filter, @filters)
+          }
           id={"#{@id}-empty"}
           class="flex flex-1 items-center justify-center"
         >
           {render_slot(@empty)}
         </div>
         <div
-          :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)}
+          :if={
+            Enum.empty?(@rows) and not @loading and is_nil(@query_error) and
+              has_filter?(@filter, @filters)
+          }
           id={"#{@id}-empty"}
           class="flex flex-1 items-center justify-center"
         >
@@ -108,7 +164,7 @@ defmodule PortalWeb.LiveTable do
             <div class="text-center">
               <p class="text-sm font-medium text-heading">No results found</p>
               <p class="text-xs text-subtle mt-0.5">
-                Try adjusting your search or filters.
+                {@filtered_empty_hint}
               </p>
             </div>
             <Form.button
@@ -129,11 +185,12 @@ defmodule PortalWeb.LiveTable do
     """
   end
 
+  # A filter that only holds its default value is not an active filter.
   defp has_filter?(filter, filters) do
     keys =
-      Enum.map(filters, fn filter ->
-        to_string(filter.name)
-      end)
+      filters
+      |> Enum.map(&to_string(&1.name))
+      |> Enum.reject(&Map.get(filter.params, "#{&1}_default", false))
 
     Map.take(filter.params, keys) != %{}
   end
@@ -234,6 +291,14 @@ defmodule PortalWeb.LiveTable do
           <Core.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
         </button>
       </.form>
+      <span
+        :if={@loading}
+        id={"#{@live_table_id}-loading"}
+        role="status"
+        class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-body"
+      >
+        <Core.icon name="ri-loader-4-line" class="w-3.5 h-3.5 animate-spin" /> Running query...
+      </span>
       <Form.button
         :if={@stale}
         id={"#{@live_table_id}-reload-btn"}
@@ -268,20 +333,48 @@ defmodule PortalWeb.LiveTable do
     latest = today |> Date.add(1) |> Date.to_iso8601()
     mode_field = "#{assigns.filter.name}_mode"
     mode = if assigns.form[mode_field].value == "local", do: "local", else: "utc"
+    preset = assigns.form["#{assigns.filter.name}_preset"].value || @default_time_preset
 
     assigns =
       assign(assigns,
         min: "#{earliest}T00:00:00",
         max: "#{latest}T23:59:59",
-        mode: mode
+        mode: mode,
+        preset: preset,
+        presets: @time_presets
       )
 
     ~H"""
     <div
       id={"#{@live_table_id}-#{@filter.name}-range"}
       phx-hook="DatetimeRangeFilter"
-      class="inline-flex flex-wrap items-center gap-2"
+      class="contents"
     >
+      <label class="inline-flex items-center gap-1.5">
+        <span class="text-xs font-medium text-body select-none">{@filter.title}</span>
+        <div class="relative">
+          <select
+            id={"#{@live_table_id}-#{@filter.name}-preset"}
+            name={"#{@form[@filter.name].name}[preset]"}
+            class={[
+              "appearance-none bg-none bg-input border border-input-border text-heading text-xs font-medium",
+              "rounded h-8 pl-2 pr-7 outline-none transition-colors cursor-pointer",
+              "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
+            ]}
+          >
+            <option
+              :for={{value, label, _seconds} <- @presets}
+              value={value}
+              selected={value == @preset}
+            >
+              {label}
+            </option>
+          </select>
+          <span class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-subtle">
+            <Core.icon name="ri-arrow-drop-down-line" class="w-4 h-4" />
+          </span>
+        </div>
+      </label>
       <div class="inline-flex h-8 items-center rounded border border-input-border bg-raised p-0.5 shrink-0">
         <label
           :for={target <- ["utc", "local"]}
@@ -312,6 +405,7 @@ defmodule PortalWeb.LiveTable do
         </label>
       </div>
       <.datetime_input
+        :if={@preset == "custom"}
         field={@form[@filter.name]}
         filter={@filter}
         from_or_to={:from}
@@ -320,6 +414,7 @@ defmodule PortalWeb.LiveTable do
         label="From"
       />
       <.datetime_input
+        :if={@preset == "custom"}
         field={@form[@filter.name]}
         filter={@filter}
         from_or_to={:to}
@@ -783,11 +878,26 @@ defmodule PortalWeb.LiveTable do
 
   @doc """
   Loads the initial state for a live table and persists it to the socket assigns.
+
+  Data is loaded with either:
+
+    * `:callback` - `fn socket, list_opts -> {:ok, socket} | {:error, reason} end`,
+      run synchronously inside `handle_params/3`.
+    * `:loader` - `fn subject, list_opts -> {:ok, assigns} | {:error, reason} end`,
+      run in an async task so the page can render a loading state. `assigns` is
+      assigned to the socket when the task finishes. The assigns the table reads
+      must be initialised in `mount/3`. `{:error, :query_timeout}` renders the
+      "too many results" state.
+
+  A `{:range, :datetime}` filter renders a time range dropdown (last hour up to
+  last 30 days, or custom). It defaults to the last 24 hours, so the query is
+  always bounded. The From and To pickers only show for "Custom".
   """
   def assign_live_table(socket, id, opts) do
     query_module = Keyword.fetch!(opts, :query_module)
     sortable_fields = Keyword.fetch!(opts, :sortable_fields)
-    callback = Keyword.fetch!(opts, :callback)
+    callback = Keyword.get(opts, :callback)
+    loader = Keyword.get(opts, :loader)
     enforce_filters = Keyword.get(opts, :enforce_filters, [])
     hide_filters = Keyword.get(opts, :hide_filters, [])
     limit = default_page_size(socket, Keyword.get(opts, :limit, 10))
@@ -795,8 +905,15 @@ defmodule PortalWeb.LiveTable do
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters
 
-    assign(socket,
+    socket
+    |> attach_async_hook(loader)
+    |> assign(
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
+      loader_by_table_id: put_table_state(socket, id, :loader_by_table_id, loader),
+      custom_timeranges_by_table_id:
+        put_table_state(socket, id, :custom_timeranges_by_table_id, %{}),
+      loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false),
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil),
       query_module_by_table_id:
         put_table_state(
           socket,
@@ -862,12 +979,11 @@ defmodule PortalWeb.LiveTable do
   end
 
   def reload_live_table!(socket, id) do
-    callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
     list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
     socket = assign(socket, stale: false)
 
-    case callback.(socket, list_opts) do
+    case load(socket, id, list_opts) do
       {:error, _reason} ->
         push_navigate(socket, to: socket.assigns.current_path)
 
@@ -937,6 +1053,9 @@ defmodule PortalWeb.LiveTable do
     raw_filter_params = Map.get(params, "#{id}_filter", %{})
 
     with {:ok, filter} <- params_to_filter(id, params, filter_types),
+         custom_ranges = remember_custom_ranges(socket, id, filter, raw_filter_params, filter_types),
+         {filter, time_presets} =
+           resolve_time_ranges(filter, raw_filter_params, filter_types, DateTime.utc_now()),
          filter = enforced_filters ++ filter,
          {:ok, page} <- params_to_page(id, limit, params),
          {:ok, order_by} <- params_to_order_by(sortable_fields, id, params) do
@@ -955,8 +1074,10 @@ defmodule PortalWeb.LiveTable do
                 socket,
                 id,
                 :filter_form_by_table_id,
-                filter_to_form(filter, raw_filter_params, id)
+                filter_to_form(filter, raw_filter_params, id, time_presets)
               ),
+            custom_timeranges_by_table_id:
+              put_table_state(socket, id, :custom_timeranges_by_table_id, custom_ranges),
             order_by_table_id:
               put_table_state(
                 socket,
@@ -973,24 +1094,8 @@ defmodule PortalWeb.LiveTable do
               )
           )
 
-        {:error, :invalid_page} ->
-          message = "The page was reset due to invalid pagination page."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:unknown_filter, _metadata}} ->
-          message = "The page was reset due to use of undefined pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:invalid_type, _metadata}} ->
-          message = "The page was reset due to invalid value of a pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, {:invalid_value, _metadata}} ->
-          message = "The page was reset due to invalid value of a pagination filter."
-          reset_live_table_params(socket, id, message)
-
-        {:error, _reason} ->
-          raise PortalWeb.LiveErrors.NotFoundError
+        {:error, reason} ->
+          handle_load_error(socket, id, reason)
       end
     else
       {:error, :invalid_page} ->
@@ -1001,6 +1106,36 @@ defmodule PortalWeb.LiveTable do
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
     end
+  end
+
+  defp handle_load_error(socket, id, :invalid_page) do
+    message = "The page was reset due to invalid pagination page."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:unknown_filter, _metadata}) do
+    message = "The page was reset due to use of undefined pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:invalid_type, _metadata}) do
+    message = "The page was reset due to invalid value of a pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, {:invalid_value, _metadata}) do
+    message = "The page was reset due to invalid value of a pagination filter."
+    reset_live_table_params(socket, id, message)
+  end
+
+  defp handle_load_error(socket, id, :query_timeout) do
+    assign(socket,
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, :query_timeout)
+    )
+  end
+
+  defp handle_load_error(_socket, _id, _reason) do
+    raise PortalWeb.LiveErrors.NotFoundError
   end
 
   defp maybe_use_default_order_by(query_module, order_by \\ nil)
@@ -1032,12 +1167,68 @@ defmodule PortalWeb.LiveTable do
     previous_list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
     if list_opts != previous_list_opts do
-      callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
-      callback.(socket, list_opts)
+      load(socket, id, list_opts)
     else
       {:ok, socket}
     end
   end
+
+  defp load(socket, id, list_opts) do
+    case Map.get(socket.assigns.loader_by_table_id, id) do
+      nil ->
+        callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
+        callback.(socket, list_opts)
+
+      loader ->
+        {:ok, start_load(socket, id, loader, list_opts)}
+    end
+  end
+
+  # A superseded query is cancelled so it stops holding a database connection.
+  defp start_load(socket, id, loader, list_opts) do
+    subject = socket.assigns.subject
+
+    socket
+    |> cancel_async({__MODULE__, id})
+    |> assign(
+      loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, true),
+      query_error_by_table_id: put_table_state(socket, id, :query_error_by_table_id, nil)
+    )
+    |> start_async({__MODULE__, id}, fn -> loader.(subject, list_opts) end)
+  end
+
+  defp attach_async_hook(socket, nil), do: socket
+
+  defp attach_async_hook(socket, _loader) do
+    if socket.assigns[:live_table_async_hook] do
+      socket
+    else
+      socket
+      |> assign(live_table_async_hook: true)
+      |> attach_hook(:live_table_async, :handle_async, &handle_live_table_async/3)
+    end
+  end
+
+  defp handle_live_table_async({__MODULE__, id}, {:ok, result}, socket) do
+    socket =
+      assign(socket,
+        loading_by_table_id: put_table_state(socket, id, :loading_by_table_id, false)
+      )
+
+    case result do
+      {:ok, assigns} -> {:halt, assign(socket, assigns)}
+      {:error, reason} -> {:halt, handle_load_error(socket, id, reason)}
+    end
+  end
+
+  # A superseded load is cancelled before its replacement starts.
+  defp handle_live_table_async({__MODULE__, _id}, {:exit, {:shutdown, :cancel}}, socket),
+    do: {:halt, socket}
+
+  # The loader crashed. Crash with it so the error reaches the error tracker.
+  defp handle_live_table_async({__MODULE__, _id}, {:exit, reason}, _socket), do: exit(reason)
+
+  defp handle_live_table_async(_name, _result, socket), do: {:cont, socket}
 
   defp put_table_state(socket, id, key, value) do
     Map.put(socket.assigns[key] || %{}, id, value)
@@ -1124,6 +1315,13 @@ defmodule PortalWeb.LiveTable do
     case Integer.parse(value) do
       {integer, ""} -> {:ok, integer}
       _ -> {:error, :invalid_filter}
+    end
+  end
+
+  defp cast_filter(value, {:range, :datetime}) when is_map(value) do
+    case Map.drop(value, ["preset", "mode"]) do
+      bounds when map_size(bounds) == 0 -> {:ok, nil}
+      bounds -> cast_filter(bounds)
     end
   end
 
@@ -1229,16 +1427,151 @@ defmodule PortalWeb.LiveTable do
   def filter_to_form(filter, as), do: filter_to_form(filter, %{}, as)
 
   @doc false
-  def filter_to_form(filter, raw_filter_params, as) do
+  def filter_to_form(filter, raw_filter_params, as),
+    do: filter_to_form(filter, raw_filter_params, as, [])
+
+  @doc false
+  def filter_to_form(filter, raw_filter_params, as, time_presets) do
     # Note: we don't support nesting, :and or :where on the UI yet
     base =
       for {key, value} <- filter, into: %{} do
         {Atom.to_string(key), value}
       end
 
+    # The default preset is not an active filter, see `has_filter?/2`.
+    preset_marks =
+      Enum.reduce(time_presets, %{}, fn {key, preset}, acc ->
+        acc
+        |> Map.put("#{key}_preset", preset)
+        |> Map.put("#{key}_default", preset == @default_time_preset)
+      end)
+
     base
+    |> Map.merge(preset_marks)
     |> add_filter_form_extras(raw_filter_params)
     |> to_form(as: as)
+  end
+
+  # Every `{:range, :datetime}` filter is bounded below. A preset gives the
+  # last N hours or days, the custom range fills in whichever bound the user
+  # left out, and no setting at all means the default preset. Returns the
+  # effective ranges and the preset each filter ended up with.
+  defp resolve_time_ranges(filter, raw_filter_params, filter_types, now) do
+    now = DateTime.add(DateTime.truncate(now, :second), -now.second, :second)
+
+    for {name, {:range, :datetime}} <- filter_types, reduce: {filter, []} do
+      {filter, presets} ->
+        key = String.to_existing_atom(name)
+        preset = raw_filter_params |> Map.get(name) |> preset_param()
+        {range, preset} = resolve_time_range(preset, Keyword.get(filter, key), now)
+        {Keyword.put(filter, key, range), [{key, preset} | presets]}
+    end
+  end
+
+  defp preset_param(%{"preset" => preset}) when is_binary(preset), do: preset
+  defp preset_param(_raw), do: nil
+
+  defp resolve_time_range(preset, parsed, now) do
+    case List.keyfind(@time_presets, preset, 0) do
+      {preset, _label, seconds} when is_integer(seconds) ->
+        {%Portal.Repo.Filter.Range{from: DateTime.add(now, -seconds, :second)}, preset}
+
+      _custom_or_unset when preset == "custom" or not is_nil(parsed) ->
+        {fill_custom_bounds(parsed, now), "custom"}
+
+      _unset ->
+        {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+        {%Portal.Repo.Filter.Range{from: DateTime.add(now, -seconds, :second)}, @default_time_preset}
+    end
+  end
+
+  # `to` is rounded up to the next minute so flows from the current minute
+  # are inside the range.
+  defp fill_custom_bounds(nil, now) do
+    {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+    to = DateTime.add(now, 60, :second)
+    %Portal.Repo.Filter.Range{from: DateTime.add(to, -seconds, :second), to: to}
+  end
+
+  defp fill_custom_bounds(%Portal.Repo.Filter.Range{from: nil, to: to} = range, _now) do
+    {_preset, _label, seconds} = List.keyfind(@time_presets, @default_time_preset, 0)
+    %{range | from: DateTime.add(to, -seconds, :second)}
+  end
+
+  defp fill_custom_bounds(%Portal.Repo.Filter.Range{to: nil} = range, now),
+    do: %{range | to: DateTime.add(now, 60, :second)}
+
+  defp fill_custom_bounds(range, _now), do: range
+
+  # The last custom range the user set stays on the socket, so switching to a
+  # preset and back to Custom does not lose it. Only the bounds the user set
+  # are kept, not the ones filled in for display.
+  defp remember_custom_ranges(socket, id, filter, raw_filter_params, filter_types) do
+    remembered = Map.get(socket.assigns[:custom_timeranges_by_table_id] || %{}, id, %{})
+
+    for {name, {:range, :datetime}} <- filter_types, reduce: remembered do
+      remembered ->
+        key = String.to_existing_atom(name)
+        preset = raw_filter_params |> Map.get(name) |> preset_param()
+        parsed = Keyword.get(filter, key)
+
+        if not is_nil(parsed) and is_nil(duration(List.keyfind(@time_presets, preset, 0))) do
+          Map.put(remembered, key, parsed)
+        else
+          remembered
+        end
+    end
+  end
+
+  defp duration({_preset, _label, seconds}), do: seconds
+  defp duration(nil), do: nil
+
+  # Only the Custom preset carries From and To. The default preset is the
+  # same as no setting, so it is left out of the URL. Switching back to
+  # Custom with no bounds in the form restores the remembered range.
+  defp normalize_time_presets(filter, remembered) do
+    Map.new(filter, fn
+      {key, %{"preset" => "custom"} = value} ->
+        {key, restore_custom_range(value, remembered_range(remembered, key))}
+
+      {key, %{"preset" => preset} = value} when is_binary(preset) ->
+        value = Map.drop(value, ["from", "to"])
+        value = if preset == @default_time_preset, do: Map.delete(value, "preset"), else: value
+        {key, value}
+
+      other ->
+        other
+    end)
+  end
+
+  defp remembered_range(remembered, key) do
+    Enum.find_value(remembered, fn {name, range} ->
+      if Atom.to_string(name) == key, do: range
+    end)
+  end
+
+  defp restore_custom_range(value, nil), do: value
+
+  defp restore_custom_range(value, range) do
+    if value["from"] in [nil, ""] and value["to"] in [nil, ""] do
+      value
+      |> put_bound("from", range.from)
+      |> put_bound("to", range.to)
+    else
+      value
+    end
+  end
+
+  defp put_bound(value, _name, nil), do: value
+
+  defp put_bound(value, name, %DateTime{} = datetime) do
+    iso =
+      datetime
+      |> DateTime.shift_zone!("Etc/UTC")
+      |> DateTime.to_naive()
+      |> NaiveDateTime.to_iso8601()
+
+    Map.put(value, name, iso)
   end
 
   # Some sub-fields (e.g. the UTC/Local mode on a datetime range filter)
@@ -1328,7 +1661,8 @@ defmodule PortalWeb.LiveTable do
   end
 
   def handle_live_table_event("filter", %{"table_id" => id} = params, socket) do
-    filter = Map.get(params, id, %{})
+    remembered = Map.get(socket.assigns[:custom_timeranges_by_table_id] || %{}, id, %{})
+    filter = params |> Map.get(id, %{}) |> normalize_time_presets(remembered)
 
     update_query_params(socket, fn query_params ->
       query_params

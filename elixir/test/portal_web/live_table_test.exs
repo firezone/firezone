@@ -137,6 +137,136 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(input, "value") == ["tcp/443"]
     end
 
+    test "renders the time range dropdown and hides the pickers for a preset", %{
+      assigns: assigns
+    } do
+      assigns = time_range_assigns(assigns, filter_to_form(%{}, %{}, "table-id", timestamp: "24h"))
+
+      document = render_component(&live_table/1, assigns) |> Floki.parse_fragment!()
+      range = Floki.find(document, "form#table-id-filters #table-id-timestamp-range")
+
+      # `contents` removes the wrapper box, so each control is an item of the
+      # filter row and wraps on its own.
+      assert Floki.attribute(range, "class") == ["contents"]
+
+      options = Floki.find(range, "select[name='table-id[timestamp][preset]'] option")
+
+      assert Enum.map(options, &(&1 |> Floki.text() |> String.trim())) == [
+               "Last hour",
+               "Last 12 hours",
+               "Last 24 hours",
+               "Last 3 days",
+               "Last 7 days",
+               "Last 30 days",
+               "Custom"
+             ]
+
+      assert Enum.map(options, &(&1 |> Floki.attribute("value") |> hd())) ==
+               ["1h", "12h", "24h", "3d", "7d", "30d", "custom"]
+
+      assert [selected] = Floki.find(range, "option[selected]")
+      assert Floki.attribute(selected, "value") == ["24h"]
+
+      assert Floki.find(range, "input[type=radio]") != []
+      assert Floki.find(range, "input[type=datetime-local]") == []
+    end
+
+    test "shows the from and to pickers for the custom preset", %{assigns: assigns} do
+      range = %Portal.Repo.Filter.Range{
+        from: ~U[2026-07-29 10:00:00Z],
+        to: ~U[2026-07-30 10:00:00Z]
+      }
+
+      form = filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "custom")
+
+      document =
+        render_component(&live_table/1, time_range_assigns(assigns, form))
+        |> Floki.parse_fragment!()
+
+      assert [selected] = Floki.find(document, "#table-id-timestamp-range option[selected]")
+      assert Floki.attribute(selected, "value") == ["custom"]
+      assert length(Floki.find(document, "input[type=datetime-local]")) == 2
+
+      assert Floki.attribute(document, "input[data-canonical='from']", "value") ==
+               ["2026-07-29T10:00:00"]
+
+      assert Floki.attribute(document, "input[data-canonical='to']", "value") ==
+               ["2026-07-30T10:00:00"]
+    end
+
+    test "the default preset is not an active filter", %{assigns: assigns} do
+      range = %Portal.Repo.Filter.Range{from: ~U[2026-07-29 10:00:00Z]}
+
+      default =
+        render_component(
+          &live_table/1,
+          time_range_assigns(
+            assigns,
+            filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "24h")
+          )
+        )
+        |> Floki.parse_fragment!()
+
+      assert Floki.find(default, "button[title='Clear all filters']") == []
+
+      other =
+        render_component(
+          &live_table/1,
+          time_range_assigns(
+            assigns,
+            filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "7d")
+          )
+        )
+        |> Floki.parse_fragment!()
+
+      assert [_] = Floki.find(other, "button[title='Clear all filters']")
+    end
+
+    test "uses the filtered empty hint when filters are active and nothing matches", %{
+      assigns: assigns
+    } do
+      assigns =
+        Map.merge(assigns, %{
+          rows: [],
+          filters: [
+            %Portal.Repo.Filter{name: :search, title: "Query", type: {:string, :websearch}}
+          ],
+          filter: filter_to_form(%{search: "foo"}, "table-id"),
+          filtered_empty_hint: "Try broadening the time window."
+        })
+
+      text =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+        |> Floki.find("#table-id-empty")
+        |> Floki.text()
+
+      assert text =~ "No results found"
+      assert text =~ "Try broadening the time window."
+    end
+
+    test "shows a running query status while loading", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert [_] = Floki.find(document, "#table-id-loading[role='status']")
+      assert Floki.text(Floki.find(document, "#table-id-loading")) =~ "Running query"
+      assert Floki.find(document, "#table-id-empty") == []
+    end
+
+    test "explains a timed out query and hides stale rows", %{assigns: assigns} do
+      html =
+        render_component(&live_table/1, Map.merge(assigns, %{query_error: :query_timeout}))
+
+      document = Floki.parse_fragment!(html)
+      text = document |> Floki.find("#table-id-query-timeout") |> Floki.text()
+
+      assert text =~ "Your query includes too many results"
+      assert text =~ "Try reducing the time window."
+      refute html =~ "foo"
+      assert Floki.find(document, "#table-id-loading") == []
+    end
+
     test "adds per-row classes", %{assigns: assigns} do
       html =
         render_component(
@@ -937,5 +1067,19 @@ defmodule PortalWeb.LiveTableTest do
     assert {:noreply, %{redirected: {:live, :patch, %{kind: :push, to: to}}}} = socket
     uri = URI.parse(to)
     URI.decode_query(uri.query)
+  end
+
+  defp time_range_assigns(assigns, form) do
+    %{
+      assigns
+      | filters: [
+          %Portal.Repo.Filter{
+            name: :timestamp,
+            title: "Timestamp",
+            type: {:range, :datetime}
+          }
+        ],
+        filter: form
+    }
   end
 end

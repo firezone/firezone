@@ -10,6 +10,8 @@ defmodule PortalWeb.Settings.Account do
   def mount(_params, session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
+    monthly_active_usage = Billing.monthly_active_usage(account)
+
     socket =
       assign(socket,
         marketing_attribution: get_in(PortalWeb.WebsiteAttribution.fetch(session) || %{}, ["marketing"]),
@@ -25,7 +27,8 @@ defmodule PortalWeb.Settings.Account do
         admins_count: Database.count_account_admin_users_for_account(subject),
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
-        active_users_count: Portal.Billing.count_monthly_active_users(subject.account),
+        active_users_count: monthly_active_usage.seats,
+        adhoc_service_accounts_count: monthly_active_usage.adhoc_service_accounts,
         sites_count: Database.count_groups_for_account(subject)
       )
 
@@ -71,6 +74,16 @@ defmodule PortalWeb.Settings.Account do
               <dt class="text-[10px] text-subtle mt-4">Support Type</dt>
               <dd class="text-xs text-body capitalize font-medium">
                 {billing_support_label(@account.metadata.stripe.support_type)}
+              </dd>
+              <dt :if={@account.metadata.stripe.add_ons != []} class="text-[10px] text-subtle mt-4">
+                Add-ons
+              </dt>
+              <dd
+                :for={add_on <- @account.metadata.stripe.add_ons}
+                class="text-xs text-body font-medium flex justify-between gap-2"
+              >
+                <span>{add_on.name}</span>
+                <span class="tabular-nums">× {add_on.quantity}</span>
               </dd>
             </dl>
             <p
@@ -257,17 +270,19 @@ defmodule PortalWeb.Settings.Account do
             Usage
           </h3>
           <div class="space-y-4 max-w-2xl">
-            <.usage_unlimited
-              :if={is_nil(effective_limit(@account, :monthly_active_users_count))}
-              label="Monthly Active Users"
-              used={@active_users_count}
-            />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :monthly_active_users_count))}
-              label="Monthly Active Users"
-              description="Users that have signed in from a device within the last month"
+              label="Seats"
+              description="Users and service accounts with a device active in the last month"
               used={@active_users_count}
               limit={effective_limit(@account, :monthly_active_users_count)}
+            />
+            <.usage_bar
+              :if={(effective_limit(@account, :adhoc_service_accounts_count) || 0) > 0}
+              label="Ad hoc Service Accounts"
+              description="Active service accounts that do not take a seat"
+              used={@adhoc_service_accounts_count}
+              limit={effective_limit(@account, :adhoc_service_accounts_count)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :users_count))}

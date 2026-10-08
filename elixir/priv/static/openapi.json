@@ -11840,6 +11840,9 @@
           "account_admin_users": {
             "$ref": "#/components/schemas/AccountLimit"
           },
+          "adhoc_service_accounts": {
+            "$ref": "#/components/schemas/AccountLimit"
+          },
           "monthly_active_users": {
             "$ref": "#/components/schemas/AccountLimit"
           },

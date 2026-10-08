@@ -192,6 +192,10 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[cfg_attr(
+        any(target_os = "android", target_os = "ios"),
+        ignore = "Needs the `dig` binary"
+    )]
     async fn smoke_ipv4() {
         let mut server = Server::default();
 
@@ -219,6 +223,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(
+        any(target_os = "android", target_os = "ios"),
+        ignore = "Needs the `dig` binary"
+    )]
     async fn smoke_ipv6() {
         let mut server = Server::default();
 

@@ -296,7 +296,13 @@ defmodule Portal.Billing.EventHandler do
       "items" => %{"data" => items}
     } = subscription_data
 
-    with {:ok, product_info, quantity} <- find_plan_product(items) do
+    plan_ids = Billing.plan_product_ids()
+
+    {plan_items, add_on_items} =
+      Enum.split_with(items, &(get_in(&1, ["price", "product"]) in plan_ids))
+
+    with {:ok, product_info, quantity} <- find_plan_product(plan_items),
+         {:ok, add_ons} <- fetch_add_ons(add_on_items) do
       %{"name" => product_name, "metadata" => product_metadata} = product_info
 
       subscription_trialing? = not is_nil(trial_end) and status in ["trialing", "paused"]
@@ -305,7 +311,8 @@ defmodule Portal.Billing.EventHandler do
         "subscription_id" => subscription_id,
         "subscription_status" => status,
         "product_name" => product_name,
-        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end))
+        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end)),
+        "add_ons" => add_ons
       }
 
       attrs =
@@ -313,7 +320,8 @@ defmodule Portal.Billing.EventHandler do
           quantity,
           product_metadata,
           subscription_metadata,
-          stripe_metadata
+          stripe_metadata,
+          add_ons
         )
         |> Map.put(:is_disabled, false)
         |> Map.put(:disabled_reason, nil)
@@ -322,14 +330,7 @@ defmodule Portal.Billing.EventHandler do
     end
   end
 
-  defp find_plan_product(items) do
-    plan_ids = Billing.plan_product_ids()
-
-    {plan_items, other_items} =
-      Enum.split_with(items, &(get_in(&1, ["price", "product"]) in plan_ids))
-
-    log_non_plan_items(other_items)
-
+  defp find_plan_product(plan_items) do
     case plan_items do
       [%{"price" => %{"product" => product_id}, "quantity" => quantity}] ->
         with {:ok, info} <- Billing.fetch_product(product_id), do: {:ok, info, quantity}
@@ -344,22 +345,33 @@ defmodule Portal.Billing.EventHandler do
     end
   end
 
-  defp log_non_plan_items(items) do
-    adhoc_id = Billing.adhoc_device_product_id()
+  # Add-on products name the limit their quantity adds to in `adds_to_limit` metadata.
+  defp fetch_add_ons(items) do
+    result =
+      Enum.reduce_while(items, {:ok, []}, fn item, {:ok, add_ons} ->
+        case Billing.fetch_product(get_in(item, ["price", "product"])) do
+          {:ok, product} -> {:cont, {:ok, put_add_on(add_ons, product, item)}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
 
-    Enum.each(items, fn %{"price" => %{"product" => product_id}} = item ->
-      if product_id == adhoc_id do
-        Logger.info("Ignoring adhoc device product in subscription",
-          product_id: product_id,
-          item_id: item["id"]
-        )
-      else
-        Logger.warning("Ignoring unrecognized product in subscription",
-          product_id: product_id,
-          item_id: item["id"]
-        )
-      end
-    end)
+    with {:ok, add_ons} <- result, do: {:ok, Enum.reverse(add_ons)}
+  end
+
+  defp put_add_on(
+         add_ons,
+         %{"name" => name, "metadata" => %{"adds_to_limit" => limit}},
+         %{"quantity" => quantity}
+       ),
+       do: [%{"name" => name, "limit" => limit, "quantity" => quantity} | add_ons]
+
+  defp put_add_on(add_ons, product, item) do
+    Logger.warning("Ignoring unrecognized product in subscription",
+      product_id: product["id"],
+      item_id: item["id"]
+    )
+
+    add_ons
   end
 
   defp update_account(customer_id, attrs) do
@@ -654,7 +666,8 @@ defmodule Portal.Billing.EventHandler do
          seats,
          product_metadata,
          subscription_metadata,
-         stripe_metadata
+         stripe_metadata,
+         add_ons
        ) do
     limit_fields = Accounts.Limits.__schema__(:fields) |> Enum.map(&to_string/1)
     feature_fields = Accounts.Features.__schema__(:fields) |> Enum.map(&to_string/1)
@@ -673,6 +686,7 @@ defmodule Portal.Billing.EventHandler do
       limits
       |> Map.put("users_count", users_count)
       |> put_seat_limit(Billing.plan_type(stripe_metadata["product_name"]), seats)
+      |> add_to_limits(add_ons)
 
     %{
       features: features,
@@ -688,6 +702,23 @@ defmodule Portal.Billing.EventHandler do
 
   defp put_seat_limit(limits, _plan_type, _seats),
     do: Map.delete(limits, "monthly_active_users_count")
+
+  defp add_to_limits(limits, add_ons) do
+    defaults = Map.new(Map.from_struct(%Accounts.Limits{}), fn {k, v} -> {to_string(k), v} end)
+
+    Enum.reduce(add_ons, limits, fn %{"limit" => limit, "quantity" => quantity}, limits ->
+      if Map.has_key?(defaults, limit) do
+        add_to_limit(limits, limit, Map.get(limits, limit, defaults[limit]), quantity)
+      else
+        Logger.error("Ignoring add-on for unknown limit", limit: limit)
+        limits
+      end
+    end)
+  end
+
+  # A nil limit is unlimited and stays unlimited.
+  defp add_to_limit(limits, _limit, nil, _quantity), do: limits
+  defp add_to_limit(limits, limit, base, quantity), do: Map.put(limits, limit, base + quantity)
 
   defp parse_metadata_params(metadata, limit_fields, metadata_fields) do
     metadata

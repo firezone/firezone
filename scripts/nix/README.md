@@ -91,11 +91,8 @@ Design goal: **zero Nix edits per release.**
   The cost: the first evaluation on a fresh machine fetches the git dependencies at eval time.
 - The Rust toolchain follows `rust/rust-toolchain.toml`.
   If CI fails with an unknown-toolchain error right after a toolchain bump, run `nix flake update rust-overlay`.
-- The **single maintained hash** is `pnpmDeps.hash` in `scripts/nix/packages/firezone-gui-client/frontend.nix`.
-  Refresh it on Linux with `scripts/nix/update-pnpm-hash.sh` whenever `gui-client/pnpm-lock.yaml` changes.
-  Nix CI and GUI release drafting run `scripts/nix/update-pnpm-hash.sh --check`, which forces a fresh dependency fetch and fails on a stale pin or fetch error.
-  The release draft and artifact builds depend on this check; commit the corrected hash before retrying. CI never silently repairs the release checkout.
-- Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and the `postinstall` script in `gui-client/package.json`; keep them in sync when those change.
+- Frontend dependencies come straight from `rust/gui-client/pnpm-lock.yaml`: each package is fetched by the lockfile's integrity hash, so dependency bumps never require a Nix change.
+- Frontend build steps in `frontend.nix` mirror `gui-client/mise-tasks/build.sh`; keep them in sync when those change.
 - Hardcoded FHS paths in Rust code (like the IPC peer-check path, see `FIREZONE_GUI_PEER_EXE` in `gui-client/src-tauri/src/ipc/unix/peer_check/linux.rs`) break NixOS builds silently.
   The Nix CI job on `rust/` PRs is what catches these at review time.
 

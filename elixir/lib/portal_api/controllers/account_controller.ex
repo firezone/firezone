@@ -31,7 +31,7 @@ defmodule PortalAPI.AccountController do
   defp build_limits(account) do
     # Get current usage counts
     users_count = Database.count_users_for_account(account)
-    monthly_active_users_count = Portal.Billing.count_monthly_active_users(account)
+    monthly_active_usage = Portal.Billing.monthly_active_usage(account)
     service_accounts_count = Database.count_service_accounts_for_account(account)
     admin_users_count = Database.count_account_admin_users_for_account(account)
     sites_count = Database.count_groups_for_account(account)
@@ -41,7 +41,11 @@ defmodule PortalAPI.AccountController do
     |> put_limit(
       :monthly_active_users,
       account.limits.monthly_active_users_count,
-      monthly_active_users_count
+      monthly_active_usage.seats
+    )
+    |> put_adhoc_service_accounts_limit(
+      account.limits.adhoc_service_accounts_count,
+      monthly_active_usage.adhoc_service_accounts
     )
     |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)
     |> put_limit(
@@ -51,6 +55,11 @@ defmodule PortalAPI.AccountController do
     )
     |> put_limit(:sites, account.limits.sites_count, sites_count)
   end
+
+  defp put_adhoc_service_accounts_limit(limits, total, used) when is_integer(total) and total > 0,
+    do: put_limit(limits, :adhoc_service_accounts, total, used)
+
+  defp put_adhoc_service_accounts_limit(limits, _total, _used), do: limits
 
   defp put_limit(limits, _key, nil, _used), do: limits
 

@@ -3,7 +3,7 @@
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>"
-#USAGE flag "--seconds <seconds>" default="1800"
+#USAGE flag "--seconds <seconds>" required=#true
 #USAGE arg "[afl_args]…" var=#true
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -20,7 +20,7 @@ step() {
         failed+=("$1")
     fi
 }
-step fuzz "$target" --workers "$workers" --seconds "${usage_seconds:-1800}" "$@"
+step fuzz "$target" --workers "$workers" --seconds "${usage_seconds:?}" "$@"
 step cmin "$target"
 step coverage "$target"
 step update-baseline "$target"

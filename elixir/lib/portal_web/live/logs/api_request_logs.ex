@@ -15,11 +15,12 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       socket
       |> assign(page_title: "API Request Logs")
       |> assign(selected_log: nil, browser_tz: browser_tz)
+      |> assign(api_request_logs: [], api_request_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [{:api_request_logs, :inserted_at}, {:api_request_logs, :log_id}],
-        callback: &handle_logs_update!/2
+        loader: &load_logs/2
       )
 
     {:ok, socket}
@@ -86,13 +87,6 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     {:noreply, socket}
   end
 
-  def handle_logs_update!(socket, list_opts) do
-    with {:ok, rows, metadata} <-
-           Database.list_api_request_logs(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, api_request_logs: rows, api_request_logs_metadata: metadata)}
-    end
-  end
-
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
@@ -102,6 +96,9 @@ defmodule PortalWeb.Logs.APIRequestLogs do
         <LiveTable.live_table
           id="api_request_logs"
           rows={@api_request_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
+          loading={@loading_by_table_id["api_request_logs"]}
+          query_error={@query_error_by_table_id["api_request_logs"]}
           row_id={&"api-request-log-#{&1.log.log_id}"}
           row_click={
             fn row ->
@@ -136,8 +133,8 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           <:col :let={row} label="Method" class="w-24">
             <.method_badge method={row.log.method} />
           </:col>
-          <:col :let={row} label="Path">
-            <span class="font-mono text-xs text-heading break-all">
+          <:col :let={row} label="Path" class="w-72">
+            <span class="block truncate font-mono text-xs text-heading" title={row.log.path}>
               {row.log.path}
             </span>
           </:col>
@@ -168,7 +165,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No API requests</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Authenticated REST API calls will appear here as they happen.
+                  Authenticated REST API calls will appear here as they happen. Try broadening the time window to see older ones.
                 </p>
               </div>
             </div>
@@ -448,6 +445,12 @@ defmodule PortalWeb.Logs.APIRequestLogs do
 
   defp first_token(ua), do: ua |> String.split() |> List.first()
 
+  defp load_logs(subject, list_opts) do
+    with {:ok, rows, metadata} <- Database.list_api_request_logs(subject, list_opts) do
+      {:ok, %{api_request_logs: rows, api_request_logs_metadata: metadata}}
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
 
@@ -460,7 +463,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
       result =
         from(arl in APIRequestLog, as: :api_request_logs)
         |> Safe.scoped(subject)
-        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
+        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
 
       case result do
         {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}
