@@ -315,7 +315,7 @@ impl GatewayState {
         use_iceless: bool,
         now: Instant,
         flow_logs_ingest_token: IngestToken,
-    ) -> anyhow::Result<()> {
+    ) {
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
@@ -327,7 +327,7 @@ impl GatewayState {
             IceConfig::server_idle(),
             use_iceless,
             now,
-        )?;
+        );
 
         let result = self.allow_access(
             client.id,
@@ -345,8 +345,6 @@ impl GatewayState {
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
         );
-
-        Ok(())
     }
 
     pub fn allow_access(

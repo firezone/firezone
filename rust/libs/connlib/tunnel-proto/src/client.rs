@@ -1011,7 +1011,7 @@ impl ClientState {
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -1040,7 +1040,7 @@ impl ClientState {
             snownet::IceConfig::client_idle(),
             use_iceless,
             now,
-        )?;
+        );
         self.outbound_authorizations
             .authorize_gateway(rid, gid, flow_logs_ingest_token);
         self.gateways_by_site
@@ -1131,13 +1131,13 @@ impl ClientState {
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> Result<()> {
+    ) {
         tracing::debug!(%cid, "New device access authorized");
 
         let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
             tracing::debug!("Ignoring device access authorization: no TUN configuration");
 
-            return Ok(());
+            return;
         };
 
         if self
@@ -1161,7 +1161,7 @@ impl ClientState {
             snownet::IceConfig::client_default(),
             use_iceless,
             now,
-        )?;
+        );
 
         let authorization = authorization.map(|auth| {
             let expires_at = auth
@@ -1218,8 +1218,6 @@ impl ClientState {
                 tracing::debug!(%cid, "Failed to route buffered packet: {e:#}");
             }
         }
-
-        Ok(())
     }
 
     fn authorize_peer_through_pool(

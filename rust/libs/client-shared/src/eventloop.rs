@@ -684,9 +684,6 @@ impl Eventloop {
                     now,
                 ) {
                     Ok(()) => {}
-                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
-                        tracing::debug!("Failed to handle authorization created: {e:#}");
-                    }
                     Err(e) => {
                         tracing::warn!("Failed to handle authorization created: {e:#}");
                     }
@@ -751,7 +748,7 @@ impl Eventloop {
                     expires_at,
                 });
 
-                match tunnel.state_mut().handle_client_device_access_authorized(
+                tunnel.state_mut().handle_client_device_access_authorized(
                     client_id,
                     PublicKey::from(client_public_key.0),
                     IpConfig {
@@ -769,19 +766,7 @@ impl Eventloop {
                     authorization,
                     flow_logs_ingest_token,
                     now,
-                ) {
-                    Ok(()) => {}
-                    Err(e) if e.any_is::<snownet::NoTurnServers>() => {
-                        tracing::debug!(
-                            "Failed to handle client device access authorization: {e:#}"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to handle client device access authorization: {e:#}"
-                        );
-                    }
-                };
+                );
             }
             IngressMessages::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
                 tunnel

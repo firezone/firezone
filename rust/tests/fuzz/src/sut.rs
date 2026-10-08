@@ -12,7 +12,6 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use anyhow::ErrorExt as _;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
@@ -21,7 +20,7 @@ use ip_packet::Ecn;
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
-use snownet::{NoTurnServers, Transmit};
+use snownet::Transmit;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
@@ -983,15 +982,7 @@ impl TunnelTest {
             });
 
             if let Some((client_id, event)) = client_event {
-                match self.on_client_event(client_id, event, ref_state, portal) {
-                    Ok(()) => {}
-                    Err(e) if e.any_is::<NoTurnServers>() => {
-                        tracing::debug!("Failed to handle ClientEvent: {e:#}");
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to handle ClientEvent: {e:#}");
-                    }
-                }
+                self.on_client_event(client_id, event, ref_state, portal);
                 continue;
             }
 
@@ -1308,7 +1299,7 @@ impl TunnelTest {
         event: ClientEvent,
         ref_state: &ReferenceState,
         portal: &mut StubPortal,
-    ) -> anyhow::Result<()> {
+    ) {
         let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
@@ -1322,7 +1313,7 @@ impl TunnelTest {
         if portal_unreachable && is_portal_bound {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
-            return Ok(());
+            return;
         }
 
         match event {
@@ -1337,8 +1328,6 @@ impl TunnelTest {
                         g.sut.add_ice_candidate(src, candidate, now)
                     }
                 });
-
-                Ok(())
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
@@ -1351,8 +1340,6 @@ impl TunnelTest {
                         g.sut.remove_ice_candidate(src, candidate, now)
                     }
                 });
-
-                Ok(())
             }
             ClientEvent::AddedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(conn_id),
@@ -1365,8 +1352,6 @@ impl TunnelTest {
                         c.sut.add_ice_candidate(src, candidate, now);
                     }
                 });
-
-                Ok(())
             }
             ClientEvent::RemovedIceCandidates {
                 conn_id: ClientOrGatewayId::Client(conn_id),
@@ -1379,8 +1364,6 @@ impl TunnelTest {
                         c.sut.remove_ice_candidate(src, candidate, now);
                     }
                 });
-
-                Ok(())
             }
             ClientEvent::RequestAccess {
                 resource_ids,
@@ -1419,15 +1402,13 @@ impl TunnelTest {
                         use_iceless,
                         now,
                         test_ingest_token(),
-                    )?;
+                    );
                     g.record_authorization(
                         src,
                         resource_id,
                         [client_tun.v4.into(), client_tun.v6.into()],
                     );
-
-                    anyhow::Ok(())
-                })?;
+                });
 
                 // The gateway's candidates and the portal's `flow_created` reply travel
                 // independently, so the client may receive them before it knows about
@@ -1446,7 +1427,7 @@ impl TunnelTest {
                 }
 
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| {
+                if let Err(e) = client.exec_mut(|c| {
                     c.sut.handle_resource_access_authorized(
                         resource_id,
                         gateway_id,
@@ -1460,9 +1441,9 @@ impl TunnelTest {
                         test_ingest_token(),
                         now,
                     )
-                })?;
-
-                Ok(())
+                }) {
+                    tracing::error!("{e:#}");
+                }
             }
             ClientEvent::RequestAccess {
                 resource_ids: pools,
@@ -1481,11 +1462,11 @@ impl TunnelTest {
                     .filter(|id| self.clients.contains_key(id))
                 else {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::NotFound);
-                    return Ok(());
+                    return;
                 };
                 if remote_id == src {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
-                    return Ok(());
+                    return;
                 }
                 let held = ref_state
                     .clients
@@ -1500,7 +1481,7 @@ impl TunnelTest {
                     .collect::<Vec<_>>();
                 let Some(pool) = portal.request_peer_access(src, remote_id, &candidates) else {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
-                    return Ok(());
+                    return;
                 };
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
 
@@ -1537,10 +1518,8 @@ impl TunnelTest {
                         Some(remote_authorization),
                         test_ingest_token(),
                         now,
-                    )?;
-
-                    anyhow::Ok(())
-                })?;
+                    );
+                });
 
                 let local_client = self.clients.get_mut(&src).expect("unknown source client");
 
@@ -1560,20 +1539,14 @@ impl TunnelTest {
                         None,
                         test_ingest_token(),
                         now,
-                    )?;
-
-                    anyhow::Ok(())
-                })?;
-
-                Ok(())
+                    );
+                });
             }
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| {
                     c.observed_resource_list = resources;
                 });
-
-                Ok(())
             }
             ClientEvent::TunInterfaceUpdated(config) => {
                 let client = self.clients.get_mut(&src).unwrap();
@@ -1593,14 +1566,10 @@ impl TunnelTest {
                     c.tcp_dns_client
                         .set_source_interface(config.ip.v4, config.ip.v6);
                 });
-
-                Ok(())
             }
             ClientEvent::DnsRecordsChanged { records } => {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.dns_resource_record_cache = records);
-
-                Ok(())
             }
             ClientEvent::NoRelays { excluded_relay_ids } => {
                 let relays = portal.request_relays(
@@ -1611,8 +1580,6 @@ impl TunnelTest {
                 );
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
-
-                Ok(())
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
@@ -1624,8 +1591,6 @@ impl TunnelTest {
                 client.exec_mut(|c| {
                     c.sut.handle_device_domain_resolved(domain, result);
                 });
-
-                Ok(())
             }
         }
     }
