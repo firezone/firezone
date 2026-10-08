@@ -7,7 +7,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq, tcp_payload};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -514,7 +514,7 @@ impl TunnelTest {
                             probe_id,
                             flow.local,
                             flow.remote,
-                            &tcp_payload(probe_id, len),
+                            &vec![0x5a; usize::from(len)],
                         )
                     });
             }

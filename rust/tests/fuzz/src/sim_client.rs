@@ -3,8 +3,8 @@ use super::{
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{
-        ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest, ReceivedResponse, Remote,
-        SubmittedRequest,
+        CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
+        ReceivedResponse, Remote, SubmittedRequest,
     },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
@@ -624,20 +624,23 @@ impl SimClient {
                 at,
                 client: self.id,
                 packet,
-                tcp_echo: None,
             }));
     }
 
     fn record_tcp_responses(&mut self, at: Instant) {
         while let Some(response) = self.tcp_client.poll_response() {
-            self.probe_observations
-                .push(ProbeObservation::ResponseReceived(ReceivedResponse {
-                    id: response.probe,
-                    at,
-                    client: self.id,
-                    packet: response.packet,
-                    tcp_echo: response.echo,
-                }));
+            match response {
+                crate::tcp::Response::Packet { probe, packet } => {
+                    self.record_received_response(probe, packet, at)
+                }
+                crate::tcp::Response::Echoed { probe } => {
+                    self.probe_observations
+                        .push(ProbeObservation::StreamCompleted(CompletedStream {
+                            id: probe,
+                            client: self.id,
+                        }))
+                }
+            }
         }
     }
 

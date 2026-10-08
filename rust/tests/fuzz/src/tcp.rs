@@ -22,12 +22,12 @@ pub struct Client {
     created_at: Instant,
 }
 
-/// A packet that answers a connect or write probe.
-pub struct Response {
-    pub probe: ProbeId,
-    pub packet: IpPacket,
-    /// Everything echoed for a write probe, reassembled from all its segments.
-    pub echo: Option<Vec<u8>>,
+/// What answers a connect or write probe.
+pub enum Response {
+    /// A SYN-ACK, reset or ICMP error.
+    Packet { probe: ProbeId, packet: IpPacket },
+    /// All of a write was echoed back.
+    Echoed { probe: ProbeId },
 }
 
 struct Connection {
@@ -45,11 +45,7 @@ struct Probe {
 
 enum ProbeKind {
     Connect,
-    Write {
-        len: usize,
-        echo: Vec<u8>,
-        last_segment: Option<IpPacket>,
-    },
+    Write { unechoed: usize },
 }
 
 pub struct Server {
@@ -141,9 +137,7 @@ impl Client {
         );
 
         let write = ProbeKind::Write {
-            len: data.len(),
-            echo: Vec::with_capacity(data.len()),
-            last_segment: None,
+            unechoed: data.len(),
         };
         connection.probe = Some(Probe::new(id, write));
 
@@ -173,10 +167,9 @@ impl Client {
             tracing::debug!(%local, %remote, "Received ICMP error");
 
             if let Some(probe) = connection.probe.take().filter(|probe| probe.submitted) {
-                self.responses.push_back(Response {
+                self.responses.push_back(Response::Packet {
                     probe: probe.id,
                     packet,
-                    echo: None,
                 });
             }
             self.forget(local, remote, handle);
@@ -220,11 +213,11 @@ impl Client {
                 socket.set_timeout(None);
             }
 
-            while let Ok(data) = socket.recv(|buf| (buf.len(), buf.to_vec())) {
-                if data.is_empty() {
+            while let Ok(len) = socket.recv(|buf| (buf.len(), buf.len())) {
+                if len == 0 {
                     break;
                 }
-                self.responses.extend(connection.receive_echo(&data));
+                self.responses.extend(connection.receive_echo(len));
             }
         }
     }
@@ -316,60 +309,37 @@ impl Connection {
     /// Returns the response if `packet` accepts or resets the submitted probe.
     fn answered_by(&mut self, packet: &IpPacket) -> Option<Response> {
         let tcp = packet.as_tcp()?;
-        let probe = self.probe.as_mut().filter(|probe| probe.submitted)?;
+        let probe = self.probe.as_ref().filter(|probe| probe.submitted)?;
 
-        let answered = match &mut probe.kind {
+        let answered = match probe.kind {
             ProbeKind::Connect => tcp.rst() || (tcp.syn() && tcp.ack()),
-            ProbeKind::Write { last_segment, .. } => {
-                if !tcp.payload().is_empty() {
-                    *last_segment = Some(packet.clone());
-                }
-
-                tcp.rst()
-            }
+            ProbeKind::Write { .. } => tcp.rst(),
         };
         if !answered {
             return None;
         }
         let probe = self.probe.take()?;
 
-        Some(Response {
+        Some(Response::Packet {
             probe: probe.id,
             packet: packet.clone(),
-            echo: None,
         })
     }
 
-    /// Returns the response once `data` completes the echo of the submitted write probe.
-    fn receive_echo(&mut self, data: &[u8]) -> Option<Response> {
+    /// Returns the response once `len` more bytes complete the echo of the submitted write probe.
+    fn receive_echo(&mut self, len: usize) -> Option<Response> {
         let probe = self.probe.as_mut().filter(|probe| probe.submitted)?;
-        let ProbeKind::Write {
-            len,
-            echo,
-            last_segment,
-        } = &mut probe.kind
-        else {
+        let ProbeKind::Write { unechoed } = &mut probe.kind else {
             return None;
         };
 
-        echo.extend_from_slice(data);
-
-        if echo.len() < *len {
+        *unechoed = unechoed.saturating_sub(len);
+        if *unechoed > 0 {
             return None;
         }
+        let probe = self.probe.take()?;
 
-        let packet = last_segment
-            .take()
-            .expect("echoed data to arrive in a segment");
-        let echo = std::mem::take(echo);
-        let id = probe.id;
-        self.probe = None;
-
-        Some(Response {
-            probe: id,
-            packet,
-            echo: Some(echo),
-        })
+        Some(Response::Echoed { probe: probe.id })
     }
 }
 

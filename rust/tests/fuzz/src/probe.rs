@@ -116,8 +116,7 @@ pub(crate) enum ProbeRequest {
         dst: Destination,
         sport: SPort,
         dport: DPort,
-        /// The `len` of a write's [`tcp_payload`](crate::transition::tcp_payload), or `None`
-        /// for a connect.
+        /// The `len` of a write, or `None` for a connect.
         write_len: Option<u16>,
     },
 }
@@ -288,8 +287,13 @@ pub(crate) struct ReceivedResponse {
     pub(crate) at: Instant,
     pub(crate) client: ClientId,
     pub(crate) packet: IpPacket,
-    /// Everything echoed for a TCP write probe, reassembled from all its segments.
-    pub(crate) tcp_echo: Option<Vec<u8>>,
+}
+
+/// All of a TCP write was echoed back on its connection.
+#[derive(Debug, Clone)]
+pub(crate) struct CompletedStream {
+    pub(crate) id: ProbeId,
+    pub(crate) client: ClientId,
 }
 
 #[derive(Debug, Clone)]
@@ -297,6 +301,7 @@ pub(crate) enum ProbeObservation {
     RequestSubmitted(SubmittedRequest),
     RequestReceived(ReceivedRequest),
     ResponseReceived(ReceivedResponse),
+    StreamCompleted(CompletedStream),
 }
 
 #[derive(Debug, Clone)]
@@ -315,6 +320,7 @@ pub(crate) struct ProbeTrace<'a> {
     pub(crate) submitted_requests: Vec<&'a SubmittedRequest>,
     pub(crate) received_requests: Vec<&'a ReceivedRequest>,
     pub(crate) received_responses: Vec<&'a ReceivedResponse>,
+    pub(crate) completed_streams: Vec<&'a CompletedStream>,
 }
 
 impl<'a> ProbeTrace<'a> {
@@ -335,12 +341,18 @@ impl<'a> ProbeTrace<'a> {
             .copied()
             .filter_map(ProbeObservation::as_received_response)
             .collect();
+        let completed_streams = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_completed_stream)
+            .collect();
 
         Self {
             observations,
             submitted_requests,
             received_requests,
             received_responses,
+            completed_streams,
         }
     }
 }
@@ -444,6 +456,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(observation) => Some(observation.id),
             ProbeObservation::RequestReceived(observation) => observation.id,
             ProbeObservation::ResponseReceived(observation) => Some(observation.id),
+            ProbeObservation::StreamCompleted(observation) => Some(observation.id),
         }
     }
 
@@ -452,6 +465,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(submitted) => Some(submitted),
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -460,6 +474,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(received) => Some(received),
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -468,6 +483,16 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(received) => Some(received),
+            ProbeObservation::StreamCompleted(_) => None,
+        }
+    }
+
+    pub(crate) fn as_completed_stream(&self) -> Option<&CompletedStream> {
+        match self {
+            ProbeObservation::RequestSubmitted(_) => None,
+            ProbeObservation::RequestReceived(_) => None,
+            ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(completed) => Some(completed),
         }
     }
 }

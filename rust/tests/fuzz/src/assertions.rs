@@ -11,7 +11,7 @@ use super::{
     sim_client::SimClient,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{Destination, tcp_payload},
+    transition::Destination,
 };
 use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -87,59 +87,60 @@ fn assert_probes(
             expected.trace_requirement,
             trace.received_requests.as_slice(),
             trace.received_responses.as_slice(),
+            trace.completed_streams.as_slice(),
         ) {
-            (TraceRequirement::ExactOrLoss(reason), [], []) => {
+            (TraceRequirement::ExactOrLoss(reason), [], [], []) => {
                 tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
                 continue;
             }
-            (TraceRequirement::Exact, _, _) => {}
-            (TraceRequirement::ExactOrLoss(_), _, _) => {}
+            (TraceRequirement::Exact, _, _, _) => {}
+            (TraceRequirement::ExactOrLoss(_), _, _, _) => {}
         }
 
         match expected.outcome {
             ExpectedOutcome::Dropped => {
-                let ([], []) = (
+                let ([], [], []) = (
                     trace.received_requests.as_slice(),
                     trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
                 ) else {
                     tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Dropped probe produced remote observations");
                     continue;
                 };
             }
-            ExpectedOutcome::RoundTripCompleted(route) => {
-                let expected_remote = route.remote();
-                let is_tcp_write = matches!(
+            ExpectedOutcome::RoundTripCompleted(_)
+                if matches!(
                     expected.request,
                     ProbeRequest::Tcp {
                         write_len: Some(_),
                         ..
                     }
-                );
-                let received_request = match (is_tcp_write, trace.received_requests.as_slice()) {
-                    // The exact echo proves that the remote received the write.
-                    (true, []) => None,
-                    (false, [received_request]) => Some(*received_request),
-                    (true, _) => {
-                        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write has received requests");
-                        continue;
-                    }
-                    (false, _) => {
-                        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
-                        continue;
-                    }
+                ) =>
+            {
+                let ([], [], [completed_stream]) = (
+                    trace.received_requests.as_slice(),
+                    trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
+                ) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write was not echoed exactly once");
+                    continue;
                 };
 
-                if let Some(received_request) = received_request {
-                    if received_request.remote != expected_remote {
-                        tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
-                    }
-                    assert_received_request(
-                        expected,
-                        submitted_request,
-                        received_request,
-                        ref_clients,
-                    );
+                if completed_stream.client != expected.origin {
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
                 }
+            }
+            ExpectedOutcome::RoundTripCompleted(route) => {
+                let expected_remote = route.remote();
+                let [received_request] = trace.received_requests.as_slice() else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
+                    continue;
+                };
+
+                if received_request.remote != expected_remote {
+                    tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+                }
+                assert_received_request(expected, submitted_request, received_request, ref_clients);
 
                 let [received_response] = trace.received_responses.as_slice() else {
                     if trace.received_responses.is_empty()
@@ -158,22 +159,20 @@ fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
                 }
 
-                match received_request {
-                    Some(received_request) => assert_received_response(
-                        expected,
-                        submitted_request,
-                        received_request,
-                        received_response,
-                        expected_remote,
-                        icmp_error_hosts,
-                    ),
-                    None => assert_echo_response(expected, submitted_request, received_response),
-                }
+                assert_received_response(
+                    expected,
+                    submitted_request,
+                    received_request,
+                    received_response,
+                    expected_remote,
+                    icmp_error_hosts,
+                );
             }
             ExpectedOutcome::Rejected { response, .. } => {
-                let ([], [received_response]) = (
+                let ([], [received_response], []) = (
                     trace.received_requests.as_slice(),
                     trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
                 ) else {
                     tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Rejected probe does not have exactly one received response and no received requests");
                     continue;
@@ -359,7 +358,7 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
         tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong destination");
     }
 
-    if !is_tcp_syn(&submitted_request.packet) {
+    if submitted_request.packet.as_tcp().is_none() {
         assert_probe_payload(expected.id, &submitted_request.packet);
     }
 
@@ -405,7 +404,7 @@ fn assert_received_request(
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
 ) {
-    if !is_tcp_syn(&submitted_request.packet) {
+    if submitted_request.packet.as_tcp().is_none() {
         assert_probe_payload(expected.id, &received_request.packet);
 
         if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
@@ -511,27 +510,13 @@ fn assert_echo_response(
                 }
             }
         }
-        ProbeRequest::Tcp { write_len, .. } => {
-            let (Some(request), Some(reply)) = (
-                submitted_request.packet.as_tcp(),
-                received_response.packet.as_tcp(),
-            ) else {
-                tracing::error!(target: "assertions", id = ?expected.id, "TCP probe or its echo is not TCP");
-                return;
-            };
-
-            if (request.source_port(), request.destination_port())
-                != (reply.destination_port(), reply.source_port())
+        ProbeRequest::Tcp { .. } => {
+            if !received_response
+                .packet
+                .as_tcp()
+                .is_some_and(|reply| reply.syn() && reply.ack())
             {
-                tracing::error!(target: "assertions", id = ?expected.id, "TCP echo ports do not match");
-            }
-            if request.syn() && !(reply.syn() && reply.ack()) {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP connect was not answered with a SYN-ACK");
-            }
-            if let Some(len) = *write_len
-                && received_response.tcp_echo != Some(tcp_payload(expected.id, len))
-            {
-                tracing::error!(target: "assertions", id = ?expected.id, "TCP echo payload does not match");
             }
         }
     }
@@ -628,17 +613,9 @@ fn assert_probe_payload(expected: ProbeId, packet: &IpPacket) {
     }
 }
 
-/// Returns whether `packet` opens a TCP connection, which submits a probe before carrying its ID.
-fn is_tcp_syn(packet: &IpPacket) -> bool {
-    packet.as_tcp().is_some_and(|tcp| tcp.syn())
-}
-
 fn probe_payload(packet: &IpPacket) -> Option<&[u8]> {
     if let Some(udp) = packet.as_udp() {
         return Some(udp.payload());
-    }
-    if let Some(tcp) = packet.as_tcp() {
-        return Some(tcp.payload());
     }
     if let Some(icmp) = packet.as_icmpv4() {
         return Some(icmp.payload());

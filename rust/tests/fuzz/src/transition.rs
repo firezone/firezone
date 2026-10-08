@@ -14,7 +14,6 @@ use super::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
-    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
@@ -73,7 +72,7 @@ pub enum Transition {
         dport: DPort,
         probe_id: ProbeId,
     },
-    /// Writes [`tcp_payload`] to an existing TCP connection; the resource echoes it back.
+    /// Writes `len` bytes to an existing TCP connection; the resource echoes them back.
     SendTcpData {
         flow_id: FlowId,
         len: u16,
@@ -321,14 +320,6 @@ impl Transition {
             Transition::UpdateDnsRecords { .. } => true,
         }
     }
-}
-
-/// Returns the bytes a [`Transition::SendTcpData`] writes: the probe ID, followed by `len` bytes.
-pub(crate) fn tcp_payload(probe_id: ProbeId, len: u16) -> Vec<u8> {
-    iter::empty()
-        .chain(probe_id.to_be_bytes())
-        .chain(iter::repeat_n(0x5a, usize::from(len)))
-        .collect()
 }
 
 fn is_device_pool(resource: &Resource) -> bool {

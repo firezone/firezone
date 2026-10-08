@@ -637,7 +637,7 @@ impl ExecMutScope for SimGateway {
     fn enter(&self) -> Self::Guard {}
 }
 
-pub(crate) fn tcp_tuple(packet: &IpPacket) -> Option<(IpAddr, u16, IpAddr, u16)> {
+fn tcp_tuple(packet: &IpPacket) -> Option<(IpAddr, u16, IpAddr, u16)> {
     let tcp = packet.as_tcp()?;
 
     Some((
