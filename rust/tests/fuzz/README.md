@@ -39,12 +39,12 @@ Install the tools declared in [mise.toml](mise.toml), then select a target:
 
 ```console
 mise install --cd rust/tests/fuzz
-mise run //rust/tests/fuzz:fuzz ip-packet
+mise run //rust/tests/fuzz:fuzz ip-packet --seconds 60
 mise run //rust/tests/fuzz:replay ip-packet
 mise run //rust/tests/fuzz:replay ip-packet --repeat 100
 ```
 
-Discovery accepts `--workers` and `--seconds`; replay reports iterations per second.
+Discovery requires `--seconds` and accepts `--workers`; replay reports iterations per second.
 For local discovery, follow AFL++'s startup diagnostics for host configuration.
 
 To minimize and investigate a saved crash:

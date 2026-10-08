@@ -7,10 +7,35 @@ backend = "github:rorkai/App-Store-Connect-CLI"
 [tools."github:rorkai/App-Store-Connect-CLI".options]
 version_prefix = ""
 
+[tools."github:rorkai/App-Store-Connect-CLI"."platforms.linux-arm64"]
+checksum = "sha256:aa81ffabd8c755ad2aae6ff9b79267d4523bcecc5c1f9c7f4abe33b8b52ad774"
+url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_linux_arm64"
+url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535062799"
+
+[tools."github:rorkai/App-Store-Connect-CLI"."platforms.linux-arm64-musl"]
+checksum = "sha256:aa81ffabd8c755ad2aae6ff9b79267d4523bcecc5c1f9c7f4abe33b8b52ad774"
+url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_linux_arm64"
+url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535062799"
+
 [tools."github:rorkai/App-Store-Connect-CLI"."platforms.linux-x64"]
 checksum = "sha256:5b963646eb39d51f8b1ac44466bf5e23fc2e41ae25debaa1b221c883a17a8591"
 url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_linux_amd64"
 url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535062671"
+
+[tools."github:rorkai/App-Store-Connect-CLI"."platforms.linux-x64-musl"]
+checksum = "sha256:5b963646eb39d51f8b1ac44466bf5e23fc2e41ae25debaa1b221c883a17a8591"
+url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_linux_amd64"
+url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535062671"
+
+[tools."github:rorkai/App-Store-Connect-CLI"."platforms.macos-arm64"]
+checksum = "sha256:b928a12dec6be975271a2d374ba811717447a211089c6c89d3318d32c61c8202"
+url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_macOS_arm64"
+url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535063002"
+
+[tools."github:rorkai/App-Store-Connect-CLI"."platforms.macos-x64"]
+checksum = "sha256:276b0ca833041294983fa2506e428b2a5ad29915a141b709251ea90e4a4ef3b4"
+url = "https://github.com/rorkai/App-Store-Connect-CLI/releases/download/4.11.0/asc_4.11.0_macOS_amd64"
+url_api = "https://api.github.com/repos/rorkai/App-Store-Connect-CLI/releases/assets/535062944"
 
 [[tools.swiftlint]]
 version = "0.63.0"
