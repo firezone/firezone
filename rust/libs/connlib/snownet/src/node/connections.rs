@@ -62,7 +62,7 @@ where
 {
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-    pub(crate) fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
@@ -118,12 +118,11 @@ where
     }
 
     /// Closes the connection to `id` and sends `goodbye` to the peer.
-    ///
-    /// Returns `false` if there is no such connection.
-    pub(crate) fn close(&mut self, id: TId, goodbye: IpPacket, now: Instant) -> bool {
-        let Some(connection) = self.established.remove(&id) else {
-            return false;
-        };
+    pub(crate) fn close(&mut self, id: TId, goodbye: IpPacket, now: Instant) -> Result<()> {
+        let connection = self
+            .established
+            .remove(&id)
+            .context("Cannot close unknown connection")?;
 
         if !connection.is_failed() {
             tracing::info!("Connection closed proactively (goodbye pending)");
@@ -135,7 +134,7 @@ where
         };
         self.closing.insert(id, (connection, goodbye));
 
-        true
+        Ok(())
     }
 
     pub(crate) fn remove_closing(
@@ -208,6 +207,8 @@ where
 
             connection.state = ConnectionState::Failed;
         }
+
+        self.remove_failed(events, now);
     }
 
     /// Soft-resets all connections for a roam and queues them for relay migration.

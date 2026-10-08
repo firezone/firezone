@@ -456,8 +456,8 @@ where
     pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
         self.last_now = now;
 
-        if !self.connections.close(cid, goodbye, now) {
-            tracing::debug!("Cannot close unknown connection");
+        if let Err(e) = self.connections.close(cid, goodbye, now) {
+            tracing::debug!("{e:#}");
 
             return;
         }
@@ -661,7 +661,20 @@ where
 
         self.allocations_drain_events(now);
 
-        let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
+        let gc = self.allocations.gc();
+
+        if gc.removed_last {
+            tracing::info!("Removed last relay; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays);
+        }
+
+        self.connections.migrate_relays(
+            gc.removed.into_iter(),
+            &mut self.allocations,
+            &mut self.pending_events,
+            now,
+        );
 
         self.connections.handle_timeout(
             &mut self.allocations,
@@ -670,6 +683,8 @@ where
             &mut self.inflight_stun_requests,
             now,
         );
+
+        let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
 
         for (_, connection) in self.connections.iter_established() {
             if let Some(peer_socket) = connection.state.peer_socket() {
@@ -685,22 +700,6 @@ where
                 .record(count, &[otel_attributes::connection_socket(kind)]);
         }
 
-        let gc = self.allocations.gc();
-
-        if gc.removed_last {
-            tracing::info!("Removed last relay; requesting a new set");
-
-            self.pending_events.push_back(Event::NoRelays);
-        }
-
-        self.connections.migrate_relays(
-            gc.removed.into_iter(),
-            &mut self.allocations,
-            &mut self.pending_events,
-            now,
-        );
-        self.connections
-            .remove_failed(&mut self.pending_events, now);
         self.buffered_candidates.handle_timeout(now);
         self.inflight_stun_requests.handle_timeout(now);
     }
