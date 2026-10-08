@@ -943,10 +943,17 @@ impl ReferenceState {
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
 
+        // The gateway checks every CIDR route it still authorizes for the client, so another
+        // CIDR resource on the same gateway can permit traffic the selected resource does not.
+        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
+            portal.gateway_cidr_authorization_allows(origin, gateway, ip, protocol)
+        });
+
         // The Gateway lost its authorization while the client still believes it holds one:
         // it rejects this packet and tells the client to request a new authorization.
         if client.connected_resources().contains(&resource)
             && !portal.holds_gateway_authorization(origin, resource)
+            && !allowed_by_another_cidr
         {
             return Some(RejectionResponse::Prohibited);
         }
@@ -960,14 +967,6 @@ impl ReferenceState {
             return Some(RejectionResponse::Unreachable);
         }
 
-        // Only a client that ignores resource filters sends traffic the selected resource
-        // rejects. The gateway checks every route it authorized for the client instead, so
-        // a broader CIDR resource on the same gateway can still permit it.
-        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
-            client
-                .connected_cidr_resources_allowing(ip, protocol)
-                .any(|cidr| client.gateway_for_resource(cidr) == Some(gateway))
-        });
         if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
             return Some(RejectionResponse::Prohibited);
         }
