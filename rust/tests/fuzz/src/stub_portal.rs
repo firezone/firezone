@@ -1,5 +1,6 @@
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
+use ip_packet::Protocol;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -11,6 +12,7 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
+use crate::ref_client::protocol_filter_allows;
 use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
 use crate::sim_net::Host;
@@ -397,6 +399,27 @@ impl StubPortal {
         self.gateway_policy_authorizations
             .get(&(client, resource))
             .is_some_and(|authorization| !authorization.revoked)
+    }
+
+    /// Whether `gateway` holds an authorization for `client` to a CIDR resource that permits
+    /// `protocol` to `ip`.
+    pub(crate) fn gateway_cidr_authorization_allows(
+        &self,
+        client: ClientId,
+        gateway: GatewayId,
+        ip: IpAddr,
+        protocol: Protocol,
+    ) -> bool {
+        self.cidr_resources.values().any(|cidr| {
+            cidr.address.contains(ip)
+                && protocol_filter_allows(&cidr.filters, protocol)
+                && self
+                    .gateway_policy_authorizations
+                    .get(&(client, cidr.id))
+                    .is_some_and(|authorization| {
+                        authorization.gateway == gateway && !authorization.revoked
+                    })
+        })
     }
 
     /// Resources some Gateway currently holds an authorization for.

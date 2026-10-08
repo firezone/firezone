@@ -274,7 +274,7 @@ mod tests {
         let (test_tun, mut send_rx, _send_tx) = TestTun::with_capacity(3);
         device.set_tun(Box::new(test_tun));
 
-        for i in 0..(2 * tun::MAX_BATCH_SIZE + 50) {
+        for i in 0..(2 * tun::MAX_BATCH_SIZE + tun::MAX_BATCH_SIZE / 2) {
             device.queue(test_packet(i as u16));
         }
         device.flush_batch();
@@ -285,7 +285,7 @@ mod tests {
 
         assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE);
         assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE);
-        assert_eq!(send_rx.recv().await.unwrap().len(), 50);
+        assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE / 2);
     }
 
     fn expect_single(mut batch: PacketBatch) -> IpPacket {
