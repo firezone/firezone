@@ -376,9 +376,7 @@ impl ReferenceState {
                     .exec_mut(|client| client.note_sent(outcome.remote(), now));
 
                 let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route)
-                        if self.tcp_listener_at(dst, *dport) =>
-                    {
+                    ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
                         let flow = TcpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -789,6 +787,16 @@ impl ReferenceState {
         outcome
     }
 
+    fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
+        match dst {
+            Destination::DomainName { name, .. } => self
+                .tcp_resources
+                .get(name)
+                .is_some_and(|ports| ports.contains(&dport.0)),
+            Destination::IpAddr(_) => false,
+        }
+    }
+
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
     /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
     fn dispatch(
@@ -1166,17 +1174,6 @@ impl ReferenceState {
 
     pub(crate) fn udp_flows(&self) -> Vec<FlowId> {
         self.udp_flows.keys().copied().collect()
-    }
-
-    /// Returns whether a TCP server listens at `dst`; every other destination resets connections.
-    fn tcp_listener_at(&self, dst: &Destination, dport: DPort) -> bool {
-        match dst {
-            Destination::DomainName { name, .. } => self
-                .tcp_resources
-                .get(name)
-                .is_some_and(|ports| ports.contains(&dport.0)),
-            Destination::IpAddr(_) => false,
-        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {

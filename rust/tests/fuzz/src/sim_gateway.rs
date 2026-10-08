@@ -38,9 +38,9 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    /// The TCP server of each `(domain, port)`, listening on every address the Gateway resolved the domain to.
+    /// The TCP server of each `(domain, port)`, serving every address the Gateway resolved the domain to.
     tcp_servers: BTreeMap<(DomainName, u16), crate::tcp::Server>,
-    /// Answers TCP to any address without a listening server with a reset.
+    /// Answers TCP to any address without a TCP server with a reset.
     closed_tcp_ports: crate::tcp::Server,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
