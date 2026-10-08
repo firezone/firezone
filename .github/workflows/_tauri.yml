@@ -248,7 +248,6 @@ jobs:
           # For Sentry. Ends up in the pdb on Windows and a `.debug` file on Linux.
           CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
-        # Not Git Bash: it hands `mise` a POSIX `PATH` that then reaches cargo unconverted.
         run: mise run build --out ${{ env.BINARY_DEST_PATH }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
