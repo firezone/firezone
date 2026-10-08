@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Build the release GUI client and its packages: deb and rpm on Linux, a signed MSI on Windows"
 #MISE dir="{{config_root}}"
-#USAGE flag "--out <prefix>" help="Also copy each package to <prefix>.<ext>, next to its SHA256 sum"
+#USAGE flag "--out <prefix>" help="Also copy each package to <prefix>.<ext>"
 set -euxo pipefail
 
 release=../target/release
@@ -54,8 +54,6 @@ pnpm exec tauri bundle
 
 if [[ -n "${usage_out:-}" ]]; then
     for ext in "${packages[@]}"; do
-        dest="$usage_out.$ext"
-        cp "$release"/bundle/"$ext"/*."$ext" "$dest"
-        sha256sum "$dest" >"$dest.sha256sum.txt"
+        cp "$release"/bundle/"$ext"/*."$ext" "$usage_out.$ext"
     done
 fi

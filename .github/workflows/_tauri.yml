@@ -332,7 +332,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: mise run upload-release gui-client-${{ env.FIREZONE_GUI_VERSION }} ${{ env.BINARY_DEST_PATH }}
+          RELEASE_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
+        shell: bash
+        run: |
+          # The asset names are tied to the update checker in `src-tauri/src/updates.rs`.
+          if [[ "$RUNNER_OS" == Linux ]]; then exts=(deb rpm); else exts=(msi); fi
+          for ext in "${exts[@]}"; do
+              ARTIFACT_PATH="$BINARY_DEST_PATH.$ext" ../../scripts/upload/github-release.sh
+          done
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
