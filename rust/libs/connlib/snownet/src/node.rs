@@ -296,7 +296,6 @@ where
     ///
     /// If we already have a connection with the same parameters, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
-    /// A new connection without a usable relay waits until one becomes available.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn upsert_connection(
         &mut self,
@@ -661,14 +660,7 @@ where
             self.pending_events.push_back(Event::NoRelays);
         }
 
-        if !gc.removed.is_empty() {
-            self.connections.migrate_relays(
-                gc.removed.into_iter(),
-                &mut self.allocations,
-                &mut self.pending_events,
-                now,
-            );
-        }
+        self.connections.clear_relays(gc.removed.into_iter());
 
         self.connections.handle_timeout(
             &mut self.allocations,
@@ -788,14 +780,8 @@ where
             previous_allocation.refresh(now);
         }
 
-        // Fourth, migrate existing connections away from removed relays and select a relay for
-        // all connections waiting for one.
-        self.connections.migrate_relays(
-            to_remove.into_iter(),
-            &mut self.allocations,
-            &mut self.pending_events,
-            now,
-        );
+        // Fourth, detach existing connections from removed relays.
+        self.connections.clear_relays(to_remove.into_iter());
     }
 
     #[must_use]
@@ -1115,15 +1101,11 @@ where
     }
 
     fn allocations_drain_events(&mut self, now: Instant) {
-        let mut any_new_candidates = false;
-
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
-                    any_new_candidates = true;
-
                     for (cid, c) in self.connections.iter_mut_by_relay(rid) {
                         c.add_local_candidate(cid, &candidate, &mut self.pending_events, now);
                     }
@@ -1134,13 +1116,6 @@ where
                     }
                 }
             }
-        }
-
-        // An allocation's first candidates arrive together with its first RTT measurement,
-        // which is what makes it eligible for sampling.
-        if any_new_candidates {
-            self.connections
-                .assign_relays(&mut self.allocations, &mut self.pending_events, now);
         }
     }
 }
@@ -2204,6 +2179,15 @@ where
         matches!(self.state, ConnectionState::Failed)
     }
 
+    fn clear_relay<TId>(&mut self, cid: TId)
+    where
+        TId: fmt::Display,
+    {
+        if let Some(rid) = self.relay.take() {
+            tracing::debug!(%cid, %rid, "Cleared relay of connection");
+        }
+    }
+
     /// Samples a relay for this connection and seeds the agent with its candidates.
     fn assign_relay<TId>(
         &mut self,
@@ -2215,7 +2199,6 @@ where
         TId: fmt::Display + Copy,
     {
         let Some(rid) = allocations.sample() else {
-            tracing::debug!(%cid, "No relay available; waiting for one");
             return;
         };
 

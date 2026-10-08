@@ -126,6 +126,10 @@ where
         now: Instant,
     ) {
         for (&cid, connection) in self.established.iter_mut() {
+            if connection.relay.is_none() {
+                connection.assign_relay(cid, allocations, events, now);
+            }
+
             connection.handle_timeout(
                 cid,
                 now,
@@ -181,9 +185,9 @@ where
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
 
-        for conn in self.established.values_mut() {
+        for (cid, conn) in self.established.iter_mut() {
             conn.reset_for_roam(now);
-            conn.relay = None;
+            conn.clear_relay(*cid);
 
             num_connections += 1;
         }
@@ -191,39 +195,11 @@ where
         num_connections
     }
 
-    /// Moves connections off the removed relays and selects a relay for every connection waiting
-    /// for one.
-    pub(crate) fn migrate_relays(
-        &mut self,
-        removed_allocations: impl Iterator<Item = RId>,
-        allocations: &mut Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
-    ) {
+    pub(crate) fn clear_relays(&mut self, removed_allocations: impl Iterator<Item = RId>) {
         for removed_relay in removed_allocations {
             for (cid, c) in self.iter_mut_by_relay(removed_relay) {
-                tracing::debug!(%cid, rid = %removed_relay, "Relay of connection was removed");
-
-                c.relay = None;
+                c.clear_relay(cid);
             }
-        }
-
-        self.assign_relays(allocations, pending_events, now);
-    }
-
-    /// Selects a relay for every connection that is waiting for one.
-    pub(crate) fn assign_relays(
-        &mut self,
-        allocations: &mut Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
-        now: Instant,
-    ) {
-        for (cid, c) in self
-            .established
-            .iter_mut()
-            .filter(|(_, c)| c.relay.is_none())
-        {
-            c.assign_relay(*cid, allocations, pending_events, now);
         }
     }
 
@@ -659,18 +635,12 @@ mod tests {
         let conn = new_connection(12345, Some(1), [1u8; 32]);
         connections.insert_established(1, conn.index, conn);
 
-        let mut pending_events = VecDeque::new();
-        connections.migrate_relays(
-            std::iter::once(1u32),
-            &mut allocations,
-            &mut pending_events,
-            now,
-        );
+        connections.clear_relays(std::iter::once(1u32));
 
         assert_eq!(connections.get_mut(&1, now).unwrap().relay, None);
 
         add_sampleable_allocation(&mut allocations, 2, now);
-        connections.assign_relays(&mut allocations, &mut pending_events, now);
+        handle_timeout_with_allocations(&mut connections, &mut allocations, now);
 
         assert_eq!(connections.get_mut(&1, now).unwrap().relay, Some(2));
     }
@@ -692,7 +662,7 @@ mod tests {
         assert_eq!(connections.get_mut(&1, now).unwrap().relay, None);
 
         add_sampleable_allocation(&mut allocations, 2, now);
-        connections.assign_relays(&mut allocations, &mut VecDeque::new(), now);
+        handle_timeout_with_allocations(&mut connections, &mut allocations, now);
 
         assert_eq!(connections.get_mut(&1, now).unwrap().relay, Some(2));
     }
@@ -714,8 +684,16 @@ mod tests {
     }
 
     fn handle_timeout(connections: &mut Connections<u32, u32>, now: Instant) {
+        handle_timeout_with_allocations(connections, &mut Allocations::for_test(), now);
+    }
+
+    fn handle_timeout_with_allocations(
+        connections: &mut Connections<u32, u32>,
+        allocations: &mut Allocations<u32>,
+        now: Instant,
+    ) {
         connections.handle_timeout(
-            &mut Allocations::for_test(),
+            allocations,
             &mut TransmitBuffer::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
