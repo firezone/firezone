@@ -119,12 +119,16 @@ jobs:
       - name: Configure crash reporting for AFL++
         run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
-        # AFL's time budget excludes corpus calibration.
-        timeout-minutes: 60
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds 1800
+        # AFL's time budget excludes corpus calibration. tunnel-proto's slow
+        # executions stop its workers within their first queue cycle, so it
+        # gets a longer budget.
+        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel-proto' && 150 || 60 }}
+        env:
+          FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel-proto' && 7200 || 1800 }}
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds "$FUZZ_SECONDS"
       - name: Minimize the corpus
         if: ${{ !cancelled() }}
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
       - name: Measure coverage
         if: ${{ !cancelled() }}
