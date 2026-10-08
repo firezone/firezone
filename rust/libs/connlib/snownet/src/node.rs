@@ -59,9 +59,6 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
-/// How long a closed connection waits until it can encrypt its goodbye; matches WireGuard's handshake timeout.
-const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -459,25 +456,13 @@ where
     pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
         self.last_now = now;
 
-        let goodbye = Goodbye {
-            packet: goodbye,
-            deadline: now + GOODBYE_TIMEOUT,
-        };
-        let Some((connection, goodbye)) = self.connections.close(cid, goodbye) else {
+        let Some(connection) = self.connections.close(cid, goodbye, now) else {
             tracing::debug!("Cannot close unknown connection");
 
             return;
         };
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
-
-        connection.try_send_goodbye(
-            cid,
-            goodbye,
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-            now,
-        );
 
         if !connection.is_failed() {
             tracing::info!("Connection closed proactively (goodbye pending)");
@@ -490,6 +475,9 @@ where
         for id in self.connections.iter_ids().collect::<Vec<_>>() {
             self.close_connection(id, goodbye.clone(), now);
         }
+
+        // Callers shut down right after this, so no later timeout would send the goodbyes.
+        self.handle_timeout(now);
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -694,29 +682,12 @@ where
             }
         }
 
-        for (id, connection, goodbye) in self.connections.iter_closing_mut() {
-            if now >= goodbye.deadline {
-                tracing::info!(%id, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
-                connection.state = ConnectionState::Failed;
-                continue;
-            }
-
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                &mut VecDeque::new(),
-                &mut self.inflight_stun_requests,
-            );
-            connection.try_send_goodbye(
-                id,
-                goodbye,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                now,
-            );
-        }
+        self.connections.handle_closing_timeout(
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.inflight_stun_requests,
+            now,
+        );
 
         // Report the current number of connections per network path. Every bucket is
         // emitted (including `0`) so that a path draining to zero is not stuck at its
@@ -1081,7 +1052,7 @@ where
             return ControlFlow::Break(Err(anyhow::Error::msg("Not a WireGuard packet")));
         };
 
-        let (cid, conn, goodbye) = match &parsed_packet {
+        let (cid, conn, is_closing) = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             Packet::HandshakeInit(handshake_init) => {
                 let handshake = match boringtun::noise::handshake::parse_handshake_anon(
@@ -1146,24 +1117,14 @@ where
             // Only signal establishment once we can actually send, i.e. ICE has nominated a
             // socket. On the controlled side the handshake can complete before nomination, in
             // which case the event is emitted from the `NominatedSend` handler instead.
-            if conn.state.has_nominated_socket() && goodbye.is_none() {
+            if conn.state.has_nominated_socket() && !is_closing {
                 self.pending_events
                     .push_back(Event::ConnectionEstablished(cid))
             }
         }
 
-        if let Some(goodbye) = goodbye {
-            conn.try_send_goodbye(
-                cid,
-                goodbye,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                now,
-            );
-
-            if control_flow.is_continue() {
-                return ControlFlow::Break(Ok(()));
-            }
+        if is_closing && control_flow.is_continue() {
+            return ControlFlow::Break(Ok(()));
         }
 
         control_flow
@@ -1435,12 +1396,6 @@ struct Connection<RId> {
 }
 
 #[derive(Debug)]
-struct Goodbye {
-    packet: IpPacket,
-    deadline: Instant,
-}
-
-#[derive(Debug)]
 struct SelectedRelay<RId> {
     id: RId,
 }
@@ -1481,34 +1436,6 @@ where
         }
 
         Ok(socket)
-    }
-
-    /// Sends `goodbye` if the connection can encrypt it, marking the connection for removal.
-    fn try_send_goodbye<TId>(
-        &mut self,
-        cid: TId,
-        goodbye: &Goodbye,
-        allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
-        now: Instant,
-    ) where
-        TId: fmt::Display + Copy,
-    {
-        let result = self.ready_socket(cid).and_then(|socket| {
-            self.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits)
-        });
-
-        match result {
-            Ok(Some(_)) => {
-                tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
-
-                self.state = ConnectionState::Failed;
-            }
-            Ok(None) => {}
-            Err(e) => {
-                tracing::trace!(%cid, "Cannot send goodbye yet: {e:#}");
-            }
-        }
     }
 
     #[must_use]

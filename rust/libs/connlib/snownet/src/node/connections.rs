@@ -8,14 +8,20 @@ use std::{
 
 use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
+use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
 
 use crate::{
     Event,
+    buffer::TransmitBuffer,
     node::{
-        Connection, Goodbye, allocations::Allocations, inflight_stun_requests::InflightStunRequests,
+        Connection, ConnectionState, allocations::Allocations,
+        inflight_stun_requests::InflightStunRequests,
     },
 };
+
+/// How long a closed connection waits until it can encrypt its goodbye; matches WireGuard's handshake timeout.
+const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
@@ -115,12 +121,18 @@ where
     pub(crate) fn close(
         &mut self,
         id: TId,
-        goodbye: Goodbye,
-    ) -> Option<&mut (Connection<RId>, Goodbye)> {
+        goodbye: IpPacket,
+        now: Instant,
+    ) -> Option<&Connection<RId>> {
         let connection = self.established.remove(&id)?;
+        let goodbye = Goodbye {
+            packet: goodbye,
+            deadline: now + GOODBYE_TIMEOUT,
+            attempted_while_ready: false,
+        };
         self.closing.insert(id, (connection, goodbye));
 
-        self.closing.get_mut(&id)
+        self.closing.get(&id).map(|(c, _)| c)
     }
 
     pub(crate) fn remove_closing(
@@ -139,10 +151,54 @@ where
         }
     }
 
-    pub(crate) fn iter_closing_mut(
+    /// Advances the closing connections and sends their goodbye once they can encrypt it.
+    pub(crate) fn handle_closing_timeout(
         &mut self,
-    ) -> impl Iterator<Item = (TId, &mut Connection<RId>, &Goodbye)> {
-        self.closing.iter_mut().map(|(id, (c, g))| (*id, c, &*g))
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+        inflight_stun_requests: &mut InflightStunRequests<TId>,
+        now: Instant,
+    ) {
+        for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
+            if now >= goodbye.deadline {
+                tracing::info!(id = %cid, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
+                connection.state = ConnectionState::Failed;
+                continue;
+            }
+
+            connection.handle_timeout(
+                cid,
+                now,
+                allocations,
+                transmits,
+                &mut VecDeque::new(),
+                inflight_stun_requests,
+            );
+
+            let socket = match connection.ready_socket(cid) {
+                Ok(socket) => socket,
+                Err(e) => {
+                    tracing::trace!(%cid, "Cannot send goodbye yet: {e:#}");
+                    continue;
+                }
+            };
+            goodbye.attempted_while_ready = true;
+
+            let result =
+                connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits);
+
+            match result {
+                Ok(Some(_)) => {
+                    tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
+
+                    connection.state = ConnectionState::Failed;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    tracing::trace!(%cid, "Cannot send goodbye yet: {e:#}");
+                }
+            }
+        }
     }
 
     /// Soft-resets all connections for a roam and queues them for relay migration.
@@ -258,7 +314,7 @@ where
         &mut self,
         index: Index,
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>, Option<&Goodbye>)> {
+    ) -> Result<(TId, &mut Connection<RId>, bool)> {
         let id = *self
             .established_by_wireguard_session_index
             .get(&index.global())
@@ -266,31 +322,27 @@ where
                 UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
             })?;
 
-        let (connection, goodbye) = self.get_mut_including_closing(&id, now)?;
+        let (connection, is_closing) = self.get_mut_including_closing(&id, now)?;
 
-        Ok((id, connection, goodbye))
+        Ok((id, connection, is_closing))
     }
 
     pub(crate) fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>, Option<&Goodbye>)> {
-        let (id, conn, goodbye) = self
+    ) -> Result<(TId, &mut Connection<RId>, bool)> {
+        let (id, conn, is_closing) = self
             .established
             .iter_mut()
-            .map(|(id, c)| (*id, c, None))
-            .chain(
-                self.closing
-                    .iter_mut()
-                    .map(|(id, (c, g))| (*id, c, Some(&*g))),
-            )
+            .map(|(id, c)| (*id, c, false))
+            .chain(self.closing.iter_mut().map(|(id, (c, _))| (*id, c, true)))
             .find(|(_, c, _)| c.tunnel.remote_static_public().as_bytes() == &key)
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
 
-        Ok((id, conn, goodbye))
+        Ok((id, conn, is_closing))
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -334,17 +386,17 @@ where
         &mut self,
         id: &TId,
         now: Instant,
-    ) -> Result<(&mut Connection<RId>, Option<&Goodbye>)> {
+    ) -> Result<(&mut Connection<RId>, bool)> {
         if let Some(connection) = self.established.get_mut(id) {
-            return Ok((connection, None));
+            return Ok((connection, false));
         }
 
-        let (connection, goodbye) = self
+        let (connection, _) = self
             .closing
             .get_mut(id)
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
-        Ok((connection, Some(goodbye)))
+        Ok((connection, true))
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
@@ -387,8 +439,14 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
-            .chain(self.closing.values_mut().flat_map(|(c, goodbye)| {
-                iter::once((goodbye.deadline, "goodbye timeout")).chain(c.poll_timeout())
+            .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
+                let ready_at = c
+                    .first_handshake_completed_at
+                    .filter(|_| !goodbye.attempted_while_ready && c.ready_socket(*id).is_ok());
+
+                iter::once((goodbye.deadline, "goodbye timeout"))
+                    .chain(ready_at.map(|t| (t, "goodbye ready")))
+                    .chain(c.poll_timeout())
             }))
             .chain(
                 self.disconnected_ids
@@ -425,6 +483,14 @@ where
             )
             .min_by_key(|(instant, _)| *instant)
     }
+}
+
+#[derive(Debug)]
+struct Goodbye {
+    packet: IpPacket,
+    deadline: Instant,
+    /// Whether we tried to send while the connection could encrypt; after that, only the connection's own timers retry.
+    attempted_while_ready: bool,
 }
 
 #[derive(Debug)]
