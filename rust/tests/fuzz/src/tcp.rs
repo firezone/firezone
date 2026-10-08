@@ -145,17 +145,18 @@ impl Client {
         }
     }
 
-    /// Silently drops every connection for which `keep` returns `false`.
-    pub fn retain(&mut self, mut keep: impl FnMut(SocketAddr, SocketAddr) -> bool) {
-        for ((local, remote), maybe_socket) in &mut self.sockets_by_conn {
-            if keep(*local, *remote) {
-                continue;
-            }
-            let Some(handle) = maybe_socket.take() else {
+    /// Silently drops every connection that has not completed its handshake.
+    pub fn drop_unfinished(&mut self) {
+        for maybe_socket in self.sockets_by_conn.values_mut() {
+            let Some(handle) = *maybe_socket else {
                 continue;
             };
+            if self.sockets.get::<Socket>(handle).state() == l3_tcp::State::Established {
+                continue;
+            }
 
             self.sockets.remove(handle);
+            *maybe_socket = None;
         }
     }
 }
