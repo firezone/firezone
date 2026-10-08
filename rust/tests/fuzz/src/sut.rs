@@ -805,12 +805,30 @@ impl TunnelTest {
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);
+        self.drop_unexpected_tcp_connections(ref_state);
 
         if let Some((probe_id, flow_id)) = application_probe {
             self.record_dns_nat_observation(ref_state, probe_id, flow_id);
         }
 
         self
+    }
+
+    /// Silently drops the TCP connections the reference model does not expect to be established.
+    fn drop_unexpected_tcp_connections(&mut self, ref_state: &ReferenceState) {
+        for (client_id, client) in &mut self.clients {
+            let expected = &ref_state.clients[client_id]
+                .inner()
+                .expected_tcp_connections;
+
+            client.exec_mut(|c| {
+                c.tcp_client.retain(|local, remote| {
+                    expected.keys().any(|(src, _, sport, dport)| {
+                        (*src, sport.0, dport.0) == (local.ip(), local.port(), remote.port())
+                    })
+                })
+            });
+        }
     }
 
     fn send_icmp_probe(
