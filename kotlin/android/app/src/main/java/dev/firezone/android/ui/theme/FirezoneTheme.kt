@@ -1,5 +1,5 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
-package dev.firezone.android.features.session.ui.compose
+package dev.firezone.android.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -148,6 +148,8 @@ private val SourceSans =
 private val FirezoneTypography =
     Typography().let { base ->
         base.copy(
+            displaySmall = base.displaySmall.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
+            headlineLarge = base.headlineLarge.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             headlineSmall = base.headlineSmall.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             titleLarge = base.titleLarge.copy(fontFamily = SourceSans, fontWeight = FontWeight.Bold),
             bodyLarge = base.bodyLarge.copy(fontFamily = SourceSans),
