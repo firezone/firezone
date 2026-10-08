@@ -323,6 +323,11 @@ checksum = "sha256:d19d373866765ecf17112501daa645b8be3f23d231989a7824d4ec73b1efd
 url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-x86_64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937689"
 
+[tools."github:tauri-apps/tauri"."platforms.windows-arm64"]
+checksum = "sha256:9cfecb8e103944cf9ece6299fa625d6cc0f11b03fb94d487ae43ffdca556af9a"
+url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-aarch64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937684"
+
 [tools."github:tauri-apps/tauri"."platforms.windows-x64"]
 checksum = "sha256:b6844470bcbf1da6e5dbf01990ae317d4d7969171628bb8badbdbff2e3d06d23"
 url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-x86_64-pc-windows-msvc.zip"
