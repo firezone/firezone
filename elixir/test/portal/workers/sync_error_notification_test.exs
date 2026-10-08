@@ -216,7 +216,8 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
-      provider = intune_posture_provider_fixture(account: account)
+      provider =
+        intune_posture_provider_fixture(account: account, synced_at: DateTime.add(DateTime.utc_now(), -2, :hour))
 
       Portal.Intune.ErrorHandler.handle(
         Portal.Intune.SyncError.exception(

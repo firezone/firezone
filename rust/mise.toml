@@ -38,6 +38,25 @@ cargo metadata --format-version=1 --no-deps |
   jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
 '''
 
+[tasks.mobile-test-packages]
+description = "Print `-p` flags for `client-ffi` and every workspace crate it depends on for the given target"
+usage = 'arg "<triple>"'
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --filter-platform "$usage_triple" |
+  jq -r '
+    (.resolve.nodes | map({key: .id, value: [.deps[] | select(any(.dep_kinds[]; .kind == null)) | .pkg]}) | from_entries) as $deps
+    | (.packages | map({key: .id, value: .name}) | from_entries) as $names
+    | .workspace_members as $members
+    | [.packages[] | select(.name == "client-ffi") | .id]
+    | until(. as $s | ($s + [$s[] | $deps[.][]] | unique) == $s; . + [.[] | $deps[.][]] | unique)
+    | map(select(IN($members[])) | "-p \($names[.])")
+    | join(" ")'
+'''
+
 [tasks.fmt]
 description = "Format Rust code"
 run = "cargo fmt"
