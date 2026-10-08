@@ -341,9 +341,6 @@ defmodule Portal.Replication.SlotPollerTest do
     slot: slot,
     table: table
   } do
-    start_poller!()
-    assert_receive :init_state, 5000
-
     # Unpublished-table WAL never shows up in a peek, so only the idle
     # (empty-batch) advance can move the slot past it
     Postgrex.query!(aux, "CREATE TABLE #{table}_idle (id int)", [])
@@ -358,16 +355,24 @@ defmodule Portal.Replication.SlotPollerTest do
     %{rows: [[target]]} =
       Postgrex.query!(aux, "SELECT (pg_current_wal_flush_lsn() - '0/0'::pg_lsn)::bigint", [])
 
-    wait_for(fn ->
-      %{rows: [[confirmed]]} =
-        Postgrex.query!(
-          aux,
-          "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
-          [slot]
-        )
+    # Started only now, so its first cycle captures an advance position at or
+    # past target. A cycle already in flight would land short of it.
+    start_poller!()
+    assert_receive :init_state, 5000
 
-      assert confirmed >= target
-    end)
+    wait_for(
+      fn ->
+        %{rows: [[confirmed]]} =
+          Postgrex.query!(
+            aux,
+            "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
+            [slot]
+          )
+
+        assert confirmed >= target
+      end,
+      5
+    )
   end
 
   test "drops and recreates the slot after it was invalidated", %{aux: aux, table: table} do
