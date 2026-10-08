@@ -62,37 +62,6 @@ where
 {
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
-        self.remove_closing(Connection::is_failed, now);
-
-        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
-            events.push_back(Event::ConnectionFailed(id));
-
-            for (index, _) in self
-                .established_by_wireguard_session_index
-                .extract_if(.., |_, c| *c == id)
-            {
-                self.disconnected_session_indices.insert(index, now);
-            }
-            self.disconnected_public_keys
-                .insert(conn.tunnel.remote_static_public().to_bytes(), now);
-            self.disconnected_ids.insert(id, now);
-            if let Some(ufrag) = conn.agent.local_ufrag() {
-                self.established_by_local_ufrag.remove(ufrag);
-                self.disconnected_ufrags.insert(ufrag.to_owned(), now);
-            }
-        }
-
-        self.disconnected_ids
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_public_keys
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_session_indices
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_ufrags
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-    }
-
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
         let connection = self
             .established
@@ -124,9 +93,7 @@ where
             .remove(&id)
             .context("Cannot close unknown connection")?;
 
-        if !connection.is_failed() {
-            tracing::info!("Connection closed proactively (goodbye pending)");
-        }
+        tracing::debug!("Connection closed proactively (goodbye pending)");
 
         let goodbye = Goodbye {
             packet: goodbye,
@@ -174,7 +141,7 @@ where
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
             if now >= goodbye.deadline {
-                tracing::info!(id = %cid, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
+                tracing::debug!(id = %cid, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
                 connection.state = ConnectionState::Failed;
                 continue;
             }
@@ -198,10 +165,10 @@ where
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
                 }
                 Ok(None) => {
-                    tracing::info!(%cid, "Connection closed proactively (failed to send goodbye)");
+                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye)");
                 }
                 Err(e) => {
-                    tracing::info!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
+                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
                 }
             }
 
@@ -490,6 +457,37 @@ where
             )
             .min_by_key(|(instant, _)| *instant)
     }
+
+    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+        self.remove_closing(Connection::is_failed, now);
+
+        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
+            events.push_back(Event::ConnectionFailed(id));
+
+            for (index, _) in self
+                .established_by_wireguard_session_index
+                .extract_if(.., |_, c| *c == id)
+            {
+                self.disconnected_session_indices.insert(index, now);
+            }
+            self.disconnected_public_keys
+                .insert(conn.tunnel.remote_static_public().to_bytes(), now);
+            self.disconnected_ids.insert(id, now);
+            if let Some(ufrag) = conn.agent.local_ufrag() {
+                self.established_by_local_ufrag.remove(ufrag);
+                self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+            }
+        }
+
+        self.disconnected_ids
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_public_keys
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_session_indices
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_ufrags
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
 }
 
 #[derive(Debug)]
@@ -618,14 +616,14 @@ mod tests {
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
         connections.remove_established(&id, now);
-        connections.remove_failed(&mut VecDeque::default(), now);
+        handle_timeout(&mut connections, now);
 
         now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
         now += Duration::from_secs(5);
-        connections.remove_failed(&mut VecDeque::default(), now);
+        handle_timeout(&mut connections, now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
     }
@@ -638,13 +636,13 @@ mod tests {
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
         connections.get_mut(&id, now).unwrap().state = ConnectionState::Failed;
-        connections.remove_failed(&mut VecDeque::default(), now);
+        handle_timeout(&mut connections, now);
         now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
         now += Duration::from_secs(5);
-        connections.remove_failed(&mut VecDeque::default(), now);
+        handle_timeout(&mut connections, now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
     }
@@ -741,6 +739,16 @@ mod tests {
             .get_mut_by_id(&rid)
             .unwrap()
             .set_rtt(Duration::from_millis(20));
+    }
+
+    fn handle_timeout(connections: &mut Connections<u32, u32>, now: Instant) {
+        connections.handle_timeout(
+            &mut Allocations::for_test(),
+            &mut TransmitBuffer::new(),
+            &mut VecDeque::default(),
+            &mut InflightStunRequests::default(),
+            now,
+        );
     }
 
     fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
