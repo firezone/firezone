@@ -300,7 +300,7 @@ pub(super) fn generate(
         }
         K::SendTcpData => Transition::SendTcpData {
             flow_id: tcp_flows[g.choose_index(tcp_flows.len())],
-            len: g.u16_in(0..=1200),
+            len: g.u16_in(0..=16 * 1024),
             probe_id: g.fresh_probe_id(),
         },
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
