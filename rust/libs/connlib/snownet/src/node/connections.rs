@@ -53,7 +53,7 @@ where
 
     pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
-            events.push_back(Event::ConnectionFailed(id));
+            conn.emit(events, Event::ConnectionFailed(id));
 
             for (index, _) in self
                 .established_by_wireguard_session_index
@@ -99,6 +99,18 @@ where
         }
 
         Some(connection)
+    }
+
+    pub(crate) fn remove_closing(&mut self, now: Instant) {
+        let closing = self
+            .established
+            .iter()
+            .filter_map(|(id, c)| c.goodbye.is_some().then_some(*id))
+            .collect::<Vec<_>>();
+
+        for id in closing {
+            self.remove_established(&id, now);
+        }
     }
 
     /// Soft-resets all connections for a roam and queues them for relay migration.
@@ -206,8 +218,19 @@ where
         Ok(connection)
     }
 
-    pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
-        self.established.get(id)
+    /// Returns the connection to `id` unless it has been closed.
+    pub(crate) fn get_open_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
+        let connection = self
+            .established
+            .get_mut(id)
+            .filter(|c| c.goodbye.is_none())
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+
+        Ok(connection)
+    }
+
+    pub(crate) fn get_open(&self, id: &TId) -> Option<&Connection<RId>> {
+        self.established.get(id).filter(|c| c.goodbye.is_none())
     }
 
     pub(crate) fn get_established_mut_session_index(
@@ -283,8 +306,11 @@ where
         bail!("STUN message is not a BINDING")
     }
 
-    pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established.iter().map(|(id, conn)| (*id, conn))
+    pub(crate) fn iter_open(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
+        self.established
+            .iter()
+            .filter(|(_, conn)| conn.goodbye.is_none())
+            .map(|(id, conn)| (*id, conn))
     }
 
     pub(crate) fn iter_established_mut(
@@ -298,9 +324,7 @@ where
     }
 
     pub(crate) fn is_connected(&self, id: &TId) -> bool {
-        self.established
-            .get(id)
-            .is_some_and(Connection::is_connected)
+        self.get_open(id).is_some_and(Connection::is_connected)
     }
 
     pub(crate) fn clear(&mut self) {
@@ -308,8 +332,8 @@ where
         self.established_by_wireguard_session_index.clear();
     }
 
-    pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.established.keys().copied()
+    pub(crate) fn iter_open_ids(&self) -> impl Iterator<Item = TId> + '_ {
+        self.iter_open().map(|(id, _)| id)
     }
 
     pub(crate) fn all_iceless(&self) -> bool {
@@ -672,6 +696,7 @@ mod tests {
                 Duration::ZERO,
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            goodbye: None,
             last_proactive_handshake_sent_at: None,
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
