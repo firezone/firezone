@@ -18,6 +18,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    net::IpAddr,
     time::Duration,
 };
 
@@ -34,7 +35,7 @@ use crate::{
     },
     reference::ReferenceState,
     resource::{EditEffect, classify},
-    sim_gateway::DnsResolution,
+    sim_gateway::{DnsResolution, tcp_tuple},
     sim_net::EdgeConfig,
     stub_portal::StubPortal,
     sut::TunnelTest,
@@ -135,7 +136,11 @@ pub struct Recorder {
     successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
     current_probe_on_idled_flow: Option<IdleFlowAttempt>,
     current_dns_queries: Vec<(ClientId, DnsQuery)>,
+    tcp_syns: TcpSyns,
 }
+
+/// The SYN each TCP connection was opened with, by the Client and 4-tuple that sent it.
+type TcpSyns = BTreeMap<(ClientId, (IpAddr, u16, IpAddr, u16)), ReceivedRequest>;
 
 impl Recorder {
     /// Logs changes whose recovery can be demonstrated by later traffic.
@@ -268,13 +273,15 @@ impl Recorder {
 
     /// Records observed state combinations that should guide future fuzzing.
     pub fn record(&mut self, reference: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
-        record_translated_icmp_error_feedback(reference, state);
+        self.remember_tcp_syns(reference, state);
+        let tcp_syns = std::mem::take(&mut self.tcp_syns);
+        record_translated_icmp_error_feedback(reference, state, &tcp_syns);
         record_dns_refresh_feedback(reference, state);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
 
         for expected in reference.expected_probes.values() {
-            let Some(completed) = completed_round_trip(expected, state) else {
+            let Some(completed) = completed_round_trip(expected, state, &tcp_syns) else {
                 continue;
             };
             let Some(path) = route_path_feedback(reference, state, &completed) else {
@@ -291,6 +298,32 @@ impl Recorder {
             self.record_recovery(reference, expected.origin, completed.route, path);
             self.record_existing_flow_after_idle(&completed, path);
             self.record_gateway_failover(&completed, path);
+        }
+        self.tcp_syns = tcp_syns;
+    }
+
+    /// Remembers the SYN of each TCP connection, as the Gateway receives writes on it without one.
+    fn remember_tcp_syns(&mut self, reference: &ReferenceState, state: &TunnelTest) {
+        for expected in reference.expected_probes.values() {
+            let ProbeRequest::Tcp {
+                write_len: None, ..
+            } = expected.request
+            else {
+                continue;
+            };
+            let trace = state.probe_trace(expected.id);
+            let ([submitted], [received]) = (
+                trace.submitted_requests.as_slice(),
+                trace.received_requests.as_slice(),
+            ) else {
+                continue;
+            };
+            let Some(tuple) = tcp_tuple(&submitted.packet) else {
+                continue;
+            };
+
+            self.tcp_syns
+                .insert((expected.origin, tuple), (*received).clone());
         }
     }
 
@@ -553,17 +586,29 @@ impl CompletedRoundTrip<'_> {
 fn completed_round_trip<'a>(
     expected: &'a ExpectedProbe,
     state: &'a TunnelTest,
+    tcp_syns: &'a TcpSyns,
 ) -> Option<CompletedRoundTrip<'a>> {
     let ExpectedOutcome::RoundTripCompleted(route) = expected.outcome else {
         return None;
     };
     let trace = state.probe_trace(expected.id);
-    let ([submitted], [received], [_response]) = (
+    let ([submitted], [_response]) = (
         trace.submitted_requests.as_slice(),
-        trace.received_requests.as_slice(),
         trace.received_responses.as_slice(),
     ) else {
         return None;
+    };
+    let received = match (trace.received_requests.as_slice(), &expected.request) {
+        ([received], _) => *received,
+        (
+            [],
+            ProbeRequest::Tcp {
+                write_len: Some(_), ..
+            },
+        ) => tcp_syns
+            .get(&(expected.origin, tcp_tuple(&submitted.packet)?))
+            .filter(|syn| syn.remote == route.remote())?,
+        _ => return None,
     };
 
     Some(CompletedRoundTrip {
@@ -658,9 +703,13 @@ fn gateway_path_feedback(
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 
-fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &TunnelTest) {
+fn record_translated_icmp_error_feedback(
+    reference: &ReferenceState,
+    state: &TunnelTest,
+    tcp_syns: &TcpSyns,
+) {
     for expected in reference.expected_probes.values() {
-        let Some(completed) = completed_round_trip(expected, state) else {
+        let Some(completed) = completed_round_trip(expected, state, tcp_syns) else {
             continue;
         };
         let remote = completed.route.remote();
