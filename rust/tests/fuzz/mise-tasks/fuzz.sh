@@ -4,7 +4,7 @@
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>" default="1"
-#USAGE flag "--seconds <seconds>" default="60"
+#USAGE flag "--seconds <seconds>" required=#true
 #USAGE arg "[afl_args]…" var=#true
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -13,7 +13,7 @@ target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
 workers="${usage_workers:-1}"
-seconds="${usage_seconds:-60}"
+seconds="${usage_seconds:?}"
 [[ "$workers" =~ ^[1-9][0-9]*$ && "$seconds" =~ ^[1-9][0-9]*$ ]] || {
     echo "workers and seconds must be positive integers" >&2
     exit 1

@@ -39,7 +39,8 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
     end
 
     test "routes Intune device inventory sync exceptions to the Intune error handler" do
-      provider = Portal.IntuneFixtures.intune_posture_provider_fixture()
+      provider =
+        Portal.IntuneFixtures.intune_posture_provider_fixture(synced_at: DateTime.add(DateTime.utc_now(), -2, :hour))
 
       job = %Oban.Job{
         id: 2,

@@ -1,14 +1,29 @@
 defmodule PortalWeb.Logs.FlowLogsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.FlowLogFixtures
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
 
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
+  end
+
+  defp hours_ago(hours, offset_seconds \\ 0) do
+    DateTime.utc_now()
+    |> DateTime.add(-hours * 3600 + offset_seconds, :second)
   end
 
   describe "index" do
@@ -18,8 +33,170 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/logs/flow_logs")
 
-      assert html =~ "No flow logs"
+      assert html =~ "No flow logs found"
+      assert html =~ "Try broadening the time window or using a different filter."
       refute html =~ "coming soon"
+    end
+
+    test "shows only the last 24 hours unless a time window is chosen", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      recent = flow_log_fixture(account: account, flow_start: hours_ago(2), flow_end: hours_ago(1))
+      old = flow_log_fixture(account: account, flow_start: hours_ago(48), flow_end: hours_ago(47))
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/logs/flow_logs")
+
+      assert html =~ recent.log_id
+      refute html =~ old.log_id
+
+      from = hours_ago(72) |> DateTime.to_iso8601()
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][from]=#{from}")
+
+      assert html =~ recent.log_id
+      assert html =~ old.log_id
+    end
+
+    test "defaults to the last 24 hours with the pickers hidden", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='24h'][selected]")
+      refute has_element?(lv, "input[type='datetime-local']")
+
+      # The default preset is not an active filter.
+      refute has_element?(lv, "button[title='Clear all filters']")
+    end
+
+    test "choosing a preset widens the range and keeps the pickers hidden", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      recent = flow_log_fixture(account: account, flow_start: hours_ago(2), flow_end: hours_ago(1))
+      older = flow_log_fixture(account: account, flow_start: hours_ago(48), flow_end: hours_ago(47))
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      assert html =~ recent.log_id
+      refute html =~ older.log_id
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "7d"}})
+      |> render_change()
+
+      html = render_async(lv)
+
+      assert assert_patch(lv) =~ "flow_logs_filter%5Btimestamp%5D%5Bpreset%5D=7d"
+      assert html =~ recent.log_id
+      assert html =~ older.log_id
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='7d'][selected]")
+      refute has_element?(lv, "input[type='datetime-local']")
+      assert has_element?(lv, "button[title='Clear all filters']")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "1h"}})
+      |> render_change()
+
+      html = render_async(lv)
+
+      refute html =~ recent.log_id
+      refute html =~ older.log_id
+    end
+
+    test "the custom preset shows the pickers filled with the last 24 hours", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/logs/flow_logs")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "custom"}})
+      |> render_change()
+
+      render_async(lv)
+
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='custom'][selected]")
+
+      from = canonical_bound(lv, "from")
+      to = canonical_bound(lv, "to")
+
+      assert NaiveDateTime.diff(to, from) == 86_400
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), to)) < 120
+    end
+
+    test "remembers the custom range while a preset is selected", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(
+          ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][preset]=custom&flow_logs_filter[timestamp][from]=2026-07-29T10:00:00&flow_logs_filter[timestamp][to]=2026-07-30T10:00:00"
+        )
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "7d"}})
+      |> render_change()
+
+      render_async(lv)
+
+      refute assert_patch(lv) =~ "timestamp%5D%5Bfrom%5D"
+      refute has_element?(lv, "input[type='datetime-local']")
+
+      lv
+      |> form("form[phx-change='filter']", flow_logs: %{timestamp: %{preset: "custom"}})
+      |> render_change()
+
+      render_async(lv)
+
+      assert canonical_bound(lv, "from") == ~N[2026-07-29 10:00:00]
+      assert canonical_bound(lv, "to") == ~N[2026-07-30 10:00:00]
+
+      path = assert_patch(lv)
+      assert path =~ "flow_logs_filter%5Btimestamp%5D%5Bfrom%5D=2026-07-29T10%3A00%3A00"
+      assert path =~ "flow_logs_filter%5Btimestamp%5D%5Bto%5D=2026-07-30T10%3A00%3A00"
+    end
+
+    test "fills the missing custom bound from the one in the URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][to]=2026-07-30T10:00:00")
+
+      assert has_element?(lv, "#flow_logs-timestamp-preset option[value='custom'][selected]")
+      assert canonical_bound(lv, "to") == ~N[2026-07-30 10:00:00]
+      assert canonical_bound(lv, "from") == ~N[2026-07-29 10:00:00]
+      assert has_element?(lv, "button[title='Clear all filters']")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/logs/flow_logs?flow_logs_filter[timestamp][from]=2026-07-30T10:00:00")
+
+      assert canonical_bound(lv, "from") == ~N[2026-07-30 10:00:00]
+      assert abs(NaiveDateTime.diff(NaiveDateTime.utc_now(), canonical_bound(lv, "to"))) < 120
     end
 
     test "lists each reporting side separately", %{conn: conn, account: account, actor: actor} do
@@ -29,8 +206,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         initiator_device_id: Ecto.UUID.generate(),
         responder_device_id: Ecto.UUID.generate(),
         resource_id: Ecto.UUID.generate(),
-        flow_start: ~U[2026-07-30 10:00:00.000000Z],
-        flow_end: ~U[2026-07-30 10:01:00.000000Z],
+        flow_start: hours_ago(3),
+        flow_end: hours_ago(3, 60),
         outers: [
           %{src_ip: "203.0.113.10", src_port: 51_820, dst_ip: "198.51.100.5", dst_port: 51_820}
         ],
@@ -44,8 +221,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
         flow_log_fixture(
           identity
           |> Map.put(:role, :responder)
-          |> Map.put(:flow_start, ~U[2026-07-30 10:00:01.000000Z])
-          |> Map.put(:flow_end, ~U[2026-07-30 10:01:02.000000Z])
+          |> Map.put(:flow_start, hours_ago(3, 1))
+          |> Map.put(:flow_end, hours_ago(3, 62))
         )
 
       {:ok, lv, html} =
@@ -101,7 +278,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           tx_bytes: 40,
           rx_bytes: 60,
-          flow_start: ~U[2026-07-30 10:00:00.000000Z]
+          flow_start: hours_ago(3)
         )
 
       largest =
@@ -109,7 +286,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           tx_bytes: 200,
           rx_bytes: 300,
-          flow_start: ~U[2026-07-30 10:01:00.000000Z]
+          flow_start: hours_ago(3, 60)
         )
 
       middle =
@@ -117,7 +294,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
           account: account,
           tx_bytes: 80,
           rx_bytes: 120,
-          flow_start: ~U[2026-07-30 10:02:00.000000Z]
+          flow_start: hours_ago(3, 120)
         )
 
       {:ok, _lv, html} =
@@ -318,8 +495,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       log =
         flow_log_fixture(
           account: account,
-          flow_start: ~U[2026-07-30 10:01:00.000000Z],
-          flow_end: ~U[2026-07-30 10:00:00.000000Z]
+          flow_start: hours_ago(3, 60),
+          flow_end: hours_ago(3)
         )
 
       {:ok, lv, _html} =
@@ -848,5 +1025,18 @@ defmodule PortalWeb.Logs.FlowLogsTest do
       "table_id" => "flow_logs",
       "flow_logs" => %{"show_incomplete" => value}
     })
+
+    render_async(lv)
+  end
+
+  defp canonical_bound(lv, bound) do
+    [value] =
+      lv
+      |> element("input[type='hidden'][data-canonical='#{bound}']")
+      |> render()
+      |> Floki.parse_fragment!()
+      |> Floki.attribute("value")
+
+    NaiveDateTime.from_iso8601!(value)
   end
 end

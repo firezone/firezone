@@ -77,7 +77,7 @@ defmodule Portal.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_html, "~> 4.0"},
-      {:phoenix_template, "~> 1.0.4"},
+      {:phoenix_template, "~> 1.1.0"},
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},

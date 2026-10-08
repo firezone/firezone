@@ -775,23 +775,6 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn connected_cidr_resources_allowing(
-        &self,
-        ip: IpAddr,
-        protocol: Protocol,
-    ) -> impl Iterator<Item = ResourceId> + '_ {
-        self.resources.iter().filter_map(move |resource| {
-            let Resource::Cidr(cidr) = resource else {
-                return None;
-            };
-            let allows = self.connected_cidr_resources.contains(&cidr.id)
-                && cidr.address.contains(ip)
-                && protocol_filter_allows(&cidr.filters, protocol);
-
-            allows.then_some(cidr.id)
-        })
-    }
-
     pub(crate) fn connect_to_resource(
         &mut self,
         resource: ResourceId,

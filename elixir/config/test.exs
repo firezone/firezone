@@ -88,9 +88,7 @@ config :portal, Portal.Billing,
     "prod_test_business",
     # Enterprise
     "prod_test_enterprise"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_test_adhoc_device"
+  ]
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",

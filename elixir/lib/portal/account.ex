@@ -289,6 +289,7 @@ defmodule Portal.Account.Metadata.Stripe do
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
     field :support_type, :string
+    embeds_many :add_ons, Portal.Account.Metadata.Stripe.AddOn, on_replace: :delete
   end
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
@@ -302,5 +303,22 @@ defmodule Portal.Account.Metadata.Stripe do
       :trial_ends_at,
       :support_type
     ])
+    |> cast_embed(:add_ons, with: &Portal.Account.Metadata.Stripe.AddOn.changeset/2)
+  end
+end
+
+defmodule Portal.Account.Metadata.Stripe.AddOn do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :name, :string
+    field :quantity, :integer
+    field :limit, :string
+  end
+
+  def changeset(add_on \\ %__MODULE__{}, attrs) do
+    cast(add_on, attrs, [:name, :quantity, :limit])
   end
 end

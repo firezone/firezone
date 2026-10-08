@@ -421,9 +421,7 @@ config :portal, Portal.Billing,
     "prod_VMyDXDNwtDbpYa",
     # Enterprise
     "prod_PZdb7NJhcdyjRV"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
+  ]
 
 config :portal, Portal.Crl.Sync, req_opts: []
 
@@ -603,7 +601,9 @@ config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
-  capacity: 200
+  capacity: 200,
+  read_refill_rate: 10,
+  read_capacity: 200
 
 # MCP has an additional pre-authentication IP bucket. Its cost is one token,
 # versus ten for the authenticated per-account API bucket, allowing a modest
@@ -687,7 +687,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.12",
+  version: "4.3.3",
   portal: [
     args: [
       "--input=css/main.css",

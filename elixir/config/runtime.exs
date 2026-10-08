@@ -205,10 +205,6 @@ if config_env() == :prod do
            if(env_var_to_config(:stripe_plan_product_ids) != [],
              do: [plan_product_ids: env_var_to_config!(:stripe_plan_product_ids)],
              else: []
-           ) ++
-           if(env_var_to_config(:stripe_adhoc_device_product_id),
-             do: [adhoc_device_product_id: env_var_to_config!(:stripe_adhoc_device_product_id)],
-             else: []
            )
 
   config :portal, region: env_var_to_config!(:region)
@@ -632,7 +628,9 @@ if config_env() == :prod do
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
-      capacity: env_var_to_config!(:api_capacity)
+      capacity: env_var_to_config!(:api_capacity),
+      read_refill_rate: env_var_to_config!(:api_read_refill_rate),
+      read_capacity: env_var_to_config!(:api_read_capacity)
 
     config :portal, PortalAPI.Plugs.MCPRateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),

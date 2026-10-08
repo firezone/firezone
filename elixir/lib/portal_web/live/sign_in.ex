@@ -14,9 +14,9 @@ defmodule PortalWeb.SignIn do
 
   alias __MODULE__.Database
 
-  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
+  def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
     account = Database.get_account_by_id_or_slug!(account_id_or_slug)
-    mount_account(account, params, socket)
+    mount_account(account, params, session, socket)
   end
 
   # The pending OAuth request rides through sign-in as redirect_to, so the app
@@ -34,7 +34,7 @@ defmodule PortalWeb.SignIn do
 
   defp connecting_client(_params), do: nil
 
-  defp mount_account(account, params, socket) do
+  defp mount_account(account, params, session, socket) do
     connecting_client = connecting_client(params)
 
     socket =
@@ -43,6 +43,7 @@ defmodule PortalWeb.SignIn do
         account: account,
         params: PortalWeb.Authentication.take_sign_in_params(params),
         connecting_client: connecting_client,
+        last_used_provider_id: session["last_used_provider_id"],
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         github_auth_providers: auth_providers(account, GitHub.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
@@ -51,6 +52,7 @@ defmodule PortalWeb.SignIn do
         email_otp_auth_provider: auth_providers(account, EmailOTP.AuthProvider),
         userpass_auth_provider: auth_providers(account, Userpass.AuthProvider)
       )
+      |> hide_last_used_if_only_one_provider()
 
     if connecting_client do
       # Part of an app connection, so it keeps the centered look the consent
@@ -111,6 +113,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="google"
           >
             <:icon>
@@ -123,6 +126,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="github"
           >
             <:icon>
@@ -135,6 +139,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="okta"
           >
             <:icon>
@@ -147,6 +152,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="entra"
           >
             <:icon>
@@ -159,6 +165,7 @@ defmodule PortalWeb.SignIn do
             account={@account}
             params={@params}
             provider={provider}
+            last_used={provider.id == @last_used_provider_id}
             type="oidc"
           >
             <:icon>
@@ -171,6 +178,7 @@ defmodule PortalWeb.SignIn do
       <:item :if={@email_otp_auth_provider}>
         <.email_form
           provider={@email_otp_auth_provider}
+          last_used={@email_otp_auth_provider.id == @last_used_provider_id}
           account={@account}
           flash={@flash}
           params={@params}
@@ -180,6 +188,7 @@ defmodule PortalWeb.SignIn do
       <:item :if={@userpass_auth_provider}>
         <.userpass_form
           provider={@userpass_auth_provider}
+          last_used={@userpass_auth_provider.id == @last_used_provider_id}
           account={@account}
           flash={@flash}
           params={@params}
@@ -217,6 +226,7 @@ defmodule PortalWeb.SignIn do
   attr :provider, :any, required: true
   attr :account, :any, required: true
   attr :params, :map, required: true
+  attr :last_used, :boolean, default: false
   slot :icon
 
   defp auth_button(assigns) do
@@ -227,6 +237,7 @@ defmodule PortalWeb.SignIn do
     >
       {render_slot(@icon)}
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
+      <Core.badge :if={@last_used} type="primary" class="shrink-0">Last used</Core.badge>
       <Core.icon
         name="ri-arrow-right-s-line"
         class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
@@ -250,6 +261,9 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
     >
+      <Core.badge :if={assigns[:last_used]} type="primary" class="self-start mb-2 w-fit">
+        Last used
+      </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <input
         type="text"
@@ -290,6 +304,9 @@ defmodule PortalWeb.SignIn do
       phx-hook="AttachDisableSubmit"
       phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
     >
+      <Core.badge :if={assigns[:last_used]} type="primary" class="self-start mb-2 w-fit">
+        Last used
+      </Core.badge>
       <Form.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
       <div class="flex gap-2">
         <input
@@ -316,6 +333,26 @@ defmodule PortalWeb.SignIn do
       Database.get_auth_provider(account, module)
     else
       Database.list_auth_providers(account, module)
+    end
+  end
+
+  defp hide_last_used_if_only_one_provider(socket) do
+    a = socket.assigns
+
+    provider_count =
+      Enum.count(
+        a.google_auth_providers ++
+          a.github_auth_providers ++
+          a.okta_auth_providers ++
+          a.entra_auth_providers ++
+          a.oidc_auth_providers ++
+          Enum.reject([a.email_otp_auth_provider, a.userpass_auth_provider], &is_nil/1)
+      )
+
+    if provider_count > 1 do
+      socket
+    else
+      assign(socket, :last_used_provider_id, nil)
     end
   end
 

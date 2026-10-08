@@ -15,6 +15,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       socket
       |> assign(page_title: "Flow Logs")
       |> assign(selected_report: nil, selected_report_json: nil, browser_tz: browser_tz)
+      |> assign(flow_logs: [], flow_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
       |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
@@ -23,7 +24,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           {:flow_logs, :total_bytes},
           {:flow_logs, :log_id}
         ],
-        callback: &handle_logs_update!/2
+        loader: &load_logs/2
       )
 
     {:ok, socket}
@@ -92,12 +93,13 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
 
-  def handle_logs_update!(socket, list_opts) do
+  defp load_logs(subject, list_opts) do
     list_opts =
-      Keyword.update(list_opts, :filter, [show_incomplete: false], &default_show_incomplete/1)
+      list_opts
+      |> Keyword.update(:filter, [show_incomplete: false], &default_show_incomplete/1)
 
-    with {:ok, logs, metadata} <- Database.list_flow_logs(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, flow_logs: logs, flow_logs_metadata: metadata)}
+    with {:ok, logs, metadata} <- Database.list_flow_logs(subject, list_opts) do
+      {:ok, %{flow_logs: logs, flow_logs_metadata: metadata}}
     end
   end
 
@@ -116,6 +118,9 @@ defmodule PortalWeb.Logs.FlowLogs do
         <LiveTable.live_table
           id="flow_logs"
           rows={@flow_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
+          loading={@loading_by_table_id["flow_logs"]}
+          query_error={@query_error_by_table_id["flow_logs"]}
           row_id={&"flow-log-#{&1.log.log_id}"}
           row_click={
             fn row ->
@@ -185,9 +190,9 @@ defmodule PortalWeb.Logs.FlowLogs do
                 <Core.icon name="ri-exchange-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-heading">No flow logs</p>
+                <p class="text-sm font-medium text-heading">No flow logs found</p>
                 <p class="text-xs text-subtle mt-0.5">
-                  Logs from initiators and responders will appear here as flows are observed.
+                  Try broadening the time window or using a different filter.
                 </p>
               </div>
             </div>
@@ -960,7 +965,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       result =
         query
         |> Safe.scoped(subject)
-        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
+        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
 
       case result do
         {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}

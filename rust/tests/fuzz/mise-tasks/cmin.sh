@@ -28,7 +28,7 @@ map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")" || true
 map_size="$(((map_size + 63) / 64 * 64))"
 [ "$map_size" -ge 65536 ] || map_size=65536
 AFL_QUIET=1 AFL_MAP_SIZE="$map_size" AFL_FUZZER_LOOPCOUNT=1 \
-    cargo afl cmin -e -i "corpus/$target" -o "$temporary/minimized" \
+    cargo afl cmin -e -T all -i "corpus/$target" -o "$temporary/minimized" \
         -t 10000 -m none -- "$afl_binary" "$target"
 shopt -s nullglob
 minimized=("$temporary/minimized"/*)

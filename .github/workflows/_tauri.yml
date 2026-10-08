@@ -29,7 +29,7 @@ jobs:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.19
     steps:
-      - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
+      - uses: release-drafter/release-drafter@c345907820e0396f6f44bcfd9ac4763325f8feb0 # v7.8.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -214,11 +214,6 @@ jobs:
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
       FIREZONE_GUI_VERSION: 1.5.19
-      RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
-      SYMBOLS_SCRIPT: ../../scripts/build/tauri-symbols-${{ matrix.os }}.sh
-      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
-      TARGET_DIR: ../target
-      UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -242,8 +237,6 @@ jobs:
       - name: Check sentry-cli runs
         shell: bash
         run: mise exec -- sentry-cli --version
-      - name: Install pnpm deps
-        run: pnpm install
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ runner.os == 'Windows' }}
         with:
@@ -252,21 +245,26 @@ jobs:
       - name: Build release exe and MSI / deb
         env:
           CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
+          # For Sentry. Ends up in the pdb on Windows and a `.debug` file on Linux.
+          CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
-        # `tauri build` signs Firezone.exe (after Tauri patches it) and the
-        # MSI via `bundle.windows.signCommand`.
-        run: pnpm build
+        run: mise run build --out ${{ env.BINARY_DEST_PATH }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
-      - name: Rename artifacts and compute SHA256
-        shell: bash
-        run: ${{ env.RENAME_SCRIPT }}
       - name: Upload deb / msi package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
+      - name: Upload debug info
+        if: "${{ runner.os == 'Linux' }}"
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.ARTIFACT_DST }}-debug
+          path: rust/target/release/*.debug
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload rpm package
         if: "${{ runner.os == 'Linux' }}"
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -277,11 +275,11 @@ jobs:
       - name: Test installation (Linux)
         if: "${{ runner.os == 'Linux' }}"
         shell: bash
-        run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
+        run: ../../scripts/tests/gui-client-install-linux-deb.sh
       - name: Test installation (Windows)
         if: "${{ runner.os == 'Windows' }}"
         shell: powershell
-        run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
+        run: ../../scripts/tests/gui-client-install-windows-msi.ps1
 
       - name: Dump install.log
         # `always()` so the MSI's verbose log surfaces even when
@@ -327,19 +325,21 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: firezone-inc
-        shell: bash
-        # `mise exec` puts `sentry-cli` on PATH for the script. The shims the
-        # mise action sets up are regenerated before it installs, not after.
-        run: mise exec -- bash ${{ env.SYMBOLS_SCRIPT }}
+        run: mise run upload-symbols
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
-        run: ${{ env.UPLOAD_SCRIPT }}
+        run: |
+          # The asset names are tied to the update checker in `src-tauri/src/updates.rs`.
+          if [[ "$RUNNER_OS" == Linux ]]; then exts=(deb rpm); else exts=(msi); fi
+          for ext in "${exts[@]}"; do
+              ARTIFACT_PATH="$BINARY_DEST_PATH.$ext" ../../scripts/upload/github-release.sh
+          done
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
