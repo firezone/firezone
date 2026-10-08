@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
-use crate::{os::SimulatedOs, probe::ProbeId, transition::tcp_write_header};
+use crate::{os::SimulatedOs, probe::ProbeId};
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
@@ -59,8 +59,6 @@ enum ProbeKind {
 pub struct Server {
     sockets: l3_tcp::SocketSet<'static>,
     listen_ports: BTreeMap<l3_tcp::SocketHandle, u16>,
-    /// The sequence number at which the next write starts on each established connection.
-    next_write_seq: BTreeMap<(SocketAddr, SocketAddr), u32>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -402,7 +400,6 @@ impl Server {
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
             listen_ports: Default::default(),
-            next_write_seq: Default::default(),
             device,
             interface,
             created_at: now,
@@ -422,13 +419,8 @@ impl Server {
         Ok(())
     }
 
-    /// Returns the probe of the write whose first bytes `packet` carries on an established
-    /// connection, unless an earlier copy of that segment already did.
-    pub fn handle_inbound(&mut self, packet: IpPacket) -> Option<ProbeId> {
-        let write = self.write_started_by(&packet);
+    pub fn handle_inbound(&mut self, packet: IpPacket) {
         self.device.receive(packet);
-
-        write
     }
 
     /// Returns whether a connection between `local` and `remote` is established.
@@ -487,30 +479,5 @@ impl Server {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
-    }
-
-    fn write_started_by(&mut self, packet: &IpPacket) -> Option<ProbeId> {
-        let tcp = packet.as_tcp()?;
-        let local = SocketAddr::new(packet.destination(), tcp.destination_port());
-        let remote = SocketAddr::new(packet.source(), tcp.source_port());
-
-        if tcp.syn() && !tcp.ack() && !self.is_established(local, remote) {
-            self.next_write_seq
-                .insert((local, remote), tcp.sequence_number().wrapping_add(1));
-
-            return None;
-        }
-        if !self.is_established(local, remote) {
-            return None;
-        }
-
-        let next = self.next_write_seq.get_mut(&(local, remote))?;
-        if tcp.sequence_number() != *next {
-            return None;
-        }
-        let (id, len) = tcp_write_header(tcp.payload())?;
-        *next = next.wrapping_add(len);
-
-        Some(id)
     }
 }

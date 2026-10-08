@@ -108,15 +108,38 @@ fn assert_probes(
             }
             ExpectedOutcome::RoundTripCompleted(route) => {
                 let expected_remote = route.remote();
-                let [received_request] = trace.received_requests.as_slice() else {
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
-                    continue;
+                let is_tcp_write = matches!(
+                    expected.request,
+                    ProbeRequest::Tcp {
+                        write_len: Some(_),
+                        ..
+                    }
+                );
+                let received_request = match (is_tcp_write, trace.received_requests.as_slice()) {
+                    // The exact echo proves that the remote received the write.
+                    (true, []) => None,
+                    (false, [received_request]) => Some(*received_request),
+                    (true, _) => {
+                        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write has received requests");
+                        continue;
+                    }
+                    (false, _) => {
+                        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
+                        continue;
+                    }
                 };
 
-                if received_request.remote != expected_remote {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+                if let Some(received_request) = received_request {
+                    if received_request.remote != expected_remote {
+                        tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+                    }
+                    assert_received_request(
+                        expected,
+                        submitted_request,
+                        received_request,
+                        ref_clients,
+                    );
                 }
-                assert_received_request(expected, submitted_request, received_request, ref_clients);
 
                 let [received_response] = trace.received_responses.as_slice() else {
                     if trace.received_responses.is_empty()
@@ -135,14 +158,17 @@ fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
                 }
 
-                assert_received_response(
-                    expected,
-                    submitted_request,
-                    received_request,
-                    received_response,
-                    expected_remote,
-                    icmp_error_hosts,
-                );
+                match received_request {
+                    Some(received_request) => assert_received_response(
+                        expected,
+                        submitted_request,
+                        received_request,
+                        received_response,
+                        expected_remote,
+                        icmp_error_hosts,
+                    ),
+                    None => assert_echo_response(expected, submitted_request, received_response),
+                }
             }
             ExpectedOutcome::Rejected { response, .. } => {
                 let ([], [received_response]) = (

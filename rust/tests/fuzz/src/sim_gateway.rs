@@ -305,9 +305,8 @@ impl SimGateway {
             if icmp_error.is_none()
                 && let Some(server) = self.tcp_server_for(socket, remote)
             {
-                if let Some(id) = server.handle_inbound(packet.clone()) {
-                    self.push_received_request(Some(id), packet, now);
-                } else if tcp.syn() && !tcp.ack() {
+                server.handle_inbound(packet.clone());
+                if tcp.syn() && !tcp.ack() {
                     self.record_received_tcp_syn(&packet, now);
                 }
 
