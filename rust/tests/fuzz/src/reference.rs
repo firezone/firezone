@@ -400,6 +400,7 @@ impl ReferenceState {
                 flow_id,
                 len,
                 probe_id,
+                ..
             } => {
                 let flow = self
                     .tcp_flows

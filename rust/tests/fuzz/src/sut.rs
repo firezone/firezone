@@ -508,20 +508,18 @@ impl TunnelTest {
             Transition::SendTcpData {
                 flow_id,
                 len,
+                seed,
                 probe_id,
             } => {
                 let flow = self.tcp_flows[&flow_id];
+                let mut rng = fastrand::Rng::with_seed(seed);
+                let payload = (0..len).map(|_| rng.u8(..)).collect::<Vec<_>>();
 
                 self.clients
                     .get_mut(&flow.client_id)
                     .unwrap()
                     .exec_mut(|sim| {
-                        sim.write_tcp_probe(
-                            probe_id,
-                            flow.local,
-                            flow.remote,
-                            &vec![0x5a; usize::from(len)],
-                        )
+                        sim.write_tcp_probe(probe_id, flow.local, flow.remote, &payload)
                     });
             }
             Transition::SendDnsQueries(queries) => {

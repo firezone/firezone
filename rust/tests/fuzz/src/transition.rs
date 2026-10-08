@@ -72,10 +72,11 @@ pub enum Transition {
         dport: DPort,
         probe_id: ProbeId,
     },
-    /// Writes `len` bytes to an existing TCP connection; the resource echoes them back.
+    /// Writes `len` random bytes from `seed` to an existing TCP connection; the resource echoes them.
     SendTcpData {
         flow_id: FlowId,
         len: u16,
+        seed: u64,
         probe_id: ProbeId,
     },
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
