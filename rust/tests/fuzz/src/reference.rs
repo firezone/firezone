@@ -39,8 +39,8 @@ pub struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
 
-    /// DNS Resources that listen for TCP connections.
-    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+    /// The ports each DNS Resource domain serves TCP on.
+    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
 
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
@@ -67,7 +67,7 @@ impl ReferenceState {
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         icmp_error_hosts: IcmpErrorHosts,
         network: RoutingTable,
     ) -> Self {
@@ -349,6 +349,18 @@ impl ReferenceState {
                 dport,
             } => {
                 let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
+                let outcome =
+                    match outcome {
+                        ExpectedOutcome::RoundTripCompleted(Route::Resource {
+                            gateway, ..
+                        }) if !self.serves_tcp(dst, *dport) => ExpectedOutcome::Rejected {
+                            by: RejectionRemote::Gateway(gateway),
+                            response: RejectionResponse::Reset,
+                        },
+                        ExpectedOutcome::RoundTripCompleted(_) => outcome,
+                        ExpectedOutcome::Dropped => outcome,
+                        ExpectedOutcome::Rejected { .. } => outcome,
+                    };
 
                 self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
                     client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
@@ -691,6 +703,16 @@ impl ReferenceState {
         assert!(previous.is_none(), "probe IDs must be unique");
 
         outcome
+    }
+
+    fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
+        match dst {
+            Destination::DomainName { name, .. } => self
+                .tcp_resources
+                .get(name)
+                .is_some_and(|ports| ports.contains(&dport.0)),
+            Destination::IpAddr(_) => false,
+        }
     }
 
     /// Follows a packet from `origin` to its destination: the client picks where it goes,

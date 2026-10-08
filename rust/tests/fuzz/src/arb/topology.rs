@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     time::Duration,
 };
 
@@ -601,7 +601,7 @@ fn arb_tcp_resources(
     g: &mut Generator,
     records: &DnsRecords,
     icmp_error_hosts: &IcmpErrorHosts,
-) -> BTreeMap<DomainName, BTreeSet<SocketAddr>> {
+) -> BTreeMap<DomainName, BTreeSet<u16>> {
     let mut all_domains = records.domains_iter().collect::<Vec<_>>();
     if all_domains.is_empty() {
         return BTreeMap::new();
@@ -618,15 +618,12 @@ fn arb_tcp_resources(
             let has_icmp_error = records
                 .domain_ips_iter(&domain)
                 .any(|ip| icmp_error_hosts.icmp_error_for_ip(ip).is_some());
-            if has_icmp_error {
+            let has_ips = records.domain_ips_iter(&domain).next().is_some();
+            if has_icmp_error || !has_ips {
                 return None;
             }
 
-            let addresses = records
-                .domain_ips_iter(&domain)
-                .map(|ip| SocketAddr::new(ip, port))
-                .collect::<BTreeSet<_>>();
-            (!addresses.is_empty()).then_some((domain, addresses))
+            Some((domain, BTreeSet::from([port])))
         })
         .collect::<BTreeMap<_, _>>()
 }

@@ -3,9 +3,10 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
+use dns_types::DomainName;
 use std::{
-    collections::BTreeSet,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    collections::{BTreeMap, BTreeSet},
+    net::{Ipv4Addr, Ipv6Addr},
     time::Instant,
 };
 use tunnel_proto::{GatewayState, IpConfig};
@@ -42,7 +43,7 @@ impl RefGateway {
     pub(crate) fn init(
         self,
         id: GatewayId,
-        tcp_resources: BTreeSet<SocketAddr>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> SimGateway {
@@ -59,7 +60,7 @@ impl RefGateway {
             v6: self.tunnel_ip6,
         });
 
-        SimGateway::new(id, sut, tcp_resources, self.site_specific_dns_records, now)
+        SimGateway::new(id, sut, tcp_services, self.site_specific_dns_records, now)
     }
 
     pub fn dns_records(&self) -> &DnsRecords {
