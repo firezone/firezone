@@ -469,6 +469,27 @@ fn peer_data_resets_the_peer_rekey_count() {
         t += secs(1);
         let mut hs = Handshake::new_seeded(t0, u64::from(i));
         let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
+        let _ = a.handle_inbound_tun(decrypted_data_packet(), (addr(2), addr(4)), t);
+    }
+    a.drain_events();
+    let _ = a.transmits();
+
+    assert_eq!(
+        a.primary(),
+        Some((addr(1), addr(3))),
+        "data between re-keys resets the count, so it never reaches distress",
+    );
+}
+
+#[test]
+fn unauthenticated_peer_data_does_not_reset_the_peer_rekey_count() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    let mut t = t0;
+    for i in 0..REKEY_DISTRESS_ATTEMPTS {
+        t += secs(1);
+        let mut hs = Handshake::new_seeded(t0, u64::from(i));
+        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
         let _ = a.handle_inbound_network(
             &mut reject_all(),
             &data_packet_bytes(),
@@ -481,8 +502,8 @@ fn peer_data_resets_the_peer_rekey_count() {
 
     assert_eq!(
         a.primary(),
-        Some((addr(1), addr(3))),
-        "data between re-keys resets the count, so it never reaches distress",
+        None,
+        "forged data between re-keys must not mask distress",
     );
 }
 
@@ -867,6 +888,10 @@ fn data_packet_bytes() -> Vec<u8> {
     let mut bytes = vec![0u8; 32];
     bytes[0] = 4;
     bytes
+}
+
+fn decrypted_data_packet() -> IpPacket {
+    ip_packet::make::udp_packet(addr(9).ip(), addr(10).ip(), 1, 2, &[]).expect("same IP version")
 }
 
 fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
