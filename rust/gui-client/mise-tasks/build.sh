@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build the release GUI client and its packages: deb and rpm on Linux, a signed MSI on Windows"
+#MISE dir="{{config_root}}"
 #USAGE flag "--out <prefix>" help="Also copy each package to <prefix>.<ext>, next to its SHA256 sum"
 set -euxo pipefail
 
@@ -33,7 +34,18 @@ msys* | cygwin*)
         "$release/firezone-client-tunnel.exe" \
         "$release/register-sparse.exe" \
         "$release/firezone-cli.exe"
-    ../../scripts/build/build-msix-windows.sh
+
+    # The sparse MSIX that gives the app its package identity, picked up by WiX.
+    makeappx=$(find "/c/Program Files (x86)/Windows Kits/10/bin" -maxdepth 3 -iname MakeAppx.exe -path "*/x64/*" | sort -V | tail -n 1)
+    staging=$(mktemp -d)
+    mkdir "$staging/Assets"
+    cp src-tauri/win_files/AppxManifest.xml "$staging/"
+    for logo in StoreLogo Square150x150Logo Square44x44Logo; do
+        cp src-tauri/icons/icon.png "$staging/Assets/$logo.png"
+    done
+    # The doubled slashes stop Git Bash from rewriting the flags as paths.
+    "$makeappx" pack //d "$staging" //p "$release/firezone.msix" //nv //o
+    ../../scripts/build/sign.sh "$release/firezone.msix"
     packages=(msi)
     ;;
 esac

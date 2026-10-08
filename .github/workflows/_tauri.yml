@@ -325,14 +325,14 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: firezone-inc
-        run: mise run symbols
+        run: mise run upload-symbols
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-        run: mise run upload gui-client-${{ env.FIREZONE_GUI_VERSION }} ${{ env.BINARY_DEST_PATH }}
+        run: mise run upload-release gui-client-${{ env.FIREZONE_GUI_VERSION }} ${{ env.BINARY_DEST_PATH }}
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}

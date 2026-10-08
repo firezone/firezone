@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Attach the packages copied by `build --out <prefix>` to a GitHub release"
+#MISE dir="{{config_root}}"
 #USAGE arg "<tag>"
 #USAGE arg "<prefix>"
 set -euxo pipefail

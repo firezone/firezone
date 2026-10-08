@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Upload the debug symbols of the release build to Sentry"
+#MISE dir="{{config_root}}"
 set -euxo pipefail
 
 cd ../target/release
