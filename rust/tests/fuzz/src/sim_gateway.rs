@@ -421,12 +421,6 @@ impl SimGateway {
         self.clients_by_ip.extend(client_ips.map(|ip| (ip, client)));
     }
 
-    pub(crate) fn is_authorized(&self, client: ClientId, resource: ResourceId) -> bool {
-        self.authorized_resources
-            .get(&client)
-            .is_some_and(|resources| resources.contains(&resource))
-    }
-
     pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
         self.sut.remove_access(client, resource, now);
         self.record_resource_disabled(*client, *resource);
