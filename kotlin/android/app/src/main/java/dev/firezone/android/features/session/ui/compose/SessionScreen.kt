@@ -24,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
@@ -32,6 +31,7 @@ import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.features.session.ui.isDevicePool
 import dev.firezone.android.features.session.ui.isInternetResource
+import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.parcelize.Parcelize
 
@@ -144,13 +144,13 @@ fun SessionScreen(
                                 selected = effectiveTab == TAB_FAVORITES,
                                 onClick = { selectedTab = TAB_FAVORITES },
                                 text = { Text(stringResource(R.string.resources_favorites)) },
-                                icon = { Icon(painterResource(R.drawable.baseline_star_24), contentDescription = null) },
+                                icon = { Icon(imageVector = FirezoneIcons.Star, contentDescription = null) },
                             )
                             LeadingIconTab(
                                 selected = effectiveTab == TAB_ALL,
                                 onClick = { selectedTab = TAB_ALL },
                                 text = { Text(stringResource(R.string.resources_all)) },
-                                icon = { Icon(painterResource(R.drawable.all_resources), contentDescription = null) },
+                                icon = { Icon(imageVector = FirezoneIcons.GridView, contentDescription = null) },
                             )
                         }
                     }

@@ -8,4 +8,16 @@ data class ManagedConfigStatus(
     val isAccountSlugManaged: Boolean,
     val isStartOnLoginManaged: Boolean,
     val isConnectOnStartManaged: Boolean,
-)
+) {
+    companion object {
+        val NOTHING_MANAGED =
+            ManagedConfigStatus(
+                isAuthUrlManaged = false,
+                isApiUrlManaged = false,
+                isLogFilterManaged = false,
+                isAccountSlugManaged = false,
+                isStartOnLoginManaged = false,
+                isConnectOnStartManaged = false,
+            )
+    }
+}

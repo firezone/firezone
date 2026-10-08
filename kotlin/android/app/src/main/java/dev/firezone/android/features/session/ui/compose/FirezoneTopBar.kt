@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
+import dev.firezone.android.ui.FirezoneIcons
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +75,7 @@ fun BackTopBar(
         modifier = modifier,
         navigationIcon = {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+                Icon(imageVector = FirezoneIcons.ArrowBack, contentDescription = stringResource(R.string.back))
             }
         },
     )
