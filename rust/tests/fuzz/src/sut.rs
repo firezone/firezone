@@ -216,7 +216,10 @@ impl TunnelTest {
     /// Runs after the reference model invalidated, so the flows it dropped are known.
     pub fn invalidate(&mut self, transition: &Transition, ref_state: &ReferenceState) {
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| c.clear_probe_observations());
+            client.exec_mut(|c| {
+                c.clear_probe_observations();
+                c.tcp_client.drop_unfinished();
+            });
         }
         for gateway in self.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
@@ -800,19 +803,12 @@ impl TunnelTest {
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);
-        self.drop_unfinished_tcp_connections();
 
         if let Some((probe_id, flow_id)) = application_probe {
             self.record_dns_nat_observation(ref_state, probe_id, flow_id);
         }
 
         self
-    }
-
-    fn drop_unfinished_tcp_connections(&mut self) {
-        for client in self.clients.values_mut() {
-            client.exec_mut(|c| c.tcp_client.drop_unfinished());
-        }
     }
 
     fn send_icmp_probe(
