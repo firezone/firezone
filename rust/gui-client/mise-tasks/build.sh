@@ -7,7 +7,7 @@ release=../target/release
 
 # On Windows, mise hands Git Bash a `PATH` that is only partially converted to
 # Windows form, and native programs inherit it verbatim until it changes.
-if [[ "$OSTYPE" == msys ]]; then
+if [[ "$OSTYPE" == msys || "$OSTYPE" == cygwin ]]; then
     export PATH="/usr/bin:$PATH"
 fi
 
