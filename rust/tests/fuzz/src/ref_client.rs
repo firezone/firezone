@@ -614,10 +614,6 @@ impl RefClient {
 
         self.resources.push(r);
         self.routes.push((rid, address));
-
-        if self.expected_tcp_connections.values().contains(&rid) {
-            self.set_resource_online(rid);
-        }
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
@@ -631,10 +627,6 @@ impl RefClient {
         }
 
         self.resources.push(r);
-
-        if self.expected_tcp_connections.values().contains(&rid) {
-            self.set_resource_online(rid);
-        }
     }
 
     pub(crate) fn add_device_pool_resource(&mut self, r: DevicePoolResource) {

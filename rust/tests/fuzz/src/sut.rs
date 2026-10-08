@@ -216,7 +216,10 @@ impl TunnelTest {
     /// Runs after the reference model invalidated, so the flows it dropped are known.
     pub fn invalidate(&mut self, transition: &Transition, ref_state: &ReferenceState) {
         for client in self.clients.values_mut() {
-            client.exec_mut(|c| c.clear_probe_observations());
+            client.exec_mut(|c| {
+                c.clear_probe_observations();
+                c.tcp_client.drop_unfinished();
+            });
         }
         for gateway in self.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());

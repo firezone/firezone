@@ -661,10 +661,6 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
         } else {
             tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
         }
-
-        if received_icmp_error_for_tuple.is_some() {
-            tracing::error!(target: "assertions", %local, %remote, "TCP socket should have been reset from ICMP error");
-        }
     }
 }
 

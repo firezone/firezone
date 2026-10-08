@@ -8,7 +8,7 @@ use crate::os::SimulatedOs;
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    /// The socket for each connection, or `None` for one that [`Client::reset`] dropped.
+    /// The socket for each connection, or `None` for one that was dropped.
     ///
     /// Closed connections are kept so late packets for them are still consumed.
     sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
@@ -56,12 +56,10 @@ impl Client {
             .connect(self.interface.context(), remote, local)
             .context("Failed to create TCP connection")?;
 
-        socket.set_timeout(Some(self.os.tcp_timeout()));
         // `smoltcp`'s abort timer counts from the last packet received from the
-        // remote, whether or not anything is outstanding. Keep-alive round-trips
-        // keep an idle connection's timer fresh, so the socket only aborts once
-        // the path has actually been dead for the OS' timeout.
-        socket.set_keep_alive(Some(l3_tcp::Duration::from_secs(5)));
+        // remote, whether or not anything is outstanding. Without keep-alives, an
+        // idle connection must therefore only arm it while it waits for an ACK.
+        socket.set_timeout(Some(self.os.tcp_timeout()));
 
         let handle = self.sockets.add(socket);
 
@@ -87,15 +85,18 @@ impl Client {
             && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
             && let local = SocketAddr::new(failed_packet.src(), src)
             && let remote = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(Some(handle)) = self.sockets_by_conn.get(&(local, remote))
+            && let Some(maybe_socket) = self.sockets_by_conn.get_mut(&(local, remote))
+            && let Some(handle) = maybe_socket.take()
         {
             tracing::debug!(%local, %remote, "Received ICMP error");
 
-            self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
+            self.sockets.remove(handle);
+
+            return;
         }
 
-        // A packet for a connection that [`Client::reset`] dropped has no socket to
-        // receive it. Feeding it to the TCP stack would answer it with an RST.
+        // A packet for a connection that was dropped has no socket to receive it.
+        // Feeding it to the TCP stack would answer it with an RST.
         if let Some(tcp) = packet.as_tcp()
             && let local = SocketAddr::new(packet.destination(), tcp.destination_port())
             && let remote = SocketAddr::new(packet.source(), tcp.source_port())
@@ -115,6 +116,14 @@ impl Client {
             &mut self.device,
             &mut self.sockets,
         );
+
+        for (_, socket) in self.sockets.iter_mut() {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            if socket.state() == l3_tcp::State::Established && socket.send_queue() == 0 {
+                socket.set_timeout(None);
+            }
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
@@ -132,6 +141,21 @@ impl Client {
         self.device.clear();
 
         for maybe_socket in self.sockets_by_conn.values_mut() {
+            *maybe_socket = None;
+        }
+    }
+
+    /// Silently drops every connection that has not completed its handshake.
+    pub fn drop_unfinished(&mut self) {
+        for maybe_socket in self.sockets_by_conn.values_mut() {
+            let Some(handle) = *maybe_socket else {
+                continue;
+            };
+            if self.sockets.get::<Socket>(handle).state() == l3_tcp::State::Established {
+                continue;
+            }
+
+            self.sockets.remove(handle);
             *maybe_socket = None;
         }
     }
