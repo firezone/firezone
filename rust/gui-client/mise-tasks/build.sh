@@ -4,7 +4,12 @@
 set -euxo pipefail
 
 release=../target/release
-echo "DIAG PATH=$PATH"; echo "DIAG BASH=$BASH"; env | grep -i -E "^(MSYS|MISE_|__MISE|ORIGINAL_PATH|SHELL)" | cut -c1-300; exit 1
+
+# On Windows, mise hands Git Bash a `PATH` that is only partially converted to
+# Windows form, and native programs inherit it verbatim until it changes.
+if [[ "$OSTYPE" == msys ]]; then
+    export PATH="/usr/bin:$PATH"
+fi
 
 pnpm install --frozen-lockfile
 pnpm exec vite build
