@@ -1040,7 +1040,7 @@ where
             return ControlFlow::Break(Err(anyhow::Error::msg("Not a WireGuard packet")));
         };
 
-        let (cid, conn, is_closing) = match &parsed_packet {
+        let (cid, conn) = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             Packet::HandshakeInit(handshake_init) => {
                 let handshake = match boringtun::noise::handshake::parse_handshake_anon(
@@ -1093,6 +1093,8 @@ where
             Packet::PacketCookieReply(_) => false,
         };
 
+        let mut established = false;
+
         if confirms_session
             && !matches!(control_flow, ControlFlow::Break(Err(_)))
             && conn.first_handshake_completed_at.is_none()
@@ -1105,10 +1107,14 @@ where
             // Only signal establishment once we can actually send, i.e. ICE has nominated a
             // socket. On the controlled side the handshake can complete before nomination, in
             // which case the event is emitted from the `NominatedSend` handler instead.
-            if conn.state.has_nominated_socket() && !is_closing {
-                self.pending_events
-                    .push_back(Event::ConnectionEstablished(cid))
-            }
+            established = conn.state.has_nominated_socket();
+        }
+
+        let is_closing = self.connections.is_closing(&cid);
+
+        if established && !is_closing {
+            self.pending_events
+                .push_back(Event::ConnectionEstablished(cid))
         }
 
         if is_closing && control_flow.is_continue() {

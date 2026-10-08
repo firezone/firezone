@@ -323,7 +323,7 @@ where
         &mut self,
         index: Index,
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>, bool)> {
+    ) -> Result<(TId, &mut Connection<RId>)> {
         let id = *self
             .established_by_wireguard_session_index
             .get(&index.global())
@@ -331,27 +331,26 @@ where
                 UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
             })?;
 
-        let (connection, is_closing) = self.get_mut_including_closing(&id, now)?;
+        let connection = self.get_mut_including_closing(&id, now)?;
 
-        Ok((id, connection, is_closing))
+        Ok((id, connection))
     }
 
     pub(crate) fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>, bool)> {
-        let (id, conn, is_closing) = self
+    ) -> Result<(TId, &mut Connection<RId>)> {
+        let (id, conn) = self
             .established
             .iter_mut()
-            .map(|(id, c)| (*id, c, false))
-            .chain(self.closing.iter_mut().map(|(id, (c, _))| (*id, c, true)))
-            .find(|(_, c, _)| c.tunnel.remote_static_public().as_bytes() == &key)
+            .chain(self.closing.iter_mut().map(|(id, (c, _))| (id, c)))
+            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
 
-        Ok((id, conn, is_closing))
+        Ok((*id, conn))
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -373,7 +372,7 @@ where
                     now,
                 ))
                 .copied()?;
-            let (conn, _) = self.get_mut_including_closing(&id, now)?;
+            let conn = self.get_mut_including_closing(&id, now)?;
 
             return Ok((id, conn));
         }
@@ -383,7 +382,7 @@ where
             let id = inflight_stun_requests
                 .remove(trans_id)
                 .ok_or(UnknownConnection::by_trans_id(trans_id))?;
-            let (conn, _) = self.get_mut_including_closing(&id, now)?;
+            let conn = self.get_mut_including_closing(&id, now)?;
 
             return Ok((id, conn));
         }
@@ -395,9 +394,9 @@ where
         &mut self,
         id: &TId,
         now: Instant,
-    ) -> Result<(&mut Connection<RId>, bool)> {
+    ) -> Result<&mut Connection<RId>> {
         if let Some(connection) = self.established.get_mut(id) {
-            return Ok((connection, false));
+            return Ok(connection);
         }
 
         let (connection, _) = self
@@ -405,7 +404,11 @@ where
             .get_mut(id)
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
-        Ok((connection, true))
+        Ok(connection)
+    }
+
+    pub(crate) fn is_closing(&self, id: &TId) -> bool {
+        self.closing.contains_key(id)
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
