@@ -62,7 +62,7 @@ where
 {
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-    pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+    pub(crate) fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
@@ -117,22 +117,25 @@ where
         Some(connection)
     }
 
-    /// Moves the connection to `id` to the closing connections, where it waits to send `goodbye`.
-    pub(crate) fn close(
-        &mut self,
-        id: TId,
-        goodbye: IpPacket,
-        now: Instant,
-    ) -> Option<&Connection<RId>> {
-        let connection = self.established.remove(&id)?;
+    /// Closes the connection to `id` and sends `goodbye` to the peer.
+    ///
+    /// Returns `false` if there is no such connection.
+    pub(crate) fn close(&mut self, id: TId, goodbye: IpPacket, now: Instant) -> bool {
+        let Some(connection) = self.established.remove(&id) else {
+            return false;
+        };
+
+        if !connection.is_failed() {
+            tracing::info!("Connection closed proactively (goodbye pending)");
+        }
+
         let goodbye = Goodbye {
             packet: goodbye,
             deadline: now + GOODBYE_TIMEOUT,
-            attempted_while_ready: false,
         };
         self.closing.insert(id, (connection, goodbye));
 
-        self.closing.get(&id).map(|(c, _)| c)
+        true
     }
 
     pub(crate) fn remove_closing(
@@ -151,14 +154,25 @@ where
         }
     }
 
-    /// Advances the closing connections and sends their goodbye once they can encrypt it.
-    pub(crate) fn handle_closing_timeout(
+    pub(crate) fn handle_timeout(
         &mut self,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
+        events: &mut VecDeque<Event<TId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
     ) {
+        for (&cid, connection) in self.established.iter_mut() {
+            connection.handle_timeout(
+                cid,
+                now,
+                allocations,
+                transmits,
+                events,
+                inflight_stun_requests,
+            );
+        }
+
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
             if now >= goodbye.deadline {
                 tracing::info!(id = %cid, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
@@ -175,29 +189,24 @@ where
                 inflight_stun_requests,
             );
 
-            let socket = match connection.ready_socket(cid) {
-                Ok(socket) => socket,
-                Err(e) => {
-                    tracing::trace!(%cid, "Cannot send goodbye yet: {e:#}");
-                    continue;
-                }
+            let Ok(socket) = connection.ready_socket(cid) else {
+                continue;
             };
-            goodbye.attempted_while_ready = true;
 
-            let result =
-                connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits);
-
-            match result {
+            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits)
+            {
                 Ok(Some(_)) => {
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
-
-                    connection.state = ConnectionState::Failed;
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    tracing::info!(%cid, "Connection closed proactively (failed to send goodbye)");
+                }
                 Err(e) => {
-                    tracing::trace!(%cid, "Cannot send goodbye yet: {e:#}");
+                    tracing::info!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
                 }
             }
+
+            connection.state = ConnectionState::Failed;
         }
     }
 
@@ -403,12 +412,6 @@ where
         self.established.iter().map(|(id, conn)| (*id, conn))
     }
 
-    pub(crate) fn iter_established_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, conn)| (*id, conn))
-    }
-
     pub(crate) fn len(&self) -> usize {
         self.established.len()
     }
@@ -442,7 +445,7 @@ where
             .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
                 let ready_at = c
                     .first_handshake_completed_at
-                    .filter(|_| !goodbye.attempted_while_ready && c.ready_socket(*id).is_ok());
+                    .filter(|_| c.ready_socket(*id).is_ok());
 
                 iter::once((goodbye.deadline, "goodbye timeout"))
                     .chain(ready_at.map(|t| (t, "goodbye ready")))
@@ -489,8 +492,6 @@ where
 struct Goodbye {
     packet: IpPacket,
     deadline: Instant,
-    /// Whether we tried to send while the connection could encrypt; after that, only the connection's own timers retry.
-    attempted_while_ready: bool,
 }
 
 #[derive(Debug)]
@@ -613,14 +614,14 @@ mod tests {
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
         connections.remove_established(&id, now);
-        connections.handle_timeout(&mut VecDeque::default(), now);
+        connections.remove_failed(&mut VecDeque::default(), now);
 
         now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
         now += Duration::from_secs(5);
-        connections.handle_timeout(&mut VecDeque::default(), now);
+        connections.remove_failed(&mut VecDeque::default(), now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
     }
@@ -633,13 +634,13 @@ mod tests {
         let (id, idx, key) = insert_dummy_connection(&mut connections);
 
         connections.get_mut(&id, now).unwrap().state = ConnectionState::Failed;
-        connections.handle_timeout(&mut VecDeque::default(), now);
+        connections.remove_failed(&mut VecDeque::default(), now);
         now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
         now += Duration::from_secs(5);
-        connections.handle_timeout(&mut VecDeque::default(), now);
+        connections.remove_failed(&mut VecDeque::default(), now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
     }

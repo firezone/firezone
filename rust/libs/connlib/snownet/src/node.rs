@@ -456,17 +456,13 @@ where
     pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
         self.last_now = now;
 
-        let Some(connection) = self.connections.close(cid, goodbye, now) else {
+        if !self.connections.close(cid, goodbye, now) {
             tracing::debug!("Cannot close unknown connection");
 
             return;
-        };
+        }
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
-
-        if !connection.is_failed() {
-            tracing::info!("Connection closed proactively (goodbye pending)");
-        }
     }
 
     pub fn close_all(&mut self, goodbye: IpPacket, now: Instant) {
@@ -667,27 +663,19 @@ where
 
         let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
 
-        for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(
-                id,
-                now,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                &mut self.pending_events,
-                &mut self.inflight_stun_requests,
-            );
+        self.connections.handle_timeout(
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.pending_events,
+            &mut self.inflight_stun_requests,
+            now,
+        );
 
+        for (_, connection) in self.connections.iter_established() {
             if let Some(peer_socket) = connection.state.peer_socket() {
                 connections_by_path[peer_socket.kind_index()] += 1;
             }
         }
-
-        self.connections.handle_closing_timeout(
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-            &mut self.inflight_stun_requests,
-            now,
-        );
 
         // Report the current number of connections per network path. Every bucket is
         // emitted (including `0`) so that a path draining to zero is not stuck at its
@@ -712,7 +700,7 @@ where
             now,
         );
         self.connections
-            .handle_timeout(&mut self.pending_events, now);
+            .remove_failed(&mut self.pending_events, now);
         self.buffered_candidates.handle_timeout(now);
         self.inflight_stun_requests.handle_timeout(now);
     }
