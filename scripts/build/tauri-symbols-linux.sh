@@ -9,4 +9,6 @@ set -euox pipefail
 # file, which aborts the upload.
 sentry-cli debug-files upload --log-level info --project gui-client --include-sources \
     "$TARGET_DIR/release/firezone-client-gui" \
-    "$TARGET_DIR/release/firezone-client-tunnel"
+    "$TARGET_DIR/release/firezone-client-gui.debug" \
+    "$TARGET_DIR/release/firezone-client-tunnel" \
+    "$TARGET_DIR/release/firezone-client-tunnel.debug"

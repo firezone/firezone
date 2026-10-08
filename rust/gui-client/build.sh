@@ -10,4 +10,4 @@ pnpm vite build
 cargo build --release -p firezone-cli
 
 # Compile Rust and bundle
-pnpm tauri build
+pnpm tauri build "$@"
