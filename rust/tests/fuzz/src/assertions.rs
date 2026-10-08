@@ -597,11 +597,21 @@ fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
     }
 
     for ((sport, dport), response) in &ref_client.expected_tcp_rejections {
+        if *response == RejectionResponse::Reset {
+            if sim_client.reset_tcp_connections.contains(&(*sport, *dport)) {
+                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was reset as expected");
+            } else {
+                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, "Missing reset for TCP connection");
+            }
+            continue;
+        }
+
         match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
             Some(error)
                 if match response {
                     RejectionResponse::Prohibited => error.is_unreachable_prohibited(),
                     RejectionResponse::Unreachable => error.is_unreachable_network(),
+                    RejectionResponse::Reset => false,
                 } =>
             {
                 tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was rejected as expected");

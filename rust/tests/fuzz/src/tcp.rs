@@ -21,7 +21,7 @@ pub struct Client {
 
 pub struct Server {
     sockets: l3_tcp::SocketSet<'static>,
-    listen_endpoints: BTreeMap<l3_tcp::SocketHandle, SocketAddr>,
+    listen_ports: BTreeMap<l3_tcp::SocketHandle, u16>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -167,23 +167,33 @@ impl Server {
 
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
-            listen_endpoints: Default::default(),
+            listen_ports: Default::default(),
             device,
             interface,
             created_at: now,
         }
     }
 
-    pub fn listen(&mut self, address: SocketAddr) -> Result<()> {
+    /// Listens on `port` of every address.
+    pub fn listen(&mut self, port: u16) -> Result<()> {
         let mut socket = l3_tcp::create_tcp_socket();
         socket
-            .listen(address)
-            .with_context(|| format!("Failed to listen on {address}"))?;
+            .listen(port)
+            .with_context(|| format!("Failed to listen on port {port}"))?;
 
         let handle = self.sockets.add(socket);
-        self.listen_endpoints.insert(handle, address);
+        self.listen_ports.insert(handle, port);
 
         Ok(())
+    }
+
+    pub fn has_connection(&self, local: SocketAddr, remote: SocketAddr) -> bool {
+        self.sockets.iter().any(|(_, socket)| {
+            let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+            socket.local_endpoint() == Some(local.into())
+                && socket.remote_endpoint() == Some(remote.into())
+        })
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
@@ -197,21 +207,21 @@ impl Server {
             &mut self.sockets,
         );
 
-        // Every address in `listen_endpoints` always has one socket in `Listen`:
+        // Every port in `listen_ports` always has one socket in `Listen`:
         // a listener that accepted a connection is replaced by a fresh one.
         let accepted = self
-            .listen_endpoints
+            .listen_ports
             .iter()
             .filter(|(handle, _)| {
                 self.sockets.get::<l3_tcp::Socket>(**handle).state() != l3_tcp::State::Listen
             })
-            .map(|(handle, address)| (*handle, *address))
+            .map(|(handle, port)| (*handle, *port))
             .collect::<Vec<_>>();
 
-        for (handle, address) in accepted {
-            self.listen_endpoints.remove(&handle);
-            self.listen(address)
-                .expect("re-listening on a previously bound address to succeed");
+        for (handle, port) in accepted {
+            self.listen_ports.remove(&handle);
+            self.listen(port)
+                .expect("re-listening on a previously bound port to succeed");
         }
     }
 
@@ -219,18 +229,18 @@ impl Server {
         self.device.next_send()
     }
 
-    /// Drops all connections but keeps listening on the same addresses.
+    /// Drops all connections but keeps listening on the same ports.
     pub fn reset(&mut self) {
         self.sockets = l3_tcp::SocketSet::new(Vec::default());
         self.device.clear();
 
-        let addresses = mem::take(&mut self.listen_endpoints)
+        let ports = mem::take(&mut self.listen_ports)
             .into_values()
             .collect::<Vec<_>>();
 
-        for address in addresses {
-            self.listen(address)
-                .expect("re-listening on a previously bound address to succeed");
+        for port in ports {
+            self.listen(port)
+                .expect("re-listening on a previously bound port to succeed");
         }
     }
 }
