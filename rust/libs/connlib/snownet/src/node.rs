@@ -120,10 +120,6 @@ pub struct Node<TId, RId> {
     unix_now: Instant,
 }
 
-#[derive(thiserror::Error, Debug)]
-#[error("No TURN servers available")]
-pub struct NoTurnServers {}
-
 /// The connection exists but is not yet ready to send application packets because ICE is
 /// still in progress (no socket has been nominated yet) or the WireGuard handshake has not
 /// completed.
@@ -299,6 +295,7 @@ where
     ///
     /// If we already have a connection with the same parameters, this does nothing.
     /// Otherwise, the existing connection is discarded and a new one will be created.
+    /// A new connection without a usable relay waits until one becomes available.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn upsert_connection(
         &mut self,
@@ -312,7 +309,7 @@ where
         idle_ice_config: IceConfig,
         use_iceless: bool,
         now: Instant,
-    ) -> Result<(), NoTurnServers> {
+    ) {
         self.last_now = now;
 
         let local_creds = local_creds.into();
@@ -365,10 +362,8 @@ where
                 c.initiate_wg_session(&mut self.allocations, &mut self.buffered_transmits, now);
             }
 
-            return Ok(());
+            return;
         }
-
-        let selected_relay = self.sample_relay()?;
 
         let existing = self.connections.remove_established(&cid, now);
         let index = self.index.next();
@@ -392,29 +387,23 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
-        self.pending_events.extend(
-            self.allocations
-                .candidates_for_relay(&selected_relay)
-                .filter_map(|candidate| {
-                    let candidate = agent.add_local_candidate(candidate, now)?;
-                    let event = new_ice_candidate_event(cid, candidate, use_iceless);
-
-                    Some(event)
-                }),
-        );
-
         let mut connection = self.init_connection(
-            cid,
             agent,
             remote,
             preshared_key,
-            selected_relay,
             index,
             default_ice_config,
             idle_ice_config,
             now,
             now,
         );
+        connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
+
+        if self.allocations.is_empty() {
+            tracing::debug!("No relays available; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays);
+        }
 
         // Only Controlling fans out the init, so we don't burn
         // bandwidth and TURN channel bindings on a duplicate from
@@ -428,8 +417,6 @@ where
         for candidate in self.buffered_candidates.drain(&cid).collect::<Vec<_>>() {
             self.add_remote_candidate(cid, candidate, now);
         }
-
-        Ok(())
     }
 
     /// Removes a connection by just clearing its local memory.
@@ -854,11 +841,9 @@ where
     #[must_use]
     fn init_connection(
         &mut self,
-        cid: TId,
         mut agent: Agent,
         remote: PublicKey,
         key: x25519::StaticSecret,
-        relay: RId,
         index: Index,
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
@@ -866,10 +851,6 @@ where
         now: Instant,
     ) -> Connection<RId> {
         agent.handle_timeout(now);
-
-        if self.allocations.is_empty() {
-            tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
-        }
 
         let mut tunnel = Tunn::new_at(
             self.private_key.clone(),
@@ -912,7 +893,7 @@ where
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
             remote_pub_key: remote,
-            relay: Some(relay),
+            relay: None,
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
             },
@@ -1192,15 +1173,6 @@ where
                 .assign_relays(&mut self.allocations, &mut self.pending_events, now);
         }
     }
-
-    /// Sample a relay to use for a new connection.
-    fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let rid = self.allocations.sample().ok_or(NoTurnServers {})?;
-
-        tracing::debug!(%rid, "Sampled relay");
-
-        Ok(rid)
-    }
 }
 
 /// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
@@ -1367,8 +1339,10 @@ pub enum Event<TId> {
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
 
-    /// The last remaining relay was removed and we need a new set to make relayed connections.
+    /// We don't have any relays and need a new set to make relayed connections.
     ///
+    /// Emitted when the last remaining relay is removed or when a connection is created without
+    /// any relays.
     /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
     NoRelays,
 }
@@ -2256,8 +2230,8 @@ where
 
         self.relay = Some(rid);
 
-        // The full set, not just the relay candidates: a roam wipes the agent's
-        // locals, so host and reflexive candidates need re-seeding too.
+        // The full set, not just the relay candidates: a new or roamed agent has
+        // no local candidates, so host and reflexive candidates need seeding too.
         // The agent dedups, so candidates it already knows are not re-signalled.
         for candidate in allocations.candidates_for_relay(&rid) {
             self.add_local_candidate(cid, &candidate, pending_events, now);
