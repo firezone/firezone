@@ -382,7 +382,7 @@ impl Eventloop {
                     }
                 }
 
-                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
+                tunnel.state_mut().create_authorization(
                     msg.client,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
@@ -391,16 +391,7 @@ impl Eventloop {
                     msg.use_iceless,
                     now,
                     msg.flow_logs_ingest_token,
-                ) {
-                    tracing::debug!("Failed to create authorization: No TURN servers available");
-
-                    self.portal_cmd_tx
-                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
-                        .await
-                        .context("Failed to send message to portal")?;
-
-                    return Ok(());
-                };
+                );
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::AuthorizationCreated {

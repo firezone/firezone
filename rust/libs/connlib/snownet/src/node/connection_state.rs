@@ -308,10 +308,12 @@ impl From<PeerSocket> for ConnectionPath {
 }
 
 impl PeerSocket {
-    pub(crate) fn fmt<RId>(&self, relay: RId) -> String
+    pub(crate) fn fmt<RId>(&self, relay: Option<RId>) -> String
     where
         RId: fmt::Display,
     {
+        let relay = relay.map_or_else(|| "none".to_owned(), |r| r.to_string());
+
         match self {
             PeerSocket::PeerToPeer { source, dest } => {
                 format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
