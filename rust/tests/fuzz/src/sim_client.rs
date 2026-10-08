@@ -72,6 +72,7 @@ pub(crate) struct SimClient {
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
+    pub(crate) reset_tcp_connections: BTreeSet<(SPort, DPort)>,
 
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -105,6 +106,7 @@ impl SimClient {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
             failed_tcp_packets: Default::default(),
+            reset_tcp_connections: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
         }
@@ -448,6 +450,12 @@ impl SimClient {
         }
 
         if self.tcp_client.accepts(&packet) {
+            if let Some(tcp) = packet.as_tcp()
+                && tcp.rst()
+            {
+                self.reset_tcp_connections
+                    .insert((SPort(tcp.destination_port()), DPort(tcp.source_port())));
+            }
             self.tcp_client.handle_inbound(packet);
             return None;
         }
@@ -624,6 +632,7 @@ impl SimClient {
         self.received_tcp_dns_responses.clear();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
+        self.reset_tcp_connections.clear();
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {
