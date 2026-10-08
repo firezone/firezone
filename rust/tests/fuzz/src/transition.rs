@@ -323,15 +323,22 @@ impl Transition {
     }
 }
 
-/// Returns the bytes a [`Transition::SendTcpData`] writes: the probe ID followed by `len` bytes.
-///
-/// Small enough to fit a single segment, so every segment of it starts with the probe ID.
+/// Returns the bytes a [`Transition::SendTcpData`] writes: the probe ID and `len`, followed by
+/// `len` bytes.
 pub(crate) fn tcp_payload(probe_id: ProbeId, len: u16) -> Vec<u8> {
-    probe_id
-        .to_be_bytes()
-        .into_iter()
+    iter::empty()
+        .chain(probe_id.to_be_bytes())
+        .chain(len.to_be_bytes())
         .chain(iter::repeat_n(0x5a, usize::from(len)))
         .collect()
+}
+
+/// Returns the probe ID and total length of the [`tcp_payload`] that `payload` starts with.
+pub(crate) fn tcp_write_header(payload: &[u8]) -> Option<(ProbeId, u32)> {
+    let id = ProbeId::from_payload(payload)?;
+    let len = u16::from_be_bytes(*payload.get(8..)?.first_chunk()?);
+
+    Some((id, 10 + u32::from(len)))
 }
 
 fn is_device_pool(resource: &Resource) -> bool {

@@ -1211,13 +1211,9 @@ impl TunnelTest {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| c.drive_tcp(now));
 
-            while let Some(transmit) = client.exec_mut(|c| {
-                let packet = c.poll_outbound()?;
-
-                match c.submitted_tcp_probe(&packet) {
-                    Some(id) => c.encapsulate_probe(id, packet, now),
-                    None => c.encapsulate(packet, now),
-                }
+            while let Some(transmit) = client.exec_mut(|c| match c.poll_outbound()? {
+                (packet, Some(id)) => c.encapsulate_probe(id, packet, now),
+                (packet, None) => c.encapsulate(packet, now),
             }) {
                 buffered_transmits.push_from(transmit, client, now)
             }

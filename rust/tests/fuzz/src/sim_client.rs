@@ -66,8 +66,6 @@ pub(crate) struct SimClient {
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
     sent_probes: Vec<(ProbeId, ProbeProtocol)>,
-    /// Probes written to TCP connections that no outbound segment has carried yet.
-    unsubmitted_tcp_probes: BTreeMap<(SPort, DPort), ProbeId>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
@@ -100,7 +98,6 @@ impl SimClient {
             received_tcp_dns_responses: Default::default(),
             probe_observations: Default::default(),
             sent_probes: Default::default(),
-            unsubmitted_tcp_probes: Default::default(),
             routes: Default::default(),
             search_domain: Default::default(),
             observed_resource_list: Default::default(),
@@ -242,16 +239,12 @@ impl SimClient {
 
     /// Connects `local` to `remote`; the SYN submits probe `id`.
     pub(crate) fn connect_tcp_probe(&mut self, id: ProbeId, local: SocketAddr, remote: SocketAddr) {
-        if let Err(e) = self.tcp_client.connect(local, remote) {
+        if let Err(e) = self.tcp_client.connect(local, remote, id) {
             tracing::error!("TCP connect failed: {e:#}");
-            return;
         }
-
-        self.unsubmitted_tcp_probes
-            .insert((SPort(local.port()), DPort(remote.port())), id);
     }
 
-    /// Writes `payload` to a TCP connection; the segment that carries it submits probe `id`.
+    /// Writes `payload` to a TCP connection; the first segment that carries it submits probe `id`.
     pub(crate) fn write_tcp_probe(
         &mut self,
         id: ProbeId,
@@ -259,30 +252,9 @@ impl SimClient {
         remote: SocketAddr,
         payload: &[u8],
     ) {
-        if let Err(e) = self.tcp_client.send(local, remote, payload) {
+        if let Err(e) = self.tcp_client.send(local, remote, id, payload) {
             tracing::error!("TCP send failed: {e:#}");
-            return;
         }
-
-        self.unsubmitted_tcp_probes
-            .insert((SPort(local.port()), DPort(remote.port())), id);
-    }
-
-    /// Returns the probe an outbound TCP segment submits.
-    ///
-    /// That is the SYN of a connection opened for a probe or the first segment carrying it.
-    pub(crate) fn submitted_tcp_probe(&mut self, packet: &IpPacket) -> Option<ProbeId> {
-        let tcp = packet.as_tcp()?;
-        let ports = (SPort(tcp.source_port()), DPort(tcp.destination_port()));
-        let id = *self.unsubmitted_tcp_probes.get(&ports)?;
-
-        if !tcp.syn() && ProbeId::from_payload(tcp.payload()) != Some(id) {
-            return None;
-        }
-
-        self.unsubmitted_tcp_probes.remove(&ports);
-
-        Some(id)
     }
 
     pub(crate) fn encapsulate(
@@ -345,15 +317,18 @@ impl SimClient {
         Ok(self.transmit_buffer.poll_transmit())
     }
 
-    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+    /// Returns the next packet the simulated applications send and the probe it submits, if any.
+    pub fn poll_outbound(&mut self) -> Option<(IpPacket, Option<ProbeId>)> {
         self.tcp_dns_client
             .poll_outbound()
+            .map(|packet| (packet, None))
             .or_else(|| self.tcp_client.poll_outbound())
     }
 
     pub fn drive_tcp(&mut self, now: Instant) {
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
+        self.record_tcp_responses(now);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -406,13 +381,9 @@ impl SimClient {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
                         }
                     }
-                    Layer4Protocol::Tcp { src, dst } => {
-                        if let Some(id) = self.unanswered_tcp_probe(SPort(src), DPort(dst)) {
-                            self.record_received_response(id, packet.clone(), now);
-                        }
-
-                        // Allow the client to process the ICMP error.
+                    Layer4Protocol::Tcp { .. } => {
                         self.tcp_client.handle_inbound(packet);
+                        self.record_tcp_responses(now);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
                         let protocol = ProbeProtocol::Icmp {
@@ -486,10 +457,8 @@ impl SimClient {
         }
 
         if self.tcp_client.accepts(&packet) {
-            if let Some(id) = self.answered_tcp_probe(&packet) {
-                self.record_received_response(id, packet.clone(), now);
-            }
             self.tcp_client.handle_inbound(packet);
+            self.record_tcp_responses(now);
             return None;
         }
 
@@ -655,7 +624,21 @@ impl SimClient {
                 at,
                 client: self.id,
                 packet,
+                tcp_echo: None,
             }));
+    }
+
+    fn record_tcp_responses(&mut self, at: Instant) {
+        while let Some(response) = self.tcp_client.poll_response() {
+            self.probe_observations
+                .push(ProbeObservation::ResponseReceived(ReceivedResponse {
+                    id: response.probe,
+                    at,
+                    client: self.id,
+                    packet: response.packet,
+                    tcp_echo: response.echo,
+                }));
+        }
     }
 
     pub(crate) fn clear_packets(&mut self) {
@@ -667,46 +650,7 @@ impl SimClient {
 
     pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
-        self.unsubmitted_tcp_probes.clear();
-    }
-
-    /// Returns the probe a TCP segment accepts, echoes or resets, unless it was already answered.
-    fn answered_tcp_probe(&self, packet: &IpPacket) -> Option<ProbeId> {
-        let tcp = packet.as_tcp()?;
-        let id =
-            self.unanswered_tcp_probe(SPort(tcp.destination_port()), DPort(tcp.source_port()))?;
-        let accepts_connect = tcp.syn()
-            && tcp.ack()
-            && self.probe_observations.iter().any(|observation| {
-                observation
-                    .as_submitted_request()
-                    .is_some_and(|submitted| submitted.id == id && is_tcp_syn(&submitted.packet))
-            });
-
-        (tcp.rst() || accepts_connect || ProbeId::from_payload(tcp.payload()) == Some(id))
-            .then_some(id)
-    }
-
-    /// Returns the TCP probe submitted in the current transition if it has no response yet.
-    ///
-    /// Retransmitted segments of a probe can each be answered.
-    fn unanswered_tcp_probe(&self, sport: SPort, dport: DPort) -> Option<ProbeId> {
-        let id = self.submitted_probe_for(ProbeProtocol::Tcp { sport, dport })?;
-        let answered = self.probe_observations.iter().any(|observation| {
-            observation.id() == Some(id) && observation.as_received_response().is_some()
-        });
-
-        (!answered).then_some(id)
-    }
-
-    /// Returns the probe for `protocol` if it was submitted in the current transition.
-    fn submitted_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
-        let id = self.latest_probe_for(protocol)?;
-
-        self.probe_observations
-            .iter()
-            .any(|observation| observation.id() == Some(id))
-            .then_some(id)
+        self.tcp_client.forget_probes();
     }
 
     fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
@@ -757,8 +701,4 @@ impl ExecMutScope for SimClient {
     fn enter(&self) -> Self::Guard {
         self.malicious_behaviour.guard()
     }
-}
-
-fn is_tcp_syn(packet: &IpPacket) -> bool {
-    packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack())
 }

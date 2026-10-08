@@ -305,13 +305,10 @@ impl SimGateway {
             if icmp_error.is_none()
                 && let Some(server) = self.tcp_server_for(socket, remote)
             {
-                let established = server.is_established(socket, remote);
-                server.handle_inbound(packet.clone());
-
-                if tcp.syn() && !tcp.ack() {
+                if let Some(id) = server.handle_inbound(packet.clone()) {
+                    self.push_received_request(Some(id), packet, now);
+                } else if tcp.syn() && !tcp.ack() {
                     self.record_received_tcp_syn(&packet, now);
-                } else if established {
-                    self.record_received_tcp_request(&packet, now);
                 }
 
                 return None;
@@ -389,20 +386,6 @@ impl SimGateway {
         if let Some(udp) = packet.as_udp() {
             self.record_received_request(udp.payload(), packet.clone(), now);
         }
-    }
-
-    fn record_received_tcp_request(&mut self, packet: &IpPacket, now: Instant) {
-        let Some(tcp) = packet.as_tcp() else {
-            return;
-        };
-        // A retransmitted segment carries a probe the Gateway already received.
-        if ProbeId::from_payload(tcp.payload())
-            .is_none_or(|id| self.probe_observations.iter().any(|o| o.id() == Some(id)))
-        {
-            return;
-        }
-
-        self.record_received_request(tcp.payload(), packet.clone(), now);
     }
 
     fn record_received_tcp_syn(&mut self, packet: &IpPacket, now: Instant) {

@@ -1,17 +1,20 @@
-use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    net::SocketAddr,
+    time::Instant,
+};
 
 use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
-use crate::os::SimulatedOs;
+use crate::{os::SimulatedOs, probe::ProbeId, transition::tcp_write_header};
 
 pub struct Client {
     sockets: l3_tcp::SocketSet<'static>,
-    /// The socket for each connection, or `None` for one that was dropped.
-    ///
     /// Closed connections are kept so late packets for them are still consumed.
-    sockets_by_conn: BTreeMap<(SocketAddr, SocketAddr), Option<l3_tcp::SocketHandle>>,
+    connections: BTreeMap<(SocketAddr, SocketAddr), Connection>,
+    responses: VecDeque<Response>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
     os: SimulatedOs,
@@ -19,9 +22,45 @@ pub struct Client {
     created_at: Instant,
 }
 
+/// A packet that answers a connect or write probe.
+pub struct Response {
+    pub probe: ProbeId,
+    pub packet: IpPacket,
+    /// Everything echoed for a write probe, reassembled from all its segments.
+    pub echo: Option<Vec<u8>>,
+}
+
+struct Connection {
+    /// `None` for a connection that was dropped.
+    socket: Option<l3_tcp::SocketHandle>,
+    /// The probe of the latest connect or write, until it is answered.
+    probe: Option<Probe>,
+    /// Bytes written whose echo has not arrived yet.
+    unechoed: usize,
+}
+
+struct Probe {
+    id: ProbeId,
+    submitted: bool,
+    kind: ProbeKind,
+}
+
+enum ProbeKind {
+    Connect,
+    Write {
+        len: usize,
+        /// Echoed bytes of earlier writes that arrive before this write's echo.
+        skip: usize,
+        echo: Vec<u8>,
+        last_segment: Option<IpPacket>,
+    },
+}
+
 pub struct Server {
     sockets: l3_tcp::SocketSet<'static>,
     listen_ports: BTreeMap<l3_tcp::SocketHandle, u16>,
+    /// The sequence number at which the next write starts on each established connection.
+    next_write_seq: BTreeMap<(SocketAddr, SocketAddr), u32>,
     device: l3_tcp::InMemoryDevice,
     interface: l3_tcp::Interface,
 
@@ -35,7 +74,8 @@ impl Client {
 
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
-            sockets_by_conn: Default::default(),
+            connections: Default::default(),
+            responses: Default::default(),
             device,
             interface,
             os,
@@ -43,11 +83,15 @@ impl Client {
         }
     }
 
-    pub fn connect(&mut self, local: SocketAddr, remote: SocketAddr) -> Result<()> {
+    /// Connects `local` to `remote`; the SYN submits probe `id`.
+    pub fn connect(&mut self, local: SocketAddr, remote: SocketAddr, id: ProbeId) -> Result<()> {
         // Sockets are keyed by the full `(local, remote)` 4-tuple, so the client
         // can hold several connections to one remote from different local ports.
         // Re-connecting an already-open 4-tuple is a no-op.
-        if let Some(Some(_)) = self.sockets_by_conn.get(&(local, remote)) {
+        if let Some(Connection {
+            socket: Some(_), ..
+        }) = self.connections.get(&(local, remote))
+        {
             return Ok(());
         }
 
@@ -63,19 +107,34 @@ impl Client {
 
         let handle = self.sockets.add(socket);
 
-        self.sockets_by_conn.insert((local, remote), Some(handle));
+        self.connections.insert(
+            (local, remote),
+            Connection {
+                socket: Some(handle),
+                probe: Some(Probe::new(id, ProbeKind::Connect)),
+                unechoed: 0,
+            },
+        );
 
         Ok(())
     }
 
     /// Writes `data` to the established connection between `local` and `remote`.
-    pub fn send(&mut self, local: SocketAddr, remote: SocketAddr, data: &[u8]) -> Result<()> {
-        let handle = self
-            .sockets_by_conn
-            .get(&(local, remote))
-            .copied()
-            .flatten()
-            .context("No open TCP connection")?;
+    ///
+    /// The first segment carrying `data` submits probe `id`, which is answered once all of
+    /// `data` was echoed back.
+    pub fn send(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        id: ProbeId,
+        data: &[u8],
+    ) -> Result<()> {
+        let connection = self
+            .connections
+            .get_mut(&(local, remote))
+            .context("No TCP connection")?;
+        let handle = connection.socket.context("TCP connection was dropped")?;
         let socket = self.sockets.get_mut::<Socket>(handle);
         socket.set_timeout(Some(self.os.tcp_timeout()));
 
@@ -88,6 +147,15 @@ impl Client {
             data.len()
         );
 
+        let write = ProbeKind::Write {
+            len: data.len(),
+            skip: connection.unechoed,
+            echo: Vec::with_capacity(data.len()),
+            last_segment: None,
+        };
+        connection.probe = Some(Probe::new(id, write));
+        connection.unechoed += data.len();
+
         Ok(())
     }
 
@@ -99,7 +167,7 @@ impl Client {
         let local = SocketAddr::new(packet.destination(), tcp.destination_port());
         let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
-        self.sockets_by_conn.contains_key(&(local, remote))
+        self.connections.contains_key(&(local, remote))
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
@@ -108,26 +176,37 @@ impl Client {
             && let Layer4Protocol::Tcp { src, dst } = failed_packet.layer4_protocol()
             && let local = SocketAddr::new(failed_packet.src(), src)
             && let remote = SocketAddr::new(failed_packet.dst(), dst)
-            && let Some(Some(handle)) = self.sockets_by_conn.get(&(local, remote))
+            && let Some(connection) = self.connections.get_mut(&(local, remote))
+            && let Some(handle) = connection.socket
         {
             tracing::debug!(%local, %remote, "Received ICMP error");
 
-            let handle = *handle;
+            if let Some(probe) = connection.probe.take().filter(|probe| probe.submitted) {
+                self.responses.push_back(Response {
+                    probe: probe.id,
+                    packet,
+                    echo: None,
+                });
+            }
             self.forget(local, remote, handle);
 
             return;
         }
 
-        // A packet for a connection that was dropped has no socket to
-        // receive it. Feeding it to the TCP stack would answer it with an RST.
         if let Some(tcp) = packet.as_tcp()
             && let local = SocketAddr::new(packet.destination(), tcp.destination_port())
             && let remote = SocketAddr::new(packet.source(), tcp.source_port())
-            && let Some(None) = self.sockets_by_conn.get(&(local, remote))
+            && let Some(connection) = self.connections.get_mut(&(local, remote))
         {
-            tracing::debug!(%local, %remote, "Ignoring packet for closed connection");
+            // A packet for a connection that was dropped has no socket to
+            // receive it. Feeding it to the TCP stack would answer it with an RST.
+            if connection.socket.is_none() {
+                tracing::debug!(%local, %remote, "Ignoring packet for closed connection");
 
-            return;
+                return;
+            }
+
+            self.responses.extend(connection.answered_by(&packet));
         }
 
         self.device.receive(packet);
@@ -140,17 +219,37 @@ impl Client {
             .interface
             .poll(now, &mut self.device, &mut self.sockets);
 
-        for (_, socket) in self.sockets.iter_mut() {
-            let l3_tcp::AnySocket::Tcp(socket) = socket;
+        for connection in self.connections.values_mut() {
+            let Some(handle) = connection.socket else {
+                continue;
+            };
+            let socket = self.sockets.get_mut::<Socket>(handle);
 
             if socket.state() == l3_tcp::State::Established && socket.send_queue() == 0 {
                 socket.set_timeout(None);
             }
+
+            while let Ok(data) = socket.recv(|buf| (buf.len(), buf.to_vec())) {
+                if data.is_empty() {
+                    break;
+                }
+                self.responses.extend(connection.receive_echo(&data));
+            }
         }
     }
 
-    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.device.next_send()
+    /// Returns the next packet to send and the probe it submits, if any.
+    ///
+    /// That is the SYN of a connect probe or the first segment carrying a write probe's data.
+    pub fn poll_outbound(&mut self) -> Option<(IpPacket, Option<ProbeId>)> {
+        let packet = self.device.next_send()?;
+        let probe = self.submitted_probe(&packet);
+
+        Some((packet, probe))
+    }
+
+    pub fn poll_response(&mut self) -> Option<Response> {
+        self.responses.pop_front()
     }
 
     /// Silently drops every connection that is not established or still waits for an ACK.
@@ -159,9 +258,9 @@ impl Client {
     /// this keeps a failed connection from retransmitting into later transitions.
     pub fn drop_unfinished(&mut self) {
         let dropped = self
-            .sockets_by_conn
+            .connections
             .iter()
-            .filter_map(|((local, remote), handle)| Some((*local, *remote, (*handle)?)))
+            .filter_map(|((local, remote), connection)| Some((*local, *remote, connection.socket?)))
             .filter(|(_, _, handle)| {
                 let socket = self.sockets.get::<Socket>(*handle);
 
@@ -174,10 +273,124 @@ impl Client {
         }
     }
 
+    /// Forgets all unanswered probes, so that late packets cannot answer them.
+    pub fn forget_probes(&mut self) {
+        for connection in self.connections.values_mut() {
+            connection.probe = None;
+        }
+        self.responses.clear();
+    }
+
+    fn submitted_probe(&mut self, packet: &IpPacket) -> Option<ProbeId> {
+        let tcp = packet.as_tcp()?;
+        let local = SocketAddr::new(packet.source(), tcp.source_port());
+        let remote = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let probe = self
+            .connections
+            .get_mut(&(local, remote))?
+            .probe
+            .as_mut()
+            .filter(|probe| !probe.submitted)?;
+
+        let submits = match probe.kind {
+            ProbeKind::Connect => tcp.syn(),
+            ProbeKind::Write { .. } => !tcp.payload().is_empty(),
+        };
+        if !submits {
+            return None;
+        }
+        probe.submitted = true;
+
+        Some(probe.id)
+    }
+
     /// Drops a connection without telling the remote, but keeps consuming its late packets.
     fn forget(&mut self, local: SocketAddr, remote: SocketAddr, handle: l3_tcp::SocketHandle) {
         self.sockets.remove(handle);
-        self.sockets_by_conn.insert((local, remote), None);
+        self.connections.insert(
+            (local, remote),
+            Connection {
+                socket: None,
+                probe: None,
+                unechoed: 0,
+            },
+        );
+    }
+}
+
+impl Connection {
+    /// Returns the response if `packet` accepts or resets the submitted probe.
+    fn answered_by(&mut self, packet: &IpPacket) -> Option<Response> {
+        let tcp = packet.as_tcp()?;
+        let probe = self.probe.as_mut().filter(|probe| probe.submitted)?;
+
+        let answered = match &mut probe.kind {
+            ProbeKind::Connect => tcp.rst() || (tcp.syn() && tcp.ack()),
+            ProbeKind::Write { last_segment, .. } => {
+                if !tcp.payload().is_empty() {
+                    *last_segment = Some(packet.clone());
+                }
+
+                tcp.rst()
+            }
+        };
+        if !answered {
+            return None;
+        }
+        let probe = self.probe.take()?;
+
+        Some(Response {
+            probe: probe.id,
+            packet: packet.clone(),
+            echo: None,
+        })
+    }
+
+    /// Returns the response once `data` completes the echo of the submitted write probe.
+    fn receive_echo(&mut self, data: &[u8]) -> Option<Response> {
+        self.unechoed = self.unechoed.saturating_sub(data.len());
+
+        let probe = self.probe.as_mut().filter(|probe| probe.submitted)?;
+        let ProbeKind::Write {
+            len,
+            skip,
+            echo,
+            last_segment,
+        } = &mut probe.kind
+        else {
+            return None;
+        };
+
+        let skipped = (*skip).min(data.len());
+        *skip -= skipped;
+        echo.extend_from_slice(&data[skipped..]);
+
+        if echo.len() < *len {
+            return None;
+        }
+
+        let packet = last_segment
+            .take()
+            .expect("echoed data to arrive in a segment");
+        let echo = std::mem::take(echo);
+        let id = probe.id;
+        self.probe = None;
+
+        Some(Response {
+            probe: id,
+            packet,
+            echo: Some(echo),
+        })
+    }
+}
+
+impl Probe {
+    fn new(id: ProbeId, kind: ProbeKind) -> Self {
+        Self {
+            id,
+            submitted: false,
+            kind,
+        }
     }
 }
 
@@ -189,6 +402,7 @@ impl Server {
         Self {
             sockets: l3_tcp::SocketSet::new(Vec::default()),
             listen_ports: Default::default(),
+            next_write_seq: Default::default(),
             device,
             interface,
             created_at: now,
@@ -208,8 +422,13 @@ impl Server {
         Ok(())
     }
 
-    pub fn handle_inbound(&mut self, packet: IpPacket) {
+    /// Returns the probe of the write whose first bytes `packet` carries on an established
+    /// connection, unless an earlier copy of that segment already did.
+    pub fn handle_inbound(&mut self, packet: IpPacket) -> Option<ProbeId> {
+        let write = self.write_started_by(&packet);
         self.device.receive(packet);
+
+        write
     }
 
     /// Returns whether a connection between `local` and `remote` is established.
@@ -268,5 +487,30 @@ impl Server {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
+    }
+
+    fn write_started_by(&mut self, packet: &IpPacket) -> Option<ProbeId> {
+        let tcp = packet.as_tcp()?;
+        let local = SocketAddr::new(packet.destination(), tcp.destination_port());
+        let remote = SocketAddr::new(packet.source(), tcp.source_port());
+
+        if tcp.syn() && !tcp.ack() && !self.is_established(local, remote) {
+            self.next_write_seq
+                .insert((local, remote), tcp.sequence_number().wrapping_add(1));
+
+            return None;
+        }
+        if !self.is_established(local, remote) {
+            return None;
+        }
+
+        let next = self.next_write_seq.get_mut(&(local, remote))?;
+        if tcp.sequence_number() != *next {
+            return None;
+        }
+        let (id, len) = tcp_write_header(tcp.payload())?;
+        *next = next.wrapping_add(len);
+
+        Some(id)
     }
 }

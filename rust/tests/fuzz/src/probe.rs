@@ -116,6 +116,9 @@ pub(crate) enum ProbeRequest {
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        /// The `len` of a write's [`tcp_payload`](crate::transition::tcp_payload), or `None`
+        /// for a connect.
+        write_len: Option<u16>,
     },
 }
 
@@ -285,6 +288,8 @@ pub(crate) struct ReceivedResponse {
     pub(crate) at: Instant,
     pub(crate) client: ClientId,
     pub(crate) packet: IpPacket,
+    /// Everything echoed for a TCP write probe, reassembled from all its segments.
+    pub(crate) tcp_echo: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone)]

@@ -11,7 +11,7 @@ use super::{
     sim_client::SimClient,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::Destination,
+    transition::{Destination, tcp_payload},
 };
 use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -485,7 +485,7 @@ fn assert_echo_response(
                 }
             }
         }
-        ProbeRequest::Tcp { .. } => {
+        ProbeRequest::Tcp { write_len, .. } => {
             let (Some(request), Some(reply)) = (
                 submitted_request.packet.as_tcp(),
                 received_response.packet.as_tcp(),
@@ -502,7 +502,9 @@ fn assert_echo_response(
             if request.syn() && !(reply.syn() && reply.ack()) {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP connect was not answered with a SYN-ACK");
             }
-            if !request.syn() && request.payload() != reply.payload() {
+            if let Some(len) = *write_len
+                && received_response.tcp_echo != Some(tcp_payload(expected.id, len))
+            {
                 tracing::error!(target: "assertions", id = ?expected.id, "TCP echo payload does not match");
             }
         }

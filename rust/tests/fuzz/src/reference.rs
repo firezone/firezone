@@ -361,6 +361,7 @@ impl ReferenceState {
                     dst: dst.clone(),
                     sport: *sport,
                     dport: *dport,
+                    write_len: None,
                 };
                 let outcome = self.dispatch(
                     portal,
@@ -398,7 +399,9 @@ impl ReferenceState {
                 self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
             }
             Transition::SendTcpData {
-                flow_id, probe_id, ..
+                flow_id,
+                len,
+                probe_id,
             } => {
                 let flow = self
                     .tcp_flows
@@ -409,6 +412,7 @@ impl ReferenceState {
                     dst: flow.dst.clone(),
                     sport: flow.sport,
                     dport: flow.dport,
+                    write_len: Some(*len),
                 };
                 let outcome = self.dispatch(
                     portal,
