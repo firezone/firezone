@@ -35,8 +35,6 @@ struct Connection {
     socket: Option<l3_tcp::SocketHandle>,
     /// The probe of the latest connect or write, until it is answered.
     probe: Option<Probe>,
-    /// Bytes written whose echo has not arrived yet.
-    unechoed: usize,
 }
 
 struct Probe {
@@ -49,8 +47,6 @@ enum ProbeKind {
     Connect,
     Write {
         len: usize,
-        /// Echoed bytes of earlier writes that arrive before this write's echo.
-        skip: usize,
         echo: Vec<u8>,
         last_segment: Option<IpPacket>,
     },
@@ -110,7 +106,6 @@ impl Client {
             Connection {
                 socket: Some(handle),
                 probe: Some(Probe::new(id, ProbeKind::Connect)),
-                unechoed: 0,
             },
         );
 
@@ -147,12 +142,10 @@ impl Client {
 
         let write = ProbeKind::Write {
             len: data.len(),
-            skip: connection.unechoed,
             echo: Vec::with_capacity(data.len()),
             last_segment: None,
         };
         connection.probe = Some(Probe::new(id, write));
-        connection.unechoed += data.len();
 
         Ok(())
     }
@@ -250,7 +243,8 @@ impl Client {
         self.responses.pop_front()
     }
 
-    /// Silently drops every connection that is not established or still waits for an ACK.
+    /// Silently drops every connection that is not established, still waits for an ACK or
+    /// still waits for an echo.
     ///
     /// Like an application giving up on a connect or write that did not complete in time,
     /// this keeps a failed connection from retransmitting into later transitions.
@@ -258,11 +252,14 @@ impl Client {
         let dropped = self
             .connections
             .iter()
-            .filter_map(|((local, remote), connection)| Some((*local, *remote, connection.socket?)))
-            .filter(|(_, _, handle)| {
-                let socket = self.sockets.get::<Socket>(*handle);
+            .filter_map(|(&(local, remote), connection)| {
+                let handle = connection.socket?;
+                let socket = self.sockets.get::<Socket>(handle);
+                let finished = connection.probe.is_none()
+                    && socket.state() == l3_tcp::State::Established
+                    && socket.send_queue() == 0;
 
-                socket.state() != l3_tcp::State::Established || socket.send_queue() > 0
+                (!finished).then_some((local, remote, handle))
             })
             .collect::<Vec<_>>();
 
@@ -310,7 +307,6 @@ impl Client {
             Connection {
                 socket: None,
                 probe: None,
-                unechoed: 0,
             },
         );
     }
@@ -346,12 +342,9 @@ impl Connection {
 
     /// Returns the response once `data` completes the echo of the submitted write probe.
     fn receive_echo(&mut self, data: &[u8]) -> Option<Response> {
-        self.unechoed = self.unechoed.saturating_sub(data.len());
-
         let probe = self.probe.as_mut().filter(|probe| probe.submitted)?;
         let ProbeKind::Write {
             len,
-            skip,
             echo,
             last_segment,
         } = &mut probe.kind
@@ -359,9 +352,7 @@ impl Connection {
             return None;
         };
 
-        let skipped = (*skip).min(data.len());
-        *skip -= skipped;
-        echo.extend_from_slice(&data[skipped..]);
+        echo.extend_from_slice(data);
 
         if echo.len() < *len {
             return None;
@@ -479,5 +470,23 @@ impl Server {
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
+    }
+
+    /// Silently drops every connection that still waits for an ACK.
+    pub fn drop_unfinished(&mut self) {
+        let dropped = self
+            .sockets
+            .iter()
+            .filter(|(_, socket)| {
+                let l3_tcp::AnySocket::Tcp(socket) = socket;
+
+                socket.send_queue() > 0
+            })
+            .map(|(handle, _)| handle)
+            .collect::<Vec<_>>();
+
+        for handle in dropped {
+            self.sockets.remove(handle);
+        }
     }
 }

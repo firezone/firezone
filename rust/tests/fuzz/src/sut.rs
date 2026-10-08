@@ -855,6 +855,9 @@ impl TunnelTest {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| c.tcp_client.drop_unfinished());
         }
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| g.drop_unfinished_tcp_connections());
+        }
 
         if let Some((probe_id, flow_id)) = application_probe {
             self.record_dns_nat_observation(ref_state, probe_id, flow_id);

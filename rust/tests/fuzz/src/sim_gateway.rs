@@ -404,6 +404,12 @@ impl SimGateway {
         self.probe_observations.clear();
     }
 
+    pub(crate) fn drop_unfinished_tcp_connections(&mut self) {
+        for server in self.tcp_servers.values_mut() {
+            server.drop_unfinished();
+        }
+    }
+
     pub(crate) fn record_dns_resolution(
         &mut self,
         client: ClientId,

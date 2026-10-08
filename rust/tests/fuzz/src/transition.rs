@@ -63,7 +63,7 @@ pub enum Transition {
         flow_id: FlowId,
         probe_id: ProbeId,
     },
-    /// Opens a TCP connection and writes the probe ID to it; the resource echoes it back.
+    /// Opens a TCP connection; its SYN is the probe, which the resource accepts.
     ConnectTcp {
         flow_id: FlowId,
         client_id: ClientId,
