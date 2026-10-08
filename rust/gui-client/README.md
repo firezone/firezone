@@ -61,19 +61,16 @@ mise install
 
 ## Building
 
-Builds are best started from the frontend tool `pnpm`. This ensures typescript
-and css is compiled properly before bundling the application.
-
-See the [`package.json`](./package.json) script for more details as to what's
-going on under the hood.
+`mise run build` builds the frontend, the release binaries and the installer
+packages. See [`mise-tasks/build.sh`](./mise-tasks/build.sh) for what happens
+under the hood.
 
 ```bash
-# Builds a release exe
-pnpm build
+mise run build
 
 # Linux:
 # The release exe and deb package are up in the workspace.
-stat ../target/release/firezone
+stat ../target/release/firezone-client-gui
 stat ../target/release/bundle/deb/*.deb
 
 # Windows:
@@ -144,10 +141,6 @@ PowerShell 7 terminal. Make sure mise is activated in each (`mise activate pwsh 
 The app's config and logs will be stored at
 `C:\Users\$USER\AppData\Local\dev.firezone.client`.
 
-> Note: `pnpm dev` does **not** work for this flow. `dev.bat` hard-codes `tauri dev`
-> and forwards no arguments, so it can't pass `--skip-peer-verification`, and it
-> doesn't start an elevated Tunnel service.
-
 ### What this workflow can't test
 
 Running the GUI against a debug-build `run-interactive --skip-peer-verification` Tunnel deliberately
@@ -159,7 +152,7 @@ To test installation end-to-end you need a real signed release MSI, which **cann
 produced locally: the installer is signed with AzureSignTool against HSM-backed keys
 that are only available to CI. Use the GitHub CI pipeline to build a signed release MSI
 (see [Signing the Windows MSI in GitHub CI](#signing-the-windows-msi-in-github-ci)).
-`pnpm build` can still produce an _unsigned_ MSI locally to sanity-check the build itself.
+`mise run build` can still produce an _unsigned_ MSI locally to sanity-check the build itself.
 
 ## Platform support
 
