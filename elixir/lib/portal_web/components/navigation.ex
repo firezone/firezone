@@ -2,6 +2,7 @@ defmodule PortalWeb.Components.Navigation do
   use Phoenix.Component
   import Phoenix.Component, except: [link: 1]
   use PortalWeb, :verified_routes
+  alias Phoenix.LiveView.JS
   alias PortalWeb.Components.Core
 
   @doc """
@@ -162,6 +163,19 @@ defmodule PortalWeb.Components.Navigation do
         >
           Your settings
         </.link>
+      </li>
+      <li>
+        <button
+          id="open-getting-started"
+          type="button"
+          phx-click={
+            JS.dispatch("popover:hide", to: "#user-menu-button")
+            |> JS.push("open", target: "#getting-started")
+          }
+          class="block w-full text-left py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+        >
+          Getting started
+        </button>
       </li>
     </ul>
     <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">

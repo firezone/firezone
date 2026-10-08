@@ -1851,6 +1851,22 @@ defmodule PortalWeb.Sites.Components do
     value
   end
 
+  @doc """
+  The environment a freshly deployed Gateway runs with: its token, a new
+  `FIREZONE_ID`, and the API URL when this deployment overrides it.
+  """
+  @spec gateway_env(String.t()) :: [{String.t(), String.t()}]
+  def gateway_env(encoded_token) do
+    [
+      {"FIREZONE_ID", Ecto.UUID.generate()},
+      {"FIREZONE_TOKEN", encoded_token}
+      | if(url = Portal.Config.get_env(:portal, :api_url_override),
+          do: [{"FIREZONE_API_URL", url}],
+          else: []
+        )
+    ]
+  end
+
   defp gateway_docker_command(env) do
     [
       "docker run -d",
