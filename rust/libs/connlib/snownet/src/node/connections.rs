@@ -12,11 +12,15 @@ use is::stun::{StunMessage, TransId};
 
 use crate::{
     Event,
-    node::{Connection, allocations::Allocations, inflight_stun_requests::InflightStunRequests},
+    node::{
+        Connection, Goodbye, allocations::Allocations, inflight_stun_requests::InflightStunRequests,
+    },
 };
 
 pub struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
+    /// Closed connections waiting to send their goodbye; they stay in the index maps below.
+    closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
     established_by_local_ufrag: BTreeMap<String, TId>,
@@ -33,6 +37,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             established: Default::default(),
+            closing: Default::default(),
             established_by_wireguard_session_index: Default::default(),
             established_by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
@@ -52,8 +57,10 @@ where
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+        self.remove_closing(Connection::is_failed, now);
+
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
-            conn.emit(events, Event::ConnectionFailed(id));
+            events.push_back(Event::ConnectionFailed(id));
 
             for (index, _) in self
                 .established_by_wireguard_session_index
@@ -81,7 +88,10 @@ where
     }
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
-        let connection = self.established.remove(id)?;
+        let connection = self
+            .established
+            .remove(id)
+            .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
 
         self.established_by_wireguard_session_index
             .remove(&connection.index.global());
@@ -101,16 +111,38 @@ where
         Some(connection)
     }
 
-    pub(crate) fn remove_closing(&mut self, now: Instant) {
-        let closing = self
-            .established
+    /// Moves the connection to `id` to the closing connections, where it waits to send `goodbye`.
+    pub(crate) fn close(
+        &mut self,
+        id: TId,
+        goodbye: Goodbye,
+    ) -> Option<&mut (Connection<RId>, Goodbye)> {
+        let connection = self.established.remove(&id)?;
+        self.closing.insert(id, (connection, goodbye));
+
+        self.closing.get_mut(&id)
+    }
+
+    pub(crate) fn remove_closing(
+        &mut self,
+        filter: impl Fn(&Connection<RId>) -> bool,
+        now: Instant,
+    ) {
+        let ids = self
+            .closing
             .iter()
-            .filter_map(|(id, c)| c.goodbye.is_some().then_some(*id))
+            .filter_map(|(id, (c, _))| filter(c).then_some(*id))
             .collect::<Vec<_>>();
 
-        for id in closing {
+        for id in ids {
             self.remove_established(&id, now);
         }
+    }
+
+    pub(crate) fn iter_closing_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (TId, &mut Connection<RId>, &Goodbye)> {
+        self.closing.iter_mut().map(|(id, (c, g))| (*id, c, &*g))
     }
 
     /// Soft-resets all connections for a roam and queues them for relay migration.
@@ -218,55 +250,47 @@ where
         Ok(connection)
     }
 
-    /// Returns the connection to `id` unless it has been closed.
-    pub(crate) fn get_open_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
-        let connection = self
-            .established
-            .get_mut(id)
-            .filter(|c| c.goodbye.is_none())
-            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
-
-        Ok(connection)
-    }
-
-    pub(crate) fn get_open(&self, id: &TId) -> Option<&Connection<RId>> {
-        self.established.get(id).filter(|c| c.goodbye.is_none())
+    pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
+        self.established.get(id)
     }
 
     pub(crate) fn get_established_mut_session_index(
         &mut self,
         index: Index,
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let id = self
+    ) -> Result<(TId, &mut Connection<RId>, Option<&Goodbye>)> {
+        let id = *self
             .established_by_wireguard_session_index
             .get(&index.global())
             .with_context(|| {
                 UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
             })?;
 
-        let connection = self
-            .established
-            .get_mut(id)
-            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+        let (connection, goodbye) = self.get_mut_including_closing(&id, now)?;
 
-        Ok((*id, connection))
+        Ok((id, connection, goodbye))
     }
 
     pub(crate) fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let (id, conn) = self
+    ) -> Result<(TId, &mut Connection<RId>, Option<&Goodbye>)> {
+        let (id, conn, goodbye) = self
             .established
             .iter_mut()
-            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
+            .map(|(id, c)| (*id, c, None))
+            .chain(
+                self.closing
+                    .iter_mut()
+                    .map(|(id, (c, g))| (*id, c, Some(&*g))),
+            )
+            .find(|(_, c, _)| c.tunnel.remote_static_public().as_bytes() == &key)
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
 
-        Ok((*id, conn))
+        Ok((id, conn, goodbye))
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -288,7 +312,7 @@ where
                     now,
                 ))
                 .copied()?;
-            let conn = self.get_mut(&id, now)?;
+            let (conn, _) = self.get_mut_including_closing(&id, now)?;
 
             return Ok((id, conn));
         }
@@ -298,7 +322,7 @@ where
             let id = inflight_stun_requests
                 .remove(trans_id)
                 .ok_or(UnknownConnection::by_trans_id(trans_id))?;
-            let conn = self.get_mut(&id, now)?;
+            let (conn, _) = self.get_mut_including_closing(&id, now)?;
 
             return Ok((id, conn));
         }
@@ -306,11 +330,25 @@ where
         bail!("STUN message is not a BINDING")
     }
 
-    pub(crate) fn iter_open(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established
-            .iter()
-            .filter(|(_, conn)| conn.goodbye.is_none())
-            .map(|(id, conn)| (*id, conn))
+    fn get_mut_including_closing(
+        &mut self,
+        id: &TId,
+        now: Instant,
+    ) -> Result<(&mut Connection<RId>, Option<&Goodbye>)> {
+        if let Some(connection) = self.established.get_mut(id) {
+            return Ok((connection, None));
+        }
+
+        let (connection, goodbye) = self
+            .closing
+            .get_mut(id)
+            .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+
+        Ok((connection, Some(goodbye)))
+    }
+
+    pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
+        self.established.iter().map(|(id, conn)| (*id, conn))
     }
 
     pub(crate) fn iter_established_mut(
@@ -324,7 +362,9 @@ where
     }
 
     pub(crate) fn is_connected(&self, id: &TId) -> bool {
-        self.get_open(id).is_some_and(Connection::is_connected)
+        self.established
+            .get(id)
+            .is_some_and(Connection::is_connected)
     }
 
     pub(crate) fn clear(&mut self) {
@@ -332,8 +372,8 @@ where
         self.established_by_wireguard_session_index.clear();
     }
 
-    pub(crate) fn iter_open_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.iter_open().map(|(id, _)| id)
+    pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
+        self.established.keys().copied()
     }
 
     pub(crate) fn all_iceless(&self) -> bool {
@@ -347,6 +387,9 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
+            .chain(self.closing.values_mut().flat_map(|(c, goodbye)| {
+                iter::once((goodbye.deadline, "goodbye timeout")).chain(c.poll_timeout())
+            }))
             .chain(
                 self.disconnected_ids
                     .values()
@@ -696,7 +739,6 @@ mod tests {
                 Duration::ZERO,
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
-            goodbye: None,
             last_proactive_handshake_sent_at: None,
             relay: SelectedRelay { id: relay_id },
             state: crate::node::ConnectionState::Connecting {
