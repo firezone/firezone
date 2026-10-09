@@ -208,6 +208,9 @@ impl ReferenceState {
                         .is_site_specific_dns_query(query)
                         .or_else(|| client.dns_query_via_resource(query, upstream_do53))
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
+                    let listing = is_device_listing_query(query).then(|| {
+                        portal.browse_device_domain(&query.domain, &client.device_pool_ids())
+                    });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                         c.on_dns_query(
@@ -217,6 +220,10 @@ impl ReferenceState {
                             global_dns_records,
                             icmp_error_hosts,
                         );
+
+                        if let Some(listing) = listing {
+                            c.expect_device_listing(query, listing);
+                        }
                     });
                 }
             }

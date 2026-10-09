@@ -20,6 +20,13 @@ pub fn device_slug(domain: &dns_types::DomainName) -> Option<String> {
     (!slug.is_empty() && !slug.contains('.')).then(|| slug.to_owned())
 }
 
+/// Whether `domain` is the device domain or a name under it.
+pub fn is_in_device_domain(domain: &dns_types::DomainName) -> bool {
+    let name = domain.to_string().to_lowercase();
+
+    name == DEVICE_DOMAIN || name.ends_with(&format!(".{DEVICE_DOMAIN}"))
+}
+
 use crate::dns::pattern::Candidate;
 use anyhow::Result;
 use dns_types::DoHUrl;
