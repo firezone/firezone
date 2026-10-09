@@ -1,0 +1,213 @@
+name: "Setup WSL2"
+description: "Installs a WSL2 distribution with a Docker daemon inside and reports the VM's network address"
+
+outputs:
+  ip:
+    description: "The eth0 address of the WSL2 VM, reachable from the Windows host"
+    value: ${{ steps.ip.outputs.ip }}
+  host-ip:
+    description: "The Windows host's address on the WSL2 NAT network, i.e. the VM's default gateway"
+    value: ${{ steps.ip.outputs.host-ip }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Configure WSL
+      shell: pwsh
+      # WSL2 shuts the VM down once it has been idle for a while, taking the
+      # Docker daemon and every container with it. Steps that do not talk to
+      # WSL2, such as the one running the Client, are idle time as far as WSL2
+      # is concerned. The configuration is read when the VM starts, so this has
+      # to happen before anything else uses `wsl`.
+      run: |
+        @"
+        [wsl2]
+        vmIdleTimeout=-1
+        "@ | Set-Content -Path (Join-Path $env:USERPROFILE ".wslconfig") -Encoding ascii
+    - name: Update WSL
+      shell: pwsh
+      # The runner image ships the inbox WSL, whose kernel predates the
+      # nftables support the Gateway's firewall rules need. `--update`
+      # replaces it with the current release. It reaches out to Microsoft's
+      # servers, so it gets a couple of attempts.
+      run: |
+        foreach ($attempt in 1..3) {
+          wsl --update
+          if ($LASTEXITCODE -eq 0) {
+            break
+          }
+
+          Start-Sleep -Seconds 5
+        }
+
+        # Doubles as the assertion that the update took: the inbox WSL does
+        # not know `--version`.
+        wsl --version
+    - name: Install Ubuntu 24.04
+      shell: pwsh
+      # The runner image ships the inbox WSL, which has no `wsl --install`, so
+      # the distribution is imported from Canonical's rootfs image instead.
+      # The download is pinned to a dated release and verified against the
+      # digest Canonical publishes next to it.
+      env:
+        ROOTFS_URL: https://cloud-images.ubuntu.com/wsl/releases/24.04/20240423/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz
+        ROOTFS_SHA256: 2a790896740b14d637dbdc583cce1ba081ac53b9e9cdb46dc09a2f73abbd9934
+      run: |
+        $rootfs = Join-Path $env:RUNNER_TEMP "ubuntu-24.04.rootfs.tar.gz"
+        curl.exe --fail --location --show-error --silent --output $rootfs $env:ROOTFS_URL
+
+        $digest = (Get-FileHash -Algorithm SHA256 $rootfs).Hash.ToLower()
+        if ($digest -ne $env:ROOTFS_SHA256) {
+          throw "Rootfs digest is $digest, expected $env:ROOTFS_SHA256"
+        }
+
+        # `--import` writes into an existing directory rather than creating
+        # the path itself.
+        $target = Join-Path $env:RUNNER_TEMP "wsl\Ubuntu-24.04"
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        wsl --import Ubuntu-24.04 $target $rootfs --version 2
+        wsl --set-default Ubuntu-24.04
+
+        # An imported distribution defaults to root, which is the user every
+        # step below runs as. This also asserts the import worked.
+        wsl -u root -- true
+    - name: Register the `wsl-bash` shell
+      shell: pwsh
+      # Puts `wsl-bash.cmd` on PATH so that steps can select it with
+      # `shell: wsl-bash {0}`; the runner resolves the shell against PATH.
+      run: Add-Content -Path $env:GITHUB_PATH -Value $env:GITHUB_ACTION_PATH
+    - name: Prepare the distribution
+      shell: wsl-bash {0}
+      run: |
+        set -xe
+
+        apt-get update
+        apt-get install -y curl zstd iptables nftables python3
+
+        # Docker must program its firewall rules through the legacy iptables
+        # backend from the very first daemon start: rules it writes through the
+        # nftables backend (e.g. the FORWARD drop policy) are not cleaned up by
+        # a backend switch and silently drop container traffic afterwards.
+        update-alternatives --set iptables /usr/sbin/iptables-legacy
+        update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+    - name: Determine the WSL2 address
+      id: ip
+      shell: pwsh
+      run: |
+        function Get-WslCidr {
+          $out = (wsl -u root -- ip -4 -o addr show dev eth0) -join "`n"
+          if ($out -notmatch "inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)") {
+            throw "Could not determine the WSL2 address from: $out"
+          }
+          @{ Ip = $Matches[1]; Prefix = [int]$Matches[2] }
+        }
+
+        function Get-NatGateway([string]$ip, [int]$prefix) {
+          $bytes = ([System.Net.IPAddress]::Parse($ip)).GetAddressBytes()
+          [Array]::Reverse($bytes)
+          $addr = [BitConverter]::ToUInt32($bytes, 0)
+          # 4294967295 = 0xFFFFFFFF; a hex literal would parse as Int32 -1.
+          $mask = [uint32]((4294967295 -shl (32 - $prefix)) -band 4294967295)
+          $gwBytes = [BitConverter]::GetBytes([uint32](($addr -band $mask) + 1))
+          [Array]::Reverse($gwBytes)
+          ([System.Net.IPAddress]::new($gwBytes)).ToString()
+        }
+
+        for ($attempt = 0; ; $attempt++) {
+          $cidr = Get-WslCidr
+          $ip = $cidr.Ip
+
+          # The host-side `vEthernet (WSL)` adapter is sometimes missing or
+          # loses its address on the hosted runners, leaving the host without
+          # a route into the NAT subnet:
+          # <https://github.com/microsoft/WSL/issues/8111>. Restore the NAT
+          # gateway address if only that is missing.
+          $gw = Get-NatGateway $ip $cidr.Prefix
+          $adapter = Get-NetAdapter | Where-Object { $_.Name -like "*WSL*" -and $_.Status -eq "Up" }
+          if ($adapter) {
+            $hasGw = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+              Where-Object IPAddress -eq $gw
+            if (-not $hasGw) {
+              Write-Host "Assigning $gw to '$($adapter.Name)'"
+              New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress $gw -PrefixLength $cidr.Prefix | Out-Null
+            }
+
+            # ICMP alone does not prove TCP works, HNS may even answer the
+            # pings on the VM's behalf, so probe a listener inside the VM. It
+            # runs as a background job because WSL kills backgrounded
+            # processes as soon as their `wsl.exe` session exits.
+            $listener = Start-Job -ScriptBlock { wsl -u root -- python3 -m http.server 18081 --bind 0.0.0.0 }
+
+            $tcpOk = $false
+            foreach ($_try in 1..10) {
+              try {
+                Invoke-WebRequest "http://${ip}:18081/" -UseBasicParsing -TimeoutSec 2 | Out-Null
+                $tcpOk = $true
+                break
+              }
+              catch {
+                Start-Sleep -Seconds 1
+              }
+            }
+
+            # Tearing the probe down is best-effort: it has already served its
+            # purpose, so nothing here should be able to fail the step. That
+            # includes pkill's exit code, which would otherwise leak into it.
+            wsl -u root -- pkill -f http.server
+            $LASTEXITCODE = 0
+            Stop-Job $listener -ErrorAction SilentlyContinue
+            Remove-Job $listener -Force -ErrorAction SilentlyContinue
+            if ($tcpOk) {
+              break
+            }
+
+            Write-Host "The WSL2 VM ($ip) does not accept TCP from the host"
+          }
+          else {
+            Write-Host "No host-side WSL network adapter found"
+          }
+
+          if ($attempt -ge 5) {
+            Get-NetAdapter | Format-Table -AutoSize | Out-String | Write-Host
+            Get-NetIPAddress -AddressFamily IPv4 | Format-Table InterfaceAlias, IPAddress, PrefixLength | Out-String | Write-Host
+            Get-NetRoute -AddressFamily IPv4 | Format-Table DestinationPrefix, NextHop, InterfaceAlias, RouteMetric | Out-String | Write-Host
+            throw "No usable WSL2 network after $attempt reboots"
+          }
+
+          Write-Host "Rebooting WSL2"
+          wsl --shutdown
+          Restart-Service hns -ErrorAction SilentlyContinue
+        }
+
+        "ip=$ip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "host-ip=$(Get-NatGateway $ip $cidr.Prefix)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+    - name: Install Docker
+      shell: wsl-bash {0}
+      run: |
+        set -xe
+
+        nft flush ruleset
+
+        # Only installs; the daemon is started below. The installer's own
+        # attempt to enable the service is expected to warn and be ignored.
+        curl -fsSL https://get.docker.com | sh
+    - name: Start the Docker daemon
+      shell: pwsh
+      # An imported distribution has no init system, so the daemon is started
+      # directly. The runner reaps the process at the end of the job.
+      run: Start-Process wsl -ArgumentList "-u", "root", "--", "dockerd" -WindowStyle Hidden
+    - name: Wait for the Docker daemon
+      shell: wsl-bash {0}
+      run: |
+        for _ in $(seq 30); do
+          docker info > /dev/null 2>&1 && break
+          sleep 2
+        done
+        docker info
+    - name: Keep the distribution running
+      shell: pwsh
+      # A distribution terminates once its last `wsl.exe` session exits, which
+      # takes the Docker daemon and every container with it. This session
+      # bridges the steps that do not talk to WSL2 themselves, such as the one
+      # running the Client.
+      run: Start-Process wsl -ArgumentList "-u", "root", "--", "sleep", "infinity" -WindowStyle Hidden

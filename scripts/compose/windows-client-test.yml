@@ -1,0 +1,160 @@
+# Compose project for the Windows Client integration test.
+#
+# The Linux half of the test topology (portal, relay, gateway and an HTTP test
+# server acting as a CIDR resource) runs inside WSL2 on a Windows CI runner
+# while the headless Client under test runs natively on the Windows host.
+#
+# The relay uses host networking so that its ICE candidates point at the WSL2
+# VM's eth0 address, which is reachable from the Windows host (UDP included;
+# WSL2's localhost forwarding only handles TCP). The Client reaches the portal
+# through the published API port and the gateway through the relay.
+#
+# The gateway keeps its own network namespace: it installs policy routing
+# rules for the whole namespace it runs in, which in a shared host namespace
+# take precedence over the routing of the VM itself and black-hole every
+# forwarded packet. Its own namespace also connects it to the resource network
+# directly, the same way the Linux integration tests wire it up.
+#
+# See .github/workflows/_windows_integration_tests.yml and
+# scripts/tests/windows-download.ps1 for the Windows half.
+
+services:
+  postgres:
+    extends:
+      file: portal.yml
+      service: postgres
+    networks:
+      - app-internal
+
+  portal:
+    extends:
+      file: portal.yml
+      service: common
+    image: ${PORTAL_IMAGE:-ghcr.io/firezone/portal}:${PORTAL_TAG:-main}
+    hostname: portal.cluster.local
+    ports:
+      - 8081:8081/tcp
+    environment:
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_HTTP_API_PORT: "8081"
+      PHOENIX_SECURE_COOKIES: "false"
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["portal@portal.cluster.local"]}'
+      RELEASE_HOSTNAME: "portal.cluster.local"
+      RELEASE_NAME: "portal"
+      LOG_LEVEL: "debug"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8080/readyz"]
+      interval: 1s
+      retries: 30
+      timeout: 1s
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    networks:
+      - app-internal
+
+  elixir:
+    extends:
+      file: portal.yml
+      service: common
+    image: ${ELIXIR_IMAGE:-ghcr.io/firezone/elixir}:${ELIXIR_TAG:-main}
+    hostname: elixir
+    environment:
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      RELEASE_HOSTNAME: "mix.cluster.local"
+      RELEASE_NAME: "mix"
+      # Higher log level not to make seeds output too verbose
+      LOG_LEVEL: "info"
+      # Mix env should be set to prod to use secrets declared above,
+      # otherwise seeds will generate invalid tokens
+      MIX_ENV: "prod"
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    networks:
+      - app-internal
+
+  relay:
+    image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
+    init: true
+    network_mode: host
+    environment:
+      # Same seeded token as the relay in scripts/compose/relay.yml.
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
+      FIREZONE_API_URL: ws://127.0.0.1:8081
+      PUBLIC_IP4_ADDR: ${RELAY_PUBLIC_IP4_ADDR:?set to the WSL2 eth0 address}
+      # Binding the sockets to that address as well makes the relay reply from
+      # it no matter which interface a peer arrives on. A wildcard bind picks
+      # the reply address by route, so the gateway (reaching the relay across
+      # the docker bridge) would see the replies come from the bridge address
+      # instead of the address it sent to and discard them.
+      BIND_IP4_ADDR: ${RELAY_PUBLIC_IP4_ADDR}
+      # The default 0.0.0.0:8080 would clash with the gateway in the shared
+      # host network namespace.
+      HEALTH_CHECK_ADDR: 127.0.0.1:8091
+      RUST_LOG: ${RUST_LOG:-debug}
+      RUST_BACKTRACE: 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:8091/readyz"]
+      start_period: 10s
+      interval: 1s
+      retries: 30
+      timeout: 5s
+    depends_on:
+      portal:
+        condition: "service_healthy"
+
+  gateway:
+    image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    init: true
+    privileged: true
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    environment:
+      # Same seeded token and ID as the gateway in docker-compose.yml.
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAAH8sImUAWIAAVGA.tAm2O9FcyF67VAF3rZdwQpeADrYOIs3S2l2K51G26OM"
+      FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
+      FIREZONE_API_URL: ws://portal:8081
+      RUST_LOG: ${RUST_LOG:-debug}
+      RUST_BACKTRACE: 1
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      interval: 1s
+      retries: 30
+      timeout: 1s
+    depends_on:
+      portal:
+        condition: "service_healthy"
+    networks:
+      - app-internal
+      - resources
+
+  httpbin:
+    image: ${HTTP_TEST_SERVER_IMAGE:-ghcr.io/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
+    environment:
+      PORT: 80
+    networks:
+      resources:
+        # Covered by the seeded `10.20.0.0/16` CIDR resource.
+        ipv4_address: 10.20.0.100
+
+networks:
+  app-internal:
+    ipam:
+      config:
+        # Outside `172.16.0.0/12`, so it cannot collide with the WSL2 NAT
+        # subnet.
+        - subnet: 192.168.223.0/24
+  resources:
+    ipam:
+      config:
+        # WSL2 picks its NAT subnet from `172.16.0.0/12` on every boot, so the
+        # resource the Client routes into the tunnel has to live elsewhere.
+        - subnet: 10.20.0.0/24
+
+volumes:
+  postgres-data:
