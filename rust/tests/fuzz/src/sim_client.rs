@@ -3,8 +3,8 @@ use super::{
     echo::echo_reply,
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{
-        ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest, ReceivedResponse, Remote,
-        SubmittedRequest,
+        CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
+        ReceivedResponse, Remote, SubmittedRequest,
     },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::IpNetwork;
-use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -71,8 +71,6 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
-    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
-    pub(crate) reset_tcp_connections: BTreeSet<(SPort, DPort)>,
 
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -105,8 +103,6 @@ impl SimClient {
             observed_resource_list: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
-            failed_tcp_packets: Default::default(),
-            reset_tcp_connections: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
         }
@@ -241,12 +237,23 @@ impl SimClient {
         }
     }
 
-    pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
-        let local = SocketAddr::new(src, sport.0);
-        let remote = SocketAddr::new(dst, dport.0);
+    /// Connects `local` to `remote`; the SYN submits probe `id`.
+    pub(crate) fn connect_tcp_probe(&mut self, id: ProbeId, local: SocketAddr, remote: SocketAddr) {
+        if let Err(e) = self.tcp_client.connect(local, remote, id) {
+            tracing::error!("TCP connect failed: {e:#}");
+        }
+    }
 
-        if let Err(e) = self.tcp_client.connect(local, remote) {
-            tracing::error!("TCP connect failed: {e:#}")
+    /// Writes `payload` to a TCP connection; the first segment that carries it submits probe `id`.
+    pub(crate) fn write_tcp_probe(
+        &mut self,
+        id: ProbeId,
+        local: SocketAddr,
+        remote: SocketAddr,
+        payload: &[u8],
+    ) {
+        if let Err(e) = self.tcp_client.send(local, remote, id, payload) {
+            tracing::error!("TCP send failed: {e:#}");
         }
     }
 
@@ -277,7 +284,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         let protocol = probe_protocol_from_request(&packet)
-            .expect("probe packets must be ICMP echo requests or UDP packets");
+            .expect("probe packets must be ICMP echo requests, UDP or TCP packets");
         assert!(
             self.sent_probes.iter().all(|(sent, _)| *sent != id),
             "probe IDs must be unique"
@@ -310,15 +317,18 @@ impl SimClient {
         Ok(self.transmit_buffer.poll_transmit())
     }
 
-    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+    /// Returns the next packet the simulated applications send and the probe it submits, if any.
+    pub fn poll_outbound(&mut self) -> Option<(IpPacket, Option<ProbeId>)> {
         self.tcp_dns_client
             .poll_outbound()
+            .map(|packet| (packet, None))
             .or_else(|| self.tcp_client.poll_outbound())
     }
 
     pub fn drive_tcp(&mut self, now: Instant) {
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
+        self.record_tcp_responses(now);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -357,7 +367,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
-            Ok(Some((failed_packet, icmp_error))) => {
+            Ok(Some((failed_packet, _))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
                         let protocol = ProbeProtocol::Udp {
@@ -371,12 +381,9 @@ impl SimClient {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
                         }
                     }
-                    Layer4Protocol::Tcp { src, dst } => {
-                        self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), icmp_error);
-
-                        // Allow the client to process the ICMP error.
+                    Layer4Protocol::Tcp { .. } => {
                         self.tcp_client.handle_inbound(packet);
+                        self.record_tcp_responses(now);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
                         let protocol = ProbeProtocol::Icmp {
@@ -450,13 +457,8 @@ impl SimClient {
         }
 
         if self.tcp_client.accepts(&packet) {
-            if let Some(tcp) = packet.as_tcp()
-                && tcp.rst()
-            {
-                self.reset_tcp_connections
-                    .insert((SPort(tcp.destination_port()), DPort(tcp.source_port())));
-            }
             self.tcp_client.handle_inbound(packet);
+            self.record_tcp_responses(now);
             return None;
         }
 
@@ -606,7 +608,7 @@ impl SimClient {
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
         self.probe_observations
             .push(ProbeObservation::RequestReceived(ReceivedRequest {
-                id,
+                id: Some(id),
                 at,
                 remote: Remote::Client(self.id),
                 gateway_order: None,
@@ -625,18 +627,33 @@ impl SimClient {
             }));
     }
 
+    fn record_tcp_responses(&mut self, at: Instant) {
+        while let Some(response) = self.tcp_client.poll_response() {
+            match response {
+                crate::tcp::Response::Packet { probe, packet } => {
+                    self.record_received_response(probe, packet, at)
+                }
+                crate::tcp::Response::Echoed { probe } => {
+                    self.probe_observations
+                        .push(ProbeObservation::StreamCompleted(CompletedStream {
+                            id: probe,
+                            client: self.id,
+                        }))
+                }
+            }
+        }
+    }
+
     pub(crate) fn clear_packets(&mut self) {
         self.sent_udp_dns_queries.clear();
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
-        self.tcp_client.reset();
-        self.failed_tcp_packets.clear();
-        self.reset_tcp_connections.clear();
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
+        self.tcp_client.forget_probes();
     }
 
     fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
@@ -663,6 +680,13 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
         return Some(ProbeProtocol::Icmp {
             seq: Seq(echo.seq),
             identifier: Identifier(echo.id),
+        });
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        return Some(ProbeProtocol::Tcp {
+            sport: SPort(tcp.source_port()),
+            dport: DPort(tcp.destination_port()),
         });
     }
 

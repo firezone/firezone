@@ -44,6 +44,7 @@ impl FlowId {
 pub(crate) enum ProbeProtocol {
     Icmp { seq: Seq, identifier: Identifier },
     Udp { sport: SPort, dport: DPort },
+    Tcp { sport: SPort, dport: DPort },
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +59,16 @@ pub(crate) struct IcmpFlow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct UdpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+    pub(crate) route: Route,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TcpFlow {
     pub(crate) client_id: ClientId,
     pub(crate) src: IpAddr,
     pub(crate) dst: Destination,
@@ -100,6 +111,14 @@ pub(crate) enum ProbeRequest {
         sport: SPort,
         dport: DPort,
     },
+    Tcp {
+        src: IpAddr,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
+        /// The `len` of a write, or `None` for a connect.
+        write_len: Option<u16>,
+    },
 }
 
 impl ProbeRequest {
@@ -107,6 +126,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { src, .. } => *src,
             ProbeRequest::Udp { src, .. } => *src,
+            ProbeRequest::Tcp { src, .. } => *src,
         }
     }
 
@@ -114,6 +134,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { dst, .. } => dst,
             ProbeRequest::Udp { dst, .. } => dst,
+            ProbeRequest::Tcp { dst, .. } => dst,
         }
     }
 
@@ -121,6 +142,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { identifier, .. } => Protocol::IcmpEcho(identifier.0),
             ProbeRequest::Udp { dport, .. } => Protocol::Udp(dport.0),
+            ProbeRequest::Tcp { dport, .. } => Protocol::Tcp(dport.0),
         }
     }
 
@@ -133,6 +155,10 @@ impl ProbeRequest {
                 identifier: *identifier,
             },
             ProbeRequest::Udp { sport, dport, .. } => ProbeProtocol::Udp {
+                sport: *sport,
+                dport: *dport,
+            },
+            ProbeRequest::Tcp { sport, dport, .. } => ProbeProtocol::Tcp {
                 sport: *sport,
                 dport: *dport,
             },
@@ -226,6 +252,8 @@ pub(crate) fn remote_responds_with_icmp_error(
         (ProbeRequest::Icmp { .. }, Remote::Client(_)) => true,
         (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => false,
         (ProbeRequest::Udp { .. }, Remote::Client(_)) => false,
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(_)) => false,
+        (ProbeRequest::Tcp { .. }, Remote::Client(_)) => false,
     };
 
     !is_icmp_peer
@@ -244,7 +272,8 @@ pub(crate) struct SubmittedRequest {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReceivedRequest {
-    pub(crate) id: ProbeId,
+    /// The probe ID in the request's payload, or `None` for a TCP SYN.
+    pub(crate) id: Option<ProbeId>,
     pub(crate) at: Instant,
     pub(crate) remote: Remote,
     pub(crate) gateway_order: Option<u64>,
@@ -260,11 +289,19 @@ pub(crate) struct ReceivedResponse {
     pub(crate) packet: IpPacket,
 }
 
+/// All of a TCP write was echoed back on its connection.
+#[derive(Debug, Clone)]
+pub(crate) struct CompletedStream {
+    pub(crate) id: ProbeId,
+    pub(crate) client: ClientId,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum ProbeObservation {
     RequestSubmitted(SubmittedRequest),
     RequestReceived(ReceivedRequest),
     ResponseReceived(ReceivedResponse),
+    StreamCompleted(CompletedStream),
 }
 
 #[derive(Debug, Clone)]
@@ -283,6 +320,7 @@ pub(crate) struct ProbeTrace<'a> {
     pub(crate) submitted_requests: Vec<&'a SubmittedRequest>,
     pub(crate) received_requests: Vec<&'a ReceivedRequest>,
     pub(crate) received_responses: Vec<&'a ReceivedResponse>,
+    pub(crate) completed_streams: Vec<&'a CompletedStream>,
 }
 
 impl<'a> ProbeTrace<'a> {
@@ -303,12 +341,18 @@ impl<'a> ProbeTrace<'a> {
             .copied()
             .filter_map(ProbeObservation::as_received_response)
             .collect();
+        let completed_streams = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_completed_stream)
+            .collect();
 
         Self {
             observations,
             submitted_requests,
             received_requests,
             received_responses,
+            completed_streams,
         }
     }
 }
@@ -407,11 +451,12 @@ impl DnsNatObservation {
 }
 
 impl ProbeObservation {
-    pub(crate) fn id(&self) -> ProbeId {
+    pub(crate) fn id(&self) -> Option<ProbeId> {
         match self {
-            ProbeObservation::RequestSubmitted(observation) => observation.id,
+            ProbeObservation::RequestSubmitted(observation) => Some(observation.id),
             ProbeObservation::RequestReceived(observation) => observation.id,
-            ProbeObservation::ResponseReceived(observation) => observation.id,
+            ProbeObservation::ResponseReceived(observation) => Some(observation.id),
+            ProbeObservation::StreamCompleted(observation) => Some(observation.id),
         }
     }
 
@@ -420,6 +465,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(submitted) => Some(submitted),
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -428,6 +474,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(received) => Some(received),
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -436,6 +483,16 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(received) => Some(received),
+            ProbeObservation::StreamCompleted(_) => None,
+        }
+    }
+
+    pub(crate) fn as_completed_stream(&self) -> Option<&CompletedStream> {
+        match self {
+            ProbeObservation::RequestSubmitted(_) => None,
+            ProbeObservation::RequestReceived(_) => None,
+            ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(completed) => Some(completed),
         }
     }
 }

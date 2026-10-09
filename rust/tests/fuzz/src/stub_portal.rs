@@ -253,6 +253,7 @@ impl StubPortal {
             Transition::SendUdpPacketOnNewFlow { .. } => {}
             Transition::SendUdpPacketOnExistingFlow { .. } => {}
             Transition::ConnectTcp { .. } => {}
+            Transition::SendTcpData { .. } => {}
             Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}

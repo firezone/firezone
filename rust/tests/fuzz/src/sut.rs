@@ -16,7 +16,7 @@ use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
-use ip_packet::Ecn;
+use ip_packet::{Ecn, IpPacket};
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -54,6 +54,7 @@ pub struct TunnelTest {
     network: RoutingTable,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
+    tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
     pub(crate) dns_nat_observations: Vec<DnsNatObservation>,
 }
 
@@ -72,6 +73,13 @@ struct ResolvedUdpFlow {
     dst: IpAddr,
     sport: SPort,
     dport: DPort,
+}
+
+#[derive(Clone, Copy)]
+struct ResolvedTcpFlow {
+    client_id: ClientId,
+    local: SocketAddr,
+    remote: SocketAddr,
 }
 
 impl TunnelTest {
@@ -169,6 +177,7 @@ impl TunnelTest {
             buffer_pool: BufferPool::new(1024, "test"),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
+            tcp_flows: Default::default(),
             dns_nat_observations: Default::default(),
         };
 
@@ -196,11 +205,24 @@ impl TunnelTest {
             )
     }
 
+    /// Returns the observations of probe `id`.
+    ///
+    /// A received TCP SYN carries no probe ID, so it belongs to the connect probe that
+    /// submitted a SYN with the same source and ports.
     pub(crate) fn probe_trace(&self, id: ProbeId) -> ProbeTrace<'_> {
-        ProbeTrace::new(
-            self.probe_observations()
-                .filter(|observation| observation.id() == id),
-        )
+        let syn = self
+            .probe_observations()
+            .filter_map(ProbeObservation::as_submitted_request)
+            .find(|submitted| submitted.id == id)
+            .and_then(|submitted| syn_key(&submitted.packet));
+
+        ProbeTrace::new(self.probe_observations().filter(move |observation| {
+            match (observation.id(), observation.as_received_request()) {
+                (Some(observed), _) => observed == id,
+                (None, Some(received)) => syn.is_some() && syn_key(&received.packet) == syn,
+                (None, None) => false,
+            }
+        }))
     }
 
     pub(crate) fn dns_nat_observations(&self) -> &[DnsNatObservation] {
@@ -217,20 +239,20 @@ impl TunnelTest {
     pub fn invalidate(&mut self, transition: &Transition, ref_state: &ReferenceState) {
         for client in self.clients.values_mut() {
             client.exec_mut(|c| {
-                c.clear_probe_observations();
                 c.tcp_client.drop_unfinished();
+                c.clear_probe_observations();
             });
         }
         for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|g| g.clear_probe_observations());
+            gateway.exec_mut(|g| {
+                g.drop_unfinished_tcp_connections();
+                g.clear_probe_observations();
+            });
         }
 
         if transition.clears_packets() {
             for client in self.clients.values_mut() {
                 client.exec_mut(|c| c.clear_packets());
-            }
-            for gateway in self.gateways.values_mut() {
-                gateway.exec_mut(|g| g.clear_packets());
             }
         }
 
@@ -241,6 +263,10 @@ impl TunnelTest {
         for _ in self
             .udp_flows
             .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
+        {}
+        for _ in self
+            .tcp_flows
+            .extract_if(.., |flow_id, _| !ref_state.tcp_flows.contains_key(flow_id))
         {}
     }
 
@@ -457,18 +483,44 @@ impl TunnelTest {
                 self.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
             Transition::ConnectTcp {
+                flow_id,
                 client_id,
                 src,
                 dst,
                 sport,
                 dport,
+                probe_id,
             } => {
                 let dst = address_from_destination(&dst, &self, &src, client_id);
+                let flow = ResolvedTcpFlow {
+                    client_id,
+                    local: SocketAddr::new(src, sport.0),
+                    remote: SocketAddr::new(dst, dport.0),
+                };
+                let previous = self.tcp_flows.insert(flow_id, flow);
+                assert!(previous.is_none(), "TCP flow IDs must be unique");
 
                 self.clients
                     .get_mut(&client_id)
                     .unwrap()
-                    .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
+                    .exec_mut(|sim| sim.connect_tcp_probe(probe_id, flow.local, flow.remote));
+            }
+            Transition::SendTcpData {
+                flow_id,
+                len,
+                seed,
+                probe_id,
+            } => {
+                let flow = self.tcp_flows[&flow_id];
+                let mut rng = fastrand::Rng::with_seed(seed);
+                let payload = (0..len).map(|_| rng.u8(..)).collect::<Vec<_>>();
+
+                self.clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|sim| {
+                        sim.write_tcp_probe(probe_id, flow.local, flow.remote, &payload)
+                    });
             }
             Transition::SendDnsQueries(queries) => {
                 for (
@@ -1153,9 +1205,11 @@ impl TunnelTest {
             });
         }
         for client in self.clients.values_mut() {
-            while let Some(transmit) = client.exec_mut(|c| {
-                let packet = c.poll_outbound()?;
-                c.encapsulate(packet, now)
+            client.exec_mut(|c| c.drive_tcp(now));
+
+            while let Some(transmit) = client.exec_mut(|c| match c.poll_outbound()? {
+                (packet, Some(id)) => c.encapsulate_probe(id, packet, now),
+                (packet, None) => c.encapsulate(packet, now),
             }) {
                 buffered_transmits.push_from(transmit, client, now)
             }
@@ -1170,8 +1224,6 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now)
             }
-
-            client.exec_mut(|c| c.drive_tcp(now));
         }
 
         // Handle all gateway `Transmit`s.
@@ -1852,4 +1904,10 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::TunInterfaceUpdated(_) => false,
         ClientEvent::NoRelays { .. } => true,
     }
+}
+
+fn syn_key(packet: &IpPacket) -> Option<(IpAddr, u16, u16)> {
+    let tcp = packet.as_tcp()?;
+
+    (tcp.syn() && !tcp.ack()).then(|| (packet.source(), tcp.source_port(), tcp.destination_port()))
 }

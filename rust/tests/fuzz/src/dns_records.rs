@@ -11,21 +11,11 @@ pub(crate) struct DnsRecords {
 
 impl DnsRecords {
     pub(crate) fn domain_ips_iter(&self, name: &DomainName) -> impl Iterator<Item = IpAddr> + '_ {
-        #[expect(clippy::wildcard_enum_match_arm)]
-        self.domain_records_iter(name).filter_map(|r| match r {
-            OwnedRecordData::A(a) => Some(a.addr().into()),
-            OwnedRecordData::Aaaa(aaaa) => Some(aaaa.addr().into()),
-            _ => None,
-        })
+        self.domain_records_iter(name).filter_map(|r| record_ip(&r))
     }
 
     pub(crate) fn ips_iter(&self) -> impl Iterator<Item = IpAddr> + '_ {
-        #[expect(clippy::wildcard_enum_match_arm)]
-        self.inner.values().flatten().filter_map(|r| match r {
-            OwnedRecordData::A(a) => Some(a.addr().into()),
-            OwnedRecordData::Aaaa(aaaa) => Some(aaaa.addr().into()),
-            _ => None,
-        })
+        self.inner.values().flatten().filter_map(record_ip)
     }
 
     pub(crate) fn domain_records_iter(
@@ -73,5 +63,14 @@ impl FromIterator<(DomainName, BTreeSet<OwnedRecordData>)> for DnsRecords {
 
                 records
             })
+    }
+}
+
+pub(crate) fn record_ip(record: &OwnedRecordData) -> Option<IpAddr> {
+    #[expect(clippy::wildcard_enum_match_arm)]
+    match record {
+        OwnedRecordData::A(a) => Some(a.addr().into()),
+        OwnedRecordData::Aaaa(aaaa) => Some(aaaa.addr().into()),
+        _ => None,
     }
 }

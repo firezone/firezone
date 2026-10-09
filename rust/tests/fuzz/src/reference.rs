@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
-    RejectionRemote, RejectionResponse, Remote, Route, TraceRequirement, UdpFlow,
+    RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
@@ -61,6 +61,7 @@ pub struct ReferenceState {
 
     pub(crate) icmp_flows: BTreeMap<FlowId, IcmpFlow>,
     pub(crate) udp_flows: BTreeMap<FlowId, UdpFlow>,
+    pub(crate) tcp_flows: BTreeMap<FlowId, TcpFlow>,
 }
 
 /// Implementation of our reference state machine.
@@ -95,6 +96,7 @@ impl ReferenceState {
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
+            tcp_flows: Default::default(),
         }
     }
 
@@ -115,6 +117,10 @@ impl ReferenceState {
         for _ in self.udp_flows.extract_if(.., |_, flow| {
             !transition.retains_flow(flow.client_id, flow.route, iceless)
         }) {}
+        for _ in self
+            .tcp_flows
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow))
+        {}
     }
 
     /// Applies the transition to the reference state.
@@ -355,29 +361,102 @@ impl ReferenceState {
                 }
             }
             Transition::ConnectTcp {
+                flow_id,
                 client_id,
                 src,
                 dst,
                 sport,
                 dport,
+                probe_id,
             } => {
-                let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
-                let outcome =
-                    match outcome {
-                        ExpectedOutcome::RoundTripCompleted(Route::Resource {
-                            gateway, ..
-                        }) if !self.serves_tcp(dst, *dport) => ExpectedOutcome::Rejected {
-                            by: RejectionRemote::Gateway(gateway),
-                            response: RejectionResponse::Reset,
-                        },
-                        ExpectedOutcome::RoundTripCompleted(_) => outcome,
-                        ExpectedOutcome::Dropped => outcome,
-                        ExpectedOutcome::Rejected { .. } => outcome,
-                    };
+                let request = ProbeRequest::Tcp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                    write_len: None,
+                };
+                let outcome = self.dispatch(
+                    portal,
+                    *client_id,
+                    request.source(),
+                    request.destination(),
+                    request.protocol(),
+                );
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
 
-                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
-                    client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
-                });
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
+                        let flow = TcpFlow {
+                            client_id: *client_id,
+                            src: *src,
+                            dst: dst.clone(),
+                            sport: *sport,
+                            dport: *dport,
+                            route,
+                        };
+                        let previous = self.tcp_flows.insert(*flow_id, flow);
+                        assert!(previous.is_none(), "TCP flow IDs must be unique");
+
+                        outcome
+                    }
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
+            }
+            Transition::SendTcpData {
+                flow_id,
+                len,
+                probe_id,
+                ..
+            } => {
+                let flow = self
+                    .tcp_flows
+                    .remove(flow_id)
+                    .expect("written TCP flow must exist");
+                let request = ProbeRequest::Tcp {
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    sport: flow.sport,
+                    dport: flow.dport,
+                    write_len: Some(*len),
+                };
+                let outcome = self.dispatch(
+                    portal,
+                    flow.client_id,
+                    request.source(),
+                    request.destination(),
+                    request.protocol(),
+                );
+                self.clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
+
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route)
+                        if route.remote() == flow.route.remote() =>
+                    {
+                        self.tcp_flows.insert(
+                            *flow_id,
+                            TcpFlow {
+                                route,
+                                ..flow.clone()
+                            },
+                        );
+
+                        outcome
+                    }
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, flow.client_id, request, now, outcome);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
@@ -569,6 +648,10 @@ impl ReferenceState {
             };
 
             client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
+            for _ in self.tcp_flows.extract_if(.., |_, flow| {
+                flow.client_id == closed.client
+                    && flow.route.remote() == Remote::Gateway(closed.gateway)
+            }) {}
         }
     }
 
@@ -1068,22 +1151,8 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn removable_resource_ids(&self) -> Vec<ResourceId> {
-        self.all_resource_ids()
-            .into_iter()
-            .filter(|resource| {
-                self.clients.values().all(|client| {
-                    client
-                        .inner()
-                        .tcp_connection_tuple_to_resource(*resource)
-                        .is_none()
-                })
-            })
-            .collect()
-    }
-
     pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
-        self.removable_resource_ids()
+        self.all_resource_ids()
             .into_iter()
             .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()
@@ -1582,4 +1651,18 @@ fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
             Filter::Udp(_) => true,
             Filter::Tcp(_) => false,
         })
+}
+
+/// The outcome of a TCP segment that the remote end of `route` has no connection for.
+fn reset_by(route: Route) -> ExpectedOutcome {
+    let by = match route {
+        Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
+        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
+        Route::Peer(client) => RejectionRemote::Client(client),
+    };
+
+    ExpectedOutcome::Rejected {
+        by,
+        response: RejectionResponse::Reset,
+    }
 }
