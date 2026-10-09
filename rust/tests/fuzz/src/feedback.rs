@@ -185,6 +185,14 @@ impl Recorder {
                 self.changes
                     .push((Scope::Everything, Change::RelaysRebooted));
             }
+            Transition::ExhaustRelayPorts(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::RelayPortsExhausted));
+            }
+            Transition::FreeRelayPorts(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::RelayPortsFreed));
+            }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 self.changes.push((
                     Scope::Resource(*resource),
@@ -537,6 +545,8 @@ enum Change {
     RelaysDeployed,
     RelaysPartitioned,
     RelaysRebooted,
+    RelayPortsExhausted,
+    RelayPortsFreed,
     GatewayAuthorizationRevoked,
     GatewayDeauthorizedWhilePartitioned,
     PeerRemovedFromPool,
@@ -552,7 +562,7 @@ enum Change {
     DnsServersChanged,
 }
 
-const KINDS: u16 = 20;
+const KINDS: u16 = 22;
 
 #[derive(Clone, Copy)]
 enum Scope {

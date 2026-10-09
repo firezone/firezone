@@ -18,9 +18,11 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
     collections::BTreeMap,
+    fmt,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
@@ -40,6 +42,10 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         &ref_state.icmp_error_hosts,
     );
     assert_dns_nat(state);
+
+    for (node, handed_out_at) in portal.relay_handouts() {
+        assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
+    }
 
     for (client_id, ref_client_host) in &ref_state.clients {
         let ref_client = ref_client_host.inner();
@@ -301,6 +307,18 @@ fn assert_dns_nat(state: &TunnelTest) {
                 tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
             }
         }
+    }
+}
+
+/// Asserts that the portal does not hand a node relays in a loop.
+fn assert_relays_are_not_handed_out_in_a_loop(node: impl fmt::Display, handed_out_at: &[Instant]) {
+    const MAX_HANDOUTS_PER_MINUTE: usize = 10;
+
+    if handed_out_at
+        .windows(MAX_HANDOUTS_PER_MINUTE + 1)
+        .any(|w| w[MAX_HANDOUTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
+    {
+        tracing::error!(target: "assertions", %node, "Portal handed the node relays more than {MAX_HANDOUTS_PER_MINUTE} times within a minute");
     }
 }
 

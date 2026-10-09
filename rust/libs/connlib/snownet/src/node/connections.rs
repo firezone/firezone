@@ -121,7 +121,7 @@ where
         &mut self,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        events: &mut VecDeque<Event<TId>>,
+        events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
     ) {
@@ -421,7 +421,7 @@ where
             .min_by_key(|(instant, _)| *instant)
     }
 
-    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+    fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {

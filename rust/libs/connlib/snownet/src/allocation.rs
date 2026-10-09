@@ -220,6 +220,8 @@ pub enum FreeReason {
     NoResponseReceived,
     #[error("TURN protocol failure")]
     ProtocolFailure,
+    #[error("unhandled response")]
+    UnhandledResponse,
 }
 
 impl Allocation {
@@ -449,6 +451,8 @@ impl Allocation {
                     && offered_realm != realm
                 {
                     tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
+                    self.explicit_failure = Some(FreeReason::AuthenticationError);
+
                     return true; // We still handled our message correctly.
                 };
 
@@ -532,6 +536,10 @@ impl Allocation {
             match message.method() {
                 ALLOCATE => {
                     self.buffered_channel_bindings.clear();
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+                }
+                REFRESH => {
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
                 }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -636,6 +644,8 @@ impl Allocation {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
                 else {
                     tracing::warn!("Message does not contain `LIFETIME`");
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+
                     return true;
                 };
 
@@ -648,6 +658,8 @@ impl Allocation {
 
                 if maybe_ip4_relay_candidate.is_none() && maybe_ip6_relay_candidate.is_none() {
                     tracing::warn!("Relay sent a successful allocate response without addresses");
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+
                     return true;
                 }
 
@@ -2756,6 +2768,76 @@ mod tests {
             allocation.can_be_freed(),
             Some(FreeReason::AuthenticationError)
         );
+    }
+
+    #[test_case::test_case(server_error, FreeReason::UnhandledResponse; "unhandled error")]
+    #[test_case::test_case(allocate_success_without_lifetime, FreeReason::UnhandledResponse; "success without lifetime")]
+    #[test_case::test_case(allocate_success_without_relay_addresses, FreeReason::UnhandledResponse; "success without relay addresses")]
+    #[test_case::test_case(realm_mismatch, FreeReason::AuthenticationError; "realm mismatch")]
+    fn allocate_response_frees_allocation(
+        response: fn(&Message<Attribute>) -> Message<Attribute>,
+        reason: FreeReason,
+    ) {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(response(&allocate), now);
+
+        assert_eq!(allocation.can_be_freed(), Some(reason));
+    }
+
+    #[test]
+    fn unhandled_refresh_error_frees_allocation() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+
+        allocation.refresh(now);
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(server_error(&refresh), now);
+
+        assert_eq!(
+            allocation.can_be_freed(),
+            Some(FreeReason::UnhandledResponse)
+        );
+    }
+
+    fn allocate_success_without_lifetime(allocate: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = allocate_success(allocate);
+        response.add_attribute(XorRelayAddress::new(RELAY_ADDR_IP4));
+        response
+    }
+
+    fn allocate_success_without_relay_addresses(
+        allocate: &Message<Attribute>,
+    ) -> Message<Attribute> {
+        let mut response = allocate_success(allocate);
+        response.add_attribute(Lifetime::new(ALLOCATION_LIFETIME).unwrap());
+        response
+    }
+
+    fn allocate_success(allocate: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            ALLOCATE,
+            allocate.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(PEER1));
+        response
+    }
+
+    fn realm_mismatch(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(Unauthorized));
+        response.add_attribute(Realm::new("other".to_owned()).unwrap());
+        response.add_attribute(Nonce::new("nonce".to_owned()).unwrap());
+        response
     }
 
     #[test]

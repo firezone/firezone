@@ -307,9 +307,11 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            Ok(GatewayEvent::NoRelays) => {
+            Ok(GatewayEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {
+                        excluded_relay_ids,
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }

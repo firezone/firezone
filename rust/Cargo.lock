@@ -7273,6 +7273,7 @@ dependencies = [
  "smallvec",
  "str0m-proto",
  "stun_codec",
+ "test-case",
  "thiserror 2.0.21",
  "tracing",
 ]
