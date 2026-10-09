@@ -228,6 +228,8 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => true,
             Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => true,
+            Transition::ExhaustRelayPorts(_) => true,
+            Transition::FreeRelayPorts(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {
                 self.retains_flow(client_id, route, false)
             }
