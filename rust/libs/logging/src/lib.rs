@@ -288,4 +288,8 @@ where
                 "(Code 0x00000003)",
             ],
         ))
+        .with_filter(DropEventsWhoseMessageContains::all(
+            Level::WARN,
+            &["ignoring response from", "because it does not match name_server"],
+        ))
 }
