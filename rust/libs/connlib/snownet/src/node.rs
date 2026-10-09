@@ -102,7 +102,7 @@ pub struct Node<TId, RId> {
     buffered_candidates: BufferedCandidates<TId>,
     inflight_stun_requests: InflightStunRequests<TId>,
 
-    pending_events: VecDeque<Event<TId>>,
+    pending_events: VecDeque<Event<TId, RId>>,
     /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
     /// returns it while transmits or events are queued so the driver drains
     /// them without delay.
@@ -402,7 +402,9 @@ where
         if self.allocations.is_empty() {
             tracing::debug!("No relays available; requesting a new set");
 
-            self.pending_events.push_back(Event::NoRelays);
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
         }
 
         // Only Controlling fans out the init, so we don't burn
@@ -602,7 +604,7 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
-    pub fn poll_event(&mut self) -> Option<Event<TId>> {
+    pub fn poll_event(&mut self) -> Option<Event<TId, RId>> {
         let event = self.pending_events.pop_front()?;
 
         if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
@@ -652,12 +654,14 @@ where
 
         self.allocations_drain_events(now);
 
-        let gc = self.allocations.gc();
+        let gc = self.allocations.gc(now);
 
         if gc.removed_last {
-            tracing::info!("Removed last relay; requesting a new set");
+            tracing::info!("No relays left; requesting a new set");
 
-            self.pending_events.push_back(Event::NoRelays);
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
         }
 
         self.connections.clear_relays(gc.removed.into_iter());
@@ -752,6 +756,9 @@ where
                 }
                 allocations::UpsertResult::Skipped => {
                     tracing::info!(%rid, address = ?server, "Skipping known TURN server")
+                }
+                allocations::UpsertResult::Blocked => {
+                    tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
                 }
                 allocations::UpsertResult::Replaced(previous) => {
                     invalidate_allocation_candidates(
@@ -1200,7 +1207,11 @@ fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) -> Event<TId> {
+fn new_ice_candidate_event<TId, RId>(
+    id: TId,
+    candidate: Candidate,
+    iceless: bool,
+) -> Event<TId, RId> {
     let candidate = crate::candidate::encode(iceless, &candidate);
 
     tracing::debug!(%candidate, "Signalling candidate to remote");
@@ -1214,7 +1225,7 @@ fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) ->
 fn invalidate_allocation_candidates<TId, RId>(
     connections: &mut Connections<TId, RId>,
     allocation: &Allocation,
-    pending_events: &mut VecDeque<Event<TId>>,
+    pending_events: &mut VecDeque<Event<TId, RId>>,
     now: Instant,
 ) where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
@@ -1259,7 +1270,7 @@ impl From<is::IceCreds> for Credentials {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Event<TId> {
+pub enum Event<TId, RId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
     ///
     /// Already SDP-encoded (str0m for ICE, path-agent for ICE-less).
@@ -1288,8 +1299,11 @@ pub enum Event<TId> {
     ///
     /// Emitted when the last remaining relay is removed or when a connection is created without
     /// any relays.
-    /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
-    NoRelays,
+    /// Upper layers should obtain new relays other than the `blocked` ones and pass them to
+    /// [`Node::update_relays`].
+    NoRelays {
+        blocked: Vec<RId>,
+    },
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1433,7 +1447,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1718,7 +1732,7 @@ where
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         cid: TId,
         now: Instant,
     ) where
@@ -2100,7 +2114,7 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
@@ -2118,7 +2132,7 @@ where
         &mut self,
         id: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display,
@@ -2193,7 +2207,7 @@ where
         &mut self,
         cid: TId,
         allocations: &mut Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,

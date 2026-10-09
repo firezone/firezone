@@ -750,6 +750,18 @@ impl TunnelTest {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
                 self.reboot_relays_while_partitioned(new_relays, now);
             }
+            Transition::ExhaustRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.out_of_capacity = true);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.out_of_capacity = false);
+            }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self
                     .clients
@@ -1005,6 +1017,7 @@ impl TunnelTest {
                     &mut self.clients,
                     gateway,
                     &self.relays,
+                    portal,
                     &ref_state.global_dns_records,
                     now,
                 );
@@ -1457,6 +1470,7 @@ impl TunnelTest {
                         &mut self.clients,
                         gateway,
                         &self.relays,
+                        portal,
                         &ref_state.global_dns_records,
                         now,
                     );
@@ -1607,10 +1621,15 @@ impl TunnelTest {
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.dns_resource_record_cache = records);
             }
-            ClientEvent::NoRelays => {
-                // Mimic the portal: reply with the current set of relays.
+            ClientEvent::NoRelays { excluded_relay_ids } => {
+                let relays = portal.request_relays(
+                    ClientOrGatewayId::Client(src),
+                    &excluded_relay_ids,
+                    &self.relays,
+                    now,
+                );
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| c.update_relays(iter::empty(), self.relays.iter(), now));
+                client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
             ClientEvent::DeviceDomainQueried { domain } => {
                 // Mimic the portal: every device resolves, access is asked for per flow.
@@ -1819,6 +1838,7 @@ fn on_gateway_event(
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
+    portal: &mut StubPortal,
     global_dns_records: &DnsRecords,
     now: Instant,
 ) {
@@ -1860,9 +1880,14 @@ fn on_gateway_event(
                 g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
             })
         }
-        GatewayEvent::NoRelays => {
-            // Mimic the portal: reply with the current set of relays.
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), now));
+        GatewayEvent::NoRelays { excluded_relay_ids } => {
+            let relays = portal.request_relays(
+                ClientOrGatewayId::Gateway(src),
+                &excluded_relay_ids,
+                relays,
+                now,
+            );
+            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
     }
 }
@@ -1877,7 +1902,7 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,
-        ClientEvent::NoRelays => true,
+        ClientEvent::NoRelays { .. } => true,
     }
 }
 
