@@ -40,9 +40,11 @@ if [ -z "$FIREZONE_ID" ]; then
     FIREZONE_ID=$(legacy_unit_environment FIREZONE_ID)
 fi
 
-if [ -z "$FIREZONE_ID" ]; then
-    echo "FIREZONE_ID is required"
-    exit 1
+# FIREZONE_ID is optional. Without one the Gateway generates an ID and keeps it in
+# its state directory, so only pin it in the unit when one was given or migrated.
+firezone_id_environment=""
+if [ -n "$FIREZONE_ID" ]; then
+    firezone_id_environment="Environment=\"FIREZONE_ID=$FIREZONE_ID\""
 fi
 
 if [ -z "$FIREZONE_TOKEN" ] && ! sudo test -s "$TOKEN_FILE"; then
@@ -112,7 +114,7 @@ StateDirectoryMode=0700
 
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
-Environment="FIREZONE_ID=$FIREZONE_ID"
+$firezone_id_environment
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
 Environment="RUST_LOG_STYLE=never"

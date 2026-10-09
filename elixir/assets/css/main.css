@@ -10,6 +10,7 @@
   --color-brand-light: var(--brand-secondary);
   --color-brand-subtle: var(--brand-tertiary);
   --color-brand-muted: var(--brand-muted);
+  --color-brand-strong: var(--brand-strong);
 
   /* ACCENT */
   --color-accent: var(--accent);
@@ -17,6 +18,8 @@
   --color-accent-light: var(--accent-secondary);
   --color-accent-subtle: var(--accent-tertiary);
   --color-accent-muted: var(--accent-muted);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-wash: var(--accent-wash);
 
   /* TEXT */
   --color-heading: var(--text-primary);
@@ -251,6 +254,11 @@ html {
   /* Side Navbar */
   --brand-wash: oklch(71.74% 0.192 48.75 / 20%);
 
+  /* Tinted icon chips: a wash background with a strong foreground that reads in both themes */
+  --brand-strong: oklch(58.23% 0.1574 48.48);
+  --accent-strong: oklch(48.06% 0.2976 276);
+  --accent-wash: oklch(97.9% 0.193 276);
+
   /* Filters */
   --filter-active-bg: oklch(54.02% 0.02 260);
   --filter-active-text: oklch(98.42% 0.0034 247.86);
@@ -366,6 +374,11 @@ html[data-theme="system"] .theme-check-system {
 
   /* Side Navbar */
   --brand-wash: oklch(77.69% 0.154 56.87 / 25%);
+
+  /* Tinted icon chips */
+  --brand-strong: oklch(77.69% 0.154 56.87);
+  --accent-strong: oklch(66.2% 0.16 276);
+  --accent-wash: oklch(48.06% 0.2976 276 / 20%);
 
   /* Filters */
   --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
