@@ -15,6 +15,7 @@ use super::values::{
     arb_dns_resource_address, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
+use crate::dns_records::record_ip;
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
@@ -22,7 +23,7 @@ use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
 use crate::transition::{Seq, Transition};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
     // Always-legal.
     UpdateSystemDnsServers,
@@ -48,9 +49,27 @@ enum TransitionKind {
     UpdateDnsRecords,
     SendPacket,
     SendPacketOnExistingFlow,
+    SendTcpData,
     SendDnsQueries,
     UpdateDevicePoolMembers,
+    ExhaustRelayPorts,
+    FreeRelayPorts,
 }
+
+/// The transitions that open no connection.
+///
+/// A node whose allocations all failed cannot open any connection until it gets a relay back,
+/// which the reference model does not predict. While every relay is exhausted or recovering, or a
+/// node may have no relay left, only these are legal.
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
+    TransitionKind::RoamClient,
+    TransitionKind::DeployNewRelays,
+    TransitionKind::PartitionRelaysFromPortal,
+    TransitionKind::RebootRelaysWhilePartitioned,
+    TransitionKind::RestartClient,
+    TransitionKind::FreeRelayPorts,
+    TransitionKind::Idle,
+];
 
 #[derive(Clone, Copy)]
 enum ExistingFlow {
@@ -65,7 +84,7 @@ pub(super) fn generate(
 ) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients(portal);
     let editable_resources = state.editable_resources_on_any_client(portal);
-    let removable_resources = state.removable_resource_ids();
+    let removable_resources = state.all_resource_ids();
     let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
     let revocable_resources = state.revocable_resource_ids(portal);
     let expirable_peers = state.expirable_peer_authorizations();
@@ -91,8 +110,27 @@ pub(super) fn generate(
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
+    let tcp_flows = state.tcp_flows.keys().copied().collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+    let accepting_relays = state
+        .relays
+        .keys()
+        .filter(|relay| !state.exhausted_relays.contains(relay))
+        .copied()
+        .collect::<Vec<_>>();
+    let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
+    let healthy_relays = accepting_relays
+        .iter()
+        .filter(|relay| !state.recovering_relays.contains_key(relay))
+        .count();
+    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.iceless() {
+        healthy_relays > 1
+    } else {
+        !accepting_relays.is_empty()
+    };
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -123,11 +161,18 @@ pub(super) fn generate(
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
+        (!tcp_flows.is_empty()).then_some((K::SendTcpData, 10)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
+        (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
+    .filter(|(kind, _)| {
+        (healthy_relays > 0 && !state.node_may_lack_relays)
+            || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind)
+    })
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
@@ -265,7 +310,14 @@ pub(super) fn generate(
         }
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
-            let records = arb_dns_record_set(g);
+            let mut records = arb_dns_record_set(g);
+            // Like at the start, a TCP-serving domain never resolves to an ICMP-error host.
+            if state.tcp_resources.contains_key(&domain) {
+                for _ in records.extract_if(.., |record| {
+                    record_ip(record)
+                        .is_some_and(|ip| state.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+                }) {}
+            }
             Transition::UpdateDnsRecords { domain, records }
         }
         K::SendPacket => {
@@ -287,6 +339,12 @@ pub(super) fn generate(
                 },
             }
         }
+        K::SendTcpData => Transition::SendTcpData {
+            flow_id: tcp_flows[g.choose_index(tcp_flows.len())],
+            len: g.u16_in(1..=16 * 1024),
+            seed: g.u64(),
+            probe_id: g.fresh_probe_id(),
+        },
         K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
         K::UpdateDevicePoolMembers => {
             let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
@@ -298,6 +356,12 @@ pub(super) fn generate(
                 members,
                 revoked,
             }
+        }
+        K::ExhaustRelayPorts => {
+            Transition::ExhaustRelayPorts(accepting_relays[g.choose_index(accepting_relays.len())])
+        }
+        K::FreeRelayPorts => {
+            Transition::FreeRelayPorts(exhausted_relays[g.choose_index(exhausted_relays.len())])
         }
     }
 }

@@ -23,7 +23,6 @@ import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -33,7 +32,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.coroutines.resume
 
-private const val REQUEST_DELAY = 1000L
 private const val POLICY_ANSWER_TIMEOUT = 10_000L
 
 @HiltViewModel
@@ -70,9 +68,6 @@ internal class SplashViewModel
             activity: Activity,
             isInitialLaunch: Boolean,
         ) {
-            // Stay a while and enjoy the logo
-            delay(REQUEST_DELAY)
-
             // If we don't have VPN permission, we can't continue.
             // A mocked session establishes no tunnel, so it needs no consent to establish one.
             if (!hasVpnPermissions(activity) && DebugOverrides.sessionFactory == null) {
@@ -157,6 +152,11 @@ internal class SplashViewModel
         /** The portal the certificate is meant for, which a policy may scope its answer to. */
         private fun apiUri(): Uri? = runCatching { Uri.parse(repo.getConfigSync().apiUrl) }.getOrNull()
 
+        /** Where a session that has ended leaves the app, without re-deciding and racing its shutdown. */
+        internal fun sessionEnded() {
+            actionMutableStateFlow.value = ViewAction.NavigateToSignIn
+        }
+
         internal fun clearAction() {
             actionMutableStateFlow.value = null
         }
@@ -209,8 +209,6 @@ internal class SplashViewModel
             object NavigateToNotificationPermission : ViewAction()
 
             object NavigateToCertificatePermission : ViewAction()
-
-            object NavigateToSettings : ViewAction()
 
             object NavigateToSignIn : ViewAction()
 

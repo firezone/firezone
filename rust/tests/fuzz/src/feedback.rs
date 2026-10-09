@@ -18,7 +18,6 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
@@ -30,8 +29,8 @@ use tunnel_proto::dns;
 use crate::{
     probe::{
         DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
-        FlowId, ProbeId, ProbeRequest, ReceivedRequest, Remote, Route, SubmittedRequest,
-        remote_responds_with_icmp_error,
+        FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionResponse, Remote, Route,
+        SubmittedRequest, remote_responds_with_icmp_error,
     },
     reference::ReferenceState,
     resource::{EditEffect, classify},
@@ -39,7 +38,7 @@ use crate::{
     sim_net::EdgeConfig,
     stub_portal::StubPortal,
     sut::TunnelTest,
-    transition::{DPort, Destination, DnsQuery, DnsTransport, SPort, Transition},
+    transition::{Destination, DnsQuery, DnsTransport, Transition},
 };
 
 // The AFL runtime defines this symbol weakly. Rust's IJON macros already emit
@@ -136,7 +135,8 @@ pub struct Recorder {
     successful_resource_gateways: BTreeMap<ClientResource, GatewayId>,
     current_probe_on_idled_flow: Option<IdleFlowAttempt>,
     current_dns_queries: Vec<(ClientId, DnsQuery)>,
-    current_tcp_connection: Option<TcpConnectionAttempt>,
+    current_tcp_flow: Option<FlowId>,
+    tcp_flows_opened: BTreeMap<FlowId, usize>,
 }
 
 impl Recorder {
@@ -144,7 +144,7 @@ impl Recorder {
     pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState) {
         self.current_probe_on_idled_flow = None;
         self.current_dns_queries.clear();
-        self.current_tcp_connection = None;
+        self.current_tcp_flow = None;
 
         match transition {
             Transition::EditResource(edit) => {
@@ -184,6 +184,14 @@ impl Recorder {
             Transition::RebootRelaysWhilePartitioned(_) => {
                 self.changes
                     .push((Scope::Everything, Change::RelaysRebooted));
+            }
+            Transition::ExhaustRelayPorts(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::RelayPortsExhausted));
+            }
+            Transition::FreeRelayPorts(_) => {
+                self.changes
+                    .push((Scope::Everything, Change::RelayPortsFreed));
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 self.changes.push((
@@ -235,20 +243,8 @@ impl Recorder {
                     });
                 }
             }
-            Transition::ConnectTcp {
-                client_id,
-                src,
-                dst,
-                sport,
-                dport,
-            } => {
-                self.current_tcp_connection = Some(TcpConnectionAttempt {
-                    client: *client_id,
-                    src: *src,
-                    dst: dst.clone(),
-                    sport: *sport,
-                    dport: *dport,
-                });
+            Transition::ConnectTcp { flow_id, .. } | Transition::SendTcpData { flow_id, .. } => {
+                self.current_tcp_flow = Some(*flow_id);
             }
             Transition::SendDnsQueries(queries) => {
                 self.current_dns_queries.clone_from(queries);
@@ -288,28 +284,36 @@ impl Recorder {
         record_dns_refresh_feedback(reference, state);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
+        for _ in self
+            .tcp_flows_opened
+            .extract_if(.., |flow, _| !reference.tcp_flows.contains_key(flow))
+        {}
 
         for expected in reference.expected_probes.values() {
+            record_tcp_connect_outcome(reference, state, expected);
             let Some(completed) = completed_round_trip(expected, state) else {
                 continue;
             };
-            let Some(path) = route_path_feedback(reference, state, &completed) else {
+            let Some(path) =
+                remote_path_feedback(reference, state, expected.origin, completed.route.remote())
+            else {
                 continue;
             };
 
-            record_with_path!(path;
-                completed.is_udp(),
-                completed.submitted.packet.destination().is_ipv6(),
-                completed.received.packet.destination().is_ipv6(),
-                completed.is_peer(),
-                matches!(expected.request.destination(), Destination::DomainName { .. }),
-            );
+            if let Some(received) = completed.received {
+                record_with_path!(path;
+                    completed.is_udp(),
+                    completed.submitted.packet.destination().is_ipv6(),
+                    received.packet.destination().is_ipv6(),
+                    completed.is_peer(),
+                    matches!(expected.request.destination(), Destination::DomainName { .. }),
+                );
+            }
             self.record_recovery(reference, expected.origin, completed.route, path);
             self.record_existing_flow_after_idle(&completed, path);
             self.record_gateway_failover(&completed, path);
+            self.record_tcp_survival(reference, &completed, path);
         }
-
-        self.record_tcp_connectivity(reference, state);
     }
 
     /// Records the kinds of change a route has recovered from since it last carried traffic.
@@ -320,20 +324,12 @@ impl Recorder {
         route: Route,
         path: PathFeedback,
     ) {
-        let route = match route {
-            Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
-            Route::Gateway(gateway) => RouteKey::Gateway(origin, gateway),
-            Route::Peer(peer) => RouteKey::Peer(origin, peer),
-        };
+        let route = RouteKey::new(origin, route);
         let since = self
             .recovered
             .insert(route, self.changes.len())
             .unwrap_or(0);
-        let kinds = self.changes[since..]
-            .iter()
-            .filter(|(scope, _)| scope.covers(route, reference))
-            .map(|(_, change)| *change)
-            .collect::<BTreeSet<_>>();
+        let kinds = self.changes_since(since, route, reference);
 
         for &kind in &kinds {
             record_value!((kind as u16) << 2 | path.code());
@@ -342,6 +338,44 @@ impl Recorder {
             record_value!((first as u16 * KINDS + second as u16) << 2 | path.code());
         }
         record_value!((kinds.len().min(7) as u16) << 2 | path.code());
+    }
+
+    fn changes_since(
+        &self,
+        since: usize,
+        route: RouteKey,
+        reference: &ReferenceState,
+    ) -> BTreeSet<Change> {
+        self.changes[since..]
+            .iter()
+            .filter(|(scope, _)| scope.covers(route, reference))
+            .map(|(_, change)| *change)
+            .collect()
+    }
+
+    /// Records the kinds of change a TCP connection has survived since it was opened.
+    fn record_tcp_survival(
+        &mut self,
+        reference: &ReferenceState,
+        completed: &CompletedRoundTrip<'_>,
+        path: PathFeedback,
+    ) {
+        let (Some(flow), ProbeRequest::Tcp { write_len, .. }) =
+            (self.current_tcp_flow, &completed.expected.request)
+        else {
+            return;
+        };
+        if write_len.is_none() {
+            self.tcp_flows_opened.insert(flow, self.changes.len());
+            return;
+        }
+        let Some(&since) = self.tcp_flows_opened.get(&flow) else {
+            return;
+        };
+        let route = RouteKey::new(completed.expected.origin, completed.route);
+        for kind in self.changes_since(since, route, reference) {
+            record_value!((kind as u16) << 2 | path.code());
+        }
     }
 
     fn record_existing_flow_after_idle(
@@ -355,16 +389,18 @@ impl Recorder {
         if attempt.probe != completed.expected.id {
             return;
         }
-        record_with_path!(path;
-            completed.is_udp(),
-            completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
-            completed.is_peer(),
-            matches!(
-                completed.expected.request.destination(),
-                Destination::DomainName { .. }
-            ),
-        );
+        if let Some(received) = completed.received {
+            record_with_path!(path;
+                completed.is_udp(),
+                completed.submitted.packet.destination().is_ipv6(),
+                received.packet.destination().is_ipv6(),
+                completed.is_peer(),
+                matches!(
+                    completed.expected.request.destination(),
+                    Destination::DomainName { .. }
+                ),
+            );
+        }
         record_with_path!(path;
             attempt.duration >= DNS_NAT_SESSION_TTL,
             matches!(
@@ -401,15 +437,18 @@ impl Recorder {
         if previous.is_none_or(|previous| previous == gateway) {
             return;
         }
+        let Some(received) = completed.received else {
+            return;
+        };
         record_with_path!(path;
             completed.is_udp(),
             completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
+            received.packet.destination().is_ipv6(),
             matches!(
                 completed.expected.request.destination(),
                 Destination::DomainName { .. }
             ),
-            completed.submitted.packet.destination() != completed.received.packet.destination(),
+            completed.submitted.packet.destination() != received.packet.destination(),
         );
     }
 
@@ -467,65 +506,6 @@ impl Recorder {
             );
         }
     }
-
-    fn record_tcp_connectivity(&mut self, reference: &ReferenceState, state: &TunnelTest) {
-        let Some(attempt) = &self.current_tcp_connection else {
-            return;
-        };
-        let Some(reference_client) = reference.clients.get(&attempt.client) else {
-            return;
-        };
-        let reference_client = reference_client.inner();
-        let Some(resource) = reference_client
-            .expected_tcp_connections
-            .get(&(
-                attempt.src,
-                attempt.dst.clone(),
-                attempt.sport,
-                attempt.dport,
-            ))
-            .copied()
-        else {
-            return;
-        };
-        let Some(simulated_client) = state.clients.get(&attempt.client) else {
-            return;
-        };
-        let source = l3_tcp::IpEndpoint::from(SocketAddr::new(attempt.src, attempt.sport.0));
-        let established = simulated_client
-            .inner()
-            .tcp_client
-            .iter_sockets()
-            .any(|socket| {
-                socket.local_endpoint() == Some(source)
-                    && socket
-                        .remote_endpoint()
-                        .is_some_and(|remote| remote.port == attempt.dport.0)
-                    && socket.state() == l3_tcp::State::Established
-            });
-        if !established {
-            return;
-        }
-
-        let Some(gateway) = reference_client.gateway_for_resource(resource) else {
-            return;
-        };
-        let Some(path) = gateway_path_feedback(reference, state, attempt.client, gateway) else {
-            return;
-        };
-
-        record_with_path!(path;
-            attempt.src.is_ipv6(),
-            matches!(attempt.dst, Destination::DomainName { .. }),
-            reference_client.internet_resource() == Some(resource),
-        );
-        self.record_recovery(
-            reference,
-            attempt.client,
-            Route::Resource { resource, gateway },
-            path,
-        );
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -537,6 +517,8 @@ enum Change {
     RelaysDeployed,
     RelaysPartitioned,
     RelaysRebooted,
+    RelayPortsExhausted,
+    RelayPortsFreed,
     GatewayAuthorizationRevoked,
     GatewayDeauthorizedWhilePartitioned,
     PeerRemovedFromPool,
@@ -552,7 +534,7 @@ enum Change {
     DnsServersChanged,
 }
 
-const KINDS: u16 = 20;
+const KINDS: u16 = 22;
 
 #[derive(Clone, Copy)]
 enum Scope {
@@ -598,18 +580,20 @@ enum RouteKey {
     Peer(ClientId, ClientId),
 }
 
+impl RouteKey {
+    fn new(origin: ClientId, route: Route) -> Self {
+        match route {
+            Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
+            Route::Gateway(gateway) => RouteKey::Gateway(origin, gateway),
+            Route::Peer(peer) => RouteKey::Peer(origin, peer),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct ClientResource {
     client: ClientId,
     resource: ResourceId,
-}
-
-struct TcpConnectionAttempt {
-    client: ClientId,
-    src: IpAddr,
-    dst: Destination,
-    sport: SPort,
-    dport: DPort,
 }
 
 #[derive(Clone, Copy)]
@@ -622,7 +606,8 @@ struct CompletedRoundTrip<'a> {
     expected: &'a ExpectedProbe,
     route: Route,
     submitted: &'a SubmittedRequest,
-    received: &'a ReceivedRequest,
+    /// `None` for a TCP write, which the remote receives on an established connection.
+    received: Option<&'a ReceivedRequest>,
 }
 
 impl CompletedRoundTrip<'_> {
@@ -643,12 +628,15 @@ fn completed_round_trip<'a>(
         return None;
     };
     let trace = state.probe_trace(expected.id);
-    let ([submitted], [received], [_response]) = (
+    let (submitted, received) = match (
         trace.submitted_requests.as_slice(),
         trace.received_requests.as_slice(),
         trace.received_responses.as_slice(),
-    ) else {
-        return None;
+        trace.completed_streams.as_slice(),
+    ) {
+        ([submitted], [received], [_response], []) => (*submitted, Some(*received)),
+        ([submitted], [], [], [_completed]) => (*submitted, None),
+        _ => return None,
     };
 
     Some(CompletedRoundTrip {
@@ -680,17 +668,17 @@ impl PathFeedback {
     }
 }
 
-fn route_path_feedback(
+fn remote_path_feedback(
     reference: &ReferenceState,
     state: &TunnelTest,
-    completed: &CompletedRoundTrip<'_>,
+    origin: ClientId,
+    remote: Remote,
 ) -> Option<PathFeedback> {
-    let origin = completed.expected.origin;
-    let peer = match completed.route {
-        Route::Resource { gateway, .. } | Route::Gateway(gateway) => {
+    let peer = match remote {
+        Remote::Gateway(gateway) => {
             return gateway_path_feedback(reference, state, origin, gateway);
         }
-        Route::Peer(peer) => peer,
+        Remote::Client(peer) => peer,
     };
     let origin_edge = reference.clients.get(&origin)?.edge_config();
     let remote_edge = reference.clients.get(&peer)?.edge_config();
@@ -743,33 +731,75 @@ fn gateway_path_feedback(
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 
+/// Records whether a TCP connect was answered by a SYN-ACK, a reset or an ICMP error.
+fn record_tcp_connect_outcome(
+    reference: &ReferenceState,
+    state: &TunnelTest,
+    expected: &ExpectedProbe,
+) {
+    let ProbeRequest::Tcp {
+        write_len: None, ..
+    } = expected.request
+    else {
+        return;
+    };
+    let trace = state.probe_trace(expected.id);
+    let ([submitted], [_response, ..]) = (
+        trace.submitted_requests.as_slice(),
+        trace.received_responses.as_slice(),
+    ) else {
+        return;
+    };
+    let (reset, icmp_error) = match expected.outcome {
+        ExpectedOutcome::Dropped => return,
+        ExpectedOutcome::RoundTripCompleted(_) => (false, false),
+        ExpectedOutcome::Rejected {
+            response: RejectionResponse::Reset,
+            ..
+        } => (true, false),
+        ExpectedOutcome::Rejected { .. } => (false, true),
+    };
+    let ipv6 = submitted.packet.destination().is_ipv6();
+    match expected
+        .outcome
+        .remote()
+        .and_then(|remote| remote_path_feedback(reference, state, expected.origin, remote))
+    {
+        Some(path) => record_with_path!(path; reset, icmp_error, ipv6),
+        None => record!(reset, icmp_error, ipv6),
+    }
+}
+
 fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &TunnelTest) {
     for expected in reference.expected_probes.values() {
         let Some(completed) = completed_round_trip(expected, state) else {
+            continue;
+        };
+        let Some(received) = completed.received else {
             continue;
         };
         let remote = completed.route.remote();
         if !matches!(remote, Remote::Gateway(_)) {
             continue;
         }
-        let Some(path) = route_path_feedback(reference, state, &completed) else {
+        let Some(path) = remote_path_feedback(reference, state, expected.origin, remote) else {
             continue;
         };
         let destination_was_translated =
-            completed.submitted.packet.destination() != completed.received.packet.destination();
+            completed.submitted.packet.destination() != received.packet.destination();
         if !destination_was_translated {
             continue;
         }
 
         let responds_with_icmp_error = remote_responds_with_icmp_error(
             expected,
-            completed.received,
+            received,
             remote,
             &reference.icmp_error_hosts,
         );
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),
-            completed.received.packet.destination().is_ipv6(),
+            received.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
             responds_with_icmp_error,
         );

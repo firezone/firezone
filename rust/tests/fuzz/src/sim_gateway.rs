@@ -38,7 +38,10 @@ pub(crate) struct SimGateway {
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
-    tcp_resources: BTreeMap<SocketAddr, crate::tcp::Server>,
+    /// The TCP server of each `(domain, port)`, serving every address the Gateway resolved the domain to.
+    tcp_servers: BTreeMap<(DomainName, u16), crate::tcp::Server>,
+    /// Answers TCP to any address without a TCP server with a reset.
+    closed_tcp_ports: crate::tcp::Server,
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
@@ -57,11 +60,24 @@ impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
         mut sut: GatewayState,
-        tcp_resources: BTreeSet<SocketAddr>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         site_specific_dns_records: DnsRecords,
         now: Instant,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
+
+        let tcp_servers = tcp_services
+            .into_iter()
+            .flat_map(|(domain, ports)| ports.into_iter().map(move |port| (domain.clone(), port)))
+            .map(|(domain, port)| {
+                let mut server = crate::tcp::Server::new(now);
+                if let Err(e) = server.listen(port) {
+                    tracing::error!(%domain, %port, "Failed to listen: {e}")
+                }
+
+                ((domain, port), server)
+            })
+            .collect();
 
         Self {
             id,
@@ -76,17 +92,8 @@ impl SimGateway {
             next_observation_order: 0,
             authorized_resources: Default::default(),
             clients_by_ip: Default::default(),
-            tcp_resources: tcp_resources
-                .into_iter()
-                .map(|address| {
-                    let mut server = crate::tcp::Server::new(now);
-                    if let Err(e) = server.listen(address) {
-                        tracing::error!(%address, "Failed to listen on address: {e}")
-                    }
-
-                    (address, server)
-                })
-                .collect(),
+            tcp_servers,
+            closed_tcp_ports: crate::tcp::Server::new(now),
             transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
@@ -145,11 +152,15 @@ impl SimGateway {
 
                     std::iter::from_fn(|| server.poll_outbound())
                 });
-        let tcp_resource_packets = self.tcp_resources.values_mut().flat_map(|server| {
-            server.handle_timeout(now);
+        let tcp_resource_packets = self
+            .tcp_servers
+            .values_mut()
+            .chain([&mut self.closed_tcp_ports])
+            .flat_map(|server| {
+                server.handle_timeout(now);
 
-            std::iter::from_fn(|| server.poll_outbound())
-        });
+                std::iter::from_fn(|| server.poll_outbound())
+            });
 
         // Collect first to end the mutable borrows of the resource maps before encapsulating.
         let packets = udp_server_packets
@@ -289,15 +300,27 @@ impl SimGateway {
 
         if let Some(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
+            let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
-            if let Some(server) = self.tcp_resources.get_mut(&socket) {
-                server.handle_inbound(packet);
+            if icmp_error.is_none()
+                && let Some(server) = self.tcp_server_for(socket, remote)
+            {
+                server.handle_inbound(packet.clone());
+                if tcp.syn() && !tcp.ack() {
+                    self.record_received_tcp_syn(&packet, now);
+                }
+
                 return None;
             }
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet, now);
+                return None;
+            }
+
+            if icmp_error.is_none() {
+                self.closed_tcp_ports.handle_inbound(packet);
                 return None;
             }
         }
@@ -311,6 +334,38 @@ impl SimGateway {
 
         tracing::error!(?packet, "Unhandled packet");
         None
+    }
+
+    /// Returns the server of the connection between `local` and `remote`, or else the server
+    /// of a domain the Gateway resolved to `local`'s IP that serves `local`'s port.
+    ///
+    /// A host keeps serving after its domain points elsewhere: a Gateway translates to the
+    /// addresses it last resolved until the Client re-resolves the domain.
+    fn tcp_server_for(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+    ) -> Option<&mut crate::tcp::Server> {
+        let key = self
+            .tcp_servers
+            .iter()
+            .find(|(_, server)| server.is_established(local, remote))
+            .or_else(|| {
+                self.tcp_servers.iter().find(|((domain, port), _)| {
+                    *port == local.port() && self.resolved_to(domain, local.ip())
+                })
+            })
+            .map(|(key, _)| key.clone())?;
+
+        self.tcp_servers.get_mut(&key)
+    }
+
+    fn resolved_to(&self, domain: &DomainName, ip: IpAddr) -> bool {
+        self.dns_resolutions
+            .iter()
+            .filter(|((_, resolved), _)| resolved == domain)
+            .flat_map(|(_, resolutions)| resolutions)
+            .any(|resolution| resolution.addresses.contains(&ip))
     }
 
     pub(crate) fn update_relays<'a>(
@@ -332,14 +387,27 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn clear_packets(&mut self) {
-        for server in self.tcp_resources.values_mut() {
-            server.reset();
+    fn record_received_tcp_syn(&mut self, packet: &IpPacket, now: Instant) {
+        let retransmitted = self.probe_observations.iter().any(|observation| {
+            observation.as_received_request().is_some_and(|received| {
+                received.id.is_none() && tcp_tuple(&received.packet) == tcp_tuple(packet)
+            })
+        });
+        if retransmitted {
+            return;
         }
+
+        self.push_received_request(None, packet.clone(), now);
     }
 
     pub(crate) fn clear_probe_observations(&mut self) {
         self.probe_observations.clear();
+    }
+
+    pub(crate) fn drop_unfinished_tcp_connections(&mut self) {
+        for server in self.tcp_servers.values_mut() {
+            server.drop_unfinished();
+        }
     }
 
     pub(crate) fn record_dns_resolution(
@@ -485,6 +553,11 @@ impl SimGateway {
             tracing::error!("Probe payload does not contain a probe ID");
             return;
         };
+
+        self.push_received_request(Some(id), packet, at);
+    }
+
+    fn push_received_request(&mut self, id: Option<ProbeId>, packet: IpPacket, at: Instant) {
         let gateway_order = Some(self.next_observation_order());
         let dns_nat_generation = self
             .clients_by_ip
@@ -562,4 +635,15 @@ impl ExecMutScope for SimGateway {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
+}
+
+fn tcp_tuple(packet: &IpPacket) -> Option<(IpAddr, u16, IpAddr, u16)> {
+    let tcp = packet.as_tcp()?;
+
+    Some((
+        packet.source(),
+        tcp.source_port(),
+        packet.destination(),
+        tcp.destination_port(),
+    ))
 }
