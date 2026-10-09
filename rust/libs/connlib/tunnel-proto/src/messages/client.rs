@@ -4,7 +4,9 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
-use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
+use connlib_model::{
+    ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
+};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, VecSkipError, serde_as};
@@ -285,6 +287,24 @@ pub struct DeviceDomainResolutionFailed {
     pub reason: FailReason,
 }
 
+/// Portal's answer to a PTR query in the device domain.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowsed {
+    pub domain: String,
+    pub names: Vec<String>,
+    /// How long, in seconds, the answer may be cached.
+    pub ttl: u32,
+    /// How many names there are in all, more than `names` holds if the portal capped them.
+    pub total: usize,
+}
+
+/// Portal's response when a PTR query in the device domain cannot be answered.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowseFailed {
+    pub domain: String,
+    pub reason: FailReason,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FailReason {
@@ -296,6 +316,7 @@ pub enum FailReason {
     AmbiguousAddress,
     MissingAddress,
     InvalidAddress,
+    NotADevice,
     #[serde(other)]
     Unknown,
 }
@@ -346,6 +367,8 @@ pub enum IngressMessages {
 
     DeviceDomainResolved(DeviceDomainResolved),
     DeviceDomainResolutionFailed(DeviceDomainResolutionFailed),
+    DeviceDomainBrowsed(DeviceDomainBrowsed),
+    DeviceDomainBrowseFailed(DeviceDomainBrowseFailed),
 
     /// A resource's filters have changed while at least one authorization
     /// referencing it remains active.
@@ -403,7 +426,12 @@ pub enum EgressMessages {
     ResolveDeviceDomain {
         domain: String,
     },
-    NoRelays {},
+    BrowseDeviceDomain {
+        domain: String,
+    },
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
     NewGatewayIceCandidates(GatewayIceCandidates),
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
@@ -917,8 +945,10 @@ mod tests {
 
     #[test]
     fn serialize_no_relays_message() {
-        let message = EgressMessages::NoRelays {};
-        let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let message = EgressMessages::NoRelays {
+            excluded_relay_ids: vec!["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d".parse().unwrap()],
+        };
+        let expected_json = r#"{"event":"no_relays","payload":{"excluded_relay_ids":["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d"]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
@@ -1034,6 +1064,85 @@ mod tests {
             msg,
             IngressMessages::DeviceDomainResolutionFailed(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_not_a_device_reason() {
+        let json = serde_json::json!({
+            "event": "device_domain_resolution_failed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "reason": "not_a_device"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainResolutionFailed(failed) = msg else {
+            panic!("expected DeviceDomainResolutionFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotADevice));
+    }
+
+    #[test]
+    fn browse_device_domain_serialises_correctly() {
+        let msg = EgressMessages::BrowseDeviceDomain {
+            domain: "firezone.network".to_owned(),
+        };
+
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "browse_device_domain",
+            "payload": {
+                "domain": "firezone.network",
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browsed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browsed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "names": ["alice-laptop.firezone.network", "alice-desktop.firezone.network"],
+                "ttl": 30,
+                "total": 5
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowsed(browsed) = msg else {
+            panic!("expected DeviceDomainBrowsed")
+        };
+        assert_eq!(browsed.domain, "your-devices.firezone.network");
+        assert_eq!(
+            browsed.names,
+            [
+                "alice-laptop.firezone.network",
+                "alice-desktop.firezone.network"
+            ]
+        );
+        assert_eq!(browsed.ttl, 30);
+        assert_eq!(browsed.total, 5);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browse_failed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browse_failed",
+            "payload": {
+                "domain": "ghost.firezone.network",
+                "reason": "not_found"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowseFailed(failed) = msg else {
+            panic!("expected DeviceDomainBrowseFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotFound));
     }
 
     #[test]

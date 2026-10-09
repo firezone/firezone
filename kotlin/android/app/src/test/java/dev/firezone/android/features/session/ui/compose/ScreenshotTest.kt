@@ -25,6 +25,7 @@ import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.toModel
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList

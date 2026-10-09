@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui
 
-import android.net.Uri
 import android.os.Bundle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -98,15 +97,6 @@ internal class DeviceTrustSettingsViewModel
                         )
                 }
         }
-
-        /** Records the alias the user released, which the fragment has checked is a device certificate. */
-        fun onAliasSelected(alias: String) {
-            repository.saveX509CertificateAliasSync(alias)
-            loadDetails()
-        }
-
-        /** The portal the certificate is meant for, shown by Android in the chooser dialog. */
-        fun keyChainRequestUri(): Uri? = runCatching { Uri.parse(repository.getConfigSync().apiUrl) }.getOrNull()
 
         internal data class UiState(
             val alias: String? = null,

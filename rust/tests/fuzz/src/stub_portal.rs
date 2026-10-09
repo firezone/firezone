@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_packet::Protocol;
 use itertools::Itertools;
@@ -7,14 +7,24 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    time::Instant,
 };
 use tunnel_proto::dns;
+use tunnel_proto::messages::client::FailReason;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::ref_client::protocol_filter_allows;
 use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
+use crate::sim_net::Host;
+use crate::sim_relay::SimRelay;
 use crate::transition::Transition;
+
+/// The TTL the portal gives the names a PTR query in the device domain lists.
+///
+/// It is below the 5 s connlib caches answers from, so answers never outlive the
+/// transition that asked for them.
+const DEVICE_LISTING_TTL: u32 = 4;
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
@@ -51,6 +61,9 @@ pub struct StubPortal {
     /// How often each Client was handed a Gateway it did not prefer since it started, per site.
     #[debug(skip)]
     load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
+    /// When the portal handed each node relays.
+    #[debug(skip)]
+    relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
 
     /// Stable index used to pick a resource candidate (`index % len`).
     resource_selector: u32,
@@ -178,6 +191,7 @@ impl StubPortal {
             regular_sites,
             gateway_selector,
             load_balanced_requests: Default::default(),
+            relay_handouts: Default::default(),
             resource_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
@@ -246,6 +260,7 @@ impl StubPortal {
             Transition::SendUdpPacketOnNewFlow { .. } => {}
             Transition::SendUdpPacketOnExistingFlow { .. } => {}
             Transition::ConnectTcp { .. } => {}
+            Transition::SendTcpData { .. } => {}
             Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
@@ -267,6 +282,8 @@ impl StubPortal {
             Transition::PartitionRelaysFromPortal => {}
             Transition::Idle { .. } => {}
             Transition::RebootRelaysWhilePartitioned(_) => {}
+            Transition::ExhaustRelayPorts(_) => {}
+            Transition::FreeRelayPorts(_) => {}
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 self.revoke_policy_authorizations(*resource);
             }
@@ -330,17 +347,95 @@ impl StubPortal {
         self.clients[&id].device_label.clone()
     }
 
+    /// The labels of all device pools.
+    pub(crate) fn device_pool_labels(&self) -> impl Iterator<Item = String> + '_ {
+        self.device_pool_resources
+            .values()
+            .map(|pool| pool_label(pool).to_owned())
+    }
+
     /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client's
     /// tunnel IPv4 + IPv6, if the slug corresponds to a known device.
+    ///
+    /// A name that labels one of the `held` pools instead is not a device.
     pub(crate) fn resolve_device_domain(
         &self,
         domain: &DomainName,
-    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
-        let slug = dns::device_slug(domain)?;
+        held: &[ResourceId],
+    ) -> Result<(Ipv4Addr, Ipv6Addr), FailReason> {
+        let slug = dns::device_slug(domain).ok_or(FailReason::NotFound)?;
 
-        let client = self.clients.values().find(|c| c.device_label == slug)?;
+        if let Some(client) = self.clients.values().find(|c| c.device_label == slug) {
+            return Ok((client.ipv4, client.ipv6));
+        }
 
-        Some((client.ipv4, client.ipv6))
+        if self.held_pools(held).any(|pool| pool_label(pool) == slug) {
+            return Err(FailReason::NotADevice);
+        }
+
+        Err(FailReason::NotFound)
+    }
+
+    /// Lists the names a PTR query for `domain` returns to a client holding `held`, for
+    /// how many seconds they may be cached and how many names there are in all.
+    ///
+    /// The device domain itself lists the labels of those pools, a label the members of
+    /// the pools it names. A label that names none of them but a device lists nothing.
+    /// A listing holds one name fewer than there are clients at most, so the members of a
+    /// pool that holds them all are cut short.
+    pub(crate) fn browse_device_domain(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Result<(Vec<DomainName>, u32, usize), FailReason> {
+        let mut names = self
+            .device_domain_names(domain, held)
+            .ok_or(FailReason::NotFound)?;
+        let total = names.len();
+        names.truncate(self.clients.len() - 1);
+
+        Ok((names, DEVICE_LISTING_TTL, total))
+    }
+
+    fn device_domain_names(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Option<Vec<DomainName>> {
+        if domain.to_string() == dns::DEVICE_DOMAIN {
+            let labels = self
+                .held_pools(held)
+                .map(|pool| device_name(pool_label(pool)))
+                .sorted()
+                .dedup()
+                .collect();
+
+            return Some(labels);
+        }
+
+        let label = dns::device_slug(domain)?;
+        let pools = self
+            .held_pools(held)
+            .filter(|pool| pool_label(pool) == label)
+            .map(|pool| pool.id)
+            .collect::<Vec<_>>();
+
+        if pools.is_empty() {
+            return self
+                .clients
+                .values()
+                .any(|c| c.device_label == label)
+                .then(Vec::new);
+        }
+
+        let members = self
+            .clients
+            .iter()
+            .filter(|(id, _)| pools.iter().any(|pool| self.is_pool_member(*pool, **id)))
+            .map(|(_, c)| device_name(&c.device_label))
+            .collect();
+
+        Some(members)
     }
 
     pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {
@@ -511,6 +606,15 @@ impl StubPortal {
         }
     }
 
+    fn held_pools<'a>(
+        &'a self,
+        held: &'a [ResourceId],
+    ) -> impl Iterator<Item = &'a DevicePoolResource> + 'a {
+        self.device_pool_resources
+            .values()
+            .filter(|pool| held.contains(&pool.id))
+    }
+
     fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
         match self.pool_members.get(&pool) {
             Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
@@ -661,6 +765,30 @@ impl StubPortal {
         (gateway, site_id)
     }
 
+    /// Answers `node`'s request for relays with every relay it did not exclude.
+    pub(crate) fn request_relays<'a>(
+        &mut self,
+        node: ClientOrGatewayId,
+        excluded_relay_ids: &[RelayId],
+        relays: &'a BTreeMap<RelayId, Host<SimRelay>>,
+        now: Instant,
+    ) -> Vec<(&'a RelayId, &'a Host<SimRelay>)> {
+        let relays = relays
+            .iter()
+            .filter(|(id, _)| !excluded_relay_ids.contains(id))
+            .collect::<Vec<_>>();
+
+        if !relays.is_empty() {
+            self.relay_handouts.entry(node).or_default().push(now);
+        }
+
+        relays
+    }
+
+    pub(crate) fn relay_handouts(&self) -> &BTreeMap<ClientOrGatewayId, Vec<Instant>> {
+        &self.relay_handouts
+    }
+
     pub(crate) fn map_client_resource_to_gateway_resource(
         &self,
         resource_id: ResourceId,
@@ -797,6 +925,17 @@ impl StubPortal {
     ) -> Option<Vec<tunnel_proto::messages::Filter>> {
         Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
     }
+}
+
+/// The label a pool is browsed at under the device domain.
+///
+/// The portal derives it from the pool's name; generated names already are labels.
+fn pool_label(pool: &DevicePoolResource) -> &str {
+    &pool.name
+}
+
+fn device_name(label: &str) -> DomainName {
+    format!("{label}.{}", dns::DEVICE_DOMAIN).parse().unwrap()
 }
 
 /// Picks an element from a slice by index (`index % len`), or `None` if empty.

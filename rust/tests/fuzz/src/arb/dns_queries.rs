@@ -1,3 +1,4 @@
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::ClientId;
@@ -34,7 +35,7 @@ enum DnsNameSpec {
     Resource {
         address: String,
     },
-    KnownDevice {
+    KnownLabel {
         base: String,
         labels: Vec<String>,
     },
@@ -45,7 +46,10 @@ enum DnsNameSpec {
 
 pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQueryTarget> {
     let servers = state.reachable_dns_servers(portal);
-    let labels = portal.device_labels();
+    let labels = iter::empty()
+        .chain(portal.device_labels())
+        .chain(portal.device_pool_labels())
+        .collect::<Vec<_>>();
 
     state
         .all_domains()
@@ -85,15 +89,23 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQue
                 (!labels.is_empty()).then(|| DnsQueryTarget {
                     client_id,
                     dns_server: dns_server.clone(),
-                    name: DnsNameSpec::KnownDevice {
+                    name: DnsNameSpec::KnownLabel {
                         base: base.clone(),
                         labels: labels.clone(),
                     },
                 }),
                 Some(DnsQueryTarget {
                     client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::UnknownDevice { base: base.clone() },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
                     dns_server,
-                    name: DnsNameSpec::UnknownDevice { base },
+                    name: DnsNameSpec::Concrete {
+                        domain: base.parse().unwrap(),
+                        rtypes: vec![RecordType::PTR],
+                    },
                 }),
             ]
             .into_iter()
@@ -160,7 +172,7 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
             };
             (domain, rtypes)
         }
-        DnsNameSpec::KnownDevice { base, labels } => {
+        DnsNameSpec::KnownLabel { base, labels } => {
             let label = &labels[g.choose_index(labels.len())];
             (
                 format!("{label}.{base}").parse::<DomainName>().unwrap(),
@@ -176,21 +188,27 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    let domain = if r_type == RecordType::PTR {
+    let domain = if r_type == RecordType::PTR && !dns::is_in_device_domain(&domain) {
         DomainName::reverse_from_addr(arb_unassigned_ptr_query_ip(g))
             .expect("reverse DNS names always fit")
     } else {
         domain
     };
 
+    let query_id = arb_dns_query_id(g);
+    let transport = arb_dns_transport(g);
+    // Only the answers to PTR queries in the device domain depend on EDNS.
+    let edns = r_type == RecordType::PTR && dns::is_in_device_domain(&domain) && g.bool();
+
     (
         target.client_id,
         DnsQuery {
             domain,
             r_type,
-            query_id: arb_dns_query_id(g),
+            query_id,
             dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
+            transport,
+            edns,
         },
     )
 }

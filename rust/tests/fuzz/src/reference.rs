@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
-    RejectionRemote, RejectionResponse, Remote, Route, TraceRequirement, UdpFlow,
+    RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
@@ -25,6 +25,10 @@ use crate::resource as client;
 
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
+/// How long after a relay frees up its ports until no node ignores it anymore: how long a node
+/// ignores a relay that failed its allocation, plus a margin.
+const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
+
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
@@ -33,14 +37,20 @@ pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+    /// Relays that answer new allocations with `508 Insufficient Capacity`.
+    pub(crate) exhausted_relays: BTreeSet<RelayId>,
+    /// Relays that accept allocations again while nodes may still ignore them, and since when.
+    pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
+    /// Whether a node may have no relay left because every relay it tried rejected its allocation.
+    pub(crate) node_may_lack_relays: bool,
 
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
 
-    /// DNS Resources that listen for TCP connections.
-    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+    /// The ports each DNS Resource domain serves TCP on.
+    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
 
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
@@ -51,6 +61,7 @@ pub struct ReferenceState {
 
     pub(crate) icmp_flows: BTreeMap<FlowId, IcmpFlow>,
     pub(crate) udp_flows: BTreeMap<FlowId, UdpFlow>,
+    pub(crate) tcp_flows: BTreeMap<FlowId, TcpFlow>,
 }
 
 /// Implementation of our reference state machine.
@@ -67,7 +78,7 @@ impl ReferenceState {
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         icmp_error_hosts: IcmpErrorHosts,
         network: RoutingTable,
     ) -> Self {
@@ -75,6 +86,9 @@ impl ReferenceState {
             clients,
             gateways,
             relays,
+            exhausted_relays: Default::default(),
+            recovering_relays: Default::default(),
+            node_may_lack_relays: false,
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -82,6 +96,7 @@ impl ReferenceState {
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
+            tcp_flows: Default::default(),
         }
     }
 
@@ -102,6 +117,10 @@ impl ReferenceState {
         for _ in self.udp_flows.extract_if(.., |_, flow| {
             !transition.retains_flow(flow.client_id, flow.route, iceless)
         }) {}
+        for _ in self
+            .tcp_flows
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow))
+        {}
     }
 
     /// Applies the transition to the reference state.
@@ -189,6 +208,9 @@ impl ReferenceState {
                         .is_site_specific_dns_query(query)
                         .or_else(|| client.dns_query_via_resource(query, upstream_do53))
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
+                    let listing = is_device_listing_query(query).then(|| {
+                        portal.browse_device_domain(&query.domain, &client.device_pool_ids())
+                    });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                         c.on_dns_query(
@@ -198,6 +220,10 @@ impl ReferenceState {
                             global_dns_records,
                             icmp_error_hosts,
                         );
+
+                        if let Some(listing) = listing {
+                            c.expect_device_listing(query, listing);
+                        }
                     });
                 }
             }
@@ -342,17 +368,102 @@ impl ReferenceState {
                 }
             }
             Transition::ConnectTcp {
+                flow_id,
                 client_id,
                 src,
                 dst,
                 sport,
                 dport,
+                probe_id,
             } => {
-                let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
+                let request = ProbeRequest::Tcp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                    write_len: None,
+                };
+                let outcome = self.dispatch(
+                    portal,
+                    *client_id,
+                    request.source(),
+                    request.destination(),
+                    request.protocol(),
+                );
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
 
-                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
-                    client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
-                });
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
+                        let flow = TcpFlow {
+                            client_id: *client_id,
+                            src: *src,
+                            dst: dst.clone(),
+                            sport: *sport,
+                            dport: *dport,
+                            route,
+                        };
+                        let previous = self.tcp_flows.insert(*flow_id, flow);
+                        assert!(previous.is_none(), "TCP flow IDs must be unique");
+
+                        outcome
+                    }
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
+            }
+            Transition::SendTcpData {
+                flow_id,
+                len,
+                probe_id,
+                ..
+            } => {
+                let flow = self
+                    .tcp_flows
+                    .remove(flow_id)
+                    .expect("written TCP flow must exist");
+                let request = ProbeRequest::Tcp {
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    sport: flow.sport,
+                    dport: flow.dport,
+                    write_len: Some(*len),
+                };
+                let outcome = self.dispatch(
+                    portal,
+                    flow.client_id,
+                    request.source(),
+                    request.destination(),
+                    request.protocol(),
+                );
+                self.clients
+                    .get_mut(&flow.client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
+
+                let outcome = match outcome {
+                    ExpectedOutcome::RoundTripCompleted(route)
+                        if route.remote() == flow.route.remote() =>
+                    {
+                        self.tcp_flows.insert(
+                            *flow_id,
+                            TcpFlow {
+                                route,
+                                ..flow.clone()
+                            },
+                        );
+
+                        outcome
+                    }
+                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::Dropped => outcome,
+                    ExpectedOutcome::Rejected { .. } => outcome,
+                };
+                self.record_expected_probe(*probe_id, flow.client_id, request, now, outcome);
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
@@ -370,6 +481,8 @@ impl ReferenceState {
                 dead_window,
                 portal_window,
             } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
                 // out classic ICE flows.
@@ -413,10 +526,24 @@ impl ReferenceState {
             }
             Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                self.reboot_relays_while_partitioned(new_relays)
+                self.reboot_relays_while_partitioned(new_relays, now)
             }
-            Transition::Idle { .. } => {}
+            Transition::ExhaustRelayPorts(relay) => {
+                self.exhausted_relays.insert(*relay);
+                self.recovering_relays.remove(relay);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.exhausted_relays.remove(relay);
+                self.recovering_relays.insert(*relay, now);
+            }
+            Transition::Idle { duration } => {
+                for _ in self.recovering_relays.extract_if(.., |_, freed_at| {
+                    now + *duration >= *freed_at + RELAY_RECOVERY
+                }) {}
+            }
             Transition::PartitionRelaysFromPortal => {
+                self.node_may_lack_relays = !self.has_healthy_relay();
+
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
@@ -500,6 +627,8 @@ impl ReferenceState {
                 self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
                 for (id, client) in &mut self.clients {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
@@ -526,6 +655,10 @@ impl ReferenceState {
             };
 
             client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
+            for _ in self.tcp_flows.extract_if(.., |_, flow| {
+                flow.client_id == closed.client
+                    && flow.route.remote() == Remote::Gateway(closed.gateway)
+            }) {}
         }
     }
 
@@ -691,6 +824,16 @@ impl ReferenceState {
         assert!(previous.is_none(), "probe IDs must be unique");
 
         outcome
+    }
+
+    fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
+        match dst {
+            Destination::DomainName { name, .. } => self
+                .tcp_resources
+                .get(name)
+                .is_some_and(|ports| ports.contains(&dport.0)),
+            Destination::IpAddr(_) => false,
+        }
     }
 
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
@@ -1015,22 +1158,8 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn removable_resource_ids(&self) -> Vec<ResourceId> {
-        self.all_resource_ids()
-            .into_iter()
-            .filter(|resource| {
-                self.clients.values().all(|client| {
-                    client
-                        .inner()
-                        .tcp_connection_tuple_to_resource(*resource)
-                        .is_none()
-                })
-            })
-            .collect()
-    }
-
     pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
-        self.removable_resource_ids()
+        self.all_resource_ids()
             .into_iter()
             .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()
@@ -1442,6 +1571,19 @@ impl ReferenceState {
             .collect()
     }
 
+    fn no_relay_accepts_allocations(&self) -> bool {
+        self.relays
+            .keys()
+            .all(|relay| self.exhausted_relays.contains(relay))
+    }
+
+    /// Whether a relay accepts allocations and no node ignores it.
+    fn has_healthy_relay(&self) -> bool {
+        self.relays.keys().any(|relay| {
+            !self.exhausted_relays.contains(relay) && !self.recovering_relays.contains_key(relay)
+        })
+    }
+
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
         for (_, relay) in self
             .relays
@@ -1449,6 +1591,14 @@ impl ReferenceState {
         {
             self.network.remove_host(&relay);
         }
+        for _ in self
+            .exhausted_relays
+            .extract_if(.., |relay| !new_relays.contains_key(relay))
+        {}
+        for _ in self
+            .recovering_relays
+            .extract_if(.., |relay, _| !new_relays.contains_key(relay))
+        {}
 
         for (rid, new_relay) in new_relays {
             if self.relays.contains_key(rid) {
@@ -1458,14 +1608,23 @@ impl ReferenceState {
             self.relays.insert(*rid, new_relay.clone());
             let added = self.network.add_host(*rid, new_relay);
             debug_assert!(added);
+            self.node_may_lack_relays = false;
         }
     }
 
-    fn reboot_relays_while_partitioned(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
+    fn reboot_relays_while_partitioned(
+        &mut self,
+        new_relays: &BTreeMap<RelayId, Host<u64>>,
+        now: Instant,
+    ) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
         }
         self.relays.clear();
+        // Nodes keep ignoring the relays that failed them before the reboot.
+        for relay in std::mem::take(&mut self.exhausted_relays) {
+            self.recovering_relays.insert(relay, now);
+        }
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());
@@ -1499,4 +1658,18 @@ fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
             Filter::Udp(_) => true,
             Filter::Tcp(_) => false,
         })
+}
+
+/// The outcome of a TCP segment that the remote end of `route` has no connection for.
+fn reset_by(route: Route) -> ExpectedOutcome {
+    let by = match route {
+        Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
+        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
+        Route::Peer(client) => RejectionRemote::Client(client),
+    };
+
+    ExpectedOutcome::Rejected {
+        by,
+        response: RejectionResponse::Reset,
+    }
 }

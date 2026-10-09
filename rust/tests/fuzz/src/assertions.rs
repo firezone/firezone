@@ -18,9 +18,11 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
     collections::BTreeMap,
+    fmt,
     marker::PhantomData,
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
@@ -41,13 +43,17 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
     );
     assert_dns_nat(state);
 
+    for (node, handed_out_at) in portal.relay_handouts() {
+        assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
+    }
+
     for (client_id, ref_client_host) in &ref_state.clients {
         let ref_client = ref_client_host.inner();
         let sut_client = state.clients[client_id].inner();
 
-        assert_tcp_connections(ref_client, sut_client);
         assert_udp_dns_packets_properties(ref_client, sut_client);
         assert_tcp_dns(ref_client, sut_client);
+        assert_device_listings(ref_client, sut_client);
         assert_dns_servers_are_valid(ref_client, sut_client, portal);
         assert_search_domain_is_valid(sut_client, portal);
         assert_routes_are_valid(ref_client, sut_client);
@@ -67,7 +73,7 @@ fn assert_probes(
 
     for id in observations
         .iter()
-        .map(|observation| observation.id())
+        .filter_map(|observation| observation.id())
         .unique()
         .filter(|id| !expected_probes.contains_key(id))
     {
@@ -88,24 +94,48 @@ fn assert_probes(
             expected.trace_requirement,
             trace.received_requests.as_slice(),
             trace.received_responses.as_slice(),
+            trace.completed_streams.as_slice(),
         ) {
-            (TraceRequirement::ExactOrLoss(reason), [], []) => {
+            (TraceRequirement::ExactOrLoss(reason), [], [], []) => {
                 tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
                 continue;
             }
-            (TraceRequirement::Exact, _, _) => {}
-            (TraceRequirement::ExactOrLoss(_), _, _) => {}
+            (TraceRequirement::Exact, _, _, _) => {}
+            (TraceRequirement::ExactOrLoss(_), _, _, _) => {}
         }
 
         match expected.outcome {
             ExpectedOutcome::Dropped => {
-                let ([], []) = (
+                let ([], [], []) = (
                     trace.received_requests.as_slice(),
                     trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
                 ) else {
                     tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Dropped probe produced remote observations");
                     continue;
                 };
+            }
+            ExpectedOutcome::RoundTripCompleted(_)
+                if matches!(
+                    expected.request,
+                    ProbeRequest::Tcp {
+                        write_len: Some(_),
+                        ..
+                    }
+                ) =>
+            {
+                let ([], [], [completed_stream]) = (
+                    trace.received_requests.as_slice(),
+                    trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
+                ) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write was not echoed exactly once");
+                    continue;
+                };
+
+                if completed_stream.client != expected.origin {
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
+                }
             }
             ExpectedOutcome::RoundTripCompleted(route) => {
                 let expected_remote = route.remote();
@@ -146,9 +176,10 @@ fn assert_probes(
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
-                let ([], [received_response]) = (
+                let ([], [received_response], []) = (
                     trace.received_requests.as_slice(),
                     trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
                 ) else {
                     tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Rejected probe does not have exactly one received response and no received requests");
                     continue;
@@ -158,12 +189,23 @@ fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Rejection response was received by the wrong client");
                 }
 
-                assert_icmp_error_response(
-                    expected,
-                    submitted_request,
-                    received_response,
-                    Some(response),
-                );
+                match response {
+                    RejectionResponse::Prohibited => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Unreachable => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Reset => {
+                        assert_reset_response(expected, submitted_request, received_response)
+                    }
+                }
             }
         }
     }
@@ -304,6 +346,18 @@ fn assert_dns_nat(state: &TunnelTest) {
     }
 }
 
+/// Asserts that the portal does not hand a node relays in a loop.
+fn assert_relays_are_not_handed_out_in_a_loop(node: impl fmt::Display, handed_out_at: &[Instant]) {
+    const MAX_HANDOUTS_PER_MINUTE: usize = 10;
+
+    if handed_out_at
+        .windows(MAX_HANDOUTS_PER_MINUTE + 1)
+        .any(|w| w[MAX_HANDOUTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
+    {
+        tracing::error!(target: "assertions", %node, "Portal handed the node relays more than {MAX_HANDOUTS_PER_MINUTE} times within a minute");
+    }
+}
+
 fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &SubmittedRequest) {
     if submitted_request.client != expected.origin {
         tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?submitted_request.client, "Probe request was submitted by the wrong client");
@@ -323,7 +377,9 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
         tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong destination");
     }
 
-    assert_probe_payload(expected.id, &submitted_request.packet);
+    if submitted_request.packet.as_tcp().is_none() {
+        assert_probe_payload(expected.id, &submitted_request.packet);
+    }
 
     match &expected.request {
         ProbeRequest::Icmp {
@@ -348,6 +404,16 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
                 tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
             }
         },
+        ProbeRequest::Tcp { sport, dport, .. } => match submitted_request.packet.as_tcp() {
+            Some(tcp) => {
+                if (tcp.source_port(), tcp.destination_port()) != (sport.0, dport.0) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "TCP probe ports do not match");
+                }
+            }
+            None => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not TCP");
+            }
+        },
     }
 }
 
@@ -357,10 +423,12 @@ fn assert_received_request(
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
 ) {
-    assert_probe_payload(expected.id, &received_request.packet);
+    if submitted_request.packet.as_tcp().is_none() {
+        assert_probe_payload(expected.id, &received_request.packet);
 
-    if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
+        if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
+            tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
+        }
     }
 
     let ref_client = &ref_clients[&expected.origin];
@@ -461,6 +529,15 @@ fn assert_echo_response(
                 }
             }
         }
+        ProbeRequest::Tcp { .. } => {
+            if !received_response
+                .packet
+                .as_tcp()
+                .is_some_and(|reply| reply.syn() && reply.ack())
+            {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP connect was not answered with a SYN-ACK");
+            }
+        }
     }
 }
 
@@ -505,10 +582,42 @@ fn assert_icmp_error_response(
                 dst: actual_dport,
             } if (actual_sport, actual_dport) == (sport.0, dport.0)
         ),
+        ProbeProtocol::Tcp { sport, dport } => matches!(
+            actual_protocol,
+            Layer4Protocol::Tcp {
+                src: actual_sport,
+                dst: actual_dport,
+            } if (actual_sport, actual_dport) == (sport.0, dport.0)
+        ),
     };
 
     if !protocol_matches {
         tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong transport tuple");
+    }
+}
+
+fn assert_reset_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+) {
+    assert_correct_src_and_dst_ips(&submitted_request.packet, &received_response.packet);
+
+    let (Some(request), Some(reply)) = (
+        submitted_request.packet.as_tcp(),
+        received_response.packet.as_tcp(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP probe or its reset is not TCP");
+        return;
+    };
+
+    if !reply.rst() {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not a TCP reset");
+    }
+    if (request.source_port(), request.destination_port())
+        != (reply.destination_port(), reply.source_port())
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP reset ports do not match");
     }
 }
 
@@ -580,88 +689,9 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     None
 }
 
-fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
-    for ((sport, dport), error) in &sim_client.failed_tcp_packets {
-        let expected_rejection = ref_client
-            .expected_tcp_rejections
-            .contains_key(&(*sport, *dport));
-        let expected_connection = ref_client.expected_tcp_connections.keys().any(
-            |(_, _, expected_sport, expected_dport)| {
-                (expected_sport, expected_dport) == (sport, dport)
-            },
-        );
-
-        if !expected_rejection && !expected_connection {
-            tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?error, "Unexpected failed TCP connection");
-        }
-    }
-
-    for ((sport, dport), response) in &ref_client.expected_tcp_rejections {
-        match sim_client.failed_tcp_packets.get(&(*sport, *dport)) {
-            Some(error)
-                if match response {
-                    RejectionResponse::Prohibited => error.is_unreachable_prohibited(),
-                    RejectionResponse::Unreachable => error.is_unreachable_network(),
-                } =>
-            {
-                tracing::info!(target: "assertions", sport = sport.0, dport = dport.0, "TCP connection was rejected as expected");
-            }
-            Some(error) => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, ?error, "Received wrong ICMP error for rejected TCP connection");
-            }
-            None => {
-                tracing::error!(target: "assertions", sport = sport.0, dport = dport.0, ?response, "Missing ICMP error for rejected TCP connection");
-            }
-        }
-    }
-
-    for (src, _, sport, dport) in ref_client.expected_tcp_connections.keys() {
-        let src = SocketAddr::new(*src, sport.0);
-        let received_icmp_error_for_tuple = sim_client.failed_tcp_packets.get(&(*sport, *dport));
-
-        // Several sockets can share a local endpoint (one port, several remotes),
-        // so the remote port is needed to pick the right connection.
-        let Some((socket, local, remote)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
-            let local = s.local_endpoint()?;
-            let remote = s.remote_endpoint()?;
-
-            (l3_tcp::IpEndpoint::from(src) == local && remote.port == dport.0)
-                .then_some((s, local, remote))
-        }) else {
-            if let Some(icmp_error) = received_icmp_error_for_tuple
-                && icmp_error.is_unreachable_prohibited()
-            {
-                tracing::error!(target: "assertions", %src, port = %dport.0, "Received ICMP prohibited error for a TCP connection expected to reach the resource");
-                continue;
-            }
-
-            if received_icmp_error_for_tuple.is_some() {
-                continue;
-            }
-
-            tracing::error!(target: "assertions", %src, "Missing TCP connection");
-            continue;
-        };
-
-        let actual = socket.state();
-        let expected = l3_tcp::State::Established;
-
-        if actual == expected {
-            tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
-        } else {
-            tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
-        }
-
-        if received_icmp_error_for_tuple.is_some() {
-            tracing::error!(target: "assertions", %local, %remote, "TCP socket should have been reset from ICMP error");
-        }
-    }
-}
-
 fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
     let expected_resources = ref_client.expected_resources();
     let actual_resources = &sim_client.observed_resource_list;
-    let maybe_online_resources = ref_client.maybe_online_resources();
     let expected_ids = expected_resources
         .iter()
         .map(ResourceView::id)
@@ -685,12 +715,7 @@ fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
         };
 
         assert_resource_definition(expected, actual);
-        assert_resource_status(
-            resource,
-            expected.status(),
-            actual.status(),
-            maybe_online_resources.contains(&resource),
-        );
+        assert_resource_status(resource, expected.status(), actual.status());
     }
 
     for actual in actual_resources {
@@ -811,24 +836,17 @@ where
     }
 }
 
-fn assert_resource_status(
-    resource: ResourceId,
-    expected: ResourceStatus,
-    actual: ResourceStatus,
-    maybe_online: bool,
-) {
+fn assert_resource_status(resource: ResourceId, expected: ResourceStatus, actual: ResourceStatus) {
     use ResourceStatus::*;
 
     match (expected, actual) {
         (Unknown, Unknown) => {}
-        (Unknown, Online) if maybe_online => {}
         (Unknown, Online) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
         (Unknown, Offline) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
-        (Online, Unknown) if maybe_online => {}
         (Online, Unknown) => {
             tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
         }
@@ -949,6 +967,16 @@ fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
                 tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
                 tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
             }
+        }
+    }
+}
+
+fn assert_device_listings(ref_client: &RefClient, sim_client: &SimClient) {
+    for (query, expected) in &ref_client.expected_device_listings {
+        let actual = sim_client.device_listings.get(query);
+
+        if actual != Some(expected) {
+            tracing::error!(target: "assertions", ?query, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");
         }
     }
 }

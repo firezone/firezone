@@ -3322,7 +3322,7 @@ defmodule Portal.Repo.Seeds do
           firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
-          # Pinned so the device-pool test can target a known tun IP.
+          # Pinned so the browse-device-pools test can check the address its member resolves to.
           ipv4: "100.64.0.2",
           ipv6: "fd00:2021:1111::2"
         },

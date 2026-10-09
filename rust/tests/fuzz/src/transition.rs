@@ -1,12 +1,12 @@
 use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
-    dns,
+    dns::{self, is_subdomain},
     messages::{UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
-    probe::{FlowId, ProbeId, Route},
+    probe::{FlowId, ProbeId, Route, TcpFlow},
     reference::PrivateKey,
     resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
@@ -62,12 +62,22 @@ pub enum Transition {
         flow_id: FlowId,
         probe_id: ProbeId,
     },
+    /// Opens a TCP connection; its SYN is the probe, which the resource accepts.
     ConnectTcp {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    /// Writes `len` random bytes from `seed` to an existing TCP connection; the resource echoes them.
+    SendTcpData {
+        flow_id: FlowId,
+        len: u16,
+        seed: u64,
+        probe_id: ProbeId,
     },
     SendDnsQueries(Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
@@ -106,6 +116,11 @@ pub enum Transition {
         duration: Duration,
     },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+    /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
+    /// while its existing allocations keep working.
+    ExhaustRelayPorts(RelayId),
+    /// The relay has ports again, without the portal telling anyone.
+    FreeRelayPorts(RelayId),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
     ///
@@ -131,9 +146,8 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Whether the packet-level expectations that accumulate across transitions (DNS
-    /// queries and responses, TCP connections and rejections) are stale once this
-    /// transition is applied.
+    /// Whether the DNS queries and responses that accumulate across transitions are stale
+    /// once this transition is applied.
     pub fn clears_packets(&self) -> bool {
         match self {
             Transition::AddResource(_) => true,
@@ -146,6 +160,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => false,
             Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
+            Transition::SendTcpData { .. } => false,
             Transition::SendDnsQueries(_) => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
@@ -159,11 +174,72 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::ExhaustRelayPorts(_) => false,
+            Transition::FreeRelayPorts(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
             Transition::ExpirePeerAuthorizations { .. } => true,
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
+        }
+    }
+
+    /// Returns whether the TCP connection `flow` survives this transition.
+    ///
+    /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
+    /// survives as long as the client reaches its resource through the same Gateway with
+    /// the same authorization.
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+        let (client_id, route) = (flow.client_id, flow.route);
+
+        match self {
+            Transition::AddResource(Resource::Dns(added)) => match &flow.dst {
+                Destination::DomainName { name, .. } => !is_subdomain(name, &added.address),
+                Destination::IpAddr(_) => true,
+            },
+            Transition::AddResource(Resource::Cidr(added)) => match &flow.dst {
+                Destination::DomainName { .. } => true,
+                Destination::IpAddr(ip) => !added.address.contains(*ip),
+            },
+            Transition::AddResource(Resource::Internet(_)) => true,
+            Transition::AddResource(Resource::DevicePool(_)) => true,
+            Transition::RemoveResource(_) => self.retains_flow(client_id, route, false),
+            Transition::EditResource(_) => self.retains_flow(client_id, route, false),
+            Transition::UpdateDevicePoolMembers { .. } => true,
+            Transition::SetInternetResourceState { .. } => {
+                self.retains_flow(client_id, route, false)
+            }
+            Transition::SendIcmpPacketOnNewFlow { .. } => true,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
+            Transition::SendDnsQueries(_) => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient { .. } => true,
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
+            Transition::DeployNewRelays(_) => true,
+            Transition::PartitionRelaysFromPortal => true,
+            Transition::Idle { .. } => true,
+            Transition::RebootRelaysWhilePartitioned(_) => true,
+            Transition::ExhaustRelayPorts(_) => true,
+            Transition::FreeRelayPorts(_) => true,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {
+                self.retains_flow(client_id, route, false)
+            }
+            Transition::RevokeGatewayAuthorization(_) => self.retains_flow(client_id, route, false),
+            Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
+            Transition::UpdateDnsRecords { domain, .. } => match &flow.dst {
+                Destination::DomainName { name, .. } => name != domain,
+                Destination::IpAddr(_) => true,
+            },
         }
     }
 
@@ -198,6 +274,7 @@ impl Transition {
             Transition::SendUdpPacketOnNewFlow { .. } => true,
             Transition::SendUdpPacketOnExistingFlow { .. } => true,
             Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
             Transition::SendDnsQueries(_) => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
             Transition::UpdateSystemDnsServers { .. } => true,
@@ -224,6 +301,8 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::ExhaustRelayPorts(_) => true,
+            Transition::FreeRelayPorts(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
                 Route::Gateway(_) => false,
@@ -310,6 +389,7 @@ pub(crate) struct DnsQuery {
     pub(crate) query_id: u16,
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
+    pub(crate) edns: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

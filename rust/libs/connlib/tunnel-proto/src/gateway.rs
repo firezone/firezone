@@ -18,7 +18,7 @@ use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
-use snownet::{IceConfig, IceRole, NoTurnServers, Node, RelaySocket};
+use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -315,7 +315,7 @@ impl GatewayState {
         use_iceless: bool,
         now: Instant,
         flow_logs_ingest_token: IngestToken,
-    ) -> Result<(), NoTurnServers> {
+    ) {
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
@@ -327,7 +327,7 @@ impl GatewayState {
             IceConfig::server_idle(),
             use_iceless,
             now,
-        )?;
+        );
 
         let result = self.allow_access(
             client.id,
@@ -345,8 +345,6 @@ impl GatewayState {
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
         );
-
-        Ok(())
     }
 
     pub fn allow_access(
@@ -535,8 +533,10 @@ impl GatewayState {
                         .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
-                snownet::Event::NoRelays => {
-                    self.buffered_events.push_back(GatewayEvent::NoRelays);
+                snownet::Event::NoRelays { blocked } => {
+                    self.buffered_events.push_back(GatewayEvent::NoRelays {
+                        excluded_relay_ids: blocked,
+                    });
                 }
             }
         }

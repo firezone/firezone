@@ -1397,7 +1397,6 @@ dependencies = [
  "parking_lot",
  "phoenix-channel",
  "serde",
- "snownet",
  "socket-factory",
  "telemetry",
  "thiserror 2.0.21",
@@ -2524,7 +2523,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snownet",
  "socket-factory",
  "telemetry",
  "tempfile",
@@ -7302,6 +7300,7 @@ dependencies = [
  "smallvec",
  "str0m-proto",
  "stun_codec",
+ "test-case",
  "thiserror 2.0.21",
  "tracing",
 ]

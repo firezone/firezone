@@ -54,7 +54,7 @@ use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use secrecy::ExposeSecret as _;
-use snownet::{NoTurnServers, Node, RelaySocket};
+use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -397,10 +397,24 @@ impl ClientState {
         &mut self,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
+        now: Instant,
     ) {
         self.device_stub_resolver
             .handle_device_domain_resolved(domain, result);
-        self.drain_device_stub_resolver_events();
+        self.drain_device_stub_resolver_events(now);
+    }
+
+    /// Handles the portal's answer to a PTR query in the device domain: the names it
+    /// lists, for how many seconds they may be cached and how many names there are in all.
+    pub fn handle_device_domain_browsed(
+        &mut self,
+        domain: DomainName,
+        result: Result<(Vec<DomainName>, u32, usize), FailReason>,
+        now: Instant,
+    ) {
+        self.device_stub_resolver
+            .handle_device_domain_browsed(domain, result);
+        self.drain_device_stub_resolver_events(now);
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -1011,7 +1025,7 @@ impl ClientState {
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> anyhow::Result<Result<(), NoTurnServers>> {
+    ) -> anyhow::Result<()> {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -1026,10 +1040,10 @@ impl ClientState {
         if pending_authorizations.is_empty() {
             tracing::debug!("No pending authorization");
 
-            return Ok(Ok(()));
+            return Ok(());
         }
 
-        match self.node.upsert_connection(
+        self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
@@ -1040,10 +1054,7 @@ impl ClientState {
             snownet::IceConfig::client_idle(),
             use_iceless,
             now,
-        ) {
-            Ok(()) => {}
-            Err(e) => return Ok(Err(e)),
-        };
+        );
         self.outbound_authorizations
             .authorize_gateway(rid, gid, flow_logs_ingest_token);
         self.gateways_by_site
@@ -1115,7 +1126,7 @@ impl ClientState {
             );
         }
 
-        Ok(Ok(()))
+        Ok(())
     }
 
     pub fn handle_client_device_access_authorized(
@@ -1134,13 +1145,13 @@ impl ClientState {
         authorization: Option<crate::messages::client::ResourceAuthorization>,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> Result<(), NoTurnServers> {
+    ) {
         tracing::debug!(%cid, "New device access authorized");
 
         let Some(local_tun) = self.tun_config.current().map(|c| c.ip) else {
             tracing::debug!("Ignoring device access authorization: no TUN configuration");
 
-            return Ok(());
+            return;
         };
 
         if self
@@ -1164,7 +1175,7 @@ impl ClientState {
             snownet::IceConfig::client_default(),
             use_iceless,
             now,
-        )?;
+        );
 
         let authorization = authorization.map(|auth| {
             let expires_at = auth
@@ -1221,8 +1232,6 @@ impl ClientState {
                 tracing::debug!(%cid, "Failed to route buffered packet: {e:#}");
             }
         }
-
-        Ok(())
     }
 
     fn authorize_peer_through_pool(
@@ -1739,7 +1748,7 @@ impl ClientState {
 
         self.drain_node_events(now);
         self.drain_resource_stub_resolver_events();
-        self.drain_device_stub_resolver_events();
+        self.drain_device_stub_resolver_events(now);
 
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
@@ -2033,7 +2042,7 @@ impl ClientState {
                 return Some(response);
             }
             device_stub_resolver::ResolveStrategy::Pending => {
-                self.drain_device_stub_resolver_events();
+                self.drain_device_stub_resolver_events(now);
                 return None;
             }
         }
@@ -2254,8 +2263,10 @@ impl ClientState {
                     self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
                     self.resource_list.update(self.resources());
                 }
-                snownet::Event::NoRelays => {
-                    self.buffered_events.push_back(ClientEvent::NoRelays);
+                snownet::Event::NoRelays { blocked } => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays {
+                        excluded_relay_ids: blocked,
+                    });
                 }
             }
         }
@@ -2307,12 +2318,16 @@ impl ClientState {
         }
     }
 
-    fn drain_device_stub_resolver_events(&mut self) {
+    fn drain_device_stub_resolver_events(&mut self, now: Instant) {
         while let Some(event) = self.device_stub_resolver.poll_event() {
             match event {
                 device_stub_resolver::Event::QueryDomain { domain } => {
                     self.buffered_events
                         .push_back(ClientEvent::DeviceDomainQueried { domain });
+                }
+                device_stub_resolver::Event::BrowseDomain { domain } => {
+                    self.buffered_events
+                        .push_back(ClientEvent::DeviceDomainBrowsed { domain });
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
@@ -2320,6 +2335,7 @@ impl ClientState {
                     transport,
                     response,
                 } => {
+                    self.dns_cache.insert(response.domain(), &response, now);
                     self.send_dns_response(local, remote, transport, response);
                 }
             }
@@ -2581,6 +2597,7 @@ impl ClientState {
         }
 
         self.resource_list.update(self.resources());
+        self.dns_cache.flush("Resource added");
     }
 
     fn log_activating_resource(&self, resource: &Resource) {

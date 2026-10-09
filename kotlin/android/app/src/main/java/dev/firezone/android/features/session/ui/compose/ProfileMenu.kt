@@ -21,13 +21,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
+import dev.firezone.android.ui.FirezoneIcons
 
 @Composable
 fun ProfileMenu(
@@ -56,7 +56,7 @@ fun ProfileMenu(
                     expanded = false
                     onSettings()
                 },
-                leadingIcon = { Icon(painterResource(R.drawable.rounded_settings_black_24dp), contentDescription = null) },
+                leadingIcon = { Icon(imageVector = FirezoneIcons.Settings, contentDescription = null) },
                 contentPadding = PaddingValues(horizontal = 16.dp),
             )
             DropdownMenuItem(
@@ -65,7 +65,7 @@ fun ProfileMenu(
                     expanded = false
                     onEndSession()
                 },
-                leadingIcon = { Icon(painterResource(R.drawable.rounded_logout_24dp), contentDescription = null) },
+                leadingIcon = { Icon(imageVector = FirezoneIcons.Logout, contentDescription = null) },
                 contentPadding = PaddingValues(horizontal = 16.dp),
             )
         }

@@ -21,7 +21,6 @@ otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-snownet = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }

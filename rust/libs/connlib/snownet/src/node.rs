@@ -102,7 +102,7 @@ pub struct Node<TId, RId> {
     buffered_candidates: BufferedCandidates<TId>,
     inflight_stun_requests: InflightStunRequests<TId>,
 
-    pending_events: VecDeque<Event<TId>>,
+    pending_events: VecDeque<Event<TId, RId>>,
     /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
     /// returns it while transmits or events are queued so the driver drains
     /// them without delay.
@@ -119,10 +119,6 @@ pub struct Node<TId, RId> {
     /// The [`Instant`] at the time we read the UNIX epoch above.
     unix_now: Instant,
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("No TURN servers available")]
-pub struct NoTurnServers {}
 
 /// The connection exists but is not yet ready to send application packets because ICE is
 /// still in progress (no socket has been nominated yet) or the WireGuard handshake has not
@@ -313,7 +309,7 @@ where
         idle_ice_config: IceConfig,
         use_iceless: bool,
         now: Instant,
-    ) -> Result<(), NoTurnServers> {
+    ) {
         self.last_now = now;
 
         let local_creds = local_creds.into();
@@ -347,7 +343,7 @@ where
 
             // Re-seed connection with all candidates.
             let new_candidates =
-                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations, now);
+                seed_agent_with_local_candidates(c.relay, &mut c.agent, &self.allocations, now);
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -366,10 +362,8 @@ where
                 c.initiate_wg_session(&mut self.allocations, &mut self.buffered_transmits, now);
             }
 
-            return Ok(());
+            return;
         }
-
-        let selected_relay = self.sample_relay()?;
 
         let existing = self.connections.remove_established(&cid, now);
         let index = self.index.next();
@@ -393,29 +387,25 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
-        self.pending_events.extend(
-            self.allocations
-                .candidates_for_relay(&selected_relay)
-                .filter_map(|candidate| {
-                    let candidate = agent.add_local_candidate(candidate, now)?;
-                    let event = new_ice_candidate_event(cid, candidate, use_iceless);
-
-                    Some(event)
-                }),
-        );
-
         let mut connection = self.init_connection(
-            cid,
             agent,
             remote,
             preshared_key,
-            selected_relay,
             index,
             default_ice_config,
             idle_ice_config,
             now,
             now,
         );
+        connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
+
+        if self.allocations.is_empty() {
+            tracing::debug!("No relays available; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
+        }
 
         // Only Controlling fans out the init, so we don't burn
         // bandwidth and TURN channel bindings on a duplicate from
@@ -429,8 +419,6 @@ where
         for candidate in self.buffered_candidates.drain(&cid).collect::<Vec<_>>() {
             self.add_remote_candidate(cid, candidate, now);
         }
-
-        Ok(())
     }
 
     /// Removes a connection by just clearing its local memory.
@@ -516,8 +504,13 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut_by_id(&c.relay.id) else {
-            tracing::debug!(rid = %c.relay.id, "Unknown relay");
+        let Some(rid) = c.relay else {
+            tracing::debug!("No relay selected yet");
+            return;
+        };
+
+        let Some(allocation) = self.allocations.get_mut_by_id(&rid) else {
+            tracing::debug!(%rid, "Unknown relay");
             return;
         };
 
@@ -611,7 +604,7 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
-    pub fn poll_event(&mut self) -> Option<Event<TId>> {
+    pub fn poll_event(&mut self) -> Option<Event<TId, RId>> {
         let event = self.pending_events.pop_front()?;
 
         if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
@@ -661,20 +654,17 @@ where
 
         self.allocations_drain_events(now);
 
-        let gc = self.allocations.gc();
+        let gc = self.allocations.gc(now);
 
         if gc.removed_last {
-            tracing::info!("Removed last relay; requesting a new set");
+            tracing::info!("No relays left; requesting a new set");
 
-            self.pending_events.push_back(Event::NoRelays);
+            self.pending_events.push_back(Event::NoRelays {
+                blocked: self.allocations.blocked(now).collect(),
+            });
         }
 
-        self.connections.migrate_relays(
-            gc.removed.into_iter(),
-            &mut self.allocations,
-            &mut self.pending_events,
-            now,
-        );
+        self.connections.clear_relays(gc.removed.into_iter());
 
         self.connections.handle_timeout(
             &mut self.allocations,
@@ -767,6 +757,9 @@ where
                 allocations::UpsertResult::Skipped => {
                     tracing::info!(%rid, address = ?server, "Skipping known TURN server")
                 }
+                allocations::UpsertResult::Blocked => {
+                    tracing::debug!(%rid, address = ?server, "Ignoring blocked TURN server")
+                }
                 allocations::UpsertResult::Replaced(previous) => {
                     invalidate_allocation_candidates(
                         &mut self.connections,
@@ -794,23 +787,16 @@ where
             previous_allocation.refresh(now);
         }
 
-        // Fourth, migrate existing connections away from removed relays.
-        self.connections.migrate_relays(
-            to_remove.into_iter(),
-            &mut self.allocations,
-            &mut self.pending_events,
-            now,
-        );
+        // Fourth, detach existing connections from removed relays.
+        self.connections.clear_relays(to_remove.into_iter());
     }
 
     #[must_use]
     fn init_connection(
         &mut self,
-        cid: TId,
         mut agent: Agent,
         remote: PublicKey,
         key: x25519::StaticSecret,
-        relay: RId,
         index: Index,
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
@@ -818,10 +804,6 @@ where
         now: Instant,
     ) -> Connection<RId> {
         agent.handle_timeout(now);
-
-        if self.allocations.is_empty() {
-            tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
-        }
 
         let mut tunnel = Tunn::new_at(
             self.private_key.clone(),
@@ -864,7 +846,7 @@ where
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
             remote_pub_key: remote,
-            relay: SelectedRelay { id: relay },
+            relay: None,
             state: ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(128),
             },
@@ -1143,20 +1125,11 @@ where
             }
         }
     }
-
-    /// Sample a relay to use for a new connection.
-    fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let rid = self.allocations.sample().ok_or(NoTurnServers {})?;
-
-        tracing::debug!(%rid, "Sampled relay");
-
-        Ok(rid)
-    }
 }
 
 /// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
 fn seed_agent_with_local_candidates<'a, RId>(
-    selected_relay: RId,
+    selected_relay: Option<RId>,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
     now: Instant,
@@ -1164,8 +1137,10 @@ fn seed_agent_with_local_candidates<'a, RId>(
 where
     RId: Ord + fmt::Display + Copy,
 {
-    allocations
-        .candidates_for_relay(&selected_relay)
+    selected_relay
+        .map(|rid| allocations.candidates_for_relay(&rid))
+        .into_iter()
+        .flatten()
         .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
@@ -1232,7 +1207,11 @@ fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) -> Event<TId> {
+fn new_ice_candidate_event<TId, RId>(
+    id: TId,
+    candidate: Candidate,
+    iceless: bool,
+) -> Event<TId, RId> {
     let candidate = crate::candidate::encode(iceless, &candidate);
 
     tracing::debug!(%candidate, "Signalling candidate to remote");
@@ -1246,7 +1225,7 @@ fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) ->
 fn invalidate_allocation_candidates<TId, RId>(
     connections: &mut Connections<TId, RId>,
     allocation: &Allocation,
-    pending_events: &mut VecDeque<Event<TId>>,
+    pending_events: &mut VecDeque<Event<TId, RId>>,
     now: Instant,
 ) where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
@@ -1291,7 +1270,7 @@ impl From<is::IceCreds> for Credentials {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Event<TId> {
+pub enum Event<TId, RId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
     ///
     /// Already SDP-encoded (str0m for ICE, path-agent for ICE-less).
@@ -1316,10 +1295,15 @@ pub enum Event<TId> {
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
 
-    /// The last remaining relay was removed and we need a new set to make relayed connections.
+    /// We don't have any relays and need a new set to make relayed connections.
     ///
-    /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
-    NoRelays,
+    /// Emitted when the last remaining relay is removed or when a connection is created without
+    /// any relays.
+    /// Upper layers should obtain new relays other than the `blocked` ones and pass them to
+    /// [`Node::update_relays`].
+    NoRelays {
+        blocked: Vec<RId>,
+    },
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1367,7 +1351,9 @@ struct Connection<RId> {
     last_proactive_handshake_sent_at: Option<Instant>,
 
     /// The relay we have selected for this connection.
-    relay: SelectedRelay<RId>,
+    ///
+    /// `None` while we wait for one to become available.
+    relay: Option<RId>,
 
     state: ConnectionState,
     disconnected_at: Option<Instant>,
@@ -1386,11 +1372,6 @@ struct Connection<RId> {
     buffer_pool: BufferPool<Vec<u8>>,
 
     poll_timeout_cache: TimeoutCache,
-}
-
-#[derive(Debug)]
-struct SelectedRelay<RId> {
-    id: RId,
 }
 
 impl<RId> Connection<RId>
@@ -1466,7 +1447,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1525,7 +1506,7 @@ where
                     ..
                 } => {
                     if let Some((r, _)) = allocations.get_mut_by_allocation(source)
-                        && self.relay.id != r
+                        && self.relay != Some(r)
                     {
                         tracing::warn!(
                             "Nominated a relay different from what we set out to! Weird?"
@@ -1544,7 +1525,7 @@ where
 
                             transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
                                 make_owned_transmit(
-                                    self.relay.id,
+                                    self.relay,
                                     remote_socket,
                                     &packet,
                                     &self.buffer_pool,
@@ -1599,7 +1580,7 @@ where
                         ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
 
-                    let relay = self.relay.id;
+                    let relay = self.relay;
 
                     tracing::info!(
                         old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
@@ -1639,7 +1620,7 @@ where
             match pt.payload {
                 path_agent::Payload::Ciphertext(ref bytes) => {
                     if let Some(transmit) = make_owned_transmit(
-                        self.relay.id,
+                        self.relay,
                         peer_socket,
                         bytes,
                         &self.buffer_pool,
@@ -1731,7 +1712,7 @@ where
                     self.agent.handle_outbound(b.to_vec(), now);
                 } else if let Some(peer_socket) = self.socket() {
                     transmits.extend(make_owned_transmit(
-                        self.relay.id,
+                        self.relay,
                         peer_socket,
                         b,
                         &self.buffer_pool,
@@ -1751,7 +1732,7 @@ where
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         cid: TId,
         now: Instant,
     ) where
@@ -1766,7 +1747,7 @@ where
                 );
                 transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
                     make_owned_transmit(
-                        self.relay.id,
+                        self.relay,
                         peer_socket,
                         &packet,
                         &self.buffer_pool,
@@ -1826,7 +1807,6 @@ where
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
-        let relay_id = self.relay.id;
         let ecn = packet.ecn();
 
         let (src, dst, packet_start, relay) = match socket {
@@ -1834,6 +1814,7 @@ where
                 (Some(source), dest, 0, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
+                let relay_id = self.relay.context("No relay selected")?;
                 let allocation = allocations
                     .get_mut_by_id(&relay_id)
                     .with_context(|| format!("No allocation for relay {relay_id}"))?;
@@ -1965,7 +1946,7 @@ where
                     ConnectionState::Connected { peer_socket, .. }
                     | ConnectionState::Idle { peer_socket } => {
                         transmits.extend(make_owned_transmit(
-                            self.relay.id,
+                            self.relay,
                             *peer_socket,
                             bytes,
                             &self.buffer_pool,
@@ -1978,7 +1959,7 @@ where
                                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
                             transmits.extend(make_owned_transmit(
-                                self.relay.id,
+                                self.relay,
                                 *peer_socket,
                                 packet,
                                 &self.buffer_pool,
@@ -2118,7 +2099,7 @@ where
         self.last_proactive_handshake_sent_at = Some(now);
 
         if let Some(transmit) = make_owned_transmit(
-            self.relay.id,
+            self.relay,
             socket,
             bytes,
             &self.buffer_pool,
@@ -2133,7 +2114,7 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
@@ -2151,7 +2132,7 @@ where
         &mut self,
         id: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display,
@@ -2212,24 +2193,37 @@ where
         matches!(self.state, ConnectionState::Failed)
     }
 
-    fn migrate_relay<TId>(
+    fn clear_relay<TId>(&mut self, cid: TId)
+    where
+        TId: fmt::Display,
+    {
+        if let Some(rid) = self.relay.take() {
+            tracing::debug!(%cid, %rid, "Cleared relay of connection");
+        }
+    }
+
+    /// Samples a relay for this connection and seeds the agent with its candidates.
+    fn assign_relay<TId>(
         &mut self,
         cid: TId,
-        new_relay: RId,
-        allocations: &Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
+        allocations: &mut Allocations<RId>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
     {
-        tracing::info!(%cid, old = %self.relay.id, new = %new_relay, "Attempting to migrate connection to new relay");
+        let Some(rid) = allocations.sample() else {
+            return;
+        };
 
-        self.relay.id = new_relay;
+        tracing::debug!(%cid, %rid, "Selected relay");
 
-        // The full set, not just the relay candidates: a roam wipes the agent's
-        // locals, so host and reflexive candidates need re-seeding too.
+        self.relay = Some(rid);
+
+        // The full set, not just the relay candidates: a new or roamed agent has
+        // no local candidates, so host and reflexive candidates need seeding too.
         // The agent dedups, so candidates it already knows are not re-signalled.
-        for candidate in allocations.candidates_for_relay(&new_relay) {
+        for candidate in allocations.candidates_for_relay(&rid) {
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
     }
@@ -2237,7 +2231,7 @@ where
 
 #[must_use]
 fn make_owned_transmit<RId>(
-    relay: RId,
+    relay: Option<RId>,
     socket: PeerSocket,
     message: &[u8],
     buffer_pool: &BufferPool<Vec<u8>>,
@@ -2262,7 +2256,7 @@ where
             ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-            let allocation = allocations.get_mut_by_id(&relay)?;
+            let allocation = allocations.get_mut_by_id(&relay?)?;
 
             let mut channel_data = channel_data_packet_buffer(message);
             let encode_ok = allocation.encode_channel_data_header(peer, &mut channel_data, now)?;
