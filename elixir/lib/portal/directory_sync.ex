@@ -91,6 +91,9 @@ defmodule Portal.DirectorySync do
   the identity gone and leave the memberships behind. The actor is locked
   first, the order a plain actor deletion takes as it cascades, so the two
   cannot deadlock.
+
+  An actor that survives because another identity names it stays disabled if
+  this directory disabled it, but the disable becomes an admin's to lift.
   """
   def remove_identity(directory_id, identity) do
     Database.remove_identity(directory_id, identity)
@@ -99,13 +102,15 @@ defmodule Portal.DirectorySync do
   @doc """
   Deletes what a full sync did not see: the directory's memberships, groups,
   and identities with no sync state at or after `synced_at`, and the actors
-  the directory created that no identity names any more.
+  the directory created that no identity names any more. A surviving actor
+  the directory disabled stays disabled, see `remove_identity/2`.
   """
   def prune(account_id, directory_id, synced_at) do
     {memberships, _} = Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
     {groups, _} = Database.delete_unsynced_groups(account_id, directory_id, synced_at)
     {identities, _} = Database.delete_unsynced_identities(account_id, directory_id, synced_at)
     {actors, _} = Database.delete_actors_without_identities(account_id, directory_id)
+    {_released, _} = Database.release_disables(account_id, directory_id)
 
     Logger.debug("Pruned what the sync did not see",
       directory_id: directory_id,
@@ -141,7 +146,10 @@ defmodule Portal.DirectorySync do
   created, and disables that actor instead of letting a prune delete it. It
   never creates an actor or links one by email. When the user is active again,
   the actor is re-enabled, but only if this directory was the one to disable
-  it. The last enabled admin of an account is never disabled.
+  it. The last enabled admin of an account is never disabled: a batch with
+  inactive users holds `last_admin_lock_key/1` for the account while it
+  writes, so two directories cannot each disable an admin the other counted
+  on.
   """
   def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
     with {:ok, %{kept_admin_ids: kept_admin_ids}} = result <-
@@ -149,6 +157,16 @@ defmodule Portal.DirectorySync do
       warn_kept_admins(account_id, directory_id, kept_admin_ids)
       result
     end
+  end
+
+  @doc """
+  The transaction-level advisory lock key that serializes the writes that may
+  disable an account's admins. It locks no row or table, only other holders
+  of the same key.
+  """
+  def last_admin_lock_key(account_id) do
+    <<key::signed-64, _::binary>> = :crypto.hash(:sha256, "last_admin:" <> account_id)
+    key
   end
 
   @doc """
@@ -227,6 +245,7 @@ defmodule Portal.DirectorySync do
         delete_identity(account_id, id)
         delete_directory_memberships(account_id, directory_id, actor_id)
         delete_actor_without_identities(account_id, directory_id, actor_id)
+        release_disables(account_id, directory_id, actor_id)
         {:ok, :removed}
       end)
     end
@@ -240,7 +259,9 @@ defmodule Portal.DirectorySync do
       params =
         identity_upsert_params(account_id, issuer, directory_id, synced_at, identities, fields)
 
-      run_identity_upsert(query, params)
+      lock_account_id = if Enum.any?(identities, &(Map.get(&1, :disabled) == true)), do: account_id
+
+      run_identity_upsert(query, params, lock_account_id)
     end
 
     def delete_unsynced_groups(account_id, directory_id, synced_at) do
@@ -288,6 +309,35 @@ defmodule Portal.DirectorySync do
       |> Safe.delete_all()
     end
 
+    # Hands the directory's disable of an actor it no longer holds an identity
+    # for over to the admins: the actor stays disabled until one enables it.
+    def release_disables(account_id, directory_id) do
+      released_disables(account_id, directory_id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [disabled_by_directory_id: nil, updated_at: DateTime.utc_now()])
+    end
+
+    defp release_disables(account_id, directory_id, actor_id) do
+      released_disables(account_id, directory_id)
+      |> where([a], a.id == ^actor_id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [disabled_by_directory_id: nil, updated_at: DateTime.utc_now()])
+    end
+
+    defp released_disables(account_id, directory_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.disabled_by_directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM external_identities ei WHERE ei.account_id = ? AND ei.actor_id = ? AND ei.directory_id = ?)",
+            a.account_id,
+            a.id,
+            type(^directory_id, :binary_id)
+          )
+      )
+    end
+
     def delete_actors_without_identities(account_id, directory_id) do
       from(a in Portal.Actor,
         where: a.account_id == ^account_id,
@@ -303,17 +353,35 @@ defmodule Portal.DirectorySync do
     # which the (account_id, id) conflict target does not handle. Re-running
     # picks up the now-committed row via pre_existing_identities and recycles
     # it, so we retry once before surfacing the error.
-    defp run_identity_upsert(query, params, retry? \\ true) do
-      case Safe.unscoped() |> Safe.query(query, params) do
+    defp run_identity_upsert(query, params, lock_account_id, retry? \\ true) do
+      case execute_identity_upsert(query, params, lock_account_id) do
         {:ok, %Postgrex.Result{rows: [[count, kept_admin_ids]]}} ->
           {:ok, %{upserted_identities: count, kept_admin_ids: Enum.map(kept_admin_ids, &Ecto.UUID.load!/1)}}
 
         {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
-          run_identity_upsert(query, params, false)
+          run_identity_upsert(query, params, lock_account_id, false)
 
         {:error, reason} ->
           {:error, reason}
       end
+    end
+
+    defp execute_identity_upsert(query, params, nil) do
+      Safe.unscoped() |> Safe.query(query, params)
+    end
+
+    # The statement's snapshot is taken after the lock is granted, so it sees
+    # the admins another directory's sync disabled before letting go of it. A
+    # failed statement aborts the transaction, so each attempt gets its own.
+    defp execute_identity_upsert(query, params, account_id) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        {:ok, _} =
+          Safe.unscoped()
+          |> Safe.query("SELECT pg_advisory_xact_lock($1)", [Portal.DirectorySync.last_admin_lock_key(account_id)])
+
+        Safe.unscoped() |> Safe.query(query, params)
+      end)
     end
 
     # A candidate for removal if sync query volume becomes a concern. The
