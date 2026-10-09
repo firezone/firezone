@@ -107,13 +107,24 @@ defmodule PortalWeb.GettingStartedTest do
       assert getting_started(actor) == :dismissed
     end
 
-    test "closing the modal dismisses the guide", %{conn: conn, account: account, actor: actor} do
-      view = open_sites(conn, account, actor)
+    test "closing the modal stops it opening by itself but keeps it in the sidebar", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      conn = authorize_conn(conn, actor)
+      {:ok, view, _html} = live(conn, ~p"/#{account}/sites")
 
       view |> element("#getting-started-modal") |> render_hook("dismiss", %{})
 
       refute has_element?(view, "#getting-started-modal")
-      assert getting_started(actor) == :dismissed
+      assert has_element?(view, "#getting-started-sidebar")
+      assert getting_started(actor) == :closed
+
+      {:ok, view, _html} = live(conn, ~p"/#{account}/resources")
+      refute has_element?(view, "#getting-started-modal")
+      assert has_element?(view, "#getting-started-sidebar")
+      assert has_element?(view, "#open-getting-started")
     end
 
     test "ignores unknown goals", %{conn: conn, account: account, actor: actor} do
@@ -153,78 +164,99 @@ defmodule PortalWeb.GettingStartedTest do
     end
   end
 
-  describe "reopening from the user menu" do
-    test "opens the chooser for an admin who was never offered it", %{conn: conn, account: account} do
-      actor = admin_actor_fixture(account: account)
+  describe "sidebar and user menu" do
+    for state <- [:pending, :closed, :device_mesh, :remote_access] do
+      test "offer the guide while it is #{state}", %{conn: conn, account: account} do
+        actor = admin_actor_fixture(account: account) |> put_getting_started(unquote(state))
+
+        view = open_sites(conn, account, actor)
+
+        assert has_element?(view, "#sidebar #getting-started-sidebar", "Getting started")
+        assert has_element?(view, "#open-getting-started", "Getting started")
+      end
+    end
+
+    for state <- [nil, :dismissed, :completed] do
+      test "don't offer the guide when it is #{inspect(state)}", %{conn: conn, account: account} do
+        actor = admin_actor_fixture(account: account)
+        actor = if unquote(state), do: put_getting_started(actor, unquote(state)), else: actor
+
+        view = open_sites(conn, account, actor)
+
+        refute has_element?(view, "#getting-started-sidebar")
+        refute has_element?(view, "#open-getting-started")
+        refute has_element?(view, "#getting-started-modal")
+      end
+    end
+
+    test "the sidebar entry reopens the chooser before a goal is picked", %{conn: conn, account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:closed)
+      view = open_sites(conn, account, actor)
+      refute has_element?(view, "#getting-started-modal")
+      refute has_element?(view, "#getting-started-sidebar-count")
+
+      view |> element("#getting-started-sidebar") |> render_click()
+
+      assert has_element?(view, "#getting-started-modal", "What would you like to do first?")
+    end
+
+    test "the sidebar entry shows the picked goal's progress and resumes it", %{
+      conn: conn,
+      account: account
+    } do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:device_mesh)
+      client_fixture(account: account, actor: actor) |> online()
+
       view = open_sites(conn, account, actor)
 
-      assert has_element?(view, "#open-getting-started", "Getting started")
+      assert has_element?(view, "#getting-started-sidebar-count", "1/3")
+      refute has_element?(view, "#getting-started-modal")
+
+      view |> element("#getting-started-sidebar") |> render_click()
+
+      assert has_element?(view, "#getting-started-mesh-step-1")
+    end
+
+    test "the user menu entry opens the guide too", %{conn: conn, account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:closed)
+      view = open_sites(conn, account, actor)
+
       view |> element("#open-getting-started") |> render_click()
 
       assert has_element?(view, "#getting-started-modal", "What would you like to do first?")
     end
 
-    test "closing it again changes nothing", %{conn: conn, account: account} do
-      actor = admin_actor_fixture(account: account)
-      view = open_sites(conn, account, actor)
-
-      view |> element("#open-getting-started") |> render_click()
-      view |> element("#getting-started-explore") |> render_click()
-
-      refute has_element?(view, "#getting-started-modal")
-      assert getting_started(actor) == nil
-    end
-
-    test "does not overwrite a goal picked earlier when closed", %{conn: conn, account: account} do
-      actor = admin_actor_fixture(account: account) |> put_getting_started(:device_mesh)
-      view = open_sites(conn, account, actor)
-
-      view |> element("#open-getting-started") |> render_click()
-      view |> element("#getting-started-modal") |> render_hook("dismiss", %{})
-
-      refute has_element?(view, "#getting-started-modal")
-      assert getting_started(actor) == :device_mesh
-    end
-
-    test "saves a newly picked goal", %{conn: conn, account: account} do
-      actor = admin_actor_fixture(account: account) |> put_getting_started(:dismissed)
-      view = open_sites(conn, account, actor)
-
-      view |> element("#open-getting-started") |> render_click()
-      view |> element("#getting-started-goal-remote_access") |> render_click()
-
-      assert has_element?(view, "#getting-started-remote-step-0")
-      assert getting_started(actor) == :remote_access
-    end
-
-    test "can be reopened after the first-time chooser was dismissed", %{conn: conn, account: account} do
+    test "exploring on their own removes the sidebar entry", %{conn: conn, account: account} do
       actor = admin_actor_fixture(account: account) |> put_getting_started(:pending)
       view = open_sites(conn, account, actor)
 
       view |> element("#getting-started-explore") |> render_click()
-      view |> element("#open-getting-started") |> render_click()
 
-      assert has_element?(view, "#getting-started-modal")
+      refute has_element?(view, "#getting-started-sidebar")
+      assert getting_started(actor) == :dismissed
     end
-  end
 
-  describe "an existing admin" do
-    test "never offered the guide does not see it", %{conn: conn, account: account} do
-      actor = admin_actor_fixture(account: account)
-
+    test "closing a picked goal keeps it", %{conn: conn, account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:device_mesh)
       view = open_sites(conn, account, actor)
 
+      view |> element("#getting-started-sidebar") |> render_click()
+      view |> element("#getting-started-modal") |> render_hook("dismiss", %{})
+
       refute has_element?(view, "#getting-started-modal")
+      assert has_element?(view, "#getting-started-sidebar")
+      assert getting_started(actor) == :device_mesh
     end
 
-    for value <- [:device_mesh, :remote_access, :dismissed] do
-      test "who already answered with #{value} does not see it", %{conn: conn, account: account} do
-        actor = admin_actor_fixture(account: account) |> put_getting_started(unquote(value))
+    test "picking the other goal saves it", %{conn: conn, account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:closed)
+      view = open_sites(conn, account, actor)
 
-        view = open_sites(conn, account, actor)
+      view |> element("#getting-started-sidebar") |> render_click()
+      view |> element("#getting-started-goal-remote_access") |> render_click()
 
-        refute has_element?(view, "#getting-started-modal")
-      end
+      assert has_element?(view, "#getting-started-remote-step-0")
+      assert getting_started(actor) == :remote_access
     end
   end
 
@@ -262,7 +294,7 @@ defmodule PortalWeb.GettingStartedTest do
       # Step 2: another computer
       continue(view)
       assert has_element?(view, "#getting-started-mesh-step-1")
-      assert has_element?(view, "#getting-started-account-slug", account.slug)
+      assert has_element?(view, "#getting-started-mesh-step-1 #getting-started-client-macos", account.slug)
       assert has_element?(view, "#getting-started-continue[disabled]")
 
       second = client_fixture(account: account, actor: actor, name: "ada-desktop") |> online()
@@ -286,7 +318,8 @@ defmodule PortalWeb.GettingStartedTest do
 
       view |> element("#getting-started-continue", "Done") |> render_click()
       refute has_element?(view, "#getting-started-modal")
-      assert getting_started(actor) == :device_mesh
+      refute has_element?(view, "#getting-started-sidebar")
+      assert getting_started(actor) == :completed
     end
 
     test "ignores devices that belong to someone else", %{conn: conn, account: account, actor: actor} do
@@ -446,7 +479,15 @@ defmodule PortalWeb.GettingStartedTest do
 
       # Step 3: the Gateway, with an install command for a pre-created Gateway
       assert has_element?(view, "#getting-started-remote-step-2", "Install a Gateway")
-      assert render(view) =~ "Use this token when prompted"
+      assert has_element?(view, "#getting-started-gateway-debian-install", "apt install firezone-gateway")
+
+      assert has_element?(
+               view,
+               "#getting-started-gateway-debian-connect",
+               "sudo firezone-gateway authenticate && sudo firezone-gateway enable-service"
+             )
+
+      assert has_element?(view, "#getting-started-gateway-debian-token")
       assert %{getting_started_resource_id: resource_id, getting_started_gateway_id: gateway_id} =
                preferences(actor)
 
@@ -455,15 +496,20 @@ defmodule PortalWeb.GettingStartedTest do
       assert gateway.site_id == site.id
 
       for {tab, icon} <- [
-            {"debian-instructions", "icon-os-debian"},
-            {"docker-instructions", "icon-docker"},
-            {"systemd-instructions", "ri-terminal-line"}
+            {"debian", "icon-os-debian"},
+            {"docker", "icon-docker"},
+            {"systemd", "ri-terminal-line"}
           ] do
-        assert has_element?(view, "#getting-started-#{tab} .#{icon}")
+        assert has_element?(view, "#getting-started-gateway-tabs-#{tab} .#{icon}")
       end
 
-      view |> element("#getting-started-docker-instructions") |> render_click()
-      assert has_element?(view, "#deploy-code-docker", "docker run")
+      view |> element("#getting-started-gateway-tabs-docker") |> render_click()
+      assert has_element?(view, "#getting-started-gateway-docker", "docker run")
+      refute render(view) =~ "FIREZONE_ID"
+
+      view |> element("#getting-started-gateway-tabs-systemd") |> render_click()
+      assert has_element?(view, "#getting-started-gateway-systemd", "gateway-systemd-install.sh")
+      refute render(view) =~ "FIREZONE_ID"
 
       gateway |> Map.put(:site_id, site.id) |> online()
       assert eventually(fn -> status_done?(view, "gateway") end)
@@ -502,6 +548,8 @@ defmodule PortalWeb.GettingStartedTest do
 
       view |> element("#getting-started-continue", "Done") |> render_click()
       refute has_element?(view, "#getting-started-modal")
+      refute has_element?(view, "#getting-started-sidebar")
+      assert getting_started(actor) == :completed
     end
 
     test "labels the kind of address as it is typed", %{conn: conn, account: account, actor: actor} do
@@ -566,7 +614,7 @@ defmodule PortalWeb.GettingStartedTest do
       reopened |> element("#open-getting-started") |> render_click()
 
       assert has_element?(reopened, "#getting-started-remote-step-2")
-      assert render(reopened) =~ "Use this token when prompted"
+      assert has_element?(reopened, "#getting-started-gateway-debian-token")
       assert preferences(actor).getting_started_gateway_id == gateway_id
       assert gateway_count(account) == count
     end
@@ -586,7 +634,7 @@ defmodule PortalWeb.GettingStartedTest do
 
       assert has_element?(view, "#getting-started-remote-step-2")
       assert status_done?(view, "gateway")
-      refute render(view) =~ "Use this token when prompted"
+      refute has_element?(view, "#getting-started-gateway-debian-token")
       assert gateway_count(account) == count
     end
 
@@ -668,6 +716,64 @@ defmodule PortalWeb.GettingStartedTest do
 
       assert has_element?(view, "#getting-started-remote-step-1")
       assert getting_started(actor) == :remote_access
+    end
+  end
+
+  describe "installing the Client" do
+    setup %{account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:device_mesh)
+      %{actor: actor}
+    end
+
+    defp open_with_user_agent(conn, account, actor, user_agent) do
+      view =
+        conn
+        |> Plug.Conn.put_req_header("user-agent", user_agent)
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+        |> then(fn {:ok, view, _html} -> view end)
+
+      view |> element("#getting-started-sidebar") |> render_click()
+      view
+    end
+
+    for {user_agent, tab, download} <- [
+          {"Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)", "macos", "firezone-client-macos/latest"},
+          {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "windows", "firezone-client-gui-windows/latest/x86_64"},
+          {"Mozilla/5.0 (X11; Linux x86_64)", "linux", "firezone-client-gui-linux/latest/x86_64.deb"}
+        ] do
+      test "starts on the #{tab} steps for a #{tab} browser", %{conn: conn, account: account, actor: actor} do
+        view = open_with_user_agent(conn, account, actor, unquote(user_agent))
+
+        assert has_element?(view, ~s(#getting-started-client-tabs-#{unquote(tab)}[aria-selected="true"]))
+        assert has_element?(view, ~s(#getting-started-client-#{unquote(tab)} a[href*="#{unquote(download)}"]))
+        assert has_element?(view, "#getting-started-client-#{unquote(tab)}", account.slug)
+      end
+    end
+
+    test "switches platform", %{conn: conn, account: account, actor: actor} do
+      view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
+
+      view |> element("#getting-started-client-tabs-linux") |> render_click()
+
+      assert has_element?(view, "#getting-started-client-linux", "ARM64")
+      refute has_element?(view, "#getting-started-client-macos")
+    end
+  end
+
+  describe "modal footer" do
+    test "puts going back on the left", %{conn: conn, account: account} do
+      actor = admin_actor_fixture(account: account) |> put_getting_started(:device_mesh)
+      view = open_sites(conn, account, actor)
+      view |> element("#getting-started-sidebar") |> render_click()
+
+      [first | _] =
+        view
+        |> render()
+        |> Floki.parse_document!()
+        |> Floki.find("#getting-started-modal .border-t > *")
+
+      assert Floki.attribute(first, "id") == ["getting-started-back"]
     end
   end
 end

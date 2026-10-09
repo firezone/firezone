@@ -2,9 +2,12 @@ defmodule PortalWeb.GettingStarted do
   @moduledoc """
   The getting started guide new account owners see when they first sign in.
 
-  It opens on a chooser asking what they want to do first. The answer is stored in
-  the actor's preferences so the chooser only opens by itself once. Any admin can
-  reopen it from the user menu, which sends `"open"` to `#getting-started`.
+  It lives in the sidebar, as a "Getting started" entry with the progress of the
+  goal being worked on, and as the modal that entry opens. The modal opens by itself
+  once, on a chooser asking what the admin wants to do first. The entry (and the one
+  in the user menu, which sends `"open"` to `#getting-started`) stays until the admin
+  finishes a goal or chooses to explore on their own. Where they are is kept in the
+  actor's preferences, see `Portal.Actor.Preferences`.
 
   Each goal is a few steps, most of them finished by something happening outside the
   portal:
@@ -31,12 +34,29 @@ defmodule PortalWeb.GettingStarted do
 
   @goals %{"device_mesh" => :device_mesh, "remote_access" => :remote_access}
   @flows Map.values(@goals)
+
+  # The states in which the guide is still offered in the sidebar and user menu
+  @offered [:pending, :closed | @flows]
+
   @deploy_tabs [
-    {"debian-instructions", "Debian/Ubuntu", "icon-os-debian"},
-    {"docker-instructions", "Docker", "icon-docker"},
-    {"systemd-instructions", "systemd", "ri-terminal-line"}
+    {"debian", "Debian/Ubuntu", "icon-os-debian"},
+    {"docker", "Docker", "icon-docker"},
+    {"systemd", "systemd", "ri-terminal-line"}
   ]
   @deploy_tab_values Enum.map(@deploy_tabs, &elem(&1, 0))
+
+  @client_tabs [
+    {"macos", "macOS", "ri-apple-line"},
+    {"windows", "Windows", "ri-windows-line"},
+    {"linux", "Linux", "ri-ubuntu-line"}
+  ]
+  @client_tab_values Enum.map(@client_tabs, &elem(&1, 0))
+
+  @doc "Whether the guide is still offered to the actor in the sidebar and user menu."
+  @spec offered?(Portal.Actor.t()) :: boolean()
+  def offered?(actor), do: actor |> preference(:getting_started) |> offered_state?()
+
+  defp offered_state?(state), do: state in @offered
 
   @impl true
   def update(%{poll: ref}, socket) do
@@ -58,10 +78,11 @@ defmodule PortalWeb.GettingStarted do
   defp assign_initial_state(%{assigns: %{pending?: _}} = socket), do: socket
 
   defp assign_initial_state(socket) do
-    actor = socket.assigns.subject.actor
+    %{actor: actor, context: context} = socket.assigns.subject
     pending? = pending?(actor)
 
-    assign(socket,
+    socket
+    |> assign(
       actor: actor,
       pending?: pending?,
       open?: pending?,
@@ -74,16 +95,28 @@ defmodule PortalWeb.GettingStarted do
       resource: nil,
       address_form: address_form(),
       gateway_env: nil,
-      deploy_tab: "debian-instructions",
+      deploy_tab: "debian",
+      client_tab: client_tab(context.user_agent),
       gateway_online?: false,
       reached?: false
     )
+    |> load_progress()
   end
+
+  # Works out how far along the picked goal is, for the sidebar's progress bar.
+  defp load_progress(%{assigns: %{goal: goal}} = socket) when goal in @flows, do: start(socket, goal)
+  defp load_progress(socket), do: socket
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div id="getting-started">
+    <div id="getting-started" class={offered_state?(@goal) && "border-t border-border py-2 px-2 shrink-0"}>
+      <.sidebar_entry
+        :if={offered_state?(@goal)}
+        progress={progress(assigns)}
+        target={@myself}
+      />
+
       <Form.modal :if={@open?} id="getting-started-modal" on_close="dismiss" target={@myself}>
         <:title>{title(@view, @subject.actor)}</:title>
         <:body>
@@ -94,6 +127,8 @@ defmodule PortalWeb.GettingStarted do
             devices={@devices}
             connected?={@connected?}
             account={@subject.account}
+            client_tab={@client_tab}
+            target={@myself}
           />
           <.remote
             :if={@view == :remote_access}
@@ -106,10 +141,11 @@ defmodule PortalWeb.GettingStarted do
             gateway_online?={@gateway_online?}
             reached?={@reached?}
             account={@subject.account}
+            client_tab={@client_tab}
             target={@myself}
           />
         </:body>
-        <:footer :if={@view in [:device_mesh, :remote_access]}>
+        <:footer :if={@view != :chooser}>
           <.footer
             view={@view}
             step={@step}
@@ -122,6 +158,65 @@ defmodule PortalWeb.GettingStarted do
     </div>
     """
   end
+
+  # ── Sidebar ─────────────────────────────────────────────────────────────────
+
+  attr :progress, :any, required: true
+  attr :target, :any, required: true
+
+  defp sidebar_entry(assigns) do
+    ~H"""
+    <button
+      id="getting-started-sidebar"
+      type="button"
+      phx-click="open"
+      phx-target={@target}
+      data-sidebar-nav-item
+      title="Getting started"
+      class="w-full px-2 py-1.5 rounded text-left text-sm text-body hover:text-heading hover:bg-raised transition-colors"
+    >
+      <span class="flex items-center gap-2.5">
+        <Core.icon name="ri-rocket-2-line" class="w-4 h-4 shrink-0 text-brand" />
+        <span
+          data-sidebar-label
+          class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
+        >
+          Getting started
+        </span>
+        <span
+          :if={@progress}
+          id="getting-started-sidebar-count"
+          data-sidebar-label
+          class="text-xs text-subtle tabular-nums"
+        >
+          {elem(@progress, 0)}/{elem(@progress, 1)}
+        </span>
+      </span>
+      <span
+        :if={@progress}
+        data-sidebar-label
+        class="flex gap-0.5 mt-1.5 ml-6.5"
+        aria-hidden="true"
+      >
+        <span
+          :for={i <- 1..elem(@progress, 1)}
+          class={[
+            "flex-1 h-1 rounded-full",
+            if(i <= elem(@progress, 0), do: "bg-brand", else: "bg-border-strong")
+          ]}
+        >
+        </span>
+      </span>
+    </button>
+    """
+  end
+
+  defp progress(%{view: view} = assigns) when view in @flows do
+    total = total_steps(view)
+    {done_count(view, total - 1, assigns), total}
+  end
+
+  defp progress(_assigns), do: nil
 
   # ── Chooser ─────────────────────────────────────────────────────────────────
 
@@ -163,7 +258,7 @@ defmodule PortalWeb.GettingStarted do
       <button
         id="getting-started-explore"
         type="button"
-        phx-click="dismiss"
+        phx-click="explore"
         phx-target={@target}
         class="px-3 py-1.5 rounded text-sm text-subtle hover:text-heading hover:bg-raised transition-colors"
       >
@@ -225,6 +320,8 @@ defmodule PortalWeb.GettingStarted do
   attr :devices, :list, required: true
   attr :connected?, :boolean, required: true
   attr :account, :any, required: true
+  attr :client_tab, :string, required: true
+  attr :target, :any, required: true
 
   defp mesh(assigns) do
     assigns =
@@ -235,29 +332,24 @@ defmodule PortalWeb.GettingStarted do
       )
 
     ~H"""
-    <div id="getting-started-mesh" class="min-h-64">
+    <div id="getting-started-mesh" class="min-h-96">
       <.stepper :if={@step < 3} step={@step} total={3} done={@done} />
 
       <div :if={@step == 0} id="getting-started-mesh-step-0">
-        <.install_this_computer account={@account} first={@first} />
+        <.install_this_computer
+          account={@account}
+          first={@first}
+          client_tab={@client_tab}
+          target={@target}
+        />
       </div>
 
       <div :if={@step == 1} id="getting-started-mesh-step-1">
         <h4 class="text-base font-semibold text-heading">Install Firezone on another computer</h4>
         <p class="mt-1 mb-4 text-sm text-body">
-          On a second computer,
-          <Navigation.website_link path="/kb/client-apps">download Firezone</Navigation.website_link>
-          and sign in to the same account.
+          On a second computer, install Firezone and sign in to the same account.
         </p>
-        <div class="flex items-center gap-2 mb-4 px-3 py-2 rounded border border-border bg-raised text-sm">
-          <span class="text-xs text-subtle">Account</span>
-          <Core.copy
-            id="getting-started-account-slug"
-            class="flex items-center gap-2 ml-auto text-heading"
-          >
-            {@account.slug}
-          </Core.copy>
-        </div>
+        <.client_install account={@account} client_tab={@client_tab} target={@target} />
         <.live_status
           id="getting-started-status-1"
           done?={@second != nil}
@@ -316,6 +408,7 @@ defmodule PortalWeb.GettingStarted do
   attr :gateway_online?, :boolean, required: true
   attr :reached?, :boolean, required: true
   attr :account, :any, required: true
+  attr :client_tab, :string, required: true
   attr :target, :any, required: true
 
   defp remote(assigns) do
@@ -326,19 +419,20 @@ defmodule PortalWeb.GettingStarted do
         first: Enum.at(assigns.devices, 0),
         done: done_count(:remote_access, assigns.step, assigns),
         address_type: address_type(assigns.address_form[:address].value),
-        deploy_tabs: @deploy_tabs,
         try_heading: try_heading,
         try_command: try_command
       )
 
     ~H"""
-    <div id="getting-started-remote" class="min-h-64">
+    <div id="getting-started-remote" class="min-h-96">
       <.stepper :if={@step < 4} step={@step} total={4} done={@done} />
 
       <div :if={@step == 0} id="getting-started-remote-step-0">
         <.install_this_computer
           account={@account}
           first={@first}
+          client_tab={@client_tab}
+          target={@target}
           lead="You'll use it to test access at the end."
         />
       </div>
@@ -413,33 +507,12 @@ defmodule PortalWeb.GettingStarted do
           <span class="font-medium text-heading">{@resource.address}</span>.
           It only makes outbound connections, so you don't need to open firewall ports.
         </p>
-        <div :if={@gateway_env} class="mb-4">
-          <div class="flex gap-1.5" role="tablist">
-            <button
-              :for={{tab, label, icon} <- @deploy_tabs}
-              id={"getting-started-#{tab}"}
-              type="button"
-              role="tab"
-              aria-selected={to_string(@deploy_tab == tab)}
-              phx-click="deploy_tab"
-              phx-value-tab={tab}
-              phx-target={@target}
-              class={[
-                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors",
-                if(@deploy_tab == tab,
-                  do: "border-brand bg-brand-muted text-heading",
-                  else: "border-border text-body hover:text-heading hover:bg-raised"
-                )
-              ]}
-            >
-              <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
-              {label}
-            </button>
-          </div>
-          <div class="-mx-5 max-h-72 overflow-y-auto">
-            <SiteComponents.site_deploy_instructions deploy_tab={@deploy_tab} deploy_env={@gateway_env} />
-          </div>
-        </div>
+        <.gateway_install
+          :if={@gateway_env}
+          deploy_tab={@deploy_tab}
+          gateway_env={@gateway_env}
+          target={@target}
+        />
         <.live_status
           id="getting-started-status-gateway"
           done?={@gateway_online?}
@@ -491,24 +564,67 @@ defmodule PortalWeb.GettingStarted do
     """
   end
 
+  attr :deploy_tab, :string, required: true
+  attr :gateway_env, :list, required: true
+  attr :target, :any, required: true
+
+  # Each method in as few steps as it allows. The Debian package asks for the token
+  # interactively, so connecting it is its own line: pasted together with the
+  # install commands, the lines after it would be read as the token.
+  defp gateway_install(assigns) do
+    assigns = assign(assigns, tabs: @deploy_tabs)
+
+    ~H"""
+    <div class="mb-4">
+      <.tabs id="getting-started-gateway-tabs" tabs={@tabs} selected={@deploy_tab} event="deploy_tab" target={@target} />
+
+      <div :if={@deploy_tab == "debian"} class="space-y-2">
+        <p class="text-xs text-body">1. Install the Gateway:</p>
+        <Core.code_block
+          id="getting-started-gateway-debian-install"
+          class="text-xs rounded"
+        >{SiteComponents.gateway_debian_install_commands() |> String.trim()}</Core.code_block>
+        <p class="pt-1 text-xs text-body">2. Connect it, and paste this token when asked:</p>
+        <Core.code_block
+          id="getting-started-gateway-debian-connect"
+          class="text-xs rounded"
+        >sudo firezone-gateway authenticate && sudo firezone-gateway enable-service</Core.code_block>
+        <Core.code_block
+          id="getting-started-gateway-debian-token"
+          class="text-xs rounded"
+        >{SiteComponents.gateway_token(@gateway_env)}</Core.code_block>
+      </div>
+
+      <div :if={@deploy_tab == "docker"}>
+        <Core.code_block
+          id="getting-started-gateway-docker"
+          class="text-xs rounded"
+        >{SiteComponents.gateway_docker_command(@gateway_env)}</Core.code_block>
+      </div>
+
+      <div :if={@deploy_tab == "systemd"}>
+        <Core.code_block
+          id="getting-started-gateway-systemd"
+          class="text-xs rounded"
+        >{SiteComponents.gateway_systemd_command(@gateway_env) |> String.trim()}</Core.code_block>
+      </div>
+    </div>
+    """
+  end
+
   # ── Shared pieces ───────────────────────────────────────────────────────────
 
   attr :account, :any, required: true
   attr :first, :any, required: true
+  attr :client_tab, :string, required: true
+  attr :target, :any, required: true
   attr :lead, :string, default: "This computer becomes your first device."
 
   defp install_this_computer(assigns) do
     ~H"""
     <h4 class="text-base font-semibold text-heading">Install Firezone on this computer</h4>
-    <p class="mt-1 mb-4 text-sm text-body">
-      Download the app and sign in to <span class="font-medium text-heading">{@account.slug}</span>.
-      {@lead}
-    </p>
-    <div class="grid grid-cols-3 gap-2 mb-4">
-      <.platform path="/kb/client-apps/macos-client" icon="ri-apple-line" label="macOS" />
-      <.platform path="/kb/client-apps/windows-gui-client" icon="ri-windows-line" label="Windows" />
-      <.platform path="/kb/client-apps/linux-gui-client" icon="ri-ubuntu-line" label="Linux" />
-    </div>
+    <p class="mt-1 mb-4 text-sm text-body">{@lead}</p>
+    <.client_install account={@account} client_tab={@client_tab} target={@target} />
     <.live_status
       id="getting-started-status-0"
       done?={@first != nil}
@@ -517,6 +633,106 @@ defmodule PortalWeb.GettingStarted do
       done={@first && "#{@first.name} is online"}
       done_hint={@first && "Reachable at #{@first.fqdn}"}
     />
+    """
+  end
+
+  attr :account, :any, required: true
+  attr :client_tab, :string, required: true
+  attr :target, :any, required: true
+
+  # Installing a Client is a download, an installer and a sign in, so the steps for
+  # the chosen platform are shown right here rather than linked to.
+  defp client_install(assigns) do
+    assigns = assign(assigns, tabs: @client_tabs, client: client(assigns.client_tab))
+
+    ~H"""
+    <div class="mb-4">
+      <.tabs id="getting-started-client-tabs" tabs={@tabs} selected={@client_tab} event="client_tab" target={@target} />
+      <ol id={"getting-started-client-#{@client_tab}"} class="space-y-2 text-sm text-body list-decimal list-inside">
+        <li>
+          <a
+            href={@client.download}
+            class="inline-flex items-center gap-1.5 font-medium text-link hover:underline"
+          >
+            <Core.icon name="ri-download-2-line" class="w-4 h-4" />Download Firezone for {@client.label}
+          </a>
+          <span :if={@client[:download_arm]} class="text-subtle">
+            (or for <a href={@client.download_arm} class="text-link hover:underline">ARM64</a>)
+          </span>
+        </li>
+        <li>{@client.install}</li>
+        <li>
+          {@client.open} and sign in to <span class="font-medium text-heading">{@account.slug}</span>.
+        </li>
+      </ol>
+      <p class="mt-2 text-xs text-subtle">
+        <Navigation.website_link path={@client.docs}>Other ways to install</Navigation.website_link>
+      </p>
+    </div>
+    """
+  end
+
+  defp client("windows") do
+    %{
+      label: "Windows",
+      download: "https://www.firezone.dev/dl/firezone-client-gui-windows/latest/x86_64",
+      install: "Run the installer.",
+      open: "Open Firezone from the system tray",
+      docs: "/kb/client-apps/windows-gui-client"
+    }
+  end
+
+  defp client("linux") do
+    %{
+      label: "Linux",
+      download: "https://www.firezone.dev/dl/firezone-client-gui-linux/latest/x86_64.deb",
+      download_arm: "https://www.firezone.dev/dl/firezone-client-gui-linux/latest/aarch64.deb",
+      install: "Install the downloaded package, for example with: sudo apt install ./<file>.deb",
+      open: "Open Firezone",
+      docs: "/kb/client-apps/linux-gui-client"
+    }
+  end
+
+  defp client(_macos) do
+    %{
+      label: "macOS",
+      download: "https://www.firezone.dev/dl/firezone-client-macos/latest",
+      install: "Open the download and install Firezone.",
+      open: "Open Firezone from the menu bar",
+      docs: "/kb/client-apps/macos-client"
+    }
+  end
+
+  attr :id, :string, required: true
+  attr :tabs, :list, required: true
+  attr :selected, :string, required: true
+  attr :event, :string, required: true
+  attr :target, :any, required: true
+
+  defp tabs(assigns) do
+    ~H"""
+    <div id={@id} class="flex gap-1.5 mb-3" role="tablist">
+      <button
+        :for={{tab, label, icon} <- @tabs}
+        id={"#{@id}-#{tab}"}
+        type="button"
+        role="tab"
+        aria-selected={to_string(@selected == tab)}
+        phx-click={@event}
+        phx-value-tab={tab}
+        phx-target={@target}
+        class={[
+          "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors",
+          if(@selected == tab,
+            do: "border-brand bg-brand-muted text-heading",
+            else: "border-border text-body hover:text-heading hover:bg-raised"
+          )
+        ]}
+      >
+        <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+        {label}
+      </button>
+    </div>
     """
   end
 
@@ -591,22 +807,6 @@ defmodule PortalWeb.GettingStarted do
     """
   end
 
-  attr :path, :string, required: true
-  attr :icon, :string, required: true
-  attr :label, :string, required: true
-
-  defp platform(assigns) do
-    ~H"""
-    <Navigation.website_link
-      path={@path}
-      class="flex flex-col items-center gap-1 py-3 rounded border border-border-strong bg-surface text-sm text-heading hover:border-brand transition-colors"
-    >
-      <Core.icon name={@icon} class="w-5 h-5 text-body" />
-      {@label}
-    </Navigation.website_link>
-    """
-  end
-
   attr :id, :string, required: true
   attr :done?, :boolean, required: true
   attr :waiting, :string, required: true
@@ -656,6 +856,9 @@ defmodule PortalWeb.GettingStarted do
   attr :submit_address?, :boolean, required: true
   attr :target, :any, required: true
 
+  # Going back sits on the left and going forward on the right, like the other
+  # modals. The first step and the finish screen have nothing to go back to, so the
+  # same button returns to the goal chooser there.
   defp footer(assigns) do
     {doc_path, doc_label} = footer_doc(assigns.view, assigns.step)
 
@@ -667,26 +870,24 @@ defmodule PortalWeb.GettingStarted do
       )
 
     ~H"""
-    <Navigation.website_link
-      path={@doc_path}
-      class="inline-flex items-center gap-1 text-sm text-subtle hover:text-heading"
+    <Form.button
+      id="getting-started-back"
+      type="button"
+      style="info"
+      icon="ri-arrow-left-line"
+      phx-click={if @step in [0, @total], do: "change_goal", else: "back"}
+      phx-target={@target}
     >
-      <Core.icon name="ri-book-open-line" class="w-4 h-4" />
-      {@doc_label}
-    </Navigation.website_link>
-    <div class="flex items-center gap-2 ml-auto">
-      <%!-- The first step and the finish screen have nothing to go back to, so the
-           same button returns to the goal chooser there --%>
-      <Form.button
-        id="getting-started-back"
-        type="button"
-        style="info"
-        icon="ri-arrow-left-line"
-        phx-click={if @step in [0, @total], do: "change_goal", else: "back"}
-        phx-target={@target}
+      {if @step in [0, @total], do: "Change goal", else: "Back"}
+    </Form.button>
+    <div class="flex items-center gap-4">
+      <Navigation.website_link
+        path={@doc_path}
+        class="inline-flex items-center gap-1 text-sm text-subtle hover:text-heading"
       >
-        {if @step in [0, @total], do: "Change goal", else: "Back"}
-      </Form.button>
+        <Core.icon name="ri-book-open-line" class="w-4 h-4" />
+        {@doc_label}
+      </Navigation.website_link>
       <Form.button
         :if={@submit_address?}
         id="getting-started-continue"
@@ -702,7 +903,7 @@ defmodule PortalWeb.GettingStarted do
         type="button"
         style="primary"
         disabled={not @done?}
-        phx-click={if @step == @total, do: "dismiss", else: "continue"}
+        phx-click={if @step == @total, do: "complete", else: "continue"}
         phx-target={@target}
       >
         {if @step == @total, do: "Done", else: "Continue"}
@@ -787,10 +988,23 @@ defmodule PortalWeb.GettingStarted do
     {:noreply, assign(socket, deploy_tab: tab)}
   end
 
-  # Only the first, automatic showing records a dismissal. Closing a guide the admin
-  # reopened themselves, or one they already picked a goal in, keeps their choice.
+  def handle_event("client_tab", %{"tab" => tab}, socket) when tab in @client_tab_values do
+    {:noreply, assign(socket, client_tab: tab)}
+  end
+
+  # Finishing a goal, or choosing to explore alone, is the end of the guide: it
+  # leaves the sidebar and the user menu.
+  def handle_event("complete", _params, %{assigns: %{view: view, step: step}} = socket)
+      when view in @flows do
+    if step == total_steps(view), do: finish(socket, :completed), else: {:noreply, socket}
+  end
+
+  def handle_event("explore", _params, socket), do: finish(socket, :dismissed)
+
+  # Closing the guide before picking a goal stops it opening by itself, but keeps it
+  # in the sidebar. Closing it after picking one keeps the goal to come back to.
   def handle_event("dismiss", _params, %{assigns: %{pending?: true, open?: true}} = socket) do
-    {_result, socket} = save(socket, %{getting_started: :dismissed})
+    {_result, socket} = save(socket, %{getting_started: :closed})
     {:noreply, close(socket)}
   end
 
@@ -799,6 +1013,11 @@ defmodule PortalWeb.GettingStarted do
   end
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp finish(socket, state) do
+    {_result, socket} = save(socket, %{getting_started: state})
+    {:noreply, close(socket)}
+  end
 
   defp close(socket), do: assign(socket, open?: false, poll_ref: nil)
 
@@ -845,11 +1064,19 @@ defmodule PortalWeb.GettingStarted do
   defp enter_step(socket), do: socket |> refresh() |> prepare_step() |> ensure_polling()
 
   # The Gateway install command needs a token, and a token can only be shown when it
-  # is created. The Gateway pre-created for it is remembered, so coming back to this
-  # step rotates that Gateway's token instead of leaving another one behind.
+  # is created. It's only made when the step is actually on screen, and the Gateway
+  # pre-created for it is remembered, so coming back to this step rotates that
+  # Gateway's token instead of leaving another one behind.
   defp prepare_step(
-         %{assigns: %{view: :remote_access, step: 2, gateway_env: nil, gateway_online?: false}} =
-           socket
+         %{
+           assigns: %{
+             open?: true,
+             view: :remote_access,
+             step: 2,
+             gateway_env: nil,
+             gateway_online?: false
+           }
+         } = socket
        ) do
     %{resource: resource, actor: actor, subject: subject} = socket.assigns
     gateway_id = preference(actor, :getting_started_gateway_id)
@@ -995,6 +1222,17 @@ defmodule PortalWeb.GettingStarted do
     %{changeset | errors: changeset.errors ++ name_errors, action: :validate}
     |> to_form(as: :resource)
   end
+
+  # The platform the admin is browsing from, to show its install steps first.
+  defp client_tab(user_agent) when is_binary(user_agent) do
+    cond do
+      user_agent =~ "Windows" -> "windows"
+      user_agent =~ ~r/Linux|X11/ and not (user_agent =~ "Android") -> "linux"
+      true -> "macos"
+    end
+  end
+
+  defp client_tab(_user_agent), do: "macos"
 
   @doc false
   # What kind of Resource an address makes, the way the address field labels it.

@@ -164,7 +164,7 @@ defmodule PortalWeb.Components.Navigation do
           Your settings
         </.link>
       </li>
-      <li>
+      <li :if={PortalWeb.GettingStarted.offered?(@subject.actor)}>
         <button
           id="open-getting-started"
           type="button"
@@ -341,6 +341,9 @@ defmodule PortalWeb.Components.Navigation do
           </ul>
         </div>
       </nav>
+
+      <%!-- Getting started guide: its sidebar entry, and the modal it opens --%>
+      <.live_component module={PortalWeb.GettingStarted} id="getting-started" subject={@subject} />
 
       <%!-- Settings --%>
       <div class="border-t border-border py-2 px-2 shrink-0">

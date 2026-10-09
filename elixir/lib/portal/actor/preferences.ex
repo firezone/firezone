@@ -4,10 +4,14 @@ defmodule Portal.Actor.Preferences do
 
   @start_page_values [:sites, :resources, :groups, :policies, :devices, :actors]
 
-  # `nil` means the actor was never offered the getting started guide, which is
-  # the case for every actor that existed before it. Sign up sets `:pending` so
-  # only new account owners see it.
-  @getting_started_values [:pending, :device_mesh, :remote_access, :dismissed]
+  # Where the actor is with the getting started guide:
+  #
+  #   * `nil`: never offered it, as for every actor that existed before it
+  #   * `:pending`: sign up set it; the guide opens by itself
+  #   * `:closed`: closed the guide before picking a goal; it stays in the sidebar
+  #   * `:device_mesh` / `:remote_access`: the goal they picked
+  #   * `:dismissed` / `:completed`: chose to explore alone, or finished; it's gone
+  @getting_started_values [:pending, :closed, :device_mesh, :remote_access, :dismissed, :completed]
 
   @primary_key false
   embedded_schema do
