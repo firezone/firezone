@@ -44,6 +44,10 @@ defmodule Portal.Actor do
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id
 
+    # Set only by directory sync, which writes raw SQL. Any other change to
+    # is_disabled clears it, see `track_disabling_directory/1`.
+    belongs_to :disabling_directory, Portal.Directory, foreign_key: :disabled_by_directory_id
+
     timestamps()
   end
 
@@ -53,10 +57,13 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory, name: :actors_created_by_directory_id_fkey)
+    |> assoc_constraint(:disabling_directory, name: :actors_disabled_by_directory_id_fkey)
+    |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
   end
@@ -91,6 +98,16 @@ defmodule Portal.Actor do
 
       true ->
         changeset
+    end
+  end
+
+  # A directory re-enables only the actors it disabled itself, so any disable or
+  # enable made outside directory sync takes the decision away from it.
+  defp track_disabling_directory(changeset) do
+    if changed?(changeset, :is_disabled) and not changed?(changeset, :disabled_by_directory_id) do
+      put_change(changeset, :disabled_by_directory_id, nil)
+    else
+      changeset
     end
   end
 

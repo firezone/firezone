@@ -1,7 +1,6 @@
 defmodule Portal.Microsoft.Graph.APIClientTest do
   use ExUnit.Case, async: true
   import Portal.EntraDirectoryFixtures
-  import ExUnit.CaptureLog
 
   alias Portal.Microsoft.Graph.APIClient
 
@@ -521,7 +520,7 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
       assert Enum.at(users, 0)["id"] == "user1"
     end
 
-    test "filters disabled users from successful batch results" do
+    test "returns disabled users for the sync to decide on" do
       user_ids = ["user1", "user2"]
 
       Req.Test.expect(APIClient, fn conn ->
@@ -554,10 +553,10 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
       end)
 
       assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
-      assert Enum.map(users, & &1["id"]) == ["user1"]
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
     end
 
-    test "logs and skips batch users missing accountEnabled" do
+    test "returns batch users missing accountEnabled for the sync to decide on" do
       user_ids = ["user1", "user2"]
 
       Req.Test.expect(APIClient, fn conn ->
@@ -590,14 +589,8 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
         Req.Test.json(conn, batch_response)
       end)
 
-      log =
-        capture_log(fn ->
-          assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
-          assert Enum.map(users, & &1["id"]) == ["user2"]
-        end)
-
-      assert log =~ "Skipping Entra user with missing accountEnabled field"
-      assert log =~ "user1"
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, user_ids)
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
     end
 
     test "returns error when all batch requests fail" do

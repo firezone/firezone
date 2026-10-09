@@ -8190,6 +8190,13 @@
             "nullable": true,
             "type": "string"
           },
+          "disabled_by_directory_id": {
+            "description": "Directory ID that disabled this actor because its user is inactive at the identity provider. The directory re-enables the actor when the user is active again. Null when the actor is enabled or was disabled by an admin.",
+            "format": "uuid",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
           "email": {
             "description": "Actor Email",
             "example": "john.doe@example.com",
@@ -8247,6 +8254,7 @@
         "required": [
           "allow_email_otp_sign_in",
           "created_by_directory_id",
+          "disabled_by_directory_id",
           "email",
           "id",
           "inserted_at",

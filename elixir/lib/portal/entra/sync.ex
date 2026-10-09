@@ -429,14 +429,14 @@ defmodule Portal.Entra.Sync do
 
     case APIClient.batch_get_users(access_token, chunk) do
       {:ok, users} when is_list(users) ->
-        active_users = Enum.filter(users, &syncable_user?(&1, directory.id))
+        kept_users = keep_users(directory, users)
 
         Logger.debug("Fetched batch of users successfully",
           entra_directory_id: directory.id,
-          fetched_count: length(active_users)
+          fetched_count: length(kept_users)
         )
 
-        Enum.map(active_users, fn user ->
+        Enum.map(kept_users, fn user ->
           map_user_to_identity(user, directory.id, directory.email_field)
         end)
 
@@ -574,10 +574,7 @@ defmodule Portal.Entra.Sync do
       count: length(members)
     )
 
-    user_members =
-      Enum.filter(members, fn member ->
-        graph_user_member?(member) and syncable_user?(member, directory.id)
-      end)
+    user_members = keep_users(directory, Enum.filter(members, &graph_user_member?/1))
 
     Enum.each(user_members, fn member ->
       unless member["id"] do
@@ -668,10 +665,17 @@ defmodule Portal.Entra.Sync do
     :ok
   end
 
-  def syncable_user?(user, directory_id) do
+  @doc """
+  Whether Entra reports the user enabled, disabled, or says nothing, in which
+  case the user is skipped like a deleted one.
+  """
+  def user_state(user, directory_id) do
     case Map.fetch(user, "accountEnabled") do
-      {:ok, enabled} ->
-        enabled != false
+      {:ok, false} ->
+        :inactive
+
+      {:ok, _enabled} ->
+        :active
 
       :error ->
         Logger.error("Skipping Entra user with missing accountEnabled field",
@@ -680,8 +684,29 @@ defmodule Portal.Entra.Sync do
           entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
         )
 
-        false
+        :unknown
     end
+  end
+
+  @doc """
+  The users a sync writes: the enabled ones, and the disabled ones whose actor
+  this directory created, kept so the actor is disabled rather than deleted.
+  Any other disabled user is dropped, and so removed like a deleted one.
+  """
+  def keep_users(directory, users) do
+    users = Enum.map(users, &{&1, user_state(&1, directory.id)})
+
+    inactive_ids =
+      for {%{"id" => id} = user, :inactive} <- users,
+          is_binary(id),
+          Portal.Changeset.valid_email?(user[directory.email_field]),
+          do: id
+
+    owned = DirectorySync.owned_idp_ids(directory.account_id, issuer(directory), directory.id, inactive_ids)
+
+    for {user, state} <- users,
+        state == :active or (state == :inactive and MapSet.member?(owned, user["id"])),
+        do: user
   end
 
   defp graph_user_member?(member) do
@@ -724,7 +749,8 @@ defmodule Portal.Entra.Sync do
       given_name: user["givenName"],
       family_name: user["surname"],
       preferred_username: user["userPrincipalName"],
-      profile: nil
+      profile: nil,
+      disabled: user["accountEnabled"] == false
     }
   end
 

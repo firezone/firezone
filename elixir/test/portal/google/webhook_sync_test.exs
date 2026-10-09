@@ -120,7 +120,7 @@ defmodule Portal.Google.WebhookSyncTest do
       assert Repo.get_by(Actor, id: actor.id)
     end
 
-    test "removes a suspended user with their memberships and directory actor",
+    test "disables the actor the directory created when its user is suspended, and re-enables it",
          %{directory: directory, base_directory: base_directory} = ctx do
       identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
       actor = mark_created_by_directory(identity.actor_id, directory)
@@ -133,9 +133,52 @@ defmodule Portal.Google.WebhookSyncTest do
 
       assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
 
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
+      assert Repo.get_by(Membership, actor_id: actor.id, group_id: group.id)
+
+      stub_google(users: %{"user-1" => google_user("user-1", "Back", "u1@example.com")})
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "disables the actor the directory created when its user is archived",
+         %{directory: directory, base_directory: base_directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
+      actor = mark_created_by_directory(identity.actor_id, directory)
+      group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
+      membership_fixture(actor: actor, group: group)
+
+      stub_google(
+        users: %{"user-1" => google_user("user-1", "Gone", "u1@example.com", archived: true)}
+      )
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      assert Repo.get_by!(Actor, id: actor.id).is_disabled
+    end
+
+    test "removes a suspended user whose actor the directory did not create",
+         %{directory: directory, base_directory: base_directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1", member: true)
+      actor = Repo.preload(Repo.get_by!(Actor, id: identity.actor_id), :account)
+      group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
+      membership_fixture(actor: actor, group: group)
+
+      stub_google(
+        users: %{"user-1" => google_user("user-1", "Gone", "u1@example.com", suspended: true)}
+      )
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
       refute Repo.get_by(ExternalIdentity, id: identity.id)
       refute Repo.get_by(Membership, actor_id: actor.id)
-      refute Repo.get_by(Actor, id: actor.id)
+      refute Repo.get_by!(Actor, id: actor.id).is_disabled
     end
 
     test "removes an identity, its memberships, and its actor in one transaction",
@@ -440,7 +483,7 @@ defmodule Portal.Google.WebhookSyncTest do
       "primaryEmail" => email,
       "name" => %{"fullName" => name, "givenName" => name, "familyName" => "User"},
       "suspended" => Keyword.get(opts, :suspended, false),
-      "archived" => false,
+      "archived" => Keyword.get(opts, :archived, false),
       "orgUnitPath" => Keyword.get(opts, :org_unit, "/")
     }
   end

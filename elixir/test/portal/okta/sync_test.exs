@@ -349,77 +349,73 @@ defmodule Portal.Okta.SyncTest do
       assert log =~ "user_missing_status"
     end
 
-    test "deletes previously synced suspended users on a later sync" do
-      account = account_fixture(features: %{idp_sync: true})
+    test "disables, then re-enables, the actor of a previously synced user" do
+      directory = okta_sync_directory()
+      args = %{account_id: directory.account_id, directory_id: directory.id}
 
-      directory =
-        okta_directory_fixture(
-          account: account,
-          private_key_jwk: @test_private_key_jwk,
-          kid: "test_kid"
-        )
+      expect_okta_identity_sync([okta_app_user("user_active"), okta_app_user("user_suspend_later")])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(ExternalIdentity, directory_id: directory.id, idp_id: "user_suspend_later")
 
       expect_okta_identity_sync([
-        %{
-          "id" => "user_active",
-          "status" => "ACTIVE",
-          "profile" => %{
-            "email" => "active@example.com",
-            "firstName" => "Active",
-            "lastName" => "User"
-          }
-        },
-        %{
-          "id" => "user_suspend_later",
-          "status" => "ACTIVE",
-          "profile" => %{
-            "email" => "suspend-me@example.com",
-            "firstName" => "Suspend",
-            "lastName" => "Me"
-          }
-        }
+        okta_app_user("user_active"),
+        okta_app_user("user_suspend_later", "SUSPENDED")
       ])
 
-      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+      assert :ok = perform_job(Sync, args)
 
-      suspended_identity =
-        Repo.get_by!(ExternalIdentity,
-          directory_id: directory.id,
-          idp_id: "user_suspend_later"
+      assert Repo.get_by!(ExternalIdentity, id: identity.id)
+      actor = Repo.get_by!(Portal.Actor, id: identity.actor_id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+
+      expect_okta_identity_sync([okta_app_user("user_active"), okta_app_user("user_suspend_later")])
+      assert :ok = perform_job(Sync, args)
+
+      actor = Repo.get_by!(Portal.Actor, id: identity.actor_id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "removes a suspended user whose actor the directory did not create" do
+      directory = okta_sync_directory()
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(
+          account: Repo.get!(Portal.Account, directory.account_id),
+          email: "user_suspend_later@example.com"
         )
 
-      suspended_actor = Repo.get_by!(Portal.Actor, id: suspended_identity.actor_id)
+      expect_okta_identity_sync([okta_app_user("user_active"), okta_app_user("user_suspend_later")])
+      assert :ok = perform_job(Sync, args)
+      assert Repo.get_by!(ExternalIdentity, idp_id: "user_suspend_later").actor_id == actor.id
 
       expect_okta_identity_sync([
-        %{
-          "id" => "user_active",
-          "status" => "ACTIVE",
-          "profile" => %{
-            "email" => "active@example.com",
-            "firstName" => "Active",
-            "lastName" => "User"
-          }
-        },
-        %{
-          "id" => "user_suspend_later",
-          "status" => "SUSPENDED",
-          "profile" => %{
-            "email" => "suspend-me@example.com",
-            "firstName" => "Suspend",
-            "lastName" => "Me"
-          }
-        }
+        okta_app_user("user_active"),
+        okta_app_user("user_suspend_later", "DEPROVISIONED")
       ])
 
-      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+      assert :ok = perform_job(Sync, args)
 
-      identities = Repo.all(ExternalIdentity)
-      assert Enum.map(identities, & &1.email) == ["active@example.com"]
-      assert Repo.all(Group) == []
-      assert Repo.all(Membership) == []
+      refute Repo.get_by(ExternalIdentity, idp_id: "user_suspend_later")
+      refute Repo.get_by!(Portal.Actor, id: actor.id).is_disabled
+    end
 
-      refute Repo.get_by(ExternalIdentity, id: suspended_identity.id)
-      refute Repo.get_by(Portal.Actor, id: suspended_actor.id)
+    test "keeps the group memberships of a suspended user whose actor the directory created" do
+      directory = okta_sync_directory()
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      stub_okta_group_sync([okta_app_user("user_1"), okta_app_user("user_2")])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_2")
+      assert Repo.get_by(Membership, actor_id: identity.actor_id)
+
+      stub_okta_group_sync([okta_app_user("user_1"), okta_app_user("user_2", "SUSPENDED")])
+      assert :ok = perform_job(Sync, args)
+
+      assert Repo.get_by!(Portal.Actor, id: identity.actor_id).is_disabled
+      assert Repo.get_by(Membership, actor_id: identity.actor_id)
     end
 
     test "reconnects orphaned policies after sync" do
@@ -2463,6 +2459,53 @@ defmodule Portal.Okta.SyncTest do
 
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
+  end
+
+  defp okta_sync_directory do
+    account = account_fixture(features: %{idp_sync: true})
+    okta_directory_fixture(account: account, private_key_jwk: @test_private_key_jwk, kid: "test_kid")
+  end
+
+  defp okta_app_user(id, status \\ "ACTIVE") do
+    %{
+      "id" => id,
+      "status" => status,
+      "profile" => %{"email" => "#{id}@example.com", "firstName" => id, "lastName" => "User"}
+    }
+  end
+
+  # One app, assigned to `users` directly and through one group, "group_123",
+  # whose members they all are.
+  defp stub_okta_group_sync(users) do
+    Req.Test.stub(APIClient, fn %{request_path: path} = conn ->
+      cond do
+        String.ends_with?(path, "/oauth2/v1/token") ->
+          Req.Test.json(conn, %{"access_token" => @test_access_token, "token_type" => "DPoP", "expires_in" => 3600})
+
+        String.ends_with?(path, "/oauth2/v1/introspect") ->
+          Req.Test.json(conn, %{"active" => true, "scope" => "okta.apps.read okta.users.read okta.groups.read"})
+
+        String.ends_with?(path, "/apps") ->
+          Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
+
+        String.contains?(path, "/apps/app_123/users") ->
+          Req.Test.json(conn, Enum.map(users, &%{"id" => "appuser_#{&1["id"]}", "_embedded" => %{"user" => &1}}))
+
+        String.contains?(path, "/apps/app_123/groups") ->
+          Req.Test.json(conn, [
+            %{
+              "id" => "appgroup_1",
+              "_embedded" => %{"group" => %{"id" => "group_123", "profile" => %{"name" => "Engineering"}}}
+            }
+          ])
+
+        String.contains?(path, "/groups/group_123/users") ->
+          Req.Test.json(conn, users)
+
+        true ->
+          Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+      end
+    end)
   end
 
   defp expect_okta_identity_sync(app_users) do
