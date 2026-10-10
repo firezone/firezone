@@ -158,6 +158,7 @@ jobs:
             --file bmf.json \
             --adapter json \
             --branch "${{ env.BRANCH }}" \
+            --key "$BENCHER_API_KEY" \
             --github-actions ${{ secrets.GITHUB_TOKEN }} \
             --ci-only-on-alert
         env:
