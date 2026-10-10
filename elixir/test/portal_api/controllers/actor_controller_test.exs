@@ -3,6 +3,7 @@ defmodule PortalAPI.ActorControllerTest do
   alias Portal.Actor
   alias Portal.ExternalIdentity
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.IdentityFixtures
@@ -221,6 +222,7 @@ defmodule PortalAPI.ActorControllerTest do
                  "type" => Atom.to_string(actor.type),
                  "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
                  "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_by_directory_id" => actor.disabled_by_directory_id,
                  "is_disabled" => actor.is_disabled,
                  "email" => actor.email,
                  "inserted_at" => iso8601(actor.inserted_at),
@@ -871,6 +873,7 @@ defmodule PortalAPI.ActorControllerTest do
                  "type" => Atom.to_string(actor.type),
                  "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
                  "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_by_directory_id" => actor.disabled_by_directory_id,
                  "is_disabled" => actor.is_disabled,
                  "email" => actor.email,
                  "inserted_at" => iso8601(actor.inserted_at),
@@ -955,6 +958,51 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 200)
       assert id == actor.id
       refute Repo.get_by!(Actor, account_id: account.id, id: actor.id).is_disabled
+    end
+
+    test "enabling an actor a directory disabled takes the decision away from the directory", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      directory = Portal.DirectoryFixtures.directory_fixture(account: account)
+      actor = actor_fixture(account: account)
+
+      Repo.update_all(
+        from(a in Actor, where: a.id == ^actor.id),
+        set: [is_disabled: true, disabled_by_directory_id: directory.id]
+      )
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: %{"is_disabled" => false})
+
+      assert %{"data" => %{"is_disabled" => false, "disabled_by_directory_id" => nil}} =
+               json_response(conn, 200)
+
+      assert Repo.get_by!(Actor, account_id: account.id, id: actor.id).disabled_by_directory_id == nil
+    end
+
+    test "ignores disabled_by_directory_id in the request", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      directory = Portal.DirectoryFixtures.directory_fixture(account: account)
+      actor = actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}",
+          actor: %{"is_disabled" => true, "disabled_by_directory_id" => directory.id}
+        )
+
+      assert %{"data" => %{"is_disabled" => true, "disabled_by_directory_id" => nil}} =
+               json_response(conn, 200)
     end
 
     test "returns forbidden when actor attempts to disable itself", %{

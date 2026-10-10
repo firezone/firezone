@@ -61,6 +61,17 @@ defmodule PortalAPI.Schemas.Actor do
           description: "Directory ID that created this actor",
           nullable: true
         },
+        disabled_by_directory_id: %Schema{
+          example: nil,
+          type: :string,
+          format: :uuid,
+          description:
+            "Directory ID that disabled this actor because its user is inactive at the identity provider. " <>
+              "The directory re-enables the actor when the user is active again. " <>
+              "Null when the actor is enabled or was disabled by an admin.",
+          readOnly: true,
+          nullable: true
+        },
         inserted_at: %Schema{
           example: "2024-01-01T00:00:00Z",
           type: :string,
@@ -77,6 +88,7 @@ defmodule PortalAPI.Schemas.Actor do
       required: [
         :allow_email_otp_sign_in,
         :created_by_directory_id,
+        :disabled_by_directory_id,
         :email,
         :id,
         :inserted_at,

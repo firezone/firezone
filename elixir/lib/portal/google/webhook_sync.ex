@@ -78,8 +78,10 @@ defmodule Portal.Google.WebhookSync do
     synced_at = DateTime.utc_now()
 
     case APIClient.get_user(access_token, user_id) do
+      # A suspended or archived user whose actor this directory created stays,
+      # so the upsert disables the actor; any other one is removed.
       {:ok, %Req.Response{status: 200, body: %{"id" => ^user_id} = user}} ->
-        if Google.Sync.syncable_user?(user, directory.id) do
+        if Google.Sync.keep_users(directory, [user]) != [] do
           refresh_user(directory, access_token, synced_at, identity, user)
         else
           remove_identity(directory, identity)

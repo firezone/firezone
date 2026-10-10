@@ -740,70 +740,73 @@ defmodule Portal.Entra.SyncTest do
       assert length(memberships) == 1
     end
 
-    test "deletes previously synced disabled users on a later sync" do
+    test "disables, then re-enables, the actor of a previously synced user" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      expect_entra_direct_assignment_sync([direct_user("user_active_123"), direct_user("user_disable_123")])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(ExternalIdentity, directory_id: directory.id, idp_id: "user_disable_123")
 
       expect_entra_direct_assignment_sync([
-        %{
-          "id" => "user_active_123",
-          "displayName" => "Active User",
-          "mail" => "active@example.com",
-          "userPrincipalName" => "active@example.com",
-          "givenName" => "Active",
-          "surname" => "User",
-          "accountEnabled" => true
-        },
-        %{
-          "id" => "user_disable_123",
-          "displayName" => "Disable Me",
-          "mail" => "disable-me@example.com",
-          "userPrincipalName" => "disable-me@example.com",
-          "givenName" => "Disable",
-          "surname" => "Me",
-          "accountEnabled" => true
-        }
+        direct_user("user_active_123"),
+        direct_user("user_disable_123", false)
       ])
 
-      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+      assert :ok = perform_job(Sync, args)
 
-      disabled_identity =
-        Repo.get_by!(ExternalIdentity,
-          directory_id: directory.id,
-          idp_id: "user_disable_123"
-        )
+      assert Repo.get_by!(ExternalIdentity, id: identity.id)
+      actor = Repo.get_by!(Actor, id: identity.actor_id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
 
-      disabled_actor = Repo.get_by!(Actor, id: disabled_identity.actor_id)
+      expect_entra_direct_assignment_sync([direct_user("user_active_123"), direct_user("user_disable_123")])
+      assert :ok = perform_job(Sync, args)
+
+      actor = Repo.get_by!(Actor, id: identity.actor_id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "removes a disabled user whose actor the directory did not create" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: false)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, email: "user_disable_123@example.com")
+
+      expect_entra_direct_assignment_sync([direct_user("user_active_123"), direct_user("user_disable_123")])
+      assert :ok = perform_job(Sync, args)
+      assert Repo.get_by!(ExternalIdentity, idp_id: "user_disable_123").actor_id == actor.id
 
       expect_entra_direct_assignment_sync([
-        %{
-          "id" => "user_active_123",
-          "displayName" => "Active User",
-          "mail" => "active@example.com",
-          "userPrincipalName" => "active@example.com",
-          "givenName" => "Active",
-          "surname" => "User",
-          "accountEnabled" => true
-        },
-        %{
-          "id" => "user_disable_123",
-          "displayName" => "Disable Me",
-          "mail" => "disable-me@example.com",
-          "userPrincipalName" => "disable-me@example.com",
-          "givenName" => "Disable",
-          "surname" => "Me",
-          "accountEnabled" => false
-        }
+        direct_user("user_active_123"),
+        direct_user("user_disable_123", false)
       ])
 
-      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+      assert :ok = perform_job(Sync, args)
 
-      identities = Repo.all(ExternalIdentity)
-      assert Enum.map(identities, & &1.email) == ["active@example.com"]
-      assert Repo.all(Membership) == []
+      refute Repo.get_by(ExternalIdentity, idp_id: "user_disable_123")
+      refute Repo.get_by!(Actor, id: actor.id).is_disabled
+    end
 
-      refute Repo.get_by(ExternalIdentity, id: disabled_identity.id)
-      refute Repo.get_by(Actor, id: disabled_actor.id)
+    test "keeps the group memberships of a disabled user whose actor the directory created" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: false)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      stub_entra_group_sync([group_member("user_1"), group_member("user_2")])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_2")
+      assert Repo.get_by(Membership, actor_id: identity.actor_id)
+
+      stub_entra_group_sync([group_member("user_1"), group_member("user_2", false)])
+      assert :ok = perform_job(Sync, args)
+
+      assert Repo.get_by!(Actor, id: identity.actor_id).is_disabled
+      assert Repo.get_by(Membership, actor_id: identity.actor_id)
     end
 
     test "handles missing directory gracefully" do
@@ -3430,6 +3433,56 @@ defmodule Portal.Entra.SyncTest do
             end)
 
           Req.Test.json(conn, %{"responses" => responses})
+
+        true ->
+          Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+      end
+    end)
+  end
+
+  defp direct_user(id, enabled \\ true) do
+    %{
+      "id" => id,
+      "displayName" => id,
+      "mail" => "#{id}@example.com",
+      "userPrincipalName" => "#{id}@example.com",
+      "accountEnabled" => enabled
+    }
+  end
+
+  defp group_member(id, enabled \\ true) do
+    Map.put(direct_user(id, enabled), "@odata.type", "#microsoft.graph.user")
+  end
+
+  # One assigned group, "group_eng_123", with `members` and no direct users.
+  defp stub_entra_group_sync(members) do
+    {directory_sync_client_id, _auth_provider_client_id} = entra_client_ids()
+
+    Req.Test.stub(APIClient, fn %{request_path: path, query_string: query} = conn ->
+      cond do
+        String.ends_with?(path, "/oauth2/v2.0/token") ->
+          Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+
+        path == "/v1.0/servicePrincipals" ->
+          if String.contains?(URI.decode_query(query)["$filter"], directory_sync_client_id) do
+            Req.Test.json(conn, %{"value" => [%{"id" => @test_service_principal_id}]})
+          else
+            Req.Test.json(conn, %{"value" => []})
+          end
+
+        String.contains?(path, "appRoleAssignedTo") ->
+          Req.Test.json(conn, %{
+            "value" => [
+              %{
+                "principalId" => "group_eng_123",
+                "principalType" => "Group",
+                "principalDisplayName" => "Engineering"
+              }
+            ]
+          })
+
+        String.contains?(path, "/members") ->
+          Req.Test.json(conn, %{"value" => members})
 
         true ->
           Req.Test.json(conn, %{"error" => "unexpected: #{path}"})

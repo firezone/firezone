@@ -129,11 +129,12 @@ defmodule Portal.Entra.WebhookSync do
     synced_at = DateTime.utc_now()
 
     case APIClient.get_user(access_token, user_id) do
+      # A disabled user whose actor this directory created stays, so the
+      # upsert disables the actor; any other disabled user is removed.
       {:ok, %Req.Response{status: 200, body: %{} = user}} ->
-        if Entra.Sync.syncable_user?(user, directory.id) do
-          upsert_identity(directory, synced_at, user)
-        else
-          remove_identity(directory, identity)
+        case Entra.Sync.keep_users(directory, [user]) do
+          [user] -> upsert_identity(directory, synced_at, user)
+          [] -> remove_identity(directory, identity)
         end
 
       {:ok, %Req.Response{status: 404}} ->

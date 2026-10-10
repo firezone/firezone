@@ -286,29 +286,10 @@ defmodule Portal.Microsoft.Graph.APIClient do
       )
     end
 
-    users =
-      successful
-      |> Enum.map(fn response -> response["body"] end)
-      |> Enum.filter(&active_entra_user?/1)
-
-    Logger.debug("Filtered users", count: length(users))
+    # Disabled users are returned too: whether to keep one is the sync's call.
+    users = Enum.map(successful, fn response -> response["body"] end)
 
     {:ok, users}
-  end
-
-  defp active_entra_user?(user) do
-    case Map.fetch(user, "accountEnabled") do
-      {:ok, enabled} ->
-        enabled != false
-
-      :error ->
-        Logger.error("Skipping Entra user with missing accountEnabled field",
-          entra_user_id: Map.get(user, "id", "unknown"),
-          entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
-        )
-
-        false
-    end
   end
 
   @doc """

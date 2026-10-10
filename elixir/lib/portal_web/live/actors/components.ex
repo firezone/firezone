@@ -81,6 +81,9 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.related_state)
       |> assign(assigns.token_state)
 
+    assigns =
+      assign(assigns, :disabling_directory_name, disabling_directory_name(assigns.actor, assigns.identities))
+
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.actor_detail_header actor={@actor} groups={@groups} tokens={@tokens} />
@@ -98,7 +101,12 @@ defmodule PortalWeb.Actors.Components do
           />
         </div>
 
-        <.actor_detail_sidebar actor={@actor} subject={@subject} panel={@panel} />
+        <.actor_detail_sidebar
+          actor={@actor}
+          subject={@subject}
+          panel={@panel}
+          disabling_directory_name={@disabling_directory_name}
+        />
       </div>
     </div>
     """
@@ -118,7 +126,10 @@ defmodule PortalWeb.Actors.Components do
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
-              <.actor_status_badge is_disabled={@actor.is_disabled} />
+              <.actor_status_badge
+                is_disabled={@actor.is_disabled}
+                disabled_by_directory={not is_nil(@actor.disabled_by_directory_id)}
+              />
             </div>
             <p :if={@actor.email} class="text-xs text-subtle truncate mt-0.5">
               {@actor.email}
@@ -833,6 +844,7 @@ defmodule PortalWeb.Actors.Components do
   attr :actor, :any, required: true
   attr :subject, :any, required: true
   attr :panel, :map, required: true
+  attr :disabling_directory_name, :string, default: nil
 
   def actor_detail_sidebar(assigns) do
     assigns = assign(assigns, assigns.panel)
@@ -889,6 +901,12 @@ defmodule PortalWeb.Actors.Components do
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Role</dt>
             <dd><.actor_type_badge actor={@actor} /></dd>
+          </div>
+          <div :if={@actor.disabled_by_directory_id}>
+            <dt class="text-[10px] text-subtle mb-0.5">Disabled By</dt>
+            <dd class="text-xs text-body font-medium" data-testid="disabled-by-directory">
+              {@disabling_directory_name}
+            </dd>
           </div>
         </dl>
       </section>
@@ -949,6 +967,18 @@ defmodule PortalWeb.Actors.Components do
                 Disable
               </Form.button>
             </div>
+          </div>
+          <div
+            :if={@actor.is_disabled and @actor.disabled_by_directory_id}
+            class="flex gap-2 px-3 py-2 rounded text-xs text-warning bg-warning-light"
+            data-testid="directory-disabled-notice"
+          >
+            <Core.icon name="ri-information-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
+            <span>
+              {@disabling_directory_name} disabled this actor because its user is suspended or
+              deactivated there. If you enable it while the user is still inactive, the next
+              sync disables it again.
+            </span>
           </div>
           <Form.action_button
             :if={@actor.is_disabled}
@@ -1791,12 +1821,27 @@ defmodule PortalWeb.Actors.Components do
   end
 
   attr :is_disabled, :boolean, required: true
+  attr :disabled_by_directory, :boolean, default: false
 
   def actor_status_badge(assigns) do
     ~H"""
-    <Core.status_badge style={if @is_disabled, do: :danger, else: :success}>
+    <Core.status_badge
+      style={if @is_disabled, do: :danger, else: :success}
+      icon={if @is_disabled and @disabled_by_directory, do: "ri-loop-left-line"}
+      icon_title={if @is_disabled and @disabled_by_directory, do: "Disabled by directory sync"}
+    >
       {if @is_disabled, do: "Disabled", else: "Active"}
     </Core.status_badge>
     """
+  end
+
+  # The directory's identity of the actor is kept while the directory has it
+  # disabled, so its name is already loaded with the identities.
+  defp disabling_directory_name(%{disabled_by_directory_id: nil}, _identities), do: nil
+
+  defp disabling_directory_name(%{disabled_by_directory_id: directory_id}, identities) do
+    Enum.find_value(identities, "Directory sync", fn identity ->
+      if identity.directory_id == directory_id, do: identity.directory_name
+    end)
   end
 end

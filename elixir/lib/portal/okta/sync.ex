@@ -27,6 +27,13 @@ defmodule Portal.Okta.Sync do
     LOCKED_OUT
   ]
 
+  # Suspended or deactivated at Okta: the actor this directory created is
+  # disabled rather than deleted, so it can come back as itself.
+  @inactive_okta_user_statuses ~w[
+    SUSPENDED
+    DEPROVISIONED
+  ]
+
   @impl Oban.Worker
   def timeout(_job), do: DirectorySync.full_sync_timeout()
 
@@ -238,6 +245,7 @@ defmodule Portal.Okta.Sync do
           step: :stream_app_users
 
       [] ->
+        users = keep_users(directory, users)
         batch_upsert_identities(directory, synced_at, Enum.map(users, &identity_attrs(&1, directory.id)))
     end
   end
@@ -245,7 +253,7 @@ defmodule Portal.Okta.Sync do
   defp reduce_identity_batch_entry({:ok, user_data}, {users, errors}, directory_id) do
     case fetch_embedded_map(user_data, ["_embedded", "user"], "user") do
       {:ok, user} ->
-        if syncable_app_user?(user, directory_id) do
+        if app_user_status?(user, directory_id) do
           {[user | users], errors}
         else
           {users, errors}
@@ -323,13 +331,9 @@ defmodule Portal.Okta.Sync do
   end
 
   defp sync_all_memberships!(client, token, directory, synced_at) do
-    account_id = directory.account_id
-    issuer = issuer(directory)
-    directory_id = directory.id
-
     Logger.debug("Syncing group memberships", okta_directory_id: directory.id)
 
-    group_idp_ids = Database.get_synced_group_idp_ids(account_id, directory_id, synced_at)
+    group_idp_ids = Database.get_synced_group_idp_ids(directory.account_id, directory.id, synced_at)
 
     Logger.debug("Found synced groups",
       okta_directory_id: directory.id,
@@ -340,31 +344,19 @@ defmodule Portal.Okta.Sync do
     group_idp_ids
     |> Enum.chunk_every(50)
     |> Enum.each(fn group_batch ->
-      sync_membership_batch!(
-        group_batch,
-        client,
-        token,
-        account_id,
-        issuer,
-        directory_id,
-        synced_at
-      )
+      sync_membership_batch!(group_batch, client, token, directory, synced_at)
     end)
   end
 
-  defp sync_membership_batch!(
-         group_idp_ids,
-         client,
-         token,
-         account_id,
-         issuer,
-         directory_id,
-         synced_at
-       ) do
+  defp sync_membership_batch!(group_idp_ids, client, token, directory, synced_at) do
+    account_id = directory.account_id
+    issuer = issuer(directory)
+    directory_id = directory.id
+
     # Fetch memberships for all groups in this batch
     membership_tuples =
       Enum.flat_map(group_idp_ids, fn group_idp_id ->
-        member_ids = fetch_group_members!(group_idp_id, client, token, directory_id)
+        member_ids = fetch_group_members!(group_idp_id, client, token, directory)
 
         # Build tuples of (group_idp_id, user_idp_id) for each membership
         Enum.map(member_ids, fn member_id -> {group_idp_id, member_id} end)
@@ -395,57 +387,82 @@ defmodule Portal.Okta.Sync do
     end
   end
 
-  defp fetch_group_members!(group_idp_id, client, token, directory_id) do
+  # Members are kept on the same terms as identities, so a suspended user whose
+  # actor this directory created keeps their memberships while disabled.
+  defp fetch_group_members!(group_idp_id, client, token, directory) do
     Okta.APIClient.stream_group_members(group_idp_id, client, token)
     |> Enum.reduce([], fn
       {:ok, member}, acc ->
-        case syncable_group_member_id(member, group_idp_id, directory_id) do
-          nil -> acc
-          member_id -> [member_id | acc]
-        end
+        if group_member_status?(member, group_idp_id, directory.id),
+          do: [member | acc],
+          else: acc
 
       {:error, reason}, _acc ->
         raise Okta.SyncError,
           error: reason,
-          directory_id: directory_id,
+          directory_id: directory.id,
           step: :stream_group_members
     end)
     |> Enum.reverse()
+    |> then(&keep_users(directory, &1))
+    |> Enum.map(& &1["id"])
   end
 
-  defp syncable_group_member_id(member, group_idp_id, directory_id) do
-    case Map.fetch(member, "status") do
-      {:ok, status} ->
-        if syncable_okta_user_status?(status), do: member["id"]
+  defp group_member_status?(member, group_idp_id, directory_id) do
+    if Map.has_key?(member, "status") do
+      true
+    else
+      Logger.error("Skipping Okta group member with missing status",
+        okta_directory_id: directory_id,
+        okta_group_idp_id: group_idp_id,
+        okta_user_id: Map.get(member, "id", "unknown")
+      )
 
-      :error ->
-        Logger.error("Skipping Okta group member with missing status",
-          okta_directory_id: directory_id,
-          okta_group_idp_id: group_idp_id,
-          okta_user_id: Map.get(member, "id", "unknown")
-        )
-
-        nil
+      false
     end
   end
 
-  defp syncable_app_user?(user, directory_id) do
-    case Map.fetch(user, "status") do
-      {:ok, status} ->
-        syncable_okta_user_status?(status)
+  defp app_user_status?(user, directory_id) do
+    if Map.has_key?(user, "status") do
+      true
+    else
+      Logger.error("Skipping Okta app user with missing status",
+        okta_directory_id: directory_id,
+        okta_user_id: Map.get(user, "id", "unknown")
+      )
 
-      :error ->
-        Logger.error("Skipping Okta app user with missing status",
-          okta_directory_id: directory_id,
-          okta_user_id: Map.get(user, "id", "unknown")
-        )
-
-        false
+      false
     end
   end
 
-  defp syncable_okta_user_status?(status) do
-    status in @syncable_okta_user_statuses
+  @doc """
+  Whether Okta reports the user active, suspended or deactivated, or in a
+  status the sync does not know, in which case the user is skipped like a
+  deleted one.
+  """
+  def user_state(%{"status" => status}) when status in @syncable_okta_user_statuses, do: :active
+  def user_state(%{"status" => status}) when status in @inactive_okta_user_statuses, do: :inactive
+  def user_state(_user), do: :unknown
+
+  @doc """
+  The users a sync writes: the active ones, and the inactive ones whose actor
+  this directory created, kept so the actor is disabled rather than deleted.
+  Any other inactive user is dropped, and so removed like a deleted one.
+  """
+  def keep_users(directory, users) do
+    users = Enum.map(users, &{&1, user_state(&1)})
+
+    inactive_ids =
+      for {%{"id" => id} = user, :inactive} <- users,
+          is_binary(id),
+          is_binary(get_in(user, ["profile", "email"])),
+          do: id
+
+    owned = DirectorySync.owned_idp_ids(directory.account_id, issuer(directory), directory.id, inactive_ids)
+
+    for {user, state} <- users,
+        state == :active or (state == :inactive and MapSet.member?(owned, user["id"])),
+        do: user
   end
 
   defp fetch_embedded_map(data, path, entity_name) do
@@ -470,9 +487,6 @@ defmodule Portal.Okta.Sync do
 
   def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
 
-  def syncable_user?(%{"status" => status}), do: syncable_okta_user_status?(status)
-  def syncable_user?(_user), do: false
-
   @doc """
   The identity attributes for an Okta user, as the identity upsert expects them.
   """
@@ -485,7 +499,8 @@ defmodule Portal.Okta.Sync do
       name: parsed.full_name,
       given_name: parsed.first_name,
       family_name: parsed.last_name,
-      preferred_username: parsed.email
+      preferred_username: parsed.email,
+      disabled: user_state(user) == :inactive
     }
   end
 
@@ -530,7 +545,7 @@ defmodule Portal.Okta.Sync do
   prune of the memberships the read did not find.
   """
   def sync_group_members(directory, client, token, synced_at, group_idp_id) do
-    member_ids = fetch_group_members!(group_idp_id, client, token, directory.id)
+    member_ids = fetch_group_members!(group_idp_id, client, token, directory)
 
     directory.account_id
     |> Database.commit_group_members(issuer(directory), directory.id, synced_at, group_idp_id, member_ids)

@@ -105,7 +105,7 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert actor.email == "new@example.com"
     end
 
-    test "removes a disabled user with their memberships and directory actor",
+    test "disables the actor the directory created when its user is disabled, and re-enables it",
          %{directory: directory, base_directory: base_directory} = ctx do
       identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
@@ -113,11 +113,47 @@ defmodule Portal.Entra.WebhookSyncTest do
       membership_fixture(actor: actor, group: group)
 
       stub_graph(users: %{"user-1" => graph_user("user-1", "Gone", "u1@example.com", false)})
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
 
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
+      assert Repo.get_by(Membership, actor_id: actor.id)
+
+      stub_graph(users: %{"user-1" => graph_user("user-1", "Back", "u1@example.com")})
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "removes a disabled user whose actor the directory did not create",
+         %{directory: directory, base_directory: base_directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      group = group_fixture(account: ctx.account, directory: base_directory, idp_id: "group-1")
+      membership_fixture(actor: Repo.preload(Repo.get_by!(Actor, id: identity.actor_id), :account), group: group)
+
+      stub_graph(users: %{"user-1" => graph_user("user-1", "Gone", "u1@example.com", false)})
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
 
       refute Repo.get_by(ExternalIdentity, id: identity.id)
-      refute Repo.get_by(Membership, actor_id: actor.id)
+      refute Repo.get_by(Membership, actor_id: identity.actor_id)
+
+      actor = Repo.get_by!(Actor, id: identity.actor_id)
+      refute actor.is_disabled
+    end
+
+    test "removes a disabled user without a valid email even when the directory created the actor",
+         %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      actor = mark_created_by_directory(identity.actor_id, directory)
+
+      stub_graph(users: %{"user-1" => graph_user("user-1", "Gone", nil, false)})
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
       refute Repo.get_by(Actor, id: actor.id)
     end
 

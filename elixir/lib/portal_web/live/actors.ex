@@ -1066,7 +1066,10 @@ defmodule PortalWeb.Actors do
             </span>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <ActorComponents.actor_status_badge is_disabled={actor.is_disabled} />
+            <ActorComponents.actor_status_badge
+              is_disabled={actor.is_disabled}
+              disabled_by_directory={not is_nil(actor.disabled_by_directory_id)}
+            />
           </:col>
           <:empty>
             <span class="text-sm text-subtle">No people to display.</span>

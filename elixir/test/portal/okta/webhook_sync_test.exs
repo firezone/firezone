@@ -101,7 +101,7 @@ defmodule Portal.Okta.WebhookSyncTest do
       assert Repo.get_by(Membership, actor_id: actor.id, group_id: new.id)
     end
 
-    test "removes a user Okta deactivated with their memberships and directory actor",
+    test "disables the actor the directory created when Okta deactivates its user, and re-enables it",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
       identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
@@ -112,6 +112,40 @@ defmodule Portal.Okta.WebhookSyncTest do
         users: %{
           "user-1" => okta_user("user-1", "Gone", "User", "gone@example.com", "DEPROVISIONED")
         },
+        apps_for: %{"user-1" => ["app-1"]},
+        groups_for: %{"user-1" => ["group-1"]}
+      )
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
+      assert Repo.get_by(Membership, actor_id: actor.id, group_id: group.id)
+
+      stub_okta(
+        users: %{"user-1" => okta_user("user-1", "Back", "User", "gone@example.com")},
+        apps_for: %{"user-1" => ["app-1"]},
+        groups_for: %{"user-1" => ["group-1"]}
+      )
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
+    end
+
+    test "removes a suspended user whose actor the directory did not create",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      actor = Repo.preload(Repo.get_by!(Actor, id: identity.actor_id), :account)
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      membership_fixture(actor: actor, group: group)
+
+      stub_okta(
+        users: %{"user-1" => okta_user("user-1", "Gone", "User", "gone@example.com", "SUSPENDED")},
         apps_for: %{"user-1" => ["app-1"]}
       )
 
@@ -119,6 +153,22 @@ defmodule Portal.Okta.WebhookSyncTest do
 
       refute Repo.get_by(ExternalIdentity, id: identity.id)
       refute Repo.get_by(Membership, actor_id: actor.id)
+      refute Repo.get_by!(Actor, id: actor.id).is_disabled
+    end
+
+    test "removes a suspended user no application is assigned to even when the directory created the actor",
+         %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      actor = mark_created_by_directory(identity.actor_id, directory)
+
+      stub_okta(
+        users: %{"user-1" => okta_user("user-1", "Gone", "User", "gone@example.com", "SUSPENDED")},
+        apps_for: %{"user-1" => []}
+      )
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
       refute Repo.get_by(Actor, id: actor.id)
     end
 
