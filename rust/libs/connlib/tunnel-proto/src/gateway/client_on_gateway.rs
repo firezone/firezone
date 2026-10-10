@@ -5,6 +5,7 @@ use std::time::Instant;
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
@@ -30,7 +31,7 @@ pub struct ClientOnGateway {
     ///
     /// Recorded into a flow when it is created so the flow log can be attributed
     /// and ingested. Has the same lifetime as the resource authorization.
-    ingest_tokens: HashMap<ResourceId, IngestToken>,
+    ingest_tokens: HashMap<ResourceId, IngestToken, FastRandomState>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
@@ -455,7 +456,7 @@ impl ClientOnGateway {
             });
         };
 
-        flow_tracker::record_domain(state.domain.clone());
+        flow_tracker::record_domain(&state.domain);
 
         let existing = self
             .nat_table
@@ -549,7 +550,7 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
         Ok(())
     }
@@ -2146,5 +2147,129 @@ mod proptests {
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }
+    }
+}
+
+#[cfg(feature = "divan")]
+#[allow(clippy::unwrap_used)]
+mod benches {
+    use super::*;
+
+    use std::net::Ipv6Addr;
+
+    use ip_packet::make::TcpFlags;
+
+    use crate::messages::PortRange;
+    use crate::messages::gateway::{ResourceDescriptionCidr, ResourceDescriptionDns};
+
+    const CLIENT: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
+    const CIDR_RESOURCE: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
+    const PROXY_IP: Ipv4Addr = Ipv4Addr::new(100, 96, 0, 1);
+    const REAL_IP: Ipv4Addr = Ipv4Addr::new(10, 1, 0, 1);
+
+    #[divan::bench]
+    fn translate_outbound_cidr(bencher: divan::Bencher) {
+        let now = Instant::now();
+        let mut peer = peer(now);
+        let packet = tcp(CLIENT, CIDR_RESOURCE, 50000, 5201);
+
+        bencher
+            .with_inputs(|| packet.clone())
+            .bench_local_values(|packet| peer.translate_outbound(packet, now).unwrap());
+    }
+
+    #[divan::bench]
+    fn translate_inbound_cidr(bencher: divan::Bencher) {
+        let now = Instant::now();
+        let mut peer = peer(now);
+        let packet = tcp(CIDR_RESOURCE, CLIENT, 5201, 50000);
+
+        bencher
+            .with_inputs(|| packet.clone())
+            .bench_local_values(|packet| peer.translate_inbound(packet, now).unwrap());
+    }
+
+    #[divan::bench]
+    fn translate_outbound_dns(bencher: divan::Bencher) {
+        let now = Instant::now();
+        let mut peer = peer(now);
+        let packet = tcp(CLIENT, PROXY_IP, 50000, 5201);
+        peer.translate_outbound(packet.clone(), now).unwrap();
+
+        bencher
+            .with_inputs(|| packet.clone())
+            .bench_local_values(|packet| peer.translate_outbound(packet, now).unwrap());
+    }
+
+    #[divan::bench]
+    fn translate_inbound_dns(bencher: divan::Bencher) {
+        let now = Instant::now();
+        let mut peer = peer(now);
+        peer.translate_outbound(tcp(CLIENT, PROXY_IP, 50000, 5201), now)
+            .unwrap();
+        let packet = tcp(REAL_IP, CLIENT, 5201, 50000);
+
+        bencher
+            .with_inputs(|| packet.clone())
+            .bench_local_values(|packet| peer.translate_inbound(packet, now).unwrap());
+    }
+
+    fn peer(now: Instant) -> ClientOnGateway {
+        let cidr_id = ResourceId::from_u128(1);
+        let dns_id = ResourceId::from_u128(2);
+        let filters = vec![Filter::Tcp(PortRange::single(5201))];
+
+        let mut peer = ClientOnGateway::new(
+            ClientId::from_u128(1),
+            IpConfig {
+                v4: CLIENT,
+                v6: Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1),
+            },
+            IpConfig {
+                v4: Ipv4Addr::new(100, 64, 0, 2),
+                v6: Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2),
+            },
+        );
+        peer.add_resource(
+            ResourceDescription::Cidr(ResourceDescriptionCidr {
+                id: cidr_id,
+                address: "10.0.0.0/24".parse().unwrap(),
+                name: "cidr".to_owned(),
+                filters: filters.clone(),
+            }),
+            None,
+            now,
+        );
+        peer.add_resource(
+            ResourceDescription::Dns(ResourceDescriptionDns {
+                id: dns_id,
+                address: "example.com".to_owned(),
+                name: "dns".to_owned(),
+                filters,
+            }),
+            None,
+            now,
+        );
+        peer.setup_nat(
+            "example.com".parse().unwrap(),
+            dns_id,
+            BTreeSet::from([IpAddr::from(REAL_IP)]),
+            BTreeSet::from([IpAddr::from(PROXY_IP)]),
+        )
+        .unwrap();
+
+        let token = serde_json::from_value::<IngestToken>(serde_json::json!(
+            flow_tracker::TEST_INGEST_TOKEN
+        ))
+        .unwrap();
+        peer.set_ingest_token(cidr_id, token.clone());
+        peer.set_ingest_token(dns_id, token);
+
+        peer
+    }
+
+    fn tcp(src: Ipv4Addr, dst: Ipv4Addr, sport: u16, dport: u16) -> IpPacket {
+        ip_packet::make::tcp_packet(src, dst, sport, dport, TcpFlags::default(), &[0u8; 1200])
+            .unwrap()
     }
 }

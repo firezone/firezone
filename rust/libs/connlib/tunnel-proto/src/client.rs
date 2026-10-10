@@ -666,7 +666,7 @@ impl ClientState {
                 };
 
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(token.clone()));
+                flow_tracker::record_ingest_token(Some(token));
 
                 self.clients
                     .peer_by_id_mut(&cid)
@@ -692,10 +692,10 @@ impl ClientState {
                 };
 
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(authorization.ingest_token.clone()));
+                flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
                 let packet = if let Some(domain) = &route.domain {
-                    flow_tracker::record_domain(domain.clone());
+                    flow_tracker::record_domain(domain);
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
