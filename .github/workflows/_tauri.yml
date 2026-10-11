@@ -66,7 +66,7 @@ jobs:
       - run: pnpm install
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm exec vitest run
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gui-client-screenshots
           path: rust/gui-client/screenshots
@@ -159,7 +159,7 @@ jobs:
         working-directory: ./rust
         run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Lab hardware" --output gui-client/screenshots/gnome-tray-menu-device-pool-light.png
         timeout-minutes: 5
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.windows-tray-device-pool.outcome == 'success' || steps.gnome-tray.outcome == 'success' || steps.gnome-tray-device-pool.outcome == 'success') }}
         with:
           name: gui-client-tray-screenshots-${{ matrix.runs-on }}
@@ -167,7 +167,7 @@ jobs:
             rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
             rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-device-pool-light.png
           if-no-files-found: error
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
         with:
           name: gui-client-tray-diagnostics-gnome
@@ -252,14 +252,14 @@ jobs:
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
       - name: Upload deb / msi package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
       - name: Upload debug info
         if: "${{ runner.os == 'Linux' }}"
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ARTIFACT_DST }}-debug
           path: rust/target/release/*.debug
@@ -267,7 +267,7 @@ jobs:
           retention-days: 1
       - name: Upload rpm package
         if: "${{ runner.os == 'Linux' }}"
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm

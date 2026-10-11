@@ -376,7 +376,7 @@ jobs:
             --account-name firezoneartifacts
       - name: Upload `.deb` artifact
         if: ${{ env.BUILDS_DEB == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
@@ -445,7 +445,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
