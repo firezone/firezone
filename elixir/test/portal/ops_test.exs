@@ -370,6 +370,8 @@ defmodule Portal.OpsTest do
         )
       end)
 
+      started_at = DateTime.utc_now()
+
       output =
         capture_io("y\n", fn ->
           assert :ok =
@@ -407,8 +409,11 @@ defmodule Portal.OpsTest do
           assert length(scheduled_jobs) == 2
           assert length(Enum.uniq(Enum.map(scheduled_jobs, & &1.scheduled_at))) == 1
 
+          finished_at = DateTime.utc_now()
+
           assert Enum.all?(scheduled_jobs, fn job ->
-                   DateTime.diff(job.scheduled_at, job.inserted_at, :second) in 299..300
+                   DateTime.diff(job.scheduled_at, started_at, :second) >= 295 and
+                     DateTime.diff(job.scheduled_at, finished_at, :second) <= 305
                  end)
 
           assert Enum.all?(jobs, fn job ->

@@ -23,7 +23,7 @@ use crate::filter_engine::FilterEngine;
 /// in parallel which ought to be enough for most people. Very likely, other packet processing will
 /// be the culprit for low throughput if we have more than 1024 connections, plus the cache uses an LRU
 /// eviction pattern, thus prioritizing the most recently used connections.
-const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+pub(crate) const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
