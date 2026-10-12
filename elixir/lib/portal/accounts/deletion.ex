@@ -7,6 +7,8 @@ defmodule Portal.Accounts.Deletion do
   alias __MODULE__.Database
   require Logger
 
+  @feedback_max_length 2000
+
   def schedule_account_deletion(%Account{} = account, attrs, subject) do
     case Database.schedule_account_deletion(account, attrs, subject) do
       {:ok, {:transitioned, account}} -> enqueue_deletion_notification(account, subject)
@@ -23,13 +25,29 @@ defmodule Portal.Accounts.Deletion do
     end
   end
 
-  def change_deletion_feedback(%Account{} = account, feedback \\ nil) do
-    Database.change_deletion_feedback(account, feedback)
+  def feedback_max_length, do: @feedback_max_length
+
+  def send_deletion_feedback(%Account{id: account_id} = account, feedback, %{
+        account: %{id: account_id}
+      } = subject) do
+    account
+    |> Mailer.SalesEmail.deletion_feedback_email(subject, String.slice(feedback, 0, @feedback_max_length))
+    |> Mailer.enqueue()
+    |> case do
+      {:ok, _result} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue account deletion feedback",
+          account_id: account.id,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
   end
 
-  def save_deletion_feedback(%Account{} = account, feedback, subject) do
-    Database.save_deletion_feedback(account, feedback, subject)
-  end
+  def send_deletion_feedback(_account, _feedback, _subject), do: {:error, :unauthorized}
 
   defp enqueue_deletion_notification(%Account{} = account, subject) do
     notify_admins(
@@ -89,7 +107,6 @@ defmodule Portal.Accounts.Deletion do
 
   defmodule Database do
     import Ecto.Query
-    import Ecto.Changeset
 
     alias Portal.Account
     alias Portal.Actor
@@ -122,26 +139,6 @@ defmodule Portal.Accounts.Deletion do
         end
       end)
     end
-
-    def change_deletion_feedback(%Account{} = account, feedback) do
-      account
-      |> cast(%{metadata: %{deletion_feedback: feedback}}, [])
-      |> cast_embed(:metadata)
-      |> Account.changeset()
-    end
-
-    def save_deletion_feedback(
-          %Account{id: account_id} = account,
-          feedback,
-          %{account: %{id: account_id}} = subject
-        ) do
-      account
-      |> change_deletion_feedback(feedback)
-      |> Safe.scoped(subject)
-      |> Safe.update()
-    end
-
-    def save_deletion_feedback(_account, _feedback, _subject), do: {:error, :unauthorized}
 
     defp fetch_account(account_id, subject) do
       from(a in Account, where: a.id == ^account_id)

@@ -354,6 +354,8 @@ config :portal, Portal.Analytics.PostHog,
 
 config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
+config :portal, Portal.Mailer.SalesEmail, recipient: "sales@firezone.dev"
+
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
 config :portal, Portal.Splunk.APIClient, req_opts: []

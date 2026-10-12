@@ -395,15 +395,16 @@ defmodule PortalWeb.Settings.AccountTest do
       html =
         lv
         |> form("#deletion-feedback-form", %{
-          account: %{metadata: %{deletion_feedback: "  Too hard to set up  "}}
+          deletion_feedback: %{feedback: "  Too hard to set up  "}
         })
         |> render_submit()
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      assert fetch_account!(account.id).metadata.deletion_feedback == "Too hard to set up"
+      assert [email] = sales_emails(account.id)
+      assert email.text_body =~ "Too hard to set up"
     end
 
-    test "skipping the feedback prompt stores nothing", %{
+    test "skipping the feedback prompt sends nothing", %{
       conn: conn,
       account: account,
       actor: actor
@@ -423,10 +424,10 @@ defmodule PortalWeb.Settings.AccountTest do
       html = render_click(lv, "skip_deletion_feedback")
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      refute fetch_account!(account.id).metadata.deletion_feedback
+      assert [] == sales_emails(account.id)
     end
 
-    test "submitting empty feedback closes the prompt without storing", %{
+    test "submitting empty feedback closes the prompt without sending", %{
       conn: conn,
       account: account,
       actor: actor
@@ -446,41 +447,12 @@ defmodule PortalWeb.Settings.AccountTest do
       html =
         lv
         |> form("#deletion-feedback-form", %{
-          account: %{metadata: %{deletion_feedback: "   "}}
+          deletion_feedback: %{feedback: "   "}
         })
         |> render_submit()
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      refute fetch_account!(account.id).metadata.deletion_feedback
-    end
-
-    test "shows an error when feedback is longer than 2000 characters", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      render_click(lv, "confirm_delete_account")
-      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
-
-      lv
-      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
-      |> render_submit()
-
-      html =
-        lv
-        |> form("#deletion-feedback-form", %{
-          account: %{metadata: %{deletion_feedback: String.duplicate("a", 2001)}}
-        })
-        |> render_submit()
-
-      assert html =~ "Sorry Firezone didn&#39;t work out"
-      assert html =~ "should be at most 2000 character(s)"
-      refute fetch_account!(account.id).metadata.deletion_feedback
+      assert [] == sales_emails(account.id)
     end
 
     test "sends aborted deletion email when cancellation restores the account", %{
@@ -690,6 +662,11 @@ defmodule PortalWeb.Settings.AccountTest do
       assert scheduled_job.state == "scheduled"
       assert collect_queued_emails(account.id) == []
     end
+  end
 
+  defp sales_emails(account_id) do
+    account_id
+    |> collect_queued_emails()
+    |> Enum.filter(&({nil, "sales@firezone.dev"} in &1.to or {"", "sales@firezone.dev"} in &1.to))
   end
 end

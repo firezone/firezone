@@ -53,48 +53,31 @@ defmodule Portal.Accounts.DeletionTest do
     end
   end
 
-  describe "save_deletion_feedback/3" do
-    test "stores the feedback in the account metadata" do
+  describe "send_deletion_feedback/3" do
+    test "enqueues the feedback to sales" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
 
-      assert {:ok, account} =
-               Deletion.save_deletion_feedback(account, "Too hard to set up", subject)
+      assert :ok = Deletion.send_deletion_feedback(account, "Too hard to set up", subject)
 
-      assert account.metadata.deletion_feedback == "Too hard to set up"
-      assert fetch_account!(account.id).metadata.deletion_feedback == "Too hard to set up"
+      assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
+      assert job.args["account_id"] == account.id
+      assert %{"to" => [%{"address" => "sales@firezone.dev"}]} = job.args["request"]
+      assert job.args["request"]["text_body"] =~ "Too hard to set up"
     end
 
-    test "keeps the other metadata fields" do
+    test "truncates feedback longer than the maximum length" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
 
-      account =
-        update_account(account, %{
-          metadata: %{marketing_attribution: %{"source" => "github"}}
-        })
+      feedback = String.duplicate("a", Deletion.feedback_max_length() + 1)
 
-      assert {:ok, account} = Deletion.save_deletion_feedback(account, "Bye", subject)
+      assert :ok = Deletion.send_deletion_feedback(account, feedback, subject)
 
-      assert account.metadata.marketing_attribution == %{"source" => "github"}
-      assert account.metadata.deletion_feedback == "Bye"
-    end
-
-    test "rejects feedback longer than 2000 characters" do
-      account = account_fixture()
-      actor = admin_actor_fixture(account: account)
-      subject = subject_fixture(account: account, actor: actor)
-
-      feedback = String.duplicate("a", 2001)
-
-      assert {:error, changeset} = Deletion.save_deletion_feedback(account, feedback, subject)
-
-      assert %{metadata: %{deletion_feedback: ["should be at most 2000 character(s)"]}} =
-               errors_on(changeset)
-
-      refute fetch_account!(account.id).metadata.deletion_feedback
+      assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
+      refute job.args["request"]["text_body"] =~ feedback
     end
 
     test "rejects a subject from another account" do
@@ -103,56 +86,9 @@ defmodule Portal.Accounts.DeletionTest do
       actor = admin_actor_fixture(account: other_account)
       subject = subject_fixture(account: other_account, actor: actor)
 
-      assert {:error, _reason} = Deletion.save_deletion_feedback(account, "Bye", subject)
+      assert {:error, :unauthorized} = Deletion.send_deletion_feedback(account, "Bye", subject)
 
-      refute fetch_account!(account.id).metadata.deletion_feedback
-    end
-  end
-
-  describe "cancel_account_deletion/3" do
-    test "cancels both delete and reminder jobs" do
-      account = account_fixture()
-      actor = admin_actor_fixture(account: account)
-      subject = subject_fixture(account: account, actor: actor)
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(now, 7, :day)
-      reminder_at = DateTime.add(scheduled_deletion_at, -48, :hour)
-
-      account =
-        update_account(account,
-          is_disabled: true,
-          scheduled_deletion_at: scheduled_deletion_at
-        )
-
-      assert {:ok, _job} =
-               Oban.insert(
-                 Portal.Workers.DeleteAccount.new(%{"account_id" => account.id},
-                   scheduled_at: scheduled_deletion_at
-                 )
-               )
-
-      assert {:ok, _job} =
-               Oban.insert(
-                 Portal.Workers.AccountDeletionReminder.new(%{"account_id" => account.id},
-                   scheduled_at: reminder_at
-                 )
-               )
-
-      assert {:ok, _account} = Deletion.cancel_account_deletion(account, subject)
-
-      [delete_job] =
-        jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)
-
-      [reminder_job] =
-        jobs_for_worker_and_arg(
-          "Portal.Workers.AccountDeletionReminder",
-          "account_id",
-          account.id
-        )
-
-      assert delete_job.state == "cancelled"
-      assert reminder_job.state == "cancelled"
+      assert [] == all_enqueued(worker: Portal.Workers.OutboundEmail)
     end
   end
 end
