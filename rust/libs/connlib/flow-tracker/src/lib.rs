@@ -228,7 +228,7 @@ where
             peer: Some((peer, role)),
             resource,
             ref ingest_token,
-            has_ingest_token,
+            previous_ingest_token: _,
             ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = *data
@@ -259,7 +259,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token.as_ref().filter(|_| has_ingest_token) else {
+                let Some(ingest_token) = ingest_token else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -289,7 +289,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token.as_ref().filter(|_| has_ingest_token) else {
+                let Some(ingest_token) = ingest_token else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -714,7 +714,10 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
             };
 
             self.tracker.insert_flow(data, self.now);
-            self.tracker.ingest_token = data.ingest_token.take();
+            self.tracker.ingest_token = data
+                .ingest_token
+                .take()
+                .or_else(|| data.previous_ingest_token.take());
 
             *current = None;
         });
@@ -759,11 +762,10 @@ struct FlowData {
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
-    ///
-    /// Lent by the [`Tracker`] and possibly recorded for an earlier packet;
-    /// `has_ingest_token` says whether it was recorded for this one.
     ingest_token: Option<IngestToken>,
-    has_ingest_token: bool,
+    /// The token the [`Tracker`] kept from the previous packet, reused instead
+    /// of cloning if this packet records the same one.
+    previous_ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -784,7 +786,6 @@ impl Debug for FlowData {
                 "ingest_token",
                 &self.ingest_token.as_ref().map(|_| "<redacted>"),
             )
-            .field("has_ingest_token", &self.has_ingest_token)
             .field("domain", &self.domain)
             .field("icmp_error", &self.icmp_error)
             .finish()
@@ -796,7 +797,7 @@ impl FlowData {
         entry: Entry,
         inner: Option<InnerFlow>,
         now_utc: DateTime<Utc>,
-        ingest_token: Option<IngestToken>,
+        previous_ingest_token: Option<IngestToken>,
     ) -> Self {
         Self {
             entry,
@@ -805,8 +806,8 @@ impl FlowData {
             outer_tx: None,
             peer: None,
             resource: None,
-            ingest_token,
-            has_ingest_token: false,
+            ingest_token: None,
+            previous_ingest_token,
             domain: None,
             icmp_error: None,
         }
@@ -817,7 +818,7 @@ fn set_current_flow(
     entry: Entry,
     inner: Option<InnerFlow>,
     now_utc: DateTime<Utc>,
-    ingest_token: Option<IngestToken>,
+    previous_ingest_token: Option<IngestToken>,
 ) {
     CURRENT_FLOW.with_borrow_mut(|current| {
         debug_assert!(
@@ -825,7 +826,7 @@ fn set_current_flow(
             "at most 1 flow should be active at any time"
         );
 
-        *current = Some(FlowData::new(entry, inner, now_utc, ingest_token));
+        *current = Some(FlowData::new(entry, inner, now_utc, previous_ingest_token));
     });
 }
 
@@ -861,16 +862,11 @@ pub fn record_resource(resource: ResourceId) {
 /// Only clones `token` if it differs from the previously recorded one.
 pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
-        data.has_ingest_token = token.is_some();
-
-        if let Some(token) = token
-            && !data
-                .ingest_token
-                .as_ref()
-                .is_some_and(|recorded| recorded.ptr_eq(token))
-        {
-            data.ingest_token = Some(token.clone());
-        }
+        data.ingest_token = token.map(|token| {
+            data.previous_ingest_token
+                .take_if(|previous| previous.ptr_eq(token))
+                .unwrap_or_else(|| token.clone())
+        });
     });
 }
 
