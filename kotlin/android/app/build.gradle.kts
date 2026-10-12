@@ -275,7 +275,7 @@ dependencies {
 
     // AndroidX
     implementation("androidx.core:core-ktx:1.19.1")
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
 
     // Material
