@@ -95,7 +95,7 @@ pub struct Tracker<S> {
 
     /// The most recently recorded ingest token, lent to each packet's
     /// [`FlowData`] so that recording it again needs no refcount update.
-    ingest_token: Option<IngestToken>,
+    mru_ingest_token: Option<IngestToken>,
 
     enabled: bool,
     created_at: Instant,
@@ -148,7 +148,7 @@ impl<S> Tracker<S> {
         Self {
             active_tcp_flows: HashMap::default(),
             active_udp_flows: HashMap::default(),
-            ingest_token: None,
+            mru_ingest_token: None,
             enabled: false,
             created_at: now,
             created_at_utc,
@@ -180,7 +180,7 @@ where
                 Entry::Tun,
                 Some(InnerFlow::from(packet)),
                 self.now_utc(now),
-                self.ingest_token.take(),
+                self.mru_ingest_token.take(),
             );
         }
 
@@ -201,7 +201,7 @@ where
                 Entry::Network { local, remote },
                 None,
                 self.now_utc(now),
-                self.ingest_token.take(),
+                self.mru_ingest_token.take(),
             );
         }
 
@@ -228,7 +228,7 @@ where
             peer: Some((peer, role)),
             resource,
             ref ingest_token,
-            previous_ingest_token: _,
+            mru_ingest_token: _,
             ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = *data
@@ -714,10 +714,10 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
             };
 
             self.tracker.insert_flow(data, self.now);
-            self.tracker.ingest_token = data
+            self.tracker.mru_ingest_token = data
                 .ingest_token
                 .take()
-                .or_else(|| data.previous_ingest_token.take());
+                .or_else(|| data.mru_ingest_token.take());
 
             *current = None;
         });
@@ -765,7 +765,7 @@ struct FlowData {
     ingest_token: Option<IngestToken>,
     /// The token the [`Tracker`] kept from the previous packet, reused instead
     /// of cloning if this packet records the same one.
-    previous_ingest_token: Option<IngestToken>,
+    mru_ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -797,7 +797,7 @@ impl FlowData {
         entry: Entry,
         inner: Option<InnerFlow>,
         now_utc: DateTime<Utc>,
-        previous_ingest_token: Option<IngestToken>,
+        mru_ingest_token: Option<IngestToken>,
     ) -> Self {
         Self {
             entry,
@@ -807,7 +807,7 @@ impl FlowData {
             peer: None,
             resource: None,
             ingest_token: None,
-            previous_ingest_token,
+            mru_ingest_token,
             domain: None,
             icmp_error: None,
         }
@@ -818,7 +818,7 @@ fn set_current_flow(
     entry: Entry,
     inner: Option<InnerFlow>,
     now_utc: DateTime<Utc>,
-    previous_ingest_token: Option<IngestToken>,
+    mru_ingest_token: Option<IngestToken>,
 ) {
     CURRENT_FLOW.with_borrow_mut(|current| {
         debug_assert!(
@@ -826,7 +826,7 @@ fn set_current_flow(
             "at most 1 flow should be active at any time"
         );
 
-        *current = Some(FlowData::new(entry, inner, now_utc, previous_ingest_token));
+        *current = Some(FlowData::new(entry, inner, now_utc, mru_ingest_token));
     });
 }
 
@@ -863,7 +863,7 @@ pub fn record_resource(resource: ResourceId) {
 pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
         data.ingest_token = token.map(|token| {
-            data.previous_ingest_token
+            data.mru_ingest_token
                 .take_if(|previous| previous.ptr_eq(token))
                 .unwrap_or_else(|| token.clone())
         });
