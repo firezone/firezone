@@ -1371,18 +1371,20 @@ defmodule PortalWeb.SignUp do
   defp send_sign_up_survey(_account, _actor, nil), do: :ok
 
   defp send_sign_up_survey(account, actor, sign_up_survey) do
-    account
-    |> Portal.Mailer.SalesEmail.sign_up_survey_email(actor, sign_up_survey)
-    |> Portal.Mailer.enqueue()
-    |> case do
-      {:ok, _result} ->
-        :ok
+    if Portal.Mailer.SalesEmail.enabled?() do
+      account
+      |> Portal.Mailer.SalesEmail.sign_up_survey_email(actor, sign_up_survey)
+      |> Portal.Mailer.enqueue()
+      |> case do
+        {:ok, _result} ->
+          :ok
 
-      {:error, reason} ->
-        Logger.error("Failed to enqueue sign-up questionnaire",
-          account_id: account.id,
-          reason: inspect(reason)
-        )
+        {:error, reason} ->
+          Logger.error("Failed to enqueue sign-up questionnaire",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
+      end
     end
   end
 

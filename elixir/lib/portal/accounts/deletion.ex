@@ -27,23 +27,32 @@ defmodule Portal.Accounts.Deletion do
 
   def feedback_max_length, do: @feedback_max_length
 
-  def send_deletion_feedback(%Account{id: account_id} = account, feedback, %{
-        account: %{id: account_id}
-      } = subject) do
-    account
-    |> Mailer.SalesEmail.deletion_feedback_email(subject, String.slice(feedback, 0, @feedback_max_length))
-    |> Mailer.enqueue()
-    |> case do
-      {:ok, _result} ->
-        :ok
+  def send_deletion_feedback(
+        %Account{id: account_id} = account,
+        feedback,
+        %{account: %{id: account_id}} = subject
+      ) do
+    if Mailer.SalesEmail.enabled?() do
+      account
+      |> Mailer.SalesEmail.deletion_feedback_email(
+        subject,
+        String.slice(feedback, 0, @feedback_max_length)
+      )
+      |> Mailer.enqueue()
+      |> case do
+        {:ok, _result} ->
+          :ok
 
-      {:error, reason} ->
-        Logger.error("Failed to enqueue account deletion feedback",
-          account_id: account.id,
-          reason: inspect(reason)
-        )
+        {:error, reason} ->
+          Logger.error("Failed to enqueue account deletion feedback",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
 
-        {:error, reason}
+          {:error, reason}
+      end
+    else
+      :ok
     end
   end
 

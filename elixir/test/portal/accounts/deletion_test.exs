@@ -54,7 +54,23 @@ defmodule Portal.Accounts.DeletionTest do
   end
 
   describe "send_deletion_feedback/3" do
-    test "enqueues the feedback to sales" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      :ok
+    end
+
+    test "sends nothing when the feedback recipient is not configured" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: nil)
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor)
+
+      assert :ok = Deletion.send_deletion_feedback(account, "Bye", subject)
+
+      assert [] == all_enqueued(worker: Portal.Workers.OutboundEmail)
+    end
+
+    test "enqueues the feedback to the feedback recipient" do
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)
@@ -63,7 +79,7 @@ defmodule Portal.Accounts.DeletionTest do
 
       assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
       assert job.args["account_id"] == account.id
-      assert %{"to" => [%{"address" => "sales@firezone.dev"}]} = job.args["request"]
+      assert %{"to" => [%{"address" => "feedback@example.com"}]} = job.args["request"]
       assert job.args["request"]["text_body"] =~ "Too hard to set up"
     end
 

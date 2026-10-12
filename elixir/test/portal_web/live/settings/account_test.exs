@@ -302,6 +302,11 @@ defmodule PortalWeb.Settings.AccountTest do
   end
 
   describe "delete account" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      :ok
+    end
+
     test "shows confirm delete dialog on click", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
@@ -400,7 +405,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> render_submit()
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      assert [email] = sales_emails(account.id)
+      assert [email] = feedback_emails(account.id)
       assert email.text_body =~ "Too hard to set up"
     end
 
@@ -424,7 +429,7 @@ defmodule PortalWeb.Settings.AccountTest do
       html = render_click(lv, "skip_deletion_feedback")
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      assert [] == sales_emails(account.id)
+      assert [] == feedback_emails(account.id)
     end
 
     test "submitting empty feedback closes the prompt without sending", %{
@@ -452,7 +457,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> render_submit()
 
       refute html =~ "Sorry Firezone didn&#39;t work out"
-      assert [] == sales_emails(account.id)
+      assert [] == feedback_emails(account.id)
     end
 
     test "sends aborted deletion email when cancellation restores the account", %{
@@ -664,9 +669,9 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
-  defp sales_emails(account_id) do
+  defp feedback_emails(account_id) do
     account_id
     |> collect_queued_emails()
-    |> Enum.filter(&({nil, "sales@firezone.dev"} in &1.to or {"", "sales@firezone.dev"} in &1.to))
+    |> Enum.filter(&({nil, "feedback@example.com"} in &1.to or {"", "feedback@example.com"} in &1.to))
   end
 end

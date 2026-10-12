@@ -11,6 +11,8 @@ defmodule Portal.Mailer.SalesEmail do
     {:role, :role_other, "Role"}
   ]
 
+  def enabled?, do: Portal.Mailer.FeedbackEmail.enabled?()
+
   def sign_up_survey_email(%Portal.Account{} = account, %Portal.Actor{} = actor, survey) do
     account
     |> base_email(actor, "Sign-up questionnaire: #{account.name}")
@@ -42,7 +44,8 @@ defmodule Portal.Mailer.SalesEmail do
   end
 
   defp base_email(account, actor, subject) do
-    recipient = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
+    recipient =
+      Portal.Config.fetch_env!(:portal, Portal.Mailer.FeedbackEmail) |> Keyword.fetch!(:recipient)
 
     default_email()
     |> to(recipient)

@@ -645,6 +645,11 @@ defmodule PortalWeb.SignUpTest do
   end
 
   describe "sign-up survey" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      :ok
+    end
+
     test "renders the survey questions on both forms", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
       assert html =~ "How did you hear about Firezone?"
@@ -737,7 +742,7 @@ defmodule PortalWeb.SignUpTest do
       assert_email_sent()
     end
 
-    test "Google signup emails the survey to sales", %{conn: conn} do
+    test "Google signup emails the survey to the feedback recipient", %{conn: conn} do
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -792,7 +797,7 @@ defmodule PortalWeb.SignUpTest do
 
       assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
       assert job.args["account_id"] == account.id
-      assert %{"to" => [%{"address" => "sales@firezone.dev"}]} = job.args["request"]
+      assert %{"to" => [%{"address" => "feedback@example.com"}]} = job.args["request"]
 
       body = job.args["request"]["text_body"]
       assert body =~ "Survey Corp"
@@ -803,7 +808,7 @@ defmodule PortalWeb.SignUpTest do
       assert body =~ "Switching from another solution? Yes, from other (Homegrown WireGuard)"
     end
 
-    test "email signup carries the survey through the verification token to sales", %{conn: conn} do
+    test "email signup carries the survey through the verification token to the feedback recipient", %{conn: conn} do
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
