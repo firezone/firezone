@@ -831,9 +831,9 @@ pub fn record_ingest_token(token: Option<IngestToken>) {
 }
 
 /// Records the domain name in case the current packet is for a DNS resource.
-pub fn record_domain(domain: DomainName) {
+pub fn record_domain(domain: &DomainName) {
     update_current_flow(|data| {
-        data.domain = Some(domain);
+        data.domain = Some(domain.clone());
     });
 }
 

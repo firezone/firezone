@@ -455,7 +455,7 @@ impl ClientOnGateway {
             });
         };
 
-        flow_tracker::record_domain(state.domain.clone());
+        flow_tracker::record_domain(&state.domain);
 
         let existing = self
             .nat_table

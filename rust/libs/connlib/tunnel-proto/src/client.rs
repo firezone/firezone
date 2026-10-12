@@ -695,7 +695,7 @@ impl ClientState {
                 flow_tracker::record_ingest_token(Some(authorization.ingest_token.clone()));
 
                 let packet = if let Some(domain) = &route.domain {
-                    flow_tracker::record_domain(domain.clone());
+                    flow_tracker::record_domain(domain);
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
