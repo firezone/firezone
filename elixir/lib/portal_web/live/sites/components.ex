@@ -1846,12 +1846,32 @@ defmodule PortalWeb.Sites.Components do
     end
   end
 
-  defp gateway_token(env) do
+  @doc "The Gateway token in a deploy environment."
+  @spec gateway_token([{String.t(), String.t()}]) :: String.t()
+  def gateway_token(env) do
     {"FIREZONE_TOKEN", value} = List.keyfind(env, "FIREZONE_TOKEN", 0)
     value
   end
 
-  defp gateway_docker_command(env) do
+  @doc """
+  The environment a freshly deployed Gateway runs with: its token, and the API URL
+  when this deployment overrides it. The Gateway generates its own `FIREZONE_ID`
+  and keeps it in `/var/lib/firezone`, so none is handed out.
+  """
+  @spec gateway_env(String.t()) :: [{String.t(), String.t()}]
+  def gateway_env(encoded_token) do
+    [
+      {"FIREZONE_TOKEN", encoded_token}
+      | if(url = Portal.Config.get_env(:portal, :api_url_override),
+          do: [{"FIREZONE_API_URL", url}],
+          else: []
+        )
+    ]
+  end
+
+  @doc "A `docker run` command that starts a Gateway with the deploy environment."
+  @spec gateway_docker_command([{String.t(), String.t()}]) :: String.t()
+  def gateway_docker_command(env) do
     [
       "docker run -d",
       "--restart=unless-stopped",
@@ -1874,7 +1894,9 @@ defmodule PortalWeb.Sites.Components do
     |> Enum.join(" \\\n  ")
   end
 
-  defp gateway_systemd_command(env) do
+  @doc "A command that installs a Gateway as a systemd service with the deploy environment."
+  @spec gateway_systemd_command([{String.t(), String.t()}]) :: String.t()
+  def gateway_systemd_command(env) do
     """
     #{Enum.map_join(env, " \\\n", fn {key, value} -> "#{key}=\"#{value}\"" end)} \\
       bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
@@ -1894,6 +1916,15 @@ defmodule PortalWeb.Sites.Components do
     sudo apt update
     sudo apt install firezone-gateway
     """
+  end
+
+  @doc """
+  The commands that add the Firezone APT repository and install the Gateway package,
+  as one block.
+  """
+  @spec gateway_debian_install_commands() :: String.t()
+  def gateway_debian_install_commands do
+    gateway_debian_apt_repository() <> gateway_debian_install()
   end
 
   defp gateway_debian_authenticate do

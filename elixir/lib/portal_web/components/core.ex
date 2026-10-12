@@ -134,11 +134,22 @@ defmodule PortalWeb.Components.Core do
       <code id={"#{@id}-code"} phx-no-format><%= render_slot(@inner_block) %></code>
       <button
         type="button"
-        class={~w[text-subtle cursor-pointer rounded]}
+        class={~w[inline-flex items-center justify-center text-subtle cursor-pointer rounded]}
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >
-        <.icon name="ri-clipboard-line" data-icon class="h-4 w-4" />
+        <%!-- The CopyClipboard hook swaps these two for a moment after a copy --%>
+        <span id={"#{@id}-default-message"} class="inline-flex items-center">
+          <.icon name="ri-clipboard-line" data-icon class="h-4 w-4" />
+        </span>
+        <span
+          id={"#{@id}-success-message"}
+          role="status"
+          class="hidden items-center gap-1 text-success"
+        >
+          <.icon name="ri-check-line" class="h-4 w-4" />
+          <span class="text-xs font-medium">Copied</span>
+        </span>
       </button>
     </div>
     """

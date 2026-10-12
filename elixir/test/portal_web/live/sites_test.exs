@@ -328,6 +328,8 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "custom-instructions"})
       assert html =~ "Download the latest binary"
       assert html =~ "FIREZONE_TOKEN="
+      # The Gateway generates and keeps its own ID
+      refute html =~ "FIREZONE_ID"
       assert html =~ "sudo sysctl -w net.ipv4.ip_forward=1"
       assert html =~ "sudo iptables -C FORWARD -i tun-firezone"
       assert html =~ "sudo ./firezone-gateway-"

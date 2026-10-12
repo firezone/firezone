@@ -1685,6 +1685,7 @@ defmodule PortalWeb.SignUp do
       }
 
       cast(%Portal.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
+      |> put_embed(:preferences, %Portal.Actor.Preferences{getting_started: :pending})
       |> Portal.Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()

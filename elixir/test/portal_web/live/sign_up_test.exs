@@ -215,6 +215,7 @@ defmodule PortalWeb.SignUpTest do
       assert actor.type == :account_admin_user
       assert actor.name == "Ada Lovelace"
       assert actor.allow_email_otp_sign_in
+      assert actor.preferences.getting_started == :pending
 
       identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
       assert identity.actor_id == actor.id

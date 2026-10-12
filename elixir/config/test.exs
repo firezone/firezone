@@ -354,6 +354,9 @@ config :portal, PortalWeb.Endpoint,
   url: [port: 13_100],
   server: true
 
+# Poll quickly so tests waiting on the getting started guide don't sit idle
+config :portal, PortalWeb.GettingStarted, poll_interval_ms: 20
+
 # Keep the endpoint limiter effectively disabled in general tests to avoid
 # cross-test interference from shared localhost IPs. Dedicated rate-limit tests
 # override this config with strict values.

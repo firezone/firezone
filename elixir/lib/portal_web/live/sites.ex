@@ -856,14 +856,7 @@ defmodule PortalWeb.Sites do
             subject
           )
 
-        env = [
-          {"FIREZONE_ID", Ecto.UUID.generate()},
-          {"FIREZONE_TOKEN", encoded_token}
-          | if(url = Portal.Config.get_env(:portal, :api_url_override),
-              do: [{"FIREZONE_API_URL", url}],
-              else: []
-            )
-        ]
+        env = SiteComponents.gateway_env(encoded_token)
 
         {:noreply,
          socket
