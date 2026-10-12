@@ -32,9 +32,9 @@ defmodule Portal.Accounts.Deletion do
         feedback,
         %{account: %{id: account_id}} = subject
       ) do
-    if Mailer.SalesEmail.enabled?() do
+    if Mailer.FeedbackEmail.enabled?() do
       account
-      |> Mailer.SalesEmail.deletion_feedback_email(
+      |> Mailer.FeedbackEmail.deletion_feedback_email(
         subject,
         String.slice(feedback, 0, @feedback_max_length)
       )
