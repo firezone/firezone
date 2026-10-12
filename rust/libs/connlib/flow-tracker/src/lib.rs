@@ -93,6 +93,10 @@ pub struct Tracker<S> {
     active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
     active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
 
+    /// The most recently recorded ingest token, lent to each packet's
+    /// [`FlowData`] so that recording it again needs no refcount update.
+    ingest_token: Option<IngestToken>,
+
     enabled: bool,
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
@@ -101,7 +105,7 @@ pub struct Tracker<S> {
 /// One packet in the initiator-to-responder direction.
 ///
 /// Recording this creates, updates or splits a flow.
-struct TxPacket<S> {
+struct TxPacket<'a, S> {
     scope: S,
     /// The outer (transport) 4-tuple this packet was tunneled over.
     context: FlowContext,
@@ -114,7 +118,7 @@ struct TxPacket<S> {
     tcp_fin: bool,
     tcp_rst: bool,
     payload_len: usize,
-    ingest_token: IngestToken,
+    ingest_token: &'a IngestToken,
     domain: Option<DomainName>,
 }
 
@@ -144,6 +148,7 @@ impl<S> Tracker<S> {
         Self {
             active_tcp_flows: HashMap::default(),
             active_udp_flows: HashMap::default(),
+            ingest_token: None,
             enabled: false,
             created_at: now,
             created_at_utc,
@@ -171,7 +176,12 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(Entry::Tun, Some(InnerFlow::from(packet)), self.now_utc(now));
+            set_current_flow(
+                Entry::Tun,
+                Some(InnerFlow::from(packet)),
+                self.now_utc(now),
+                self.ingest_token.take(),
+            );
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -187,7 +197,12 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(Entry::Network { local, remote }, None, self.now_utc(now));
+            set_current_flow(
+                Entry::Network { local, remote },
+                None,
+                self.now_utc(now),
+                self.ingest_token.take(),
+            );
         }
 
         CurrentFlowGuard { tracker: self, now }
@@ -212,7 +227,8 @@ where
             outer_tx,
             peer: Some((peer, role)),
             resource,
-            ref mut ingest_token,
+            ref ingest_token,
+            has_ingest_token,
             ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = *data
@@ -243,7 +259,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token.take() else {
+                let Some(ingest_token) = ingest_token.as_ref().filter(|_| has_ingest_token) else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -273,7 +289,7 @@ where
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
-                let Some(ingest_token) = ingest_token.take() else {
+                let Some(ingest_token) = ingest_token.as_ref().filter(|_| has_ingest_token) else {
                     tracing::trace!("Flow carries no ingest token; not tracking it");
 
                     return;
@@ -386,7 +402,7 @@ where
     }
 
     /// Records a packet in the initiator-to-responder direction (see module docs).
-    fn record_tx(&mut self, tx: TxPacket<S>, now: Instant) {
+    fn record_tx(&mut self, tx: TxPacket<'_, S>, now: Instant) {
         debug_assert!(self.enabled, "flow data is only gathered while enabled");
 
         let now_utc = self.now_utc(now);
@@ -441,7 +457,7 @@ where
                             fin_rx: false,
                             non_syn_tx: !tcp_syn,
                             domain,
-                            ingest_token,
+                            ingest_token: ingest_token.clone(),
                         };
 
                         emit(&Record::tcp_open(&key, &value));
@@ -469,7 +485,7 @@ where
                             fin_rx: false,
                             non_syn_tx: !tcp_syn,
                             domain,
-                            ingest_token,
+                            ingest_token: ingest_token.clone(),
                         };
 
                         emit(&Record::tcp_open(&key, &value));
@@ -498,7 +514,7 @@ where
                             fin_rx: false,
                             non_syn_tx: !tcp_syn,
                             domain,
-                            ingest_token,
+                            ingest_token: ingest_token.clone(),
                         };
 
                         emit(&Record::tcp_open(&key, &value));
@@ -548,7 +564,7 @@ where
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             contexts: smallvec![context],
                             domain,
-                            ingest_token,
+                            ingest_token: ingest_token.clone(),
                         };
 
                         emit(&Record::udp_open(&key, &value));
@@ -573,7 +589,7 @@ where
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             contexts: smallvec![context],
                             domain,
-                            ingest_token,
+                            ingest_token: ingest_token.clone(),
                         };
 
                         emit(&Record::udp_open(&key, &value));
@@ -698,6 +714,7 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
             };
 
             self.tracker.insert_flow(data, self.now);
+            self.tracker.ingest_token = data.ingest_token.take();
 
             *current = None;
         });
@@ -742,7 +759,11 @@ struct FlowData {
     peer: Option<(ClientOrGatewayId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
+    ///
+    /// Lent by the [`Tracker`] and possibly recorded for an earlier packet;
+    /// `has_ingest_token` says whether it was recorded for this one.
     ingest_token: Option<IngestToken>,
+    has_ingest_token: bool,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -763,6 +784,7 @@ impl Debug for FlowData {
                 "ingest_token",
                 &self.ingest_token.as_ref().map(|_| "<redacted>"),
             )
+            .field("has_ingest_token", &self.has_ingest_token)
             .field("domain", &self.domain)
             .field("icmp_error", &self.icmp_error)
             .finish()
@@ -770,7 +792,12 @@ impl Debug for FlowData {
 }
 
 impl FlowData {
-    fn new(entry: Entry, inner: Option<InnerFlow>, now_utc: DateTime<Utc>) -> Self {
+    fn new(
+        entry: Entry,
+        inner: Option<InnerFlow>,
+        now_utc: DateTime<Utc>,
+        ingest_token: Option<IngestToken>,
+    ) -> Self {
         Self {
             entry,
             now_utc,
@@ -778,21 +805,27 @@ impl FlowData {
             outer_tx: None,
             peer: None,
             resource: None,
-            ingest_token: None,
+            ingest_token,
+            has_ingest_token: false,
             domain: None,
             icmp_error: None,
         }
     }
 }
 
-fn set_current_flow(entry: Entry, inner: Option<InnerFlow>, now_utc: DateTime<Utc>) {
+fn set_current_flow(
+    entry: Entry,
+    inner: Option<InnerFlow>,
+    now_utc: DateTime<Utc>,
+    ingest_token: Option<IngestToken>,
+) {
     CURRENT_FLOW.with_borrow_mut(|current| {
         debug_assert!(
             current.is_none(),
             "at most 1 flow should be active at any time"
         );
 
-        *current = Some(FlowData::new(entry, inner, now_utc));
+        *current = Some(FlowData::new(entry, inner, now_utc, ingest_token));
     });
 }
 
@@ -824,9 +857,20 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-pub fn record_ingest_token(token: Option<IngestToken>) {
+///
+/// Only clones `token` if it differs from the previously recorded one.
+pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
-        data.ingest_token = token;
+        data.has_ingest_token = token.is_some();
+
+        if let Some(token) = token
+            && !data
+                .ingest_token
+                .as_ref()
+                .is_some_and(|recorded| recorded.ptr_eq(token))
+        {
+            data.ingest_token = Some(token.clone());
+        }
     });
 }
 
