@@ -1,6 +1,6 @@
 use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, BufferPool, Magazine, VecBuf};
 use futures::{SinkExt, ready};
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
@@ -51,8 +51,11 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
 /// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
 /// Dropping the collection after processing returns it to the pool, keeping the
 /// receive path free of allocations.
-static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> =
-    LazyLock::new(|| BufferPool::new_static(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
+static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> = LazyLock::new(|| {
+    thread_local!(static MAGAZINE: Magazine<VecBuf<DatagramBatch>> = const { Magazine::new() });
+
+    BufferPool::new_static(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches", &MAGAZINE)
+});
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);

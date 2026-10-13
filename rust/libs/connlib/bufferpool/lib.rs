@@ -1,8 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
+    cell::{Cell, RefCell},
     ops::{Deref, DerefMut},
     sync::Arc,
+    thread::LocalKey,
 };
 
 use bytes::BytesMut;
@@ -16,6 +18,8 @@ use opentelemetry::{
 ///
 /// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
 /// This minimizes contention even under high load where buffers are constantly needed and returned.
+///
+/// Static pools additionally keep a [`Magazine`] of buffers per thread in front of the queue.
 pub struct BufferPool<B: 'static> {
     inner: PoolRef<B>,
 }
@@ -29,7 +33,7 @@ impl<B> Clone for BufferPool<B> {
 }
 
 enum PoolRef<B: 'static> {
-    Static(&'static PoolInner<B>),
+    Static(&'static StaticPool<B>),
     Shared(Arc<PoolInner<B>>),
 }
 
@@ -47,8 +51,152 @@ impl<B> Deref for PoolRef<B> {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            PoolRef::Static(inner) => inner,
+            PoolRef::Static(pool) => &pool.inner,
             PoolRef::Shared(inner) => inner,
+        }
+    }
+}
+
+impl<B> PoolRef<B> {
+    /// Takes a buffer from the pool, allocating a new one if the pool is empty.
+    fn take(&self) -> B {
+        let buffer = match self {
+            PoolRef::Static(pool) => pool.take(),
+            PoolRef::Shared(_) => None,
+        };
+
+        buffer
+            .or_else(|| self.queue.pop())
+            .unwrap_or_else(|| (self.new_buffer_fn)())
+    }
+
+    /// Returns a buffer to the pool.
+    fn give(&self, buffer: B) {
+        let buffer = match self {
+            PoolRef::Static(pool) => match pool.give(buffer) {
+                Ok(()) => return,
+                Err(buffer) => buffer,
+            },
+            PoolRef::Shared(_) => buffer,
+        };
+
+        self.queue.push(buffer);
+    }
+}
+
+/// The number of buffers that move between a thread's [`Magazine`] and the depot of its pool at once.
+const MAGAZINE_SIZE: usize = 32;
+
+/// A [`PoolInner`] that is never dropped, with a [`Magazine`] per thread in front of its queue.
+///
+/// Threads that return more buffers than they take hand them to the depot in batches of
+/// [`MAGAZINE_SIZE`]; threads that take more than they return refill their magazine from it.
+/// Each exchange is a single queue operation, amortising its cost over a whole batch.
+struct StaticPool<B: 'static> {
+    inner: PoolInner<B>,
+
+    magazine: &'static LocalKey<Magazine<B>>,
+
+    /// Batches of buffers handed in by threads whose magazine overflowed.
+    full: SegQueue<Vec<B>>,
+    /// The emptied `Vec`s of batches that were taken, reused to hand in the next ones.
+    empty: SegQueue<Vec<B>>,
+}
+
+impl<B> StaticPool<B> {
+    /// Takes a buffer from this thread's magazine, refilling it from the depot if it is empty.
+    ///
+    /// Returns `None` if both are empty or the magazine is not accessible.
+    fn take(&'static self) -> Option<B> {
+        self.magazine
+            .try_with(|magazine| {
+                let mut buffers = magazine.buffers.borrow_mut();
+
+                if let Some(buffer) = buffers.pop() {
+                    return Some(buffer);
+                }
+
+                let mut batch = self.full.pop()?;
+                buffers.append(&mut batch);
+                magazine.set_pool(self);
+                self.empty.push(batch);
+
+                buffers.pop()
+            })
+            .ok()
+            .flatten()
+    }
+
+    /// Puts a buffer into this thread's magazine, handing a batch to the depot if it is full.
+    ///
+    /// Gives the buffer back if the magazine is not accessible, i.e. during thread exit.
+    fn give(&'static self, buffer: B) -> Result<(), B> {
+        let mut buffer = Some(buffer);
+
+        let _ = self.magazine.try_with(|magazine| {
+            let mut buffers = magazine.buffers.borrow_mut();
+
+            if buffers.len() >= 2 * MAGAZINE_SIZE {
+                let mut batch = self
+                    .empty
+                    .pop()
+                    .unwrap_or_else(|| Vec::with_capacity(MAGAZINE_SIZE));
+                batch.extend(buffers.drain(..MAGAZINE_SIZE));
+                self.full.push(batch);
+            }
+
+            buffers.extend(buffer.take());
+            magazine.set_pool(self);
+        });
+
+        buffer.map_or(Ok(()), Err)
+    }
+}
+
+/// A thread's local stack of buffers from a static [`BufferPool`].
+///
+/// Holds up to two batches of [`MAGAZINE_SIZE`] buffers, so a thread that alternates
+/// between taking and returning buffers doesn't exchange a batch with the pool on every call.
+/// Buffers still in the magazine when the thread exits are handed back to the pool.
+///
+/// Each static pool needs its own magazine, see [`BufferPool::new_static`].
+pub struct Magazine<B: 'static> {
+    buffers: RefCell<Vec<B>>,
+    pool: Cell<Option<&'static StaticPool<B>>>,
+}
+
+impl<B> Magazine<B> {
+    #[expect(
+        clippy::new_without_default,
+        reason = "Must be `const` for `thread_local!`"
+    )]
+    pub const fn new() -> Self {
+        Self {
+            buffers: RefCell::new(Vec::new()),
+            pool: Cell::new(None),
+        }
+    }
+
+    fn set_pool(&self, pool: &'static StaticPool<B>) {
+        debug_assert!(
+            self.pool.get().is_none_or(|p| std::ptr::eq(p, pool)),
+            "magazine must not be shared between pools"
+        );
+
+        self.pool.set(Some(pool));
+    }
+}
+
+impl<B> Drop for Magazine<B> {
+    fn drop(&mut self) {
+        let buffers = std::mem::take(self.buffers.get_mut());
+
+        if buffers.is_empty() {
+            return;
+        }
+
+        if let Some(pool) = self.pool.get() {
+            pool.full.push(buffers);
         }
     }
 }
@@ -121,27 +269,38 @@ where
         }
     }
 
-    /// Like [`BufferPool::new`], but leaks the pool so its buffers don't have to keep it alive.
+    /// Like [`BufferPool::new`], but leaks the pool so its buffers don't have to keep it alive,
+    /// and caches buffers per thread in `magazine`.
     ///
-    /// Only use this for pools stored in a `static`.
-    pub fn new_static(capacity: usize, tag: &'static str) -> Self {
+    /// Only use this for pools stored in a `static`, each with its own `magazine`:
+    ///
+    /// ```
+    /// # use std::sync::LazyLock;
+    /// # use bufferpool::{BufferPool, Magazine};
+    /// static POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| {
+    ///     thread_local!(static MAGAZINE: Magazine<Vec<u8>> = const { Magazine::new() });
+    ///
+    ///     BufferPool::new_static(1024, "example", &MAGAZINE)
+    /// });
+    /// ```
+    pub fn new_static(
+        capacity: usize,
+        tag: &'static str,
+        magazine: &'static LocalKey<Magazine<B>>,
+    ) -> Self {
         Self {
-            inner: PoolRef::Static(Box::leak(Box::new(PoolInner::new(
-                capacity,
-                tag,
-                otel_instruments::buffer_count(),
-            )))),
+            inner: PoolRef::Static(Box::leak(Box::new(StaticPool {
+                inner: PoolInner::new(capacity, tag, otel_instruments::buffer_count()),
+                magazine,
+                full: SegQueue::new(),
+                empty: SegQueue::new(),
+            }))),
         }
     }
 
     pub fn pull(&self) -> Buffer<B> {
         Buffer {
-            inner: Some(
-                self.inner
-                    .queue
-                    .pop()
-                    .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
-            ),
+            inner: Some(self.inner.take()),
             pool: self.inner.clone(),
         }
     }
@@ -241,11 +400,7 @@ where
     B: CloneBuf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self
-            .pool
-            .queue
-            .pop()
-            .unwrap_or_else(|| (self.pool.new_buffer_fn)());
+        let mut copy = self.pool.take();
 
         self.storage().clone(&mut copy);
 
@@ -326,7 +481,7 @@ impl<B> Drop for Buffer<B> {
             return;
         }
 
-        self.pool.queue.push(buffer);
+        self.pool.give(buffer);
     }
 }
 
@@ -455,7 +610,7 @@ impl ResizeBuf for BytesMut {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::LazyLock, time::Duration};
+    use std::{collections::HashSet, sync::LazyLock, time::Duration};
 
     use opentelemetry::metrics::MeterProvider;
     use opentelemetry_sdk::metrics::{
@@ -542,14 +697,139 @@ mod tests {
 
     #[test]
     fn static_pool_recycles_buffers() {
-        static POOL: LazyLock<BufferPool<Vec<u8>>> =
-            LazyLock::new(|| BufferPool::new_static(8, "test"));
+        let pool = static_pool!();
 
-        let buffer = POOL.pull();
+        let buffer = pool.pull();
         let storage = buffer.as_ptr();
         drop(buffer);
 
-        assert_eq!(POOL.pull().as_ptr(), storage);
+        assert_eq!(pool.pull().as_ptr(), storage);
+    }
+
+    #[test]
+    fn overflowing_magazine_hands_a_batch_to_the_depot() {
+        let pool = static_pool!();
+
+        let buffers = (0..2 * MAGAZINE_SIZE + 1)
+            .map(|_| pool.pull())
+            .collect::<Vec<_>>();
+        drop(buffers);
+
+        assert_eq!(depot_sizes(pool), vec![MAGAZINE_SIZE]);
+        assert_eq!(magazine_size(pool), MAGAZINE_SIZE + 1);
+    }
+
+    #[test]
+    fn empty_magazine_refills_from_the_depot() {
+        let pool = static_pool!();
+
+        let buffers = (0..2 * MAGAZINE_SIZE + 1)
+            .map(|_| pool.pull())
+            .collect::<Vec<_>>();
+        drop(buffers);
+
+        let _buffers = (0..MAGAZINE_SIZE + 2)
+            .map(|_| pool.pull())
+            .collect::<Vec<_>>();
+
+        assert_eq!(depot_sizes(pool), Vec::<usize>::new());
+        assert_eq!(magazine_size(pool), MAGAZINE_SIZE - 1);
+    }
+
+    #[test]
+    fn buffers_dropped_on_another_thread_are_reused() {
+        let pool = static_pool!();
+
+        let buffers = (0..4 * MAGAZINE_SIZE)
+            .map(|_| pool.pull())
+            .collect::<Vec<_>>();
+        let storage = buffers.iter().map(|b| b.as_ptr()).collect::<HashSet<_>>();
+        std::thread::spawn(move || drop(buffers)).join().unwrap();
+
+        let reused = (0..4 * MAGAZINE_SIZE)
+            .map(|_| pool.pull())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            reused.iter().map(|b| b.as_ptr()).collect::<HashSet<_>>(),
+            storage
+        );
+    }
+
+    #[test]
+    fn exiting_thread_hands_its_magazine_to_the_depot() {
+        let pool = static_pool!();
+
+        std::thread::spawn(|| {
+            let buffers = (0..3).map(|_| pool.pull()).collect::<Vec<_>>();
+            drop(buffers);
+        })
+        .join()
+        .unwrap();
+
+        assert_eq!(depot_sizes(pool), vec![3]);
+    }
+
+    #[test]
+    fn buffer_dropped_after_the_magazine_returns_to_the_pool() {
+        thread_local!(static HOLDER: RefCell<Option<Buffer<Vec<u8>>>> = const { RefCell::new(None) });
+
+        let pool = static_pool!();
+
+        std::thread::spawn(|| {
+            // Initialise the holder before the magazine so it is likely destroyed after it.
+            HOLDER.with(|_| {});
+            let buffer = pool.pull();
+            HOLDER.with(|h| *h.borrow_mut() = Some(buffer));
+        })
+        .join()
+        .unwrap();
+
+        let PoolRef::Static(static_pool) = &pool.inner else {
+            unreachable!()
+        };
+        assert_eq!(
+            depot_sizes(pool).iter().sum::<usize>() + static_pool.inner.queue.len(),
+            1
+        );
+    }
+
+    /// Declares a new static pool with its own magazine.
+    macro_rules! static_pool {
+        () => {{
+            static POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| {
+        thread_local!(static MAGAZINE: Magazine<Vec<u8>> = const { Magazine::new() });
+
+                BufferPool::new_static(8, "test", &MAGAZINE)
+            });
+
+            &*POOL
+        }};
+    }
+    use static_pool;
+
+    /// The number of buffers in each batch in the depot of `pool`.
+    fn depot_sizes(pool: &BufferPool<Vec<u8>>) -> Vec<usize> {
+        let PoolRef::Static(pool) = &pool.inner else {
+            panic!("not a static pool")
+        };
+
+        let batches = std::iter::from_fn(|| pool.full.pop()).collect::<Vec<_>>();
+        let sizes = batches.iter().map(Vec::len).collect();
+        for batch in batches {
+            pool.full.push(batch);
+        }
+
+        sizes
+    }
+
+    /// The number of buffers in this thread's magazine of `pool`.
+    fn magazine_size(pool: &BufferPool<Vec<u8>>) -> usize {
+        let PoolRef::Static(pool) = &pool.inner else {
+            panic!("not a static pool")
+        };
+
+        pool.magazine.with(|m| m.buffers.borrow().len())
     }
 
     #[test]

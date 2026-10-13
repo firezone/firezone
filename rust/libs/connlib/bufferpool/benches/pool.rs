@@ -14,7 +14,7 @@
 use std::sync::{LazyLock, mpsc as std_mpsc};
 use std::thread;
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, BufferPool, Magazine};
 use divan::{Bencher, black_box, counter::ItemsCount};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
@@ -29,8 +29,11 @@ const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
 
-static POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new_static(CAPACITY, "bench"));
+static POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| {
+    thread_local!(static MAGAZINE: Magazine<Vec<u8>> = const { Magazine::new() });
+
+    BufferPool::new_static(CAPACITY, "bench", &MAGAZINE)
+});
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
