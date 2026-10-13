@@ -337,12 +337,12 @@ impl ClientOnClient {
     }
 
     /// Finds the token of the resource an inbound packet belongs to.
-    fn ingest_token_for_inbound(&mut self, packet: &IpPacket) -> Option<IngestToken> {
+    fn ingest_token_for_inbound(&mut self, packet: &IpPacket) -> Option<&IngestToken> {
         let resource = self.inbound_resources.resource_for(packet)?;
 
         self.resources
             .get(&resource)
-            .map(|resource| resource.value.ingest_token.clone())
+            .map(|resource| &resource.value.ingest_token)
     }
 }
 
@@ -430,7 +430,7 @@ mod tests {
             peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
         }
 
-        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(inbound));
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(&inbound));
         assert_eq!(authorizations.client_token(rid, peer.id()), Some(&outbound));
     }
 

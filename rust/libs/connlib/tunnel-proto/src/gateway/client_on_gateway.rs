@@ -5,6 +5,7 @@ use std::time::Instant;
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
@@ -30,7 +31,7 @@ pub struct ClientOnGateway {
     ///
     /// Recorded into a flow when it is created so the flow log can be attributed
     /// and ingested. Has the same lifetime as the resource authorization.
-    ingest_tokens: HashMap<ResourceId, IngestToken>,
+    ingest_tokens: HashMap<ResourceId, IngestToken, FastRandomState>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
@@ -549,7 +550,7 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
         Ok(())
     }

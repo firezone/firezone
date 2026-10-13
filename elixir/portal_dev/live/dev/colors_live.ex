@@ -9,7 +9,8 @@ defmodule PortalWeb.Dev.ColorsLive do
         %{name: "brand-dark", class: "bg-brand-dark", css_var: "--brand-hover"},
         %{name: "brand-light", class: "bg-brand-light", css_var: "--brand-secondary"},
         %{name: "brand-subtle", class: "bg-brand-subtle", css_var: "--brand-tertiary"},
-        %{name: "brand-muted", class: "bg-brand-muted", css_var: "--brand-muted"}
+        %{name: "brand-muted", class: "bg-brand-muted", css_var: "--brand-muted"},
+        %{name: "brand-strong", class: "bg-brand-strong", css_var: "--brand-strong"}
       ]
     },
     %{
@@ -25,7 +26,9 @@ defmodule PortalWeb.Dev.ColorsLive do
         %{name: "accent-dark", class: "bg-accent-dark", css_var: "--accent-hover"},
         %{name: "accent-light", class: "bg-accent-light", css_var: "--accent-secondary"},
         %{name: "accent-subtle", class: "bg-accent-subtle", css_var: "--accent-tertiary"},
-        %{name: "accent-muted", class: "bg-accent-muted", css_var: "--accent-muted"}
+        %{name: "accent-muted", class: "bg-accent-muted", css_var: "--accent-muted"},
+        %{name: "accent-strong", class: "bg-accent-strong", css_var: "--accent-strong"},
+        %{name: "accent-wash", class: "bg-accent-wash", css_var: "--accent-wash"}
       ]
     },
     %{
