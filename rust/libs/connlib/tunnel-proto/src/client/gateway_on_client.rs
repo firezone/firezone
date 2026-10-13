@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
+    num::NonZeroUsize,
 };
 
 use connlib_model::ResourceId;
@@ -10,7 +11,9 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
 use lru::LruCache;
 
-use crate::{IpConfig, NotAllowedResource, routing_table::MAX_CACHE_ENTRIES};
+use crate::{IpConfig, NotAllowedResource};
+
+const MAX_CACHED_SOURCES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
@@ -73,7 +76,10 @@ impl GatewayOnClient {
     pub(crate) fn new(gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             allowed_ips: IpNetworkTable::new(),
-            allowed_src_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
+            allowed_src_cache: LruCache::with_hasher(
+                MAX_CACHED_SOURCES,
+                FastRandomState::default(),
+            ),
             gateway_tun,
         }
     }
