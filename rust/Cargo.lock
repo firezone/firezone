@@ -8890,6 +8890,7 @@ dependencies = [
  "base64 0.23.1",
  "bimap",
  "boringtun",
+ "bufferpool",
  "bytecodec",
  "chrono",
  "connlib-model",

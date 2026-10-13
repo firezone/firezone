@@ -51,6 +51,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 
 [dev-dependencies]
+bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest = { workspace = true }

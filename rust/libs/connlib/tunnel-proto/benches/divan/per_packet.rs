@@ -1,17 +1,21 @@
 //! Per-packet work of connlib's main thread on an established Client <> Gateway connection.
+//!
+//! Each bench returns what production hands to another thread, so divan drops it outside the
+//! timed region.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::time::{Duration, Instant, SystemTime};
 
+use bufferpool::{Buffer, BufferPool};
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use divan::Bencher;
 use dns_types::{Query, RecordType, Response};
-use ip_packet::IpPacket;
-use snownet::{RelaySocket, Transmit, TransmitBuffer};
+use ip_packet::{Ecn, IpPacket};
+use snownet::{BufferProvider, RelaySocket, Reservation, Transmit, TransmitBuffer};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
@@ -31,16 +35,19 @@ const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let packet = tunnel.request(SIZE);
-    let mut transmits = TransmitBuffer::default();
+    let mut gso_queue = GsoQueue::new();
 
     bencher
         .with_inputs(|| packet.clone())
         .bench_local_values(|packet| {
+            let queued = gso_queue.queued();
             tunnel
                 .client
-                .handle_tun_input(packet, tunnel.now, &mut transmits)
+                .handle_tun_input(packet, tunnel.now, &mut gso_queue)
                 .unwrap();
-            assert!(transmits.poll_transmit().is_some());
+            assert!(gso_queue.queued() > queued);
+
+            gso_queue.flush_sealed()
         });
 }
 
@@ -63,6 +70,8 @@ fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
                 .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, *now)
                 .unwrap();
             assert!(packet.is_some());
+
+            packet
         });
 }
 
@@ -70,16 +79,19 @@ fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
 fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let reply = tunnel.reply(SIZE);
-    let mut transmits = TransmitBuffer::default();
+    let mut gso_queue = GsoQueue::new();
 
     bencher
         .with_inputs(|| reply.clone())
         .bench_local_values(|reply| {
+            let queued = gso_queue.queued();
             tunnel
                 .gateway
-                .handle_tun_input(reply, tunnel.now, &mut transmits)
+                .handle_tun_input(reply, tunnel.now, &mut gso_queue)
                 .unwrap();
-            assert!(transmits.poll_transmit().is_some());
+            assert!(gso_queue.queued() > queued);
+
+            gso_queue.flush_sealed()
         });
 }
 
@@ -102,6 +114,8 @@ fn client_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
                 .handle_network_input(CLIENT_SOCKET, GATEWAY_SOCKET, &datagram.payload, *now)
                 .unwrap();
             assert!(packet.is_some());
+
+            packet
         });
 }
 
@@ -372,6 +386,137 @@ impl Tunnel {
             let _ = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now);
+        }
+    }
+}
+
+/// Mirrors the per-packet work of `tunnel`'s `UdpGsoQueue`: one pool buffer per batch, a `resize`
+/// per segment and the lookup of the connection's latest batch.
+struct GsoQueue {
+    batches: VecDeque<Batch>,
+    buffer_pool: BufferPool<Vec<u8>>,
+}
+
+struct Batch {
+    connection: (Option<SocketAddr>, SocketAddr, Ecn),
+    segment_size: usize,
+    max_len: usize,
+    buffer: Buffer<Vec<u8>>,
+}
+
+impl GsoQueue {
+    fn new() -> Self {
+        Self {
+            batches: VecDeque::new(),
+            buffer_pool: BufferPool::new(u16::MAX as usize, "gso-queue"),
+        }
+    }
+
+    fn queued(&self) -> usize {
+        self.batches.iter().map(|batch| batch.buffer.len()).sum()
+    }
+
+    /// Hands out the oldest batch once a newer one has started, standing in for production's flush
+    /// to the UDP thread.
+    fn flush_sealed(&mut self) -> Option<Batch> {
+        if self.batches.len() < 2 {
+            return None;
+        }
+
+        self.batches.pop_front()
+    }
+}
+
+impl BufferProvider for GsoQueue {
+    type Reservation<'a> = GsoReservation<'a>;
+
+    fn reserve(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        len: usize,
+    ) -> GsoReservation<'_> {
+        let connection = (src, dst, ecn);
+
+        let existing = self
+            .batches
+            .iter_mut()
+            .enumerate()
+            .rev()
+            .find(|(_, batch)| batch.connection == connection)
+            .filter(|(_, batch)| batch.can_append(len));
+
+        let index = match existing {
+            Some((index, batch)) => {
+                let new_len = batch.buffer.len() + len;
+                batch.buffer.resize(new_len, 0);
+
+                index
+            }
+            None => {
+                let mut buffer = self.buffer_pool.pull();
+                buffer.clear();
+                buffer.resize(len, 0);
+
+                self.batches.push_back(Batch {
+                    connection,
+                    segment_size: len,
+                    max_len: max_gso_len(len),
+                    buffer,
+                });
+
+                self.batches.len() - 1
+            }
+        };
+
+        GsoReservation {
+            buffer: &mut self.batches[index].buffer,
+            len,
+            committed: false,
+        }
+    }
+}
+
+impl Batch {
+    fn can_append(&self, len: usize) -> bool {
+        self.buffer.len().is_multiple_of(self.segment_size)
+            && len <= self.segment_size
+            && self.buffer.len() + len <= self.max_len
+    }
+}
+
+/// Returns how many bytes of `segment_size` segments one GSO send carries to an IPv4 destination.
+fn max_gso_len(segment_size: usize) -> usize {
+    const MAX_SEGMENTS: usize = 64;
+    const MAX_PAYLOAD: usize = u16::MAX as usize - 60 - 8;
+
+    segment_size * usize::min(MAX_SEGMENTS, MAX_PAYLOAD / segment_size)
+}
+
+struct GsoReservation<'a> {
+    buffer: &'a mut Buffer<Vec<u8>>,
+    len: usize,
+    committed: bool,
+}
+
+impl Reservation for GsoReservation<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        let offset = self.buffer.len() - self.len;
+
+        &mut self.buffer[offset..]
+    }
+
+    fn commit(mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for GsoReservation<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            let new_len = self.buffer.len() - self.len;
+            self.buffer.truncate(new_len);
         }
     }
 }
