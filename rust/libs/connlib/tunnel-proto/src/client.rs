@@ -786,7 +786,8 @@ impl ClientState {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .context("Failed to decode `DomainStatus`")?;
 
-                    let Some(domain) = self.resource_stub_resolver.domain(&res.domain) else {
+                    let Some(domain) = self.resource_stub_resolver.resolved_domain(&res.domain)
+                    else {
                         tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
                         return Ok(None);
                     };

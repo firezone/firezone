@@ -243,7 +243,7 @@ impl ResourceStubResolver {
             })
     }
 
-    pub(crate) fn domain(&self, name: &DomainName) -> Option<DnsResourceDomain> {
+    pub(crate) fn resolved_domain(&self, name: &DomainName) -> Option<DnsResourceDomain> {
         let (domain, _, _) = self.fqdn_to_ips.get(name)?;
 
         Some(domain.clone())
