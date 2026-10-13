@@ -58,29 +58,18 @@ impl<B> Deref for PoolRef<B> {
 }
 
 impl<B> PoolRef<B> {
-    /// Takes a buffer from the pool, allocating a new one if the pool is empty.
     fn take(&self) -> B {
-        let buffer = match self {
+        match self {
             PoolRef::Static(pool) => pool.take(),
-            PoolRef::Shared(_) => None,
-        };
-
-        buffer
-            .or_else(|| self.queue.pop())
-            .unwrap_or_else(|| (self.new_buffer_fn)())
+            PoolRef::Shared(inner) => inner.take(),
+        }
     }
 
-    /// Returns a buffer to the pool.
     fn give(&self, buffer: B) {
-        let buffer = match self {
-            PoolRef::Static(pool) => match pool.give(buffer) {
-                Ok(()) => return,
-                Err(buffer) => buffer,
-            },
-            PoolRef::Shared(_) => buffer,
-        };
-
-        self.queue.push(buffer);
+        match self {
+            PoolRef::Static(pool) => pool.give(buffer),
+            PoolRef::Shared(inner) => inner.give(buffer),
+        }
     }
 }
 
@@ -104,10 +93,12 @@ struct StaticPool<B: 'static> {
 }
 
 impl<B> StaticPool<B> {
-    /// Takes a buffer from this thread's magazine, refilling it from the depot if it is empty.
+    /// Takes a buffer from this thread's magazine.
     ///
-    /// Returns `None` if both are empty or the magazine is not accessible.
-    fn take(&'static self) -> Option<B> {
+    /// An empty magazine is refilled with a whole batch from `full`, which threads fill
+    /// whenever their magazine overflows in [`StaticPool::give`] and when they exit.
+    /// Without a batch to refill from, or during thread exit, the buffer comes from the queue.
+    fn take(&'static self) -> B {
         self.magazine
             .try_with(|magazine| {
                 let mut buffers = magazine.buffers.borrow_mut();
@@ -118,19 +109,22 @@ impl<B> StaticPool<B> {
 
                 let mut batch = self.full.pop()?;
                 buffers.append(&mut batch);
+                self.empty.push(batch); // Keep the allocation for the next overflow.
                 magazine.pool.set(Some(self));
-                self.empty.push(batch);
 
                 buffers.pop()
             })
             .ok()
             .flatten()
+            .unwrap_or_else(|| self.inner.take())
     }
 
-    /// Puts a buffer into this thread's magazine, handing a batch to the depot if it is full.
+    /// Puts a buffer into this thread's magazine.
     ///
-    /// Gives the buffer back if the magazine is not accessible, i.e. during thread exit.
-    fn give(&'static self, buffer: B) -> Result<(), B> {
+    /// Once the magazine holds two batches, the older one moves to `full`
+    /// for threads that take more buffers than they return.
+    /// During thread exit, the buffer goes to the queue instead.
+    fn give(&'static self, buffer: B) {
         let mut buffer = Some(buffer);
 
         let _ = self.magazine.try_with(|magazine| {
@@ -149,7 +143,9 @@ impl<B> StaticPool<B> {
             magazine.pool.set(Some(self));
         });
 
-        buffer.map_or(Ok(()), Err)
+        if let Some(buffer) = buffer {
+            self.inner.give(buffer);
+        }
     }
 }
 
@@ -162,6 +158,7 @@ impl<B> StaticPool<B> {
 /// Each static pool needs its own magazine, see [`BufferPool::new_static`].
 pub struct Magazine<B: 'static> {
     buffers: RefCell<Vec<B>>,
+    /// Where the buffers go when the thread exits; set once the magazine holds any.
     pool: Cell<Option<&'static StaticPool<B>>>,
 }
 
@@ -219,6 +216,17 @@ struct PoolInner<B> {
 
     attributes: [KeyValue; 2],
     counter: UpDownCounter<i64>,
+}
+
+impl<B> PoolInner<B> {
+    /// Takes a buffer from the queue, allocating a new one if it is empty.
+    fn take(&self) -> B {
+        self.queue.pop().unwrap_or_else(|| (self.new_buffer_fn)())
+    }
+
+    fn give(&self, buffer: B) {
+        self.queue.push(buffer);
+    }
 }
 
 impl<B> Drop for PoolInner<B> {
