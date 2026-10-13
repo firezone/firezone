@@ -215,6 +215,7 @@ defmodule PortalWeb.SignUpTest do
       assert actor.type == :account_admin_user
       assert actor.name == "Ada Lovelace"
       assert actor.allow_email_otp_sign_in
+      assert actor.preferences.getting_started == :pending
 
       identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
       assert identity.actor_id == actor.id
@@ -645,6 +646,11 @@ defmodule PortalWeb.SignUpTest do
   end
 
   describe "sign-up survey" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      :ok
+    end
+
     test "renders the survey questions on both forms", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
       assert html =~ "How did you hear about Firezone?"
@@ -737,7 +743,7 @@ defmodule PortalWeb.SignUpTest do
       assert_email_sent()
     end
 
-    test "Google signup stores the survey in account metadata", %{conn: conn} do
+    test "Google signup emails the survey to the feedback recipient", %{conn: conn} do
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -790,22 +796,20 @@ defmodule PortalWeb.SignUpTest do
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Survey Corp")
 
-      assert %Portal.Account.Metadata.SignUpSurvey{
-               referral_source: "other",
-               referral_source_other: "A podcast",
-               motivation: "open_source",
-               motivation_other: nil,
-               use_case: "other",
-               use_case_other: "Lab network",
-               role: "other",
-               role_other: "Hobbyist",
-               switching: true,
-               previous_solution: "other",
-               previous_solution_other: "Homegrown WireGuard"
-             } = account.metadata.sign_up_survey
+      assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
+      assert job.args["account_id"] == account.id
+      assert %{"to" => [%{"address" => "feedback@example.com"}]} = job.args["request"]
+
+      body = job.args["request"]["text_body"]
+      assert body =~ "Survey Corp"
+      assert body =~ "How did you hear about Firezone? other (A podcast)"
+      assert body =~ "Why Firezone? open_source"
+      assert body =~ "Use case other (Lab network)"
+      assert body =~ "Role other (Hobbyist)"
+      assert body =~ "Switching from another solution? Yes, from other (Homegrown WireGuard)"
     end
 
-    test "email signup carries the survey through the verification token", %{conn: conn} do
+    test "email signup carries the survey through the verification token to the feedback recipient", %{conn: conn} do
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -849,15 +853,12 @@ defmodule PortalWeb.SignUpTest do
       {:ok, _lv, html} = live(build_conn(), ~p"/verify_sign_up?token=#{token}")
       assert html =~ "Your account has been created!"
 
-      account = Portal.Repo.get_by!(Portal.Account, name: "Token Corp")
-
-      assert %Portal.Account.Metadata.SignUpSurvey{
-               motivation: "simplicity",
-               switching: false,
-               previous_solution: nil,
-               referral_source: "hacker_news",
-               referral_source_other: nil
-             } = account.metadata.sign_up_survey
+      assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
+      body = job.args["request"]["text_body"]
+      assert body =~ "Token Corp"
+      assert body =~ "How did you hear about Firezone? hacker_news"
+      assert body =~ "Why Firezone? simplicity"
+      assert body =~ "Switching from another solution? No"
     end
   end
 

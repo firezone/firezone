@@ -113,6 +113,20 @@ defmodule Portal.Presence do
       end)
     end
 
+    @doc "The ids of the gateways connected to each site, keyed by site id."
+    @spec online_gateway_ids_by_site(Ecto.UUID.t()) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
+    def online_gateway_ids_by_site(account_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.reduce(%{}, fn
+        {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
+          Map.update(acc, site_id, MapSet.new([id]), &MapSet.put(&1, id))
+
+        _client, acc ->
+          acc
+      end)
+    end
+
     @doc "The ids of the sites with at least one gateway connected."
     def online_site_ids(account_id) do
       account_id |> online_gateway_counts() |> Map.keys() |> MapSet.new()

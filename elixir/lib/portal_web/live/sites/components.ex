@@ -32,17 +32,6 @@ defmodule PortalWeb.Sites.Components do
                 phx-debounce="300"
                 required
               />
-              <div>
-                <Form.input
-                  field={@form[:health_threshold]}
-                  type="number"
-                  label="Health threshold"
-                  min="1"
-                />
-                <p class="mt-1.5 text-xs text-subtle">
-                  Minimum number of gateways that must be online for this site to be considered healthy.
-                </p>
-              </div>
             </div>
             <div class="flex items-center justify-end gap-2 mt-6">
               <Form.button type="button" phx-click="close_new_site_panel">
@@ -94,12 +83,15 @@ defmodule PortalWeb.Sites.Components do
 
     assigns = assign(assigns, :filter_ports, filter_ports)
 
-    assigns =
-      if assigns.site do
-        assign(assigns, :status, site_status(assigns.gateways, assigns.site.health_threshold))
-      else
-        assign(assigns, :status, :offline)
-      end
+    # The listed gateways include every online one, and device_tokens is keyed
+    # by the id of each gateway holding a single-owner token
+    {status, _offline_count} =
+      site_health(
+        assigns.gateways |> Enum.filter(& &1.online?) |> MapSet.new(& &1.id),
+        assigns.device_tokens |> Map.keys() |> MapSet.new()
+      )
+
+    assigns = assign(assigns, :status, status)
 
     ~H"""
     <div
@@ -172,7 +164,11 @@ defmodule PortalWeb.Sites.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <Form.button :if={@view == :gateways} phx-click="open_site_edit_form" size="sm">
+          <Form.button
+            :if={@view == :gateways and @site.managed_by == :account}
+            phx-click="open_site_edit_form"
+            size="sm"
+          >
             <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </Form.button>
           <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
@@ -1005,12 +1001,6 @@ defmodule PortalWeb.Sites.Components do
           </dd>
         </div>
         <div>
-          <dt class="text-[10px] text-subtle mb-0.5">Health threshold</dt>
-          <dd class="text-xs text-body font-medium">
-            {@site.health_threshold}
-          </dd>
-        </div>
-        <div>
           <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
           <dd class="font-mono text-[11px] text-body break-all font-medium">
             {@site.id}
@@ -1782,7 +1772,7 @@ defmodule PortalWeb.Sites.Components do
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <div :if={@site.managed_by == :account}>
+          <div>
             <label
               for={@form[:name].id}
               class="block text-xs font-medium text-body mb-1.5"
@@ -1796,17 +1786,6 @@ defmodule PortalWeb.Sites.Components do
               phx-debounce="300"
               required
             />
-          </div>
-          <div>
-            <Form.input
-              field={@form[:health_threshold]}
-              type="number"
-              label="Health threshold"
-              min="1"
-            />
-            <p class="mt-1.5 text-xs text-subtle">
-              Minimum number of gateways that must be online for this site to be considered healthy.
-            </p>
           </div>
         </div>
         <Form.panel_footer>
@@ -1836,22 +1815,55 @@ defmodule PortalWeb.Sites.Components do
   defp site_badge_style(:degraded), do: :warning
   defp site_badge_style(:offline), do: :neutral
 
-  defp site_status(gateways, threshold) do
-    online_count = Enum.count(gateways, & &1.online?)
+  @doc """
+  A site's health and how many of its provisioned gateways are offline.
 
-    cond do
-      online_count == 0 -> :offline
-      online_count < threshold -> :degraded
-      true -> :healthy
-    end
+  Provisioned gateways are the ones holding a single-owner token: each was
+  created deliberately, so every one of them is expected to be online. Gateways
+  connected with a legacy multi-owner token count as online but are never
+  expected, since their token can't tell how many there should be.
+  """
+  @spec site_health(MapSet.t(Ecto.UUID.t()), MapSet.t(Ecto.UUID.t())) ::
+          {:healthy | :degraded | :offline, non_neg_integer()}
+  def site_health(online_ids, provisioned_ids) do
+    offline_count = provisioned_ids |> MapSet.difference(online_ids) |> MapSet.size()
+
+    status =
+      cond do
+        MapSet.size(online_ids) == 0 -> :offline
+        offline_count > 0 -> :degraded
+        true -> :healthy
+      end
+
+    {status, offline_count}
   end
 
-  defp gateway_token(env) do
+  @doc "The Gateway token in a deploy environment."
+  @spec gateway_token([{String.t(), String.t()}]) :: String.t()
+  def gateway_token(env) do
     {"FIREZONE_TOKEN", value} = List.keyfind(env, "FIREZONE_TOKEN", 0)
     value
   end
 
-  defp gateway_docker_command(env) do
+  @doc """
+  The environment a freshly deployed Gateway runs with: its token, and the API URL
+  when this deployment overrides it. The Gateway generates its own `FIREZONE_ID`
+  and keeps it in `/var/lib/firezone`, so none is handed out.
+  """
+  @spec gateway_env(String.t()) :: [{String.t(), String.t()}]
+  def gateway_env(encoded_token) do
+    [
+      {"FIREZONE_TOKEN", encoded_token}
+      | if(url = Portal.Config.get_env(:portal, :api_url_override),
+          do: [{"FIREZONE_API_URL", url}],
+          else: []
+        )
+    ]
+  end
+
+  @doc "A `docker run` command that starts a Gateway with the deploy environment."
+  @spec gateway_docker_command([{String.t(), String.t()}]) :: String.t()
+  def gateway_docker_command(env) do
     [
       "docker run -d",
       "--restart=unless-stopped",
@@ -1874,7 +1886,9 @@ defmodule PortalWeb.Sites.Components do
     |> Enum.join(" \\\n  ")
   end
 
-  defp gateway_systemd_command(env) do
+  @doc "A command that installs a Gateway as a systemd service with the deploy environment."
+  @spec gateway_systemd_command([{String.t(), String.t()}]) :: String.t()
+  def gateway_systemd_command(env) do
     """
     #{Enum.map_join(env, " \\\n", fn {key, value} -> "#{key}=\"#{value}\"" end)} \\
       bash <(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/main/scripts/gateway-systemd-install.sh)
@@ -1894,6 +1908,15 @@ defmodule PortalWeb.Sites.Components do
     sudo apt update
     sudo apt install firezone-gateway
     """
+  end
+
+  @doc """
+  The commands that add the Firezone APT repository and install the Gateway package,
+  as one block.
+  """
+  @spec gateway_debian_install_commands() :: String.t()
+  def gateway_debian_install_commands do
+    gateway_debian_apt_repository() <> gateway_debian_install()
   end
 
   defp gateway_debian_authenticate do

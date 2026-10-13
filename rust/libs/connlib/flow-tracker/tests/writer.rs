@@ -185,7 +185,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
             flow_tracker::record_decrypted_packet(&request);
             flow_tracker::record_peer(client, Role::Responder);
             flow_tracker::record_resource(resource);
-            flow_tracker::record_ingest_token(Some(token.clone()));
+            flow_tracker::record_ingest_token(Some(&token));
             drop(flow);
         }
 
@@ -444,7 +444,7 @@ fn drive_tx_from(
     );
     flow_tracker::record_decrypted_packet(packet);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
-    flow_tracker::record_ingest_token(Some(test_token(authz_id, "responder")));
+    flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's

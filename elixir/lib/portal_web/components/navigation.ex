@@ -2,6 +2,7 @@ defmodule PortalWeb.Components.Navigation do
   use Phoenix.Component
   import Phoenix.Component, except: [link: 1]
   use PortalWeb, :verified_routes
+  alias Phoenix.LiveView.JS
   alias PortalWeb.Components.Core
 
   @doc """
@@ -162,6 +163,19 @@ defmodule PortalWeb.Components.Navigation do
         >
           Your settings
         </.link>
+      </li>
+      <li :if={PortalWeb.GettingStarted.offered?(@subject.actor)}>
+        <button
+          id="open-getting-started"
+          type="button"
+          phx-click={
+            JS.dispatch("popover:hide", to: "#user-menu-button")
+            |> JS.push("open", target: "#getting-started")
+          }
+          class="block w-full text-left py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+        >
+          Getting started
+        </button>
       </li>
     </ul>
     <ul class="py-1 text-body" aria-labelledby="user-menu-dropdown">
@@ -327,6 +341,9 @@ defmodule PortalWeb.Components.Navigation do
           </ul>
         </div>
       </nav>
+
+      <%!-- Getting started guide: its sidebar entry, and the modal it opens --%>
+      <.live_component module={PortalWeb.GettingStarted} id="getting-started" subject={@subject} />
 
       <%!-- Settings --%>
       <div class="border-t border-border py-2 px-2 shrink-0">
