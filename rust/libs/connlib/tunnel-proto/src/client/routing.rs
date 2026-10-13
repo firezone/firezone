@@ -8,7 +8,7 @@ use ip_packet::{Protocol, UnsupportedProtocol};
 use lru::LruCache;
 
 use crate::{
-    dns,
+    dns::{self, resource_stub_resolver::DomainId},
     filter_engine::FilterEngine,
     routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
 };
@@ -30,7 +30,7 @@ impl MatchedRoutes {
 
 pub(super) struct GatewayRoute {
     pub(super) resource_id: ResourceId,
-    pub(super) domain: Option<DomainName>,
+    pub(super) domain: Option<(DomainId, DomainName)>,
 }
 
 #[derive(Debug)]
@@ -79,7 +79,7 @@ impl RoutingTables {
                 if let Some(dns) = self.dns.matches(destination, Ok(protocol), mode) {
                     let routes = routes(dns, |entry| GatewayRoute {
                         resource_id: entry.resource_id,
-                        domain: Some(entry.domain.clone()),
+                        domain: Some((entry.domain_id, entry.domain.clone())),
                     })?;
                     return Ok(MatchedRoutes::Gateways(routes));
                 }
@@ -109,12 +109,12 @@ impl RoutingTables {
         &mut self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> Vec<(ResourceId, DomainName)> {
+    ) -> Vec<(ResourceId, DomainId)> {
         self.dns
             .matches(destination, protocol, outbound_filter_mode())
             .into_iter()
             .flatten()
-            .map(|entry| (entry.resource_id, entry.domain.clone()))
+            .map(|entry| (entry.resource_id, entry.domain_id))
             .collect()
     }
 
@@ -145,6 +145,7 @@ impl RoutingTables {
         network: IpNetwork,
         resource_id: ResourceId,
         domain: DomainName,
+        domain_id: DomainId,
         pattern: dns::Pattern,
         filter: FilterEngine,
     ) -> bool {
@@ -155,6 +156,7 @@ impl RoutingTables {
                 filter,
                 resource_id,
                 domain,
+                domain_id,
                 pattern,
             },
         )
@@ -252,6 +254,7 @@ struct DnsEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
     domain: DomainName,
+    domain_id: DomainId,
     pattern: dns::Pattern,
 }
 
@@ -328,6 +331,7 @@ mod tests {
             destination.into(),
             dns_id,
             "example.com".parse().unwrap(),
+            DomainId::from_u64(0),
             dns::Pattern::new("example.com").unwrap(),
             FilterEngine::DenyAll,
         );
@@ -373,6 +377,7 @@ mod tests {
                         destination.into(),
                         resource_id,
                         "example.com".parse().unwrap(),
+                        DomainId::from_u64(0),
                         dns::Pattern::new("example.com").unwrap(),
                         filter,
                     );
@@ -442,6 +447,7 @@ mod tests {
         let mut tables = RoutingTables::default();
         let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
         let domain = "example.com".parse::<DomainName>().unwrap();
+        let domain_id = DomainId::from_u64(0);
         let a = ResourceId::from_u128(2);
         let b = ResourceId::from_u128(1);
         for resource in [a, b] {
@@ -449,6 +455,7 @@ mod tests {
                 destination.into(),
                 resource,
                 domain.clone(),
+                domain_id,
                 dns::Pattern::new("example.com").unwrap(),
                 FilterEngine::PermitAll,
             );
@@ -456,20 +463,21 @@ mod tests {
 
         assert_eq!(
             tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
-            vec![(a, domain.clone()), (b, domain.clone())]
+            vec![(a, domain_id), (b, domain_id)]
         );
 
         tables.remove_by_id(b);
         tables.upsert_dns(
             destination.into(),
             b,
-            domain.clone(),
+            domain,
+            domain_id,
             dns::Pattern::new("example.com").unwrap(),
             FilterEngine::DenyAll,
         );
         assert_eq!(
             tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
-            vec![(a, domain.clone())]
+            vec![(a, domain_id)]
         );
 
         let _guard = crate::malicious_behaviour::MaliciousBehaviour {
@@ -479,7 +487,7 @@ mod tests {
         .guard();
         assert_eq!(
             tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
-            vec![(b, domain.clone()), (a, domain)]
+            vec![(b, domain_id), (a, domain_id)]
         );
     }
 

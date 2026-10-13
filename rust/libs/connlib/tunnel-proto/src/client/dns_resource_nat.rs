@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque, btree_map::Entry},
+    collections::{HashMap, VecDeque, hash_map::Entry},
     net::IpAddr,
     time::{Duration, Instant},
 };
@@ -7,9 +7,12 @@ use std::{
 use anyhow::Result;
 use connlib_model::{GatewayId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 
-use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
+use crate::{
+    dns::resource_stub_resolver::DomainId, p2p_control, unique_packet_buffer::UniquePacketBuffer,
+};
 
 /// Tracks the domains for which we have set up a NAT per gateway.
 ///
@@ -18,7 +21,8 @@ use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
 /// Until the NAT is set up, packets sent to these resources are effectively black-holed.
 #[derive(Default)]
 pub struct DnsResourceNat {
-    inner: BTreeMap<(GatewayId, DomainName, ResourceId), (State, IpPacket)>,
+    inner:
+        HashMap<(GatewayId, DomainId, ResourceId), (State, DomainName, IpPacket), FastRandomState>,
 
     assigned_ips_packets: VecDeque<(GatewayId, DomainName, ResourceId, IpPacket)>,
 }
@@ -31,13 +35,14 @@ impl DnsResourceNat {
     pub fn update(
         &mut self,
         domain: DomainName,
+        domain_id: DomainId,
         gid: GatewayId,
         rid: ResourceId,
         proxy_ips: &[IpAddr],
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
     ) -> Result<VecDeque<IpPacket>> {
-        match self.inner.entry((gid, domain.clone(), rid)) {
+        match self.inner.entry((gid, domain_id, rid)) {
             Entry::Vacant(v) => {
                 tracing::trace!(%domain, %gid, %rid, "No DNS resource NAT state, creating `Pending` entry");
 
@@ -58,6 +63,7 @@ impl DnsResourceNat {
 
                         should_buffer: true,
                     },
+                    domain.clone(),
                     assigned_ips.clone(),
                 ));
 
@@ -65,7 +71,7 @@ impl DnsResourceNat {
                     .push_back((gid, domain, rid, assigned_ips));
             }
             Entry::Occupied(mut o) => {
-                let (state, assigned_ips) = o.get_mut();
+                let (state, _, assigned_ips) = o.get_mut();
 
                 match state {
                     State::Confirmed => {
@@ -141,10 +147,10 @@ impl DnsResourceNat {
     /// to continue flowing to the Gateway while the DNS resource NAT is being recreated.
     /// In most cases, the DNS records will not change and as such, performing this will not interrupt the flow of packets.
     pub fn recreate(&mut self, domain: DomainName) {
-        for (state, _) in self
+        for (state, _, _) in self
             .inner
-            .iter_mut()
-            .filter_map(|((_, candidate, _), b)| (candidate == &domain).then_some(b))
+            .values_mut()
+            .filter(|(_, candidate, _)| candidate == &domain)
         {
             let should_buffer = match state {
                 State::Recreating { .. } | State::Pending { .. } => continue,
@@ -164,13 +170,13 @@ impl DnsResourceNat {
     pub fn handle_outgoing(
         &mut self,
         gid: GatewayId,
-        domain: &DomainName,
+        domain_id: DomainId,
         rid: ResourceId,
         packet: IpPacket,
         now: Instant,
     ) -> Option<IpPacket> {
-        let Some((state, assigned_ips)) = self.inner.get_mut(&(gid, domain.clone(), rid)) else {
-            tracing::debug!(%gid, %domain, "No DNS resource NAT entry");
+        let Some((state, domain, assigned_ips)) = self.inner.get_mut(&(gid, domain_id, rid)) else {
+            tracing::debug!(%gid, ?domain_id, %rid, "No DNS resource NAT entry");
 
             return Some(packet); // Pass-through packet.
         };
@@ -223,30 +229,30 @@ impl DnsResourceNat {
     pub fn clear_by_gateway(&mut self, gid: &GatewayId) {
         for _ in self
             .inner
-            .extract_if(.., |(candidate, _, _), _| candidate == gid)
+            .extract_if(|(candidate, _, _), _| candidate == gid)
         {}
     }
 
     pub fn clear_by_resource(&mut self, rid: &ResourceId) {
         for _ in self
             .inner
-            .extract_if(.., |(_, _, candidate), _| candidate == rid)
+            .extract_if(|(_, _, candidate), _| candidate == rid)
         {}
     }
 
     pub(crate) fn on_domain_status(
         &mut self,
         gid: GatewayId,
+        domain_id: DomainId,
         res: p2p_control::dns_resource_nat::DomainStatus,
     ) -> impl IntoIterator<Item = IpPacket> {
-        let Entry::Occupied(mut nat_entry) =
-            self.inner.entry((gid, res.domain.clone(), res.resource))
+        let Entry::Occupied(mut nat_entry) = self.inner.entry((gid, domain_id, res.resource))
         else {
             tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
             return into_iter(None);
         };
 
-        let (nat_state, _) = nat_entry.get_mut();
+        let (nat_state, _, _) = nat_entry.get_mut();
 
         if res.status != p2p_control::dns_resource_nat::NatStatus::Active {
             tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
@@ -335,6 +341,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -346,6 +353,7 @@ mod tests {
 
         dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Inactive,
                 resource: RID,
@@ -356,6 +364,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -373,6 +382,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -382,6 +392,7 @@ mod tests {
             .unwrap();
         dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Inactive,
                 resource: RID,
@@ -394,6 +405,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -408,13 +420,8 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &EXAMPLE_COM.to_vec(),
-            RID,
-            packet,
-            Instant::now(),
-        );
+        let maybe_packet =
+            dns_resource_nat.handle_outgoing(GID, DOMAIN_ID, RID, packet, Instant::now());
 
         assert!(maybe_packet.is_none());
     }
@@ -426,6 +433,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -438,18 +446,14 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &EXAMPLE_COM.to_vec(),
-            RID,
-            packet.clone(),
-            Instant::now(),
-        );
+        let maybe_packet =
+            dns_resource_nat.handle_outgoing(GID, DOMAIN_ID, RID, packet.clone(), Instant::now());
 
         assert!(maybe_packet.is_none());
 
         let packets = dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -467,6 +471,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -476,6 +481,7 @@ mod tests {
             .unwrap();
         dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -487,6 +493,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -501,7 +508,7 @@ mod tests {
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
             GID,
-            &EXAMPLE_COM.to_vec(),
+            DOMAIN_ID,
             RID,
             app_packet.clone(),
             Instant::now(),
@@ -518,6 +525,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -527,6 +535,7 @@ mod tests {
             .unwrap();
         dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -541,6 +550,7 @@ mod tests {
         let packets = dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -560,6 +570,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -572,6 +583,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -586,6 +598,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -604,6 +617,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -619,8 +633,7 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet =
-            dns_resource_nat.handle_outgoing(GID, &EXAMPLE_COM.to_vec(), RID, app_packet, now);
+        let maybe_packet = dns_resource_nat.handle_outgoing(GID, DOMAIN_ID, RID, app_packet, now);
 
         assert!(maybe_packet.is_none());
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -633,6 +646,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID,
                 PROXY_IPS,
@@ -644,6 +658,7 @@ mod tests {
 
         dns_resource_nat.on_domain_status(
             GID,
+            DOMAIN_ID,
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -654,6 +669,7 @@ mod tests {
         dns_resource_nat
             .update(
                 EXAMPLE_COM.to_vec(),
+                DOMAIN_ID,
                 GID,
                 RID2,
                 PROXY_IPS,
@@ -666,6 +682,7 @@ mod tests {
 
     const EXAMPLE_COM: DomainNameRef =
         unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
+    const DOMAIN_ID: DomainId = DomainId::from_u64(0);
     const GID: GatewayId = GatewayId::from_u128(1);
     const RID: ResourceId = ResourceId::from_u128(2);
     const RID2: ResourceId = ResourceId::from_u128(3);
