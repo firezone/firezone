@@ -8,6 +8,7 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
   import Portal.ObanFixtures
   import Portal.OktaDirectoryFixtures
 
+  alias Portal.Fixture
   alias Portal.Okta
 
   @resources %{
@@ -300,13 +301,17 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
     end
 
     test "logs a malformed event without its contents", %{conn: conn, directory: directory} do
+      actor_email = Fixture.unique_email("ada")
+      actor_name = Fixture.unique_name("Ada")
+      untyped_email = Fixture.unique_email("grace")
+
       malformed = %{
         "eventType" => "user.lifecycle.create",
         "target" => "not-a-list",
-        "actor" => %{"alternateId" => "ada@example.com", "displayName" => "Ada Lovelace"}
+        "actor" => %{"alternateId" => actor_email, "displayName" => actor_name}
       }
 
-      untyped = %{"target" => [user("user-1")], "actor" => %{"alternateId" => "grace@example.com"}}
+      untyped = %{"target" => [user("user-1")], "actor" => %{"alternateId" => untyped_email}}
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
@@ -316,9 +321,9 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
 
       assert log =~ "Ignoring malformed Okta event"
       assert log =~ "user.lifecycle.create"
-      refute log =~ "ada@example.com"
-      refute log =~ "Ada Lovelace"
-      refute log =~ "grace@example.com"
+      refute log =~ actor_email
+      refute log =~ actor_name
+      refute log =~ untyped_email
       assert all_enqueued(worker: Okta.WebhookSync) == []
     end
 
