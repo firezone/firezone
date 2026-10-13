@@ -15,8 +15,13 @@ otel-instruments = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+divan = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+[[bench]]
+name = "pool"
+harness = false
 
 [lints]
 workspace = true
