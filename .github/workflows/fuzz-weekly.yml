@@ -1,5 +1,5 @@
 ---
-name: Fuzz corpora (nightly)
+name: Fuzz corpora (weekly)
 run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # Grows and minimizes every committed fuzz corpus, refreshing the
 # uncovered-region ceilings alongside. The scheduled run works on main and
@@ -10,7 +10,7 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # inputs; coverage discovery happens here.
 "on":
   schedule:
-    - cron: "0 4 * * *" # daily, 04:00 UTC
+    - cron: "0 4 * * 1" # weekly, Monday 04:00 UTC
   workflow_dispatch:
     inputs:
       target:
@@ -29,7 +29,7 @@ permissions:
 concurrency:
   # Per ref, so a branch dispatch and the scheduled run on main cannot cancel
   # each other.
-  group: fuzz-nightly-${{ github.ref_name }}
+  group: fuzz-weekly-${{ github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -86,7 +86,7 @@ jobs:
       - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
       # A corpus PR that has not been reviewed yet still holds the discoveries
-      # of every night since it was opened. Growing what the default branch
+      # of every run since it was opened. Growing what the default branch
       # carries would rediscover them from scratch, and the push below would
       # then overwrite the only copy.
       - name: Seed from the open corpus pull request
@@ -113,7 +113,7 @@ jobs:
           mise run //rust/tests/fuzz:unpack-corpus "$TARGET" "$RUNNER_TEMP/$TARGET.tar.gz"
       # The phases `grow` runs locally, one step each: each carries its own
       # budget and each runs whatever the one before it did, so neither an
-      # overrun nor a failure costs the night what the other phases found.
+      # overrun nor a failure costs the run what the other phases found.
       # This runner is disposable. Bypass Ubuntu's crash-reporting pipe so AFL
       # receives crashing children promptly instead of classifying them as hangs.
       - name: Configure crash reporting for AFL++
@@ -140,7 +140,7 @@ jobs:
         run: mise run //rust/tests/fuzz:update-baseline ${{ matrix.fuzz-target }}
       # After the measurement: these inputs crash the target by definition, so a
       # `coverage` run that included them could not produce a profile and the
-      # ceiling would go unrefreshed for the night.
+      # ceiling would go unrefreshed for the run.
       - name: Keep the failing inputs
         if: ${{ !cancelled() }}
         run: mise run //rust/tests/fuzz:save-crashes ${{ matrix.fuzz-target }}
@@ -226,6 +226,6 @@ jobs:
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "chore(fuzz): grow the $TARGET corpus" \
-              --body "The nightly fuzz job discovered new coverage for \`$TARGET\` and refreshed its uncovered-region ceiling." \
+              --body "The weekly fuzz job discovered new coverage for \`$TARGET\` and refreshed its uncovered-region ceiling." \
               --reviewer firezone/engineering
           fi

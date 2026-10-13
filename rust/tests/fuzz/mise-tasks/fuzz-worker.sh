@@ -12,7 +12,7 @@ target="${usage_target:?}"
 source ./helpers.sh
 
 export AFL_FUZZER_LOOPCOUNT=1 AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1 AFL_AUTORESUME=1
-# Syncing overruns the nightly job's time limit. Without it, shuffling keeps
+# Syncing overruns the weekly job's time limit. Without it, shuffling keeps
 # workers from all spending their budget on the same first few favored seeds.
 export AFL_NO_SYNC=1 AFL_SHUFFLE_QUEUE=1
 # Each worker calibrates the full corpus before its discovery time budget starts.
