@@ -49,6 +49,7 @@ use connlib_model::{
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -2711,8 +2712,8 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 
 #[derive(Default)]
 struct OutboundAuthorizations {
-    gateways: HashMap<ResourceId, GatewayAuthorization>,
-    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>>,
+    gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
+    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>, FastRandomState>,
 }
 
 struct GatewayAuthorization {
