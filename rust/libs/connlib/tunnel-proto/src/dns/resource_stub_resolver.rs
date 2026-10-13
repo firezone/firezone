@@ -42,8 +42,8 @@ pub struct ResourceStubResolver {
         dns_types::DomainName,
         (DnsResourceDomain, ProxyIps, BTreeSet<(Pattern, ResourceId)>),
     >,
-    /// Only ever incremented so that an id is never reused for a different domain.
-    next_domain_id: u64,
+    /// Only ever advanced so that an id is never reused for a different domain.
+    next_domain_id: DnsResourceDomainId,
     ips_to_fqdn: HashMap<IpAddr, dns_types::DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, sorted by their glob pattern.
@@ -59,10 +59,23 @@ pub struct ResourceStubResolver {
 /// so equality, ordering and hashing only consider the id.
 #[derive(Clone, derive_more::Display, derive_more::Debug)]
 #[display("{name}")]
-#[debug("{name} (#{id})")]
+#[debug("{name} (#{})", id.0)]
 pub(crate) struct DnsResourceDomain {
-    id: u64,
+    id: DnsResourceDomainId,
     name: Arc<DomainName>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct DnsResourceDomainId(u64);
+
+impl DnsResourceDomainId {
+    /// Returns this id and advances `self` to the next one.
+    fn take(&mut self) -> Self {
+        let id = *self;
+        self.0 += 1;
+
+        id
+    }
 }
 
 impl DnsResourceDomain {
@@ -70,14 +83,14 @@ impl DnsResourceDomain {
         &self.name
     }
 
-    pub(crate) fn id(&self) -> u64 {
+    pub(crate) fn id(&self) -> DnsResourceDomainId {
         self.id
     }
 
     #[cfg(test)]
     pub(crate) fn for_test(id: u64, name: DomainName) -> Self {
         Self {
-            id,
+            id: DnsResourceDomainId(id),
             name: Arc::new(name),
         }
     }
@@ -180,7 +193,7 @@ impl ResourceStubResolver {
     pub(crate) fn new(records: BTreeSet<DnsResourceRecord>) -> Self {
         let mut ips_to_fqdn = HashMap::default();
         let mut fqdn_to_ips = BTreeMap::default();
-        let mut next_domain_id = 0;
+        let mut next_domain_id = DnsResourceDomainId::default();
         let mut ip_provider = IpProvider::for_resources();
 
         if !records.is_empty() {
@@ -205,10 +218,9 @@ impl ResourceStubResolver {
                 }
 
                 let domain = DnsResourceDomain {
-                    id: next_domain_id,
+                    id: next_domain_id.take(),
                     name: Arc::new(record.domain.clone()),
                 };
-                next_domain_id += 1;
 
                 fqdn_to_ips.insert(record.domain, (domain, ips, record.resources));
             }
@@ -375,10 +387,9 @@ impl ResourceStubResolver {
         let (domain, ips, assigned_resources) =
             self.fqdn_to_ips.entry(fqdn.clone()).or_insert_with(|| {
                 let domain = DnsResourceDomain {
-                    id: self.next_domain_id,
+                    id: self.next_domain_id.take(),
                     name: Arc::new(fqdn.clone()),
                 };
-                self.next_domain_id += 1;
 
                 let mut ips = Vec::with_capacity(8);
                 ips.extend(self.ip_provider.get_n_ipv4(4));

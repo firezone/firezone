@@ -11,7 +11,8 @@ use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 
 use crate::{
-    dns::resource_stub_resolver::DnsResourceDomain, p2p_control,
+    dns::resource_stub_resolver::{DnsResourceDomain, DnsResourceDomainId},
+    p2p_control,
     unique_packet_buffer::UniquePacketBuffer,
 };
 
@@ -23,7 +24,7 @@ use crate::{
 #[derive(Default)]
 pub struct DnsResourceNat {
     inner: HashMap<
-        (GatewayId, u64, ResourceId),
+        (GatewayId, DnsResourceDomainId, ResourceId),
         (DnsResourceDomain, State, IpPacket),
         FastRandomState,
     >,
