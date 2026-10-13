@@ -550,7 +550,7 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
         Ok(())
     }
