@@ -29,7 +29,8 @@ const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
 
-static POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| BufferPool::new(CAPACITY, "bench"));
+static POOL: LazyLock<BufferPool<Vec<u8>>> =
+    LazyLock::new(|| BufferPool::new_static(CAPACITY, "bench"));
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
@@ -44,8 +45,8 @@ fn pooled() -> Buffer<Vec<u8>> {
     POOL.pull()
 }
 
-fn plain() -> [usize; 4] {
-    black_box([0; 4])
+fn plain() -> [u8; size_of::<Buffer<Vec<u8>>>()] {
+    black_box([0; size_of::<Buffer<Vec<u8>>>()])
 }
 
 fn alloc() -> Vec<u8> {
