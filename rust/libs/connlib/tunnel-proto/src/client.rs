@@ -459,18 +459,18 @@ impl ClientState {
         let mut buffered_packets_by_gateway_domain_and_resource = buffered_packets
             .map(|packet| {
                 let proto = packet.destination_protocol();
-                let (gateway_id, resource, domain_id) = self
+                let (gateway_id, resource, domain) = self
                     .routing_tables
                     .dns_resources(packet.destination(), proto)
                     .into_iter()
-                    .find_map(|(resource, domain_id)| {
+                    .find_map(|(resource, domain)| {
                         let gateway_id =
                             self.outbound_authorizations.gateway_by_resource(resource)?;
-                        Some((gateway_id, resource, domain_id))
+                        Some((gateway_id, resource, domain))
                     })
                     .context("IP is not associated with an authorized DNS resource")?;
 
-                anyhow::Ok((gateway_id, resource, domain_id, packet))
+                anyhow::Ok((gateway_id, resource, domain, packet))
             })
             .filter_map(|res| {
                 res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
@@ -478,8 +478,8 @@ impl ClientState {
             })
             .fold(
                 BTreeMap::<_, VecDeque<IpPacket>>::new(),
-                |mut map, (gid, resource, domain_id, packet)| {
-                    map.entry((gid, domain_id, resource))
+                |mut map, (gid, resource, domain, packet)| {
+                    map.entry((gid, domain, resource))
                         .or_default()
                         .push_back(packet);
 
@@ -489,14 +489,14 @@ impl ClientState {
 
         let mut sendable_packets = Vec::new();
 
-        for (domain, domain_id, rid, proxy_ips, gid) in self
-            .resource_stub_resolver
-            .resolved_resources()
-            .map(|(domain, domain_id, resource, proxy_ips)| {
-                let gateway = self.outbound_authorizations.gateway_by_resource(*resource);
+        for (domain, rid, proxy_ips, gid) in
+            self.resource_stub_resolver
+                .resolved_resources()
+                .map(|(domain, resource, proxy_ips)| {
+                    let gateway = self.outbound_authorizations.gateway_by_resource(*resource);
 
-                (domain, domain_id, resource, proxy_ips, gateway)
-            })
+                    (domain, resource, proxy_ips, gateway)
+                })
         {
             let Some(gid) = gid else {
                 tracing::trace!(
@@ -507,12 +507,11 @@ impl ClientState {
             };
 
             let packets_for_domain = buffered_packets_by_gateway_domain_and_resource
-                .remove(&(gid, domain_id, *rid))
+                .remove(&(gid, domain.clone(), *rid))
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
                 domain.clone(),
-                domain_id,
                 *gid,
                 *rid,
                 &proxy_ips,
@@ -696,12 +695,12 @@ impl ClientState {
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
-                let packet = if let Some((domain_id, domain)) = &route.domain {
-                    flow_tracker::record_domain(domain.clone());
+                let packet = if let Some(domain) = &route.domain {
+                    flow_tracker::record_domain(domain.name().clone());
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
-                        *domain_id,
+                        domain,
                         route.resource_id,
                         packet,
                         now,
@@ -787,14 +786,14 @@ impl ClientState {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .context("Failed to decode `DomainStatus`")?;
 
-                    let Some(domain_id) = self.resource_stub_resolver.domain_id(&res.domain) else {
+                    let Some(domain) = self.resource_stub_resolver.domain(&res.domain) else {
                         tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
                         return Ok(None);
                     };
 
                     let buffered_packets = self
                         .dns_resource_nat
-                        .on_domain_status(gid, domain_id, res)
+                        .on_domain_status(gid, domain, res)
                         .into_iter()
                         .collect::<Vec<_>>();
 
@@ -2310,7 +2309,6 @@ impl ClientState {
                     ip.into(),
                     route.resource_id,
                     route.domain.clone(),
-                    route.domain_id,
                     route.pattern.clone(),
                     FilterEngine::new(&dns.filters),
                 );
