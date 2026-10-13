@@ -27,7 +27,7 @@ enum Resource {
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
+#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let packet = tunnel.request(SIZE);
@@ -44,7 +44,7 @@ fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
         });
 }
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
+#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let packet = tunnel.request(SIZE);
@@ -66,7 +66,7 @@ fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
         });
 }
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
+#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let reply = tunnel.reply(SIZE);
@@ -83,7 +83,7 @@ fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
         });
 }
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
+#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn client_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
     let mut tunnel = Tunnel::established(resource);
     let reply = tunnel.reply(SIZE);
