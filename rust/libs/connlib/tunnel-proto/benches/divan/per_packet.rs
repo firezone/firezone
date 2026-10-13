@@ -19,9 +19,7 @@ use ip_packet::IpPacket;
 use snownet::{RelaySocket, Transmit, TransmitBuffer};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
-use tunnel_proto::messages::{
-    IceCredentials, IngestToken, Interface, Key, SecretKey, client, gateway,
-};
+use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, ClientState, GatewayEvent, GatewayState, IpConfig};
 
 const SIZES: [usize; 2] = [64, 1280];
@@ -33,6 +31,32 @@ enum Resource {
 }
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
+
+impl Resource {
+    fn id(self) -> ResourceId {
+        match self {
+            Resource::Cidr => CIDR_RESOURCE,
+            Resource::Dns => DNS_RESOURCE,
+        }
+    }
+
+    /// Returns the resource as the portal describes it to both the Client and the Gateway.
+    fn description(self) -> serde_json::Value {
+        let (kind, address) = match self {
+            Resource::Cidr => ("cidr", "172.16.0.0/24"),
+            Resource::Dns => ("dns", DNS_RESOURCE_DOMAIN),
+        };
+
+        serde_json::json!({
+            "type": kind,
+            "id": self.id(),
+            "address": address,
+            "name": kind,
+            "filters": [],
+            "sites": [{ "id": SITE, "name": "site" }],
+        })
+    }
+}
 
 #[divan::bench(args = RESOURCES, consts = SIZES)]
 fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
@@ -205,7 +229,10 @@ impl Tunnel {
                 config.dns_by_sentinel.sentinel_ips().first().copied()
             })
             .unwrap();
-        client.set_resources(vec![client_resource(resource)], now);
+        client.set_resources(
+            vec![serde_json::from_value(resource.description()).unwrap()],
+            now,
+        );
         client.update_relays(BTreeSet::new(), relays(), now);
 
         let mut gateway = GatewayState::new([2; 32], now, unix_ts);
@@ -329,14 +356,14 @@ impl Tunnel {
             client_ice.clone(),
             gateway_ice.clone(),
             None,
-            gateway_resource(resource),
+            serde_json::from_value(resource.description()).unwrap(),
             false,
             self.now,
             ingest_token(),
         );
         self.client
             .handle_resource_access_authorized(
-                resource_id(resource),
+                resource.id(),
                 GID,
                 self.gateway.public_key(),
                 GATEWAY_TUN,
@@ -452,58 +479,6 @@ fn relays() -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
         "password".to_owned(),
         "firezone".to_owned(),
     )])
-}
-
-fn resource_id(resource: Resource) -> ResourceId {
-    match resource {
-        Resource::Cidr => CIDR_RESOURCE,
-        Resource::Dns => DNS_RESOURCE,
-    }
-}
-
-fn client_resource(resource: Resource) -> client::ResourceDescription {
-    let sites = serde_json::json!([{ "id": SITE, "name": "site" }]);
-    let description = match resource {
-        Resource::Cidr => serde_json::json!({
-            "type": "cidr",
-            "id": CIDR_RESOURCE,
-            "address": "172.16.0.0/24",
-            "name": "cidr",
-            "address_description": null,
-            "sites": sites,
-        }),
-        Resource::Dns => serde_json::json!({
-            "type": "dns",
-            "id": DNS_RESOURCE,
-            "address": DNS_RESOURCE_DOMAIN,
-            "name": "dns",
-            "address_description": null,
-            "sites": sites,
-        }),
-    };
-
-    serde_json::from_value(description).unwrap()
-}
-
-fn gateway_resource(resource: Resource) -> gateway::ResourceDescription {
-    let description = match resource {
-        Resource::Cidr => serde_json::json!({
-            "type": "cidr",
-            "id": CIDR_RESOURCE,
-            "address": "172.16.0.0/24",
-            "name": "cidr",
-            "filters": [],
-        }),
-        Resource::Dns => serde_json::json!({
-            "type": "dns",
-            "id": DNS_RESOURCE,
-            "address": DNS_RESOURCE_DOMAIN,
-            "name": "dns",
-            "filters": [],
-        }),
-    };
-
-    serde_json::from_value(description).unwrap()
 }
 
 fn ingest_token() -> IngestToken {
