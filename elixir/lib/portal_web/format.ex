@@ -76,6 +76,20 @@ defmodule PortalWeb.Format do
     end
   end
 
+  @doc """
+  Formats an integer with comma thousands separators, e.g. `101142` becomes `"101,142"`.
+  """
+  @spec number(integer()) :: String.t()
+  def number(number) when is_integer(number) and number < 0, do: "-" <> number(-number)
+
+  def number(number) when is_integer(number) do
+    number
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
   defp pick_unit(seconds) when seconds < 60, do: {seconds, "second"}
   defp pick_unit(seconds) when seconds < 3_600, do: {div(seconds, 60), "minute"}
   defp pick_unit(seconds) when seconds < 86_400, do: {div(seconds, 3_600), "hour"}
