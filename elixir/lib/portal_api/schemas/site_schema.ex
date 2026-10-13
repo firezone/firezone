@@ -7,7 +7,7 @@ defmodule PortalAPI.Schemas.Site do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Site,
-             internal: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]}
+             internal: [:account_id, :inserted_at, :managed_by, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Site",
       description: "Site",
