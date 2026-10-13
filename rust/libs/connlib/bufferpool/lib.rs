@@ -118,7 +118,7 @@ impl<B> StaticPool<B> {
 
                 let mut batch = self.full.pop()?;
                 buffers.append(&mut batch);
-                magazine.set_pool(self);
+                magazine.pool.set(Some(self));
                 self.empty.push(batch);
 
                 buffers.pop()
@@ -146,7 +146,7 @@ impl<B> StaticPool<B> {
             }
 
             buffers.extend(buffer.take());
-            magazine.set_pool(self);
+            magazine.pool.set(Some(self));
         });
 
         buffer.map_or(Ok(()), Err)
@@ -176,26 +176,15 @@ impl<B> Magazine<B> {
             pool: Cell::new(None),
         }
     }
-
-    fn set_pool(&self, pool: &'static StaticPool<B>) {
-        debug_assert!(
-            self.pool.get().is_none_or(|p| std::ptr::eq(p, pool)),
-            "magazine must not be shared between pools"
-        );
-
-        self.pool.set(Some(pool));
-    }
 }
 
 impl<B> Drop for Magazine<B> {
     fn drop(&mut self) {
         let buffers = std::mem::take(self.buffers.get_mut());
 
-        if buffers.is_empty() {
-            return;
-        }
-
-        if let Some(pool) = self.pool.get() {
+        if let Some(pool) = self.pool.get()
+            && !buffers.is_empty()
+        {
             pool.full.push(buffers);
         }
     }
