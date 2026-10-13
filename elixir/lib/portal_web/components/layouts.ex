@@ -35,4 +35,8 @@ defmodule PortalWeb.Layouts do
 
   defp banner_classes(_),
     do: {"bg-warning-light border-warning/30", "text-warning", "text-warning", "ri-alert-line"}
+
+  # Staff-authored HTML only, see Portal.Ops.set_banner/2.
+  # sobelow_skip ["XSS.Raw"]
+  defp banner_message(message), do: Phoenix.HTML.raw(message)
 end
