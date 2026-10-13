@@ -22,7 +22,11 @@ use crate::{
 /// Until the NAT is set up, packets sent to these resources are effectively black-holed.
 #[derive(Default)]
 pub struct DnsResourceNat {
-    inner: HashMap<(GatewayId, DnsResourceDomain, ResourceId), (State, IpPacket), FastRandomState>,
+    inner: HashMap<
+        (GatewayId, u64, ResourceId),
+        (DnsResourceDomain, State, IpPacket),
+        FastRandomState,
+    >,
 
     assigned_ips_packets: VecDeque<(GatewayId, DnsResourceDomain, ResourceId, IpPacket)>,
 }
@@ -41,7 +45,7 @@ impl DnsResourceNat {
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
     ) -> Result<VecDeque<IpPacket>> {
-        match self.inner.entry((gid, domain.clone(), rid)) {
+        match self.inner.entry((gid, domain.id(), rid)) {
             Entry::Vacant(v) => {
                 tracing::trace!(%domain, %gid, %rid, "No DNS resource NAT state, creating `Pending` entry");
 
@@ -56,6 +60,7 @@ impl DnsResourceNat {
                 )?;
 
                 v.insert((
+                    domain.clone(),
                     State::Pending {
                         sent_at: now,
                         buffered_packets,
@@ -69,7 +74,7 @@ impl DnsResourceNat {
                     .push_back((gid, domain, rid, assigned_ips));
             }
             Entry::Occupied(mut o) => {
-                let (state, assigned_ips) = o.get_mut();
+                let (_, state, assigned_ips) = o.get_mut();
 
                 match state {
                     State::Confirmed => {
@@ -145,11 +150,10 @@ impl DnsResourceNat {
     /// to continue flowing to the Gateway while the DNS resource NAT is being recreated.
     /// In most cases, the DNS records will not change and as such, performing this will not interrupt the flow of packets.
     pub fn recreate(&mut self, domain: DomainName) {
-        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
-        for (state, _) in self
+        for (_, state, _) in self
             .inner
-            .iter_mut()
-            .filter_map(|((_, candidate, _), b)| (candidate.name() == &domain).then_some(b))
+            .values_mut()
+            .filter(|(candidate, _, _)| candidate.name() == &domain)
         {
             let should_buffer = match state {
                 State::Recreating { .. } | State::Pending { .. } => continue,
@@ -174,7 +178,7 @@ impl DnsResourceNat {
         packet: IpPacket,
         now: Instant,
     ) -> Option<IpPacket> {
-        let Some((state, assigned_ips)) = self.inner.get_mut(&(gid, domain.clone(), rid)) else {
+        let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
             tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
             return Some(packet); // Pass-through packet.
@@ -245,12 +249,13 @@ impl DnsResourceNat {
         domain: DnsResourceDomain,
         res: p2p_control::dns_resource_nat::DomainStatus,
     ) -> impl IntoIterator<Item = IpPacket> {
-        let Entry::Occupied(mut nat_entry) = self.inner.entry((gid, domain, res.resource)) else {
+        let Entry::Occupied(mut nat_entry) = self.inner.entry((gid, domain.id(), res.resource))
+        else {
             tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
             return into_iter(None);
         };
 
-        let (nat_state, _) = nat_entry.get_mut();
+        let (_, nat_state, _) = nat_entry.get_mut();
 
         if res.status != p2p_control::dns_resource_nat::NatStatus::Active {
             tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");

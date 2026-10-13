@@ -70,6 +70,10 @@ impl DnsResourceDomain {
         &self.name
     }
 
+    pub(crate) fn id(&self) -> u64 {
+        self.id
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(id: u64, name: DomainName) -> Self {
         Self {
