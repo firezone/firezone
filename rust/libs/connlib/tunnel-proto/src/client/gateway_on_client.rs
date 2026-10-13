@@ -4,16 +4,23 @@ use std::{
 };
 
 use connlib_model::ResourceId;
+use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
+use lru::LruCache;
 
-use crate::{IpConfig, NotAllowedResource};
+use crate::{IpConfig, NotAllowedResource, routing_table::MAX_CACHE_ENTRIES};
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     gateway_tun: IpConfig,
     allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
+    /// Source IPs that matched `allowed_ips`.
+    ///
+    /// Only approvals are cached, so spoofed sources cannot fill it.
+    /// Removing a resource can revoke an approval, so it clears the cache.
+    allowed_src_cache: LruCache<IpAddr, (), FastRandomState>,
 }
 
 impl GatewayOnClient {
@@ -39,6 +46,7 @@ impl GatewayOnClient {
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         self.allowed_ips.retain(|_, r| !r.is_empty());
+        self.allowed_src_cache.clear();
     }
 
     pub(crate) fn no_allowed_resources(&self) -> bool {
@@ -65,16 +73,17 @@ impl GatewayOnClient {
     pub(crate) fn new(gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             allowed_ips: IpNetworkTable::new(),
+            allowed_src_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
             gateway_tun,
         }
     }
 }
 
 impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
+    pub(crate) fn ensure_allowed_src(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
-        if self.gateway_tun.is_ip(src) {
+        if self.gateway_tun.is_ip(src) || self.allowed_src_cache.get(&src).is_some() {
             return Ok(());
         }
 
@@ -82,6 +91,34 @@ impl GatewayOnClient {
             return Err(anyhow::Error::new(NotAllowedResource(src)));
         }
 
+        self.allowed_src_cache.put(src, ());
+
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+
+    #[test]
+    fn removing_resource_revokes_cached_src() {
+        let resource = ResourceId::from_u128(1);
+        let src = Ipv4Addr::new(10, 0, 0, 1);
+        let packet =
+            ip_packet::make::udp_packet(src, Ipv4Addr::new(100, 64, 0, 1), 53, 53, &[]).unwrap();
+        let mut gateway = GatewayOnClient::new(IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 2),
+            v6: Ipv6Addr::LOCALHOST,
+        });
+
+        gateway.allow_ip_for_resource(src, resource);
+        gateway.ensure_allowed_src(&packet).unwrap();
+
+        gateway.remove_resource(resource);
+
+        assert!(gateway.ensure_allowed_src(&packet).is_err());
     }
 }
