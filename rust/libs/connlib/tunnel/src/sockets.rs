@@ -52,7 +52,7 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
 /// Dropping the collection after processing returns it to the pool, keeping the
 /// receive path free of allocations.
 static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> =
-    LazyLock::new(|| BufferPool::new(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
+    LazyLock::new(|| BufferPool::new_static(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);

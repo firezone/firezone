@@ -41,7 +41,7 @@ use std::net::IpAddr;
 use std::sync::LazyLock;
 
 static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
+    LazyLock::new(|| BufferPool::new_static(MAX_FZ_PAYLOAD, "ip-packet"));
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;

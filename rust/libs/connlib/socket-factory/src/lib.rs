@@ -969,7 +969,7 @@ impl RecvBuffers {
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
-pub struct DatagramBatch<B = Buffer<Vec<u8>>> {
+pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
     #[debug(skip)]
     buffers: Buffer<VecBuf<B>>,
     #[debug(skip)]
@@ -1054,7 +1054,7 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
 }
 
 /// The iterator behind [`DatagramBatch::drain`].
-struct Drain<'a, B> {
+struct Drain<'a, B: 'static> {
     batch: &'a DatagramBatch<B>,
     buf_index: usize,
     segment_index: usize,
@@ -1194,7 +1194,7 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 88);
+        assert_eq!(size_of::<DatagramBatch>(), 104);
     }
 
     #[test]

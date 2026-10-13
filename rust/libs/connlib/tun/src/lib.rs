@@ -43,7 +43,7 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
 };
 
 static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> =
-    LazyLock::new(|| BufferPool::new(MAX_BATCH_SIZE, "ip-packet-batch"));
+    LazyLock::new(|| BufferPool::new_static(MAX_BATCH_SIZE, "ip-packet-batch"));
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.

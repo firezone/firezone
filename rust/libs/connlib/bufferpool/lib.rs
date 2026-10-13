@@ -16,8 +16,8 @@ use opentelemetry::{
 ///
 /// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
 /// This minimizes contention even under high load where buffers are constantly needed and returned.
-pub struct BufferPool<B> {
-    inner: Arc<PoolInner<B>>,
+pub struct BufferPool<B: 'static> {
+    inner: PoolRef<B>,
 }
 
 impl<B> Clone for BufferPool<B> {
@@ -28,10 +28,35 @@ impl<B> Clone for BufferPool<B> {
     }
 }
 
+enum PoolRef<B: 'static> {
+    Static(&'static PoolInner<B>),
+    Shared(Arc<PoolInner<B>>),
+}
+
+impl<B> Clone for PoolRef<B> {
+    fn clone(&self) -> Self {
+        match self {
+            PoolRef::Static(inner) => PoolRef::Static(inner),
+            PoolRef::Shared(inner) => PoolRef::Shared(inner.clone()),
+        }
+    }
+}
+
+impl<B> Deref for PoolRef<B> {
+    type Target = PoolInner<B>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            PoolRef::Static(inner) => inner,
+            PoolRef::Shared(inner) => inner,
+        }
+    }
+}
+
 /// The state shared between a pool and all of its buffers.
 ///
 /// Everything that is constant per pool lives here (rather than in each buffer),
-/// keeping a [`Buffer`] handle at the size of the buffer itself plus one `Arc`.
+/// keeping a [`Buffer`] handle at the size of the buffer itself plus one [`PoolRef`].
 struct PoolInner<B> {
     queue: SegQueue<B>,
 
@@ -76,47 +101,36 @@ where
     B: Buf,
 {
     pub fn new(capacity: usize, tag: &'static str) -> Self {
-        Self::with_counter(capacity, tag, otel_instruments::buffer_count())
+        Self {
+            inner: PoolRef::Shared(Arc::new(PoolInner::new(
+                capacity,
+                tag,
+                otel_instruments::buffer_count(),
+            ))),
+        }
     }
 
     /// Like [`BufferPool::new`], but records the buffer count through the given `meter`.
     pub fn with_meter(capacity: usize, tag: &'static str, meter: &Meter) -> Self {
-        Self::with_counter(capacity, tag, otel_instruments::buffer_count_with(meter))
-    }
-
-    fn with_counter(
-        capacity: usize,
-        tag: &'static str,
-        buffer_counter: UpDownCounter<i64>,
-    ) -> Self {
-        let attributes = [
-            KeyValue::new("system.buffer.pool.name", tag),
-            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-        ];
-
         Self {
-            inner: Arc::new(PoolInner {
-                queue: SegQueue::new(),
-
-                // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
-                // This however means that getting a buffer can fail which would require us to implement back-pressure.
-                new_buffer_fn: Box::new({
-                    let counter = buffer_counter.clone();
-                    let attributes = attributes.clone();
-
-                    move || {
-                        counter.add(1, &attributes);
-
-                        B::with_capacity(capacity)
-                    }
-                }),
+            inner: PoolRef::Shared(Arc::new(PoolInner::new(
                 capacity,
                 tag,
-                capacity_of: B::capacity,
-                reset: B::reset,
-                attributes,
-                counter: buffer_counter,
-            }),
+                otel_instruments::buffer_count_with(meter),
+            ))),
+        }
+    }
+
+    /// Like [`BufferPool::new`], but leaks the pool so its buffers don't have to keep it alive.
+    ///
+    /// Only use this for pools stored in a `static`.
+    pub fn new_static(capacity: usize, tag: &'static str) -> Self {
+        Self {
+            inner: PoolRef::Static(Box::leak(Box::new(PoolInner::new(
+                capacity,
+                tag,
+                otel_instruments::buffer_count(),
+            )))),
         }
     }
 
@@ -129,6 +143,41 @@ where
                     .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
             ),
             pool: self.inner.clone(),
+        }
+    }
+}
+
+impl<B> PoolInner<B>
+where
+    B: Buf,
+{
+    fn new(capacity: usize, tag: &'static str, buffer_counter: UpDownCounter<i64>) -> Self {
+        let attributes = [
+            KeyValue::new("system.buffer.pool.name", tag),
+            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+        ];
+
+        Self {
+            queue: SegQueue::new(),
+
+            // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
+            // This however means that getting a buffer can fail which would require us to implement back-pressure.
+            new_buffer_fn: Box::new({
+                let counter = buffer_counter.clone();
+                let attributes = attributes.clone();
+
+                move || {
+                    counter.add(1, &attributes);
+
+                    B::with_capacity(capacity)
+                }
+            }),
+            capacity,
+            tag,
+            capacity_of: B::capacity,
+            reset: B::reset,
+            attributes,
+            counter: buffer_counter,
         }
     }
 }
@@ -148,10 +197,10 @@ where
     }
 }
 
-pub struct Buffer<B> {
+pub struct Buffer<B: 'static> {
     inner: Option<B>,
 
-    pool: Arc<PoolInner<B>>,
+    pool: PoolRef<B>,
 }
 
 impl Buffer<Vec<u8>> {
@@ -406,7 +455,7 @@ impl ResizeBuf for BytesMut {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::{sync::LazyLock, time::Duration};
 
     use opentelemetry::metrics::MeterProvider;
     use opentelemetry_sdk::metrics::{
@@ -484,11 +533,23 @@ mod tests {
     }
 
     /// The whole point of pooling is passing buffers around cheaply: a handle is
-    /// the buffer itself plus one `Arc`; everything else lives in the pool.
+    /// the buffer itself plus one [`PoolRef`]; everything else lives in the pool.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn handles_are_slim() {
-        assert_eq!(size_of::<Buffer<Vec<u8>>>(), 32);
+        assert_eq!(size_of::<Buffer<Vec<u8>>>(), 40);
+    }
+
+    #[test]
+    fn static_pool_recycles_buffers() {
+        static POOL: LazyLock<BufferPool<Vec<u8>>> =
+            LazyLock::new(|| BufferPool::new_static(8, "test"));
+
+        let buffer = POOL.pull();
+        let storage = buffer.as_ptr();
+        drop(buffer);
+
+        assert_eq!(POOL.pull().as_ptr(), storage);
     }
 
     #[test]
