@@ -3,7 +3,7 @@ defmodule Portal.SignUpSurvey do
   import Ecto.Changeset
   import Portal.Changeset
 
-  @referral_sources ~w[search github reddit hacker_news word_of_mouth blog social_media event other]
+  @referral_sources ~w[search ai_llm github reddit hacker_news word_of_mouth blog social_media event other]
   @motivations ~w[performance access_controls simplicity security open_source cost other]
   @use_cases ~w[personal servers internal_apps employees contractors other]
   @roles ~w[it security devops software_engineer network_engineer founder consultant other]

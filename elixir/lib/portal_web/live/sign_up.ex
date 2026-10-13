@@ -460,6 +460,7 @@ defmodule PortalWeb.SignUp do
 
   @referral_source_options [
     {"Google / web search", "search"},
+    {"AI / LLM (ChatGPT, Claude, etc.)", "ai_llm"},
     {"GitHub", "github"},
     {"Reddit", "reddit"},
     {"Hacker News", "hacker_news"},
