@@ -110,7 +110,7 @@ jobs:
           retry docker compose up -d --wait portal --no-build --pull never
           retry docker compose exec portal curl --fail --silent --output /dev/null http://localhost:8081/openapi.json
       - run: ./scripts/tests/openapi-fuzz.sh
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "!cancelled()"
         with:
           name: schemathesis-report-${{ inputs.id }}
@@ -327,7 +327,7 @@ jobs:
 
           ! tcpdump -nnnr ./relay-1-packets.pcap -v | grep "bad \w* cksum"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "!success()"
         with:
           overwrite: true
@@ -344,7 +344,7 @@ jobs:
 
           ! tcpdump -nnnr ./relay-2-packets.pcap -v | grep "bad \w* cksum"
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "!success() && !matrix.test.single_relay"
         with:
           overwrite: true

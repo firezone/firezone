@@ -81,7 +81,7 @@ jobs:
       # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-screenshots
           path: kotlin/android/screenshots
@@ -138,13 +138,13 @@ jobs:
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
           script: ${{ matrix.script }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-coverage-${{ matrix.suite }}
           path: kotlin/android/coverage.ec
       # System screens the tests photographed, such as the KeyChain chooser, which
       # `commit-screenshots` puts next to the rendered ones.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !startsWith(github.head_ref, 'chore/publish-') }}
         with:
           name: android-emulator-screenshots-${{ matrix.suite }}
@@ -269,7 +269,7 @@ jobs:
         run: |
           sentry-cli debug-files upload --log-level info --project android-client --include-sources ../../rust/target
       - name: Upload package artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android ${{ matrix.package-type }}
           path: |
@@ -350,7 +350,7 @@ jobs:
         run: |
           ./gradlew assembleDebug assembleDebugAndroidTest :dpc:assembleDebug copyJacocoCli collectDebugClasses
       - name: Upload debug APK
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android debug APK
           # Two paths, so the artifact is rooted at kotlin/android rather than inside app/.
@@ -360,7 +360,7 @@ jobs:
       # Execution data records which probes ran, and says nothing about what they belong to, so
       # reporting on it later needs the classes these tests were built from.
       - name: Upload the compiled classes
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-debug-classes
           # The default is to warn and upload nothing, which only surfaces much later as a
@@ -370,7 +370,7 @@ jobs:
       # Kept apart from the classes: the report reads that directory as the code under test, and
       # would happily measure JaCoCo itself if the tool sat in it.
       - name: Upload the reporting tool
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-jacoco-cli
           path: ./kotlin/android/app/build/jacoco-cli
