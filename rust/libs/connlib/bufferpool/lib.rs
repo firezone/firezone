@@ -16,7 +16,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::{
         Mutex, MutexGuard, OnceLock, PoisonError,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
     },
     thread::LocalKey,
 };
@@ -74,13 +74,7 @@ pub struct BufferPool<B: 'static> {
     magazine: &'static LocalKey<RefCell<Magazine<B>>>,
 
     /// The size every buffer in the pool is allocated with.
-    ///
-    /// A returned buffer whose capacity deviates from this no longer fits the pool's
-    /// "all buffers are equal in size" invariant and indicates an accidental reallocation,
-    /// unless the pool has been resized.
     capacity: AtomicUsize,
-    /// Whether buffers of a previous capacity may still be around.
-    resized: AtomicBool,
     /// The pool's name, used to attribute a capacity deviation to a specific pool.
     tag: &'static str,
     buffer_count: OnceLock<BufferCount>,
@@ -103,7 +97,6 @@ where
             }),
             magazine,
             capacity: AtomicUsize::new(capacity),
-            resized: AtomicBool::new(false),
             tag,
             buffer_count: OnceLock::new(),
         }
@@ -237,8 +230,6 @@ where
 
         // Without a buffer count, the pool has not allocated any buffers yet.
         if let Some(buffer_count) = pool.buffer_count.get() {
-            pool.resized.store(true, Ordering::Relaxed);
-
             let idle = std::mem::take(&mut pool.depot().full);
 
             for buffer in idle.into_iter().flat_map(|batch| batch.buffers) {
@@ -547,34 +538,16 @@ where
 
         buffer.reset();
 
-        let expected = self.pool.capacity();
-        if let Some(actual) = deviating_capacity(expected, B::capacity(&buffer)) {
-            if self.pool.resized.load(Ordering::Relaxed) {
-                self.pool.buffer_count().add(-1, actual);
-
-                return;
-            }
-
-            // Discard deviating buffers: re-pooling them would re-emit this warning on every reuse.
-            tracing::warn!(
-                pool = %self.pool.tag,
-                expected_capacity = %expected,
-                actual_capacity = %actual,
-                "Discarding buffer with a different capacity than it was allocated with"
-            );
-
-            self.pool.buffer_count().add(-1, expected);
+        // A buffer of a different capacity is either left over from before a resize or was reallocated.
+        let capacity = B::capacity(&buffer);
+        if capacity != self.pool.capacity() {
+            self.pool.buffer_count().add(-1, capacity);
 
             return;
         }
 
         self.pool.give(buffer);
     }
-}
-
-/// Returns the `actual` capacity if it deviates from the `expected` one a pool allocates its buffers with.
-fn deviating_capacity(expected: usize, actual: usize) -> Option<usize> {
-    (expected != actual).then_some(actual)
 }
 
 pub trait Buf: Sized {
@@ -738,13 +711,6 @@ mod tests {
         let buffer = pool.pull_initialised(b"hello world");
 
         assert_eq!(buffer.len(), 11);
-    }
-
-    #[test]
-    fn deviating_capacity_flags_only_changed_sizes() {
-        assert_eq!(deviating_capacity(1024, 1024), None);
-        assert_eq!(deviating_capacity(1024, 2048), Some(2048));
-        assert_eq!(deviating_capacity(1024, 512), Some(512));
     }
 
     #[test]
@@ -915,10 +881,6 @@ mod tests {
         buffer_pool!(static POOL: Vec<u8>, "test");
         let pool = POOL.with_capacity(8);
         record_buffer_count(pool, &provider);
-        let logs = logging::CapturingWriter::default();
-        let _guard = tracing::subscriber::set_default(
-            tracing_subscriber::fmt().with_writer(logs.clone()).finish(),
-        );
 
         let buffer = pool.pull();
         POOL.with_capacity(16);
@@ -928,7 +890,6 @@ mod tests {
 
         assert_eq!(get_num_buffers(&exporter), 0);
         assert_eq!(magazine_len(pool), 0);
-        assert!(logs.lines().is_empty());
     }
 
     #[test]
