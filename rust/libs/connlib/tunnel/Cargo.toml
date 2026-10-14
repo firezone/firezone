@@ -40,7 +40,7 @@ ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
 serde_json = { workspace = true }
 stun_codec = { workspace = true }
-tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
+tokio = { workspace = true, features = ["macros", "process", "rt", "rt-multi-thread", "test-util"] }
 
 [[bench]]
 name = "per_packet"
