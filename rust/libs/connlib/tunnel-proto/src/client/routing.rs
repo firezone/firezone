@@ -5,10 +5,10 @@ use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
 
 use crate::{
-    cache::Last,
+    cache::Cache,
     dns::{self, resource_stub_resolver::DnsResourceDomain},
     filter_engine::FilterEngine,
-    routing_table::{FilterMode, RouteEntry, RoutingTable},
+    routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
 };
 
 /// The matching outbound routes for one kind of destination.
@@ -35,13 +35,23 @@ pub(super) struct GatewayRoute {
 pub(super) struct Denied;
 
 /// The client's routing tables, one for each kind of destination.
-#[derive(Default)]
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     device_pool: RoutingTable<DevicePoolEntry>,
     resolved:
-        Last<(IpAddr, Protocol, Option<ResourceId>, FilterMode), Result<MatchedRoutes, Denied>>,
+        Cache<(IpAddr, Protocol, Option<ResourceId>, FilterMode), Result<MatchedRoutes, Denied>>,
+}
+
+impl Default for RoutingTables {
+    fn default() -> Self {
+        Self {
+            cidr: RoutingTable::default(),
+            dns: RoutingTable::default(),
+            device_pool: RoutingTable::default(),
+            resolved: Cache::new(MAX_CACHE_ENTRIES),
+        }
+    }
 }
 
 impl RoutingTables {

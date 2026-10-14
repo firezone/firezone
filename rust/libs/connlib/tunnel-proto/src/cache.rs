@@ -1,4 +1,4 @@
-use std::{hash::Hash, num::NonZeroUsize};
+use std::{hash::Hash, num::NonZeroUsize, sync::Arc};
 
 use fast_random_state::FastRandomState;
 use lru::LruCache;
@@ -6,10 +6,11 @@ use lru::LruCache;
 /// An LRU cache that remembers its most recent lookup in front of it.
 ///
 /// Packets of a flow arrive in batches, so most lookups repeat the previous key and only cost a
-/// comparison, while keys that interleave within a batch still hit the LRU.
+/// comparison, while keys that interleave within a batch still hit the LRU. Both share each
+/// value through an [`Arc`], so a hit in the LRU does not clone it.
 pub(crate) struct Cache<K: Hash + Eq, V> {
-    last: Last<K, V>,
-    lru: LruCache<K, V, FastRandomState>,
+    last: Last<K, Arc<V>>,
+    lru: LruCache<K, Arc<V>, FastRandomState>,
 }
 
 impl<K: Hash + Eq, V> Cache<K, V> {
@@ -30,19 +31,19 @@ impl<K: Hash + Eq, V> Cache<K, V> {
 impl<K, V> Cache<K, V>
 where
     K: Hash + Eq + Clone,
-    V: Clone,
 {
     /// Returns the cached value for `key`, otherwise computes, caches and returns it.
     pub(crate) fn get_or_insert_with(&mut self, key: K, compute: impl FnOnce() -> V) -> &V {
-        self.last
-            .get_or_insert_with(key.clone(), || self.lru.get_or_insert(key, compute).clone())
+        self.last.get_or_insert_with(key.clone(), || {
+            self.lru.get_or_insert(key, || Arc::new(compute())).clone()
+        })
     }
 }
 
 /// Remembers the result of the most recent lookup.
 ///
 /// A lookup with a different key replaces the remembered entry.
-pub(crate) struct Last<K, V> {
+struct Last<K, V> {
     entry: Option<(K, V)>,
 }
 
@@ -56,7 +57,7 @@ impl<K: PartialEq, V> Last<K, V> {
     /// Returns the remembered value if `key` matches, otherwise computes, remembers and returns it.
     ///
     /// A lookup with a different key replaces the remembered entry.
-    pub(crate) fn get_or_insert_with(&mut self, key: K, compute: impl FnOnce() -> V) -> &V {
+    fn get_or_insert_with(&mut self, key: K, compute: impl FnOnce() -> V) -> &V {
         if self.entry.as_ref().is_some_and(|(k, _)| *k != key) {
             self.entry = None;
         }
@@ -65,7 +66,7 @@ impl<K: PartialEq, V> Last<K, V> {
     }
 
     /// Forgets the remembered value; call whenever the underlying data changes.
-    pub(crate) fn clear(&mut self) {
+    fn clear(&mut self) {
         self.entry = None;
     }
 }
