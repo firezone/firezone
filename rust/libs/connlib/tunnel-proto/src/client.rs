@@ -49,6 +49,7 @@ use connlib_model::{
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -695,7 +696,7 @@ impl ClientState {
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
                 let packet = if let Some(domain) = &route.domain {
-                    flow_tracker::record_domain(domain);
+                    flow_tracker::record_domain(domain.name());
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
@@ -785,9 +786,15 @@ impl ClientState {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .context("Failed to decode `DomainStatus`")?;
 
+                    let Some(domain) = self.resource_stub_resolver.resolved_domain(&res.domain)
+                    else {
+                        tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
+                        return Ok(None);
+                    };
+
                     let buffered_packets = self
                         .dns_resource_nat
-                        .on_domain_status(gid, res)
+                        .on_domain_status(gid, domain, res)
                         .into_iter()
                         .collect::<Vec<_>>();
 
@@ -2711,8 +2718,8 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 
 #[derive(Default)]
 struct OutboundAuthorizations {
-    gateways: HashMap<ResourceId, GatewayAuthorization>,
-    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>>,
+    gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
+    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>, FastRandomState>,
 }
 
 struct GatewayAuthorization {

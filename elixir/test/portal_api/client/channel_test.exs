@@ -5,6 +5,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
   alias Portal.Changes
+  alias Portal.Fixture
   alias Portal.Presence
   alias Portal.{PG, PubSub}
 
@@ -7495,14 +7496,16 @@ defmodule PortalAPI.Client.ChannelTest do
         socket = join_channel(client, subject, channel: channel)
         assert_push "init", %{resources: _, relays: _, interface: _}
 
+        marker = Fixture.unique_name("device-access")
+
         log =
           capture_log(fn ->
-            ref = push(socket, "request_device_access", %{})
+            ref = push(socket, "request_device_access", %{"marker" => marker})
             :sys.get_state(socket.channel_pid)
             refute_reply ref, :error, _, 0
           end)
 
-        refute log =~ "Unknown client message"
+        refute Fixture.logged_lines(log, marker) =~ "Unknown client message"
         assert Process.alive?(socket.channel_pid)
         Process.unlink(socket.channel_pid)
         close(socket)

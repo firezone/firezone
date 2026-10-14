@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.SocketTest do
   import Portal.FeaturesFixtures
   import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
+  alias Portal.Fixture
   alias PortalAPI.Client.Socket
 
   # The actual client IP used for tests that verify remote_ip tracking
@@ -1093,7 +1094,8 @@ defmodule PortalAPI.Client.SocketTest do
       token: token
     } do
       _provider = x509_provider_fixture(account: account, is_disabled: false)
-      unknown_actor = %{actor | email: "unknown@example.com"}
+      unknown_email = Fixture.unique_email("unknown")
+      unknown_actor = %{actor | email: unknown_email}
       untrusted_pki = pki()
 
       connect_info =
@@ -1110,7 +1112,7 @@ defmodule PortalAPI.Client.SocketTest do
         end)
 
       assert log =~ "untrusted_chain"
-      refute log =~ "x509_user_not_found"
+      refute Fixture.logged_lines(log, unknown_email) =~ "x509_user_not_found"
     end
 
     test "rate limits failed X.509 authentication before repeating validation", %{

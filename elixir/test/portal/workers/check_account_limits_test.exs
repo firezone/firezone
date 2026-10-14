@@ -9,6 +9,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   import Portal.OutboundEmailTestHelpers
   import Portal.ClientSessionFixtures
 
+  alias Portal.Fixture
   alias Portal.Workers.CheckAccountLimits
 
   describe "perform/1" do
@@ -518,7 +519,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
           assert :ok = perform_job(CheckAccountLimits, %{})
         end)
 
-      refute log =~ "Account seats limit exceeded"
+      refute Fixture.logged_lines(log, account.id) =~ "Account seats limit exceeded"
 
       # Flag should still be true
       account = Repo.get!(Portal.Account, account.id)

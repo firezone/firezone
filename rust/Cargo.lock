@@ -978,6 +978,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "crossbeam-queue",
+ "divan",
  "opentelemetry",
  "opentelemetry_sdk",
  "otel-instruments",
@@ -8890,6 +8891,7 @@ dependencies = [
  "base64 0.23.1",
  "bimap",
  "boringtun",
+ "bytecodec",
  "chrono",
  "connlib-model",
  "derive_more",
@@ -8919,6 +8921,7 @@ dependencies = [
  "serde_with",
  "smallvec",
  "snownet",
+ "stun_codec",
  "telemetry",
  "test-case",
  "test-strategy",
