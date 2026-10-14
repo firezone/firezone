@@ -1,9 +1,17 @@
+//! Process-wide pools of buffers, declared with [`buffer_pool!`].
+//!
+//! A pool hands out buffers of one capacity: either fixed at compile time or, for a
+//! [`ResizableBufferPool`], the capacity requested most recently.
+
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
     cell::{Cell, RefCell, RefMut},
     ops::{Deref, DerefMut},
-    sync::{Mutex, MutexGuard, OnceLock, PoisonError},
+    sync::{
+        Mutex, MutexGuard, OnceLock, PoisonError,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
     thread::LocalKey,
 };
 
@@ -20,12 +28,12 @@ use opentelemetry::{KeyValue, metrics::UpDownCounter};
 /// let buffer = PACKETS.pull();
 /// ```
 ///
-/// Without, the static is a [`BufferPoolCell`] that creates the pool on [`BufferPoolCell::init`]:
+/// Without, the static is a [`ResizableBufferPool`] whose capacity is set at runtime:
 ///
 /// ```
 /// bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8>, "datagrams");
 ///
-/// let pool = DATAGRAMS.init(64 * 1280);
+/// let pool = DATAGRAMS.with_capacity(64 * 1280);
 /// let buffer = pool.pull();
 /// ```
 #[macro_export]
@@ -40,10 +48,10 @@ macro_rules! buffer_pool {
     };
     ($(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty, $tag:expr $(,)?) => {
         $(#[$attr])*
-        $vis static $name: $crate::BufferPoolCell<$ty> = {
+        $vis static $name: $crate::ResizableBufferPool<$ty> = {
             ::std::thread_local!(static MAGAZINE: $crate::Magazine<$ty> = const { $crate::Magazine::new() });
 
-            $crate::BufferPoolCell::new($tag, &MAGAZINE)
+            $crate::ResizableBufferPool::new($tag, &MAGAZINE)
         };
     };
 }
@@ -62,8 +70,11 @@ pub struct BufferPool<B: 'static> {
     /// The size every buffer in the pool is allocated with.
     ///
     /// A returned buffer whose capacity deviates from this no longer fits the pool's
-    /// "all buffers are equal in size" invariant and indicates an accidental reallocation.
-    capacity: usize,
+    /// "all buffers are equal in size" invariant and indicates an accidental reallocation,
+    /// unless the pool has been resized.
+    capacity: AtomicUsize,
+    /// Whether buffers of a previous capacity may still be around.
+    resized: AtomicBool,
     /// The pool's name, used to attribute a capacity deviation to a specific pool.
     tag: &'static str,
     buffer_count: OnceLock<BufferCount>,
@@ -82,7 +93,8 @@ where
         Self {
             shared: Mutex::new(Vec::new()),
             magazine,
-            capacity,
+            capacity: AtomicUsize::new(capacity),
+            resized: AtomicBool::new(false),
             tag,
             buffer_count: OnceLock::new(),
         }
@@ -95,22 +107,32 @@ where
         }
     }
 
-    /// Takes a buffer from this thread's magazine.
+    /// Takes a buffer from this thread's magazine, discarding any of a previous capacity.
     ///
     /// During thread exit, the buffer comes from the shared stack directly.
     fn take(&'static self) -> B {
-        let buffer = self
-            .magazine
-            .try_with(|magazine| magazine.stock(self).take(self))
-            .unwrap_or_else(|_| self.take_shared());
+        let capacity = self.capacity();
 
-        buffer.unwrap_or_else(|| {
-            // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
-            // This however means that getting a buffer can fail which would require us to implement back-pressure.
-            self.buffer_count().add(1);
+        loop {
+            let buffer = self
+                .magazine
+                .try_with(|magazine| magazine.stock(self).take(self))
+                .unwrap_or_else(|_| self.take_shared());
 
-            B::with_capacity(self.capacity)
-        })
+            let Some(buffer) = buffer else {
+                // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
+                // This however means that getting a buffer can fail which would require us to implement back-pressure.
+                self.buffer_count().add(1, capacity);
+
+                return B::with_capacity(capacity);
+            };
+
+            if B::capacity(&buffer) == capacity {
+                return buffer;
+            }
+
+            self.buffer_count().add(-1, B::capacity(&buffer));
+        }
     }
 
     /// Puts a buffer into this thread's magazine.
@@ -131,9 +153,8 @@ where
     }
 
     fn buffer_count(&self) -> &BufferCount {
-        self.buffer_count.get_or_init(|| {
-            BufferCount::new(otel_instruments::buffer_count(), self.capacity, self.tag)
-        })
+        self.buffer_count
+            .get_or_init(|| BufferCount::new(otel_instruments::buffer_count(), self.tag))
     }
 }
 
@@ -153,6 +174,10 @@ where
 }
 
 impl<B> BufferPool<B> {
+    fn capacity(&self) -> usize {
+        self.capacity.load(Ordering::Relaxed)
+    }
+
     fn take_shared(&self) -> Option<B> {
         let mut shared = self.shared();
         let batch = shared.last_mut()?;
@@ -175,38 +200,45 @@ impl<B> BufferPool<B> {
 }
 
 /// A [`BufferPool`] whose capacity is only known at runtime, declared with [`buffer_pool!`].
-pub struct BufferPoolCell<B: 'static> {
-    pool: OnceLock<BufferPool<B>>,
-    tag: &'static str,
-    magazine: &'static LocalKey<Magazine<B>>,
+///
+/// Only the capacity requested most recently keeps its buffers: changing it discards the idle
+/// buffers of the previous one, and buffers of the previous capacity still in use are discarded
+/// once they return.
+pub struct ResizableBufferPool<B: 'static> {
+    pool: BufferPool<B>,
 }
 
-impl<B> BufferPoolCell<B>
+impl<B> ResizableBufferPool<B>
 where
     B: Buf,
 {
     #[doc(hidden)]
     pub const fn new(tag: &'static str, magazine: &'static LocalKey<Magazine<B>>) -> Self {
         Self {
-            pool: OnceLock::new(),
-            tag,
-            magazine,
+            pool: BufferPool::new(0, tag, magazine),
         }
     }
 
-    /// Returns the pool, creating it with buffers of `capacity` on the first call.
-    ///
-    /// Every call must pass the same `capacity`.
-    pub fn init(&'static self, capacity: usize) -> &'static BufferPool<B> {
-        let pool = self
-            .pool
-            .get_or_init(|| BufferPool::new(capacity, self.tag, self.magazine));
+    /// Returns the pool, changing the capacity of its buffers to `capacity` if necessary.
+    pub fn with_capacity(&'static self, capacity: usize) -> &'static BufferPool<B> {
+        let pool = &self.pool;
 
-        debug_assert_eq!(
-            pool.capacity, capacity,
-            "Pool `{}` is already initialised with a different capacity",
-            self.tag
-        );
+        if pool.capacity() == capacity {
+            return pool;
+        }
+
+        pool.capacity.store(capacity, Ordering::Relaxed);
+
+        // Without a buffer count, the pool has not allocated any buffers yet.
+        if let Some(buffer_count) = pool.buffer_count.get() {
+            pool.resized.store(true, Ordering::Relaxed);
+
+            let idle = std::mem::take(&mut *pool.shared());
+
+            for buffer in idle.into_iter().flatten() {
+                buffer_count.add(-1, B::capacity(&buffer));
+            }
+        }
 
         pool
     }
@@ -296,25 +328,25 @@ impl<B> Stock<B> {
     }
 }
 
-/// Counts the buffers a pool has allocated and not yet discarded.
+/// Counts the buffers a pool has allocated and not yet discarded, per capacity.
 struct BufferCount {
     counter: UpDownCounter<i64>,
-    attributes: [KeyValue; 2],
+    tag: &'static str,
 }
 
 impl BufferCount {
-    fn new(counter: UpDownCounter<i64>, capacity: usize, tag: &'static str) -> Self {
-        Self {
-            counter,
-            attributes: [
-                KeyValue::new("system.buffer.pool.name", tag),
-                KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-            ],
-        }
+    fn new(counter: UpDownCounter<i64>, tag: &'static str) -> Self {
+        Self { counter, tag }
     }
 
-    fn add(&self, delta: i64) {
-        self.counter.add(delta, &self.attributes);
+    fn add(&self, delta: i64, capacity: usize) {
+        self.counter.add(
+            delta,
+            &[
+                KeyValue::new("system.buffer.pool.name", self.tag),
+                KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+            ],
+        );
     }
 }
 
@@ -443,17 +475,23 @@ where
 
         buffer.reset();
 
-        let actual = B::capacity(&buffer);
-        if let Some(actual) = deviating_capacity(self.pool.capacity, actual) {
+        let expected = self.pool.capacity();
+        if let Some(actual) = deviating_capacity(expected, B::capacity(&buffer)) {
+            if self.pool.resized.load(Ordering::Relaxed) {
+                self.pool.buffer_count().add(-1, actual);
+
+                return;
+            }
+
             // Discard deviating buffers: re-pooling them would re-emit this warning on every reuse.
             tracing::warn!(
                 pool = %self.pool.tag,
-                expected_capacity = %self.pool.capacity,
+                expected_capacity = %expected,
                 actual_capacity = %actual,
                 "Discarding buffer with a different capacity than it was allocated with"
             );
 
-            self.pool.buffer_count().add(-1);
+            self.pool.buffer_count().add(-1, expected);
 
             return;
         }
@@ -775,24 +813,82 @@ mod tests {
     }
 
     #[test]
-    fn init_returns_the_same_pool() {
+    fn with_capacity_returns_the_same_pool() {
         buffer_pool!(static POOL: Vec<u8>, "test");
 
-        let pool = POOL.init(8);
-        let again = POOL.init(8);
+        let pool = POOL.with_capacity(8);
+        let again = POOL.with_capacity(16);
 
         assert!(std::ptr::eq(pool, again));
-        assert_eq!(pool.pull().capacity(), 8);
+        assert_eq!(pool.pull().capacity(), 16);
     }
 
-    #[cfg(debug_assertions)]
     #[test]
-    #[should_panic(expected = "already initialised with a different capacity")]
-    fn init_with_another_capacity_panics() {
+    fn changing_the_capacity_frees_idle_buffers() {
         buffer_pool!(static POOL: Vec<u8>, "test");
+        let pool = POOL.with_capacity(8);
 
-        POOL.init(8);
-        POOL.init(16);
+        let buffers = (0..4 * BATCH_SIZE).map(|_| pool.pull()).collect::<Vec<_>>();
+        std::thread::spawn(move || drop(buffers)).join().unwrap();
+        assert_eq!(shared_len(pool), 4 * BATCH_SIZE);
+
+        POOL.with_capacity(16);
+
+        assert_eq!(shared_len(pool), 0);
+    }
+
+    #[tokio::test]
+    async fn buffer_of_a_previous_capacity_is_discarded_on_return() {
+        let (provider, exporter) = init_meter_provider();
+        buffer_pool!(static POOL: Vec<u8>, "test");
+        let pool = POOL.with_capacity(8);
+        record_buffer_count(pool, &provider);
+        let logs = logging::CapturingWriter::default();
+        let _guard = tracing::subscriber::set_default(
+            tracing_subscriber::fmt().with_writer(logs.clone()).finish(),
+        );
+
+        let buffer = pool.pull();
+        POOL.with_capacity(16);
+        drop(buffer);
+
+        tokio::time::sleep(Duration::from_millis(100)).await; // Wait for metrics to be exported.
+
+        assert_eq!(get_num_buffers(&exporter), 0);
+        assert_eq!(magazine_len(pool), 0);
+        assert!(logs.lines().is_empty());
+    }
+
+    #[test]
+    fn magazine_discards_buffers_of_a_previous_capacity() {
+        buffer_pool!(static POOL: Vec<u8>, "test");
+        let pool = POOL.with_capacity(8);
+
+        let buffers = (0..3).map(|_| pool.pull()).collect::<Vec<_>>();
+        drop(buffers);
+        POOL.with_capacity(16);
+        let buffer = pool.pull();
+
+        assert_eq!(buffer.capacity(), 16);
+        assert_eq!(magazine_len(pool), 0);
+    }
+
+    #[test]
+    fn switching_back_to_a_previous_capacity() {
+        buffer_pool!(static POOL: Vec<u8>, "test");
+        let pool = POOL.with_capacity(8);
+        drop(pool.pull());
+
+        POOL.with_capacity(16);
+        drop(pool.pull());
+        POOL.with_capacity(8);
+
+        let buffer = pool.pull();
+        let storage = buffer.as_ptr();
+        assert_eq!(buffer.capacity(), 8);
+        drop(buffer);
+
+        assert_eq!(pool.pull().as_ptr(), storage);
     }
 
     #[test]
@@ -861,7 +957,7 @@ mod tests {
 
         assert!(
             pool.buffer_count
-                .set(BufferCount::new(counter, pool.capacity, pool.tag))
+                .set(BufferCount::new(counter, pool.tag))
                 .is_ok()
         );
     }
@@ -879,7 +975,7 @@ mod tests {
             panic!("Not an i64 sum");
         };
 
-        sum.data_points().next().unwrap().value()
+        sum.data_points().map(|point| point.value()).sum()
     }
 
     fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricExporter) {

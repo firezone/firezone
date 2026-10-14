@@ -978,11 +978,13 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "divan",
+ "logging",
  "opentelemetry",
  "opentelemetry_sdk",
  "otel-instruments",
  "tokio",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

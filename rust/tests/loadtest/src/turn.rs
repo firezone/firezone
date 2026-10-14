@@ -313,7 +313,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
     let client = bind_socket(bind_addr).context("Failed to bind client socket")?;
 
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
-    let pool = PACKETS.init(MAX_BATCH * frame_size);
+    let pool = PACKETS.with_capacity(MAX_BATCH * frame_size);
 
     // Create a single authenticated allocation on the client socket; all flows share it.
     let allocation = allocate(&client, config.server, &config, pool)

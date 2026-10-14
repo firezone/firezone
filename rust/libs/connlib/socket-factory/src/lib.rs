@@ -936,7 +936,7 @@ impl RecvBatch {
 impl RecvBuffers {
     fn new(recv_buf_size: usize) -> Self {
         Self {
-            bytes: UDP_RECV_BYTES.init(recv_buf_size),
+            bytes: UDP_RECV_BYTES.with_capacity(recv_buf_size),
         }
     }
 

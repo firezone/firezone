@@ -21,8 +21,7 @@ use ip_packet::checksum;
 const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 
 bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"));
-bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8> = (MAX_COALESCED_PACKET, "packet-coalescer"));
-bufferpool::buffer_pool!(static CAPPED_COALESCED_PACKETS: Vec<u8>, "packet-coalescer");
+bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer");
 
 /// The kernel rejects `VIRTIO_NET_HDR_GSO_UDP_L4` writes with more segments than this
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).
@@ -82,7 +81,7 @@ impl PacketCoalescer {
         Self {
             items: COALESCED_ITEMS.pull(),
             open: Vec::new(),
-            buffer_pool: &COALESCED_PACKETS,
+            buffer_pool: COALESCED_PACKETS.with_capacity(MAX_COALESCED_PACKET),
             coalesce_tcp,
             coalesce_udp,
             checksum_mode,
@@ -93,12 +92,11 @@ impl PacketCoalescer {
     /// Caps the size of a coalesced packet at `max_packet_len` bytes, including the IP header.
     ///
     /// Packets that are already larger pass through unchanged.
-    /// All capped coalescers share one buffer pool, so they must use the same `max_packet_len`.
     pub fn with_max_packet_len(self, max_packet_len: usize) -> Self {
         let max_packet_len = max_packet_len.min(MAX_COALESCED_PACKET);
 
         Self {
-            buffer_pool: CAPPED_COALESCED_PACKETS.init(max_packet_len),
+            buffer_pool: COALESCED_PACKETS.with_capacity(max_packet_len),
             max_packet_len,
             ..self
         }
