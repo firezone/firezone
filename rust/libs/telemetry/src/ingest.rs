@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bytes::Bytes;
 use http::{Request, Response};
-use http_client::HttpClient;
+use http_client::{HttpClient, TlsConfig};
 use parking_lot::Mutex;
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::runtime::Runtime;
@@ -120,9 +120,15 @@ impl Client {
             .spawn(async move {
                 let addresses = tunnel_bypass_resolver::resolve(host).await?;
 
-                HttpClient::new(host.to_owned(), addresses, tcp)
-                    .await
-                    .context("Failed to connect to ingest host")
+                HttpClient::new(
+                    host.to_owned(),
+                    443,
+                    addresses,
+                    TlsConfig::webpki_roots(),
+                    tcp,
+                )
+                .await
+                .context("Failed to connect to ingest host")
             })
             .await
             .context("Bootstrap task failed")?
