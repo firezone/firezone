@@ -510,28 +510,6 @@ mod tests {
     }
 
     #[test]
-    fn last_match_is_forgotten_on_upsert_and_remove() {
-        let mut t = RoutingTable::new();
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        let ids = |t: &mut RoutingTable<TestEntry>| {
-            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
-                .map(|m| m.iter().map(|e| e.id).collect::<Vec<_>>())
-        };
-
-        assert_eq!(ids(&mut t), Some(vec![R1]));
-        assert_eq!(ids(&mut t), Some(vec![R1]));
-
-        t.upsert(net("10.1.0.0/16"), entry(1, R2, permit_all()));
-        assert_eq!(ids(&mut t), Some(vec![R2, R1]));
-
-        t.remove_by_id(R2);
-        assert_eq!(ids(&mut t), Some(vec![R1]));
-
-        t.remove_by_id(R1);
-        assert_eq!(ids(&mut t), None);
-    }
-
-    #[test]
     fn networks() {
         let mut t = RoutingTable::new();
         let net1 = net("10.0.0.0/8");

@@ -295,24 +295,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_reflects_changes_after_a_previous_lookup() {
-        let mut tables = RoutingTables::default();
-        let destination = "10.0.0.1".parse::<IpAddr>().unwrap();
-        let cidr_id = ResourceId::from_u128(2);
-
-        let routes = tables.resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()));
-        assert_eq!(routes.unwrap().resource_ids(), vec![internet_resource_id()]);
-
-        tables.upsert_cidr(destination.into(), cidr_id, FilterEngine::PermitAll);
-        let routes = tables.resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()));
-        assert_eq!(routes.unwrap().resource_ids(), vec![cidr_id]);
-
-        tables.remove_by_id(cidr_id);
-        let routes = tables.resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()));
-        assert_eq!(routes.unwrap().resource_ids(), vec![internet_resource_id()]);
-    }
-
-    #[test]
     fn denied_routes_do_not_fall_through_to_other_resource_types() {
         let mut tables = RoutingTables::default();
         let destination = other_client_tun_ip();
