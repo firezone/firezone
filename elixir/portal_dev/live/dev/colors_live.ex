@@ -132,7 +132,15 @@ defmodule PortalWeb.Dev.ColorsLive do
       swatches: [
         %{name: "showcase", class: "bg-showcase", css_var: "--showcase-bg"},
         %{name: "showcase-text", class: "bg-showcase-text", css_var: "--showcase-text"},
-        %{name: "showcase-icon", class: "bg-showcase-icon", css_var: "--showcase-icon"}
+        %{name: "showcase-icon", class: "bg-showcase-icon", css_var: "--showcase-icon"},
+        %{name: "showcase-highlight", class: "bg-showcase-highlight", css_var: "--showcase-highlight"},
+        %{name: "showcase-glow", class: "bg-showcase-glow", css_var: "--showcase-glow"},
+        %{name: "showcase-glow-warm", class: "bg-showcase-glow-warm", css_var: "--showcase-glow-warm"},
+        %{
+          name: "showcase-card-border",
+          class: "bg-showcase-card-border",
+          css_var: "--showcase-card-border"
+        }
       ]
     }
   ]
