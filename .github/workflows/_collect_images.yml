@@ -99,6 +99,21 @@ jobs:
         # `pull_services`, so they don't pull images that aren't published for them.
         run: |
           retry docker compose pull ${{ inputs.pull_services }}
+      - name: Add DNS tools to the client image
+        # The compatibility tests run the published client image, which lacks
+        # the `dig` and `nslookup` that the debug image ships. Layer them on once
+        # here so the tests don't each `apk add` against the Alpine CDN.
+        run: |
+          image="$CLIENT_IMAGE:$CLIENT_TAG"
+          if ! docker image inspect "$image" > /dev/null 2>&1; then
+            exit 0
+          fi
+          if docker run --rm --pull never --entrypoint sh "$image" -c 'command -v dig' > /dev/null; then
+            exit 0
+          fi
+          context="$(mktemp -d)"
+          printf 'FROM %s\nRUN apk add --no-cache bind-tools\n' "$image" > "$context/Dockerfile"
+          retry docker build --pull=false --tag "$image" "$context"
       - name: Build the router images once
         # The `*-router` services are built once here and shipped in the images
         # archive so the downstream test-matrix jobs load them via `docker load`
