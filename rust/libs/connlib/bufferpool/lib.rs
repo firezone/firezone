@@ -64,7 +64,7 @@ const BATCH_SIZE: usize = 32;
 /// Each thread keeps up to two batches of buffers in its own magazine and only locks the shared
 /// stack of batches of the pool to refill an empty magazine or to hand back a batch from a full one.
 pub struct BufferPool<B: 'static> {
-    shared: Mutex<Vec<Vec<B>>>,
+    shared: Mutex<Shared<B>>,
     magazine: &'static LocalKey<Magazine<B>>,
 
     /// The size every buffer in the pool is allocated with.
@@ -91,7 +91,10 @@ where
         magazine: &'static LocalKey<Magazine<B>>,
     ) -> Self {
         Self {
-            shared: Mutex::new(Vec::new()),
+            shared: Mutex::new(Shared {
+                full: Vec::new(),
+                empty: Vec::new(),
+            }),
             magazine,
             capacity: AtomicUsize::new(capacity),
             resized: AtomicBool::new(false),
@@ -180,21 +183,29 @@ impl<B> BufferPool<B> {
 
     fn take_shared(&self) -> Option<B> {
         let mut shared = self.shared();
-        let batch = shared.last_mut()?;
+        let batch = shared.full.last_mut()?;
         let buffer = batch.pop();
 
         if batch.is_empty() {
-            shared.pop();
+            shared.full.pop();
         }
 
         buffer
     }
 
     fn put(&self, batch: Vec<B>) {
-        self.shared().push(batch);
+        self.shared().full.push(batch);
     }
 
-    fn shared(&self) -> MutexGuard<'_, Vec<Vec<B>>> {
+    /// Hands a full batch to the shared stack in exchange for an empty one, if there is any.
+    fn exchange(&self, batch: Vec<B>) -> Option<Vec<B>> {
+        let mut shared = self.shared();
+        shared.full.push(batch);
+
+        shared.empty.pop()
+    }
+
+    fn shared(&self) -> MutexGuard<'_, Shared<B>> {
         self.shared.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -233,7 +244,7 @@ where
         if let Some(buffer_count) = pool.buffer_count.get() {
             pool.resized.store(true, Ordering::Relaxed);
 
-            let idle = std::mem::take(&mut *pool.shared());
+            let idle = std::mem::take(&mut pool.shared().full);
 
             for buffer in idle.into_iter().flatten() {
                 buffer_count.add(-1, B::capacity(&buffer));
@@ -291,6 +302,13 @@ impl<B> Drop for Magazine<B> {
     }
 }
 
+/// The batches of a [`BufferPool`] that are not in any thread's magazine.
+struct Shared<B> {
+    full: Vec<Vec<B>>,
+    /// Batches emptied by refilling a magazine, so that handing back a full one does not allocate.
+    empty: Vec<Vec<B>>,
+}
+
 /// The buffers in a [`Magazine`]: a batch to take from and give to, plus a full or empty spare.
 struct Stock<B> {
     loaded: Vec<B>,
@@ -301,8 +319,13 @@ impl<B> Stock<B> {
     fn take(&mut self, pool: &BufferPool<B>) -> Option<B> {
         if self.loaded.is_empty() {
             if self.previous.is_empty() {
-                let batch = pool.shared().pop()?;
-                self.loaded = batch;
+                let mut shared = pool.shared();
+                let batch = shared.full.pop()?;
+                let empty = std::mem::replace(&mut self.loaded, batch);
+
+                if empty.capacity() > 0 {
+                    shared.empty.push(empty);
+                }
             } else {
                 std::mem::swap(&mut self.loaded, &mut self.previous);
             }
@@ -314,7 +337,9 @@ impl<B> Stock<B> {
     fn give(&mut self, pool: &BufferPool<B>, buffer: B) {
         if self.loaded.len() >= BATCH_SIZE {
             if !self.previous.is_empty() {
-                pool.put(std::mem::take(&mut self.previous));
+                let empty = pool.exchange(std::mem::take(&mut self.previous));
+
+                self.previous = empty.unwrap_or_default();
             }
 
             std::mem::swap(&mut self.loaded, &mut self.previous);
@@ -744,7 +769,7 @@ mod tests {
             .collect::<Vec<_>>();
         drop(buffers);
 
-        assert_eq!(pool.shared().len(), 1);
+        assert_eq!(pool.shared().full.len(), 1);
         assert_eq!(shared_len(pool), BATCH_SIZE);
         assert_eq!(magazine_len(pool), BATCH_SIZE + 1);
     }
@@ -949,7 +974,7 @@ mod tests {
 
     /// The number of buffers in the shared stack of `pool`.
     fn shared_len(pool: &BufferPool<Vec<u8>>) -> usize {
-        pool.shared().iter().map(Vec::len).sum()
+        pool.shared().full.iter().map(Vec::len).sum()
     }
 
     fn record_buffer_count(pool: &BufferPool<Vec<u8>>, provider: &SdkMeterProvider) {
