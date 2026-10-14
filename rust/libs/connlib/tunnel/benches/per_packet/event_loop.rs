@@ -2,11 +2,12 @@
 //!
 //! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
 //! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
-//! event loop. Set `FZ_BENCH_THREADS=1` to print the CPU time and parks of every thread.
+//! event loop.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::future::poll_fn;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
@@ -40,8 +41,6 @@ const IN_FLIGHT: usize = 2_048;
 /// The event loop idles between iterations. Within one, it would park about once per batch of
 /// packets if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
-
-const EVENT_LOOP_THREAD: &str = "event-loop";
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
 
@@ -88,7 +87,7 @@ fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
         }
     });
 
-    measure(bencher, &arrivals, |bencher| {
+    measure(bencher, &event_loop, &arrivals, |bencher| {
         bencher
             .with_inputs(|| batches(&local.reads))
             .bench_local_values(|batches| {
@@ -123,7 +122,7 @@ fn inbound(bencher: Bencher, local: Side, mut peer: Side, now: Instant) {
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
 
-    measure(bencher, &arrivals, |bencher| {
+    measure(bencher, &event_loop, &arrivals, |bencher| {
         bencher
             .with_inputs(|| peer.state.encapsulate(&peer.reads, now, local.socket))
             .bench_local_values(|datagrams| {
@@ -226,6 +225,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
+    /// The `/proc` status file of its thread.
+    status: PathBuf,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -269,12 +270,40 @@ impl EventLoop {
             }
         };
 
+        let (tid_tx, tid_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
-            .name(EVENT_LOOP_THREAD.to_owned())
-            .spawn(move || runtime.block_on(run(poll_next_event)))
+            .name("event-loop".to_owned())
+            .spawn(move || {
+                tid_tx
+                    .send(std::fs::read_link("/proc/thread-self").unwrap())
+                    .unwrap();
+                runtime.block_on(run(poll_next_event))
+            })
             .unwrap();
+        let status = Path::new("/proc")
+            .join(tid_rx.recv().unwrap())
+            .join("status");
 
-        (Self { thread, tun_reads }, tun_writes)
+        (
+            Self {
+                thread,
+                status,
+                tun_reads,
+            },
+            tun_writes,
+        )
+    }
+
+    /// Returns how often the event loop's thread has parked.
+    fn parks(&self) -> u64 {
+        std::fs::read_to_string(&self.status)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
     }
 
     fn stop(self) {
@@ -361,71 +390,21 @@ impl Arrivals {
 }
 
 /// Runs the benchmark and asserts that the event loop did not park while packets were in flight.
-fn measure(bencher: Bencher, arrivals: &Arrivals, bench: impl FnOnce(Bencher)) {
-    let before = (threads(), arrivals.count());
+fn measure(
+    bencher: Bencher,
+    event_loop: &EventLoop,
+    arrivals: &Arrivals,
+    bench: impl FnOnce(Bencher),
+) {
+    let before = (event_loop.parks(), arrivals.count());
     bench(bencher.counter(ItemsCount::new(PACKETS)));
-    let after = (threads(), arrivals.count());
-    let packets = (after.1 - before.1) as f64;
+    let parks =
+        (event_loop.parks() - before.0) as f64 * 1000.0 / (arrivals.count() - before.1) as f64;
 
-    let per_thread = after
-        .0
-        .iter()
-        .filter_map(|(tid, after)| {
-            let before = before.0.get(tid)?;
-            let cpu_ns = (after.cpu_ns - before.cpu_ns) as f64 / packets;
-            let parks = (after.parks - before.parks) as f64 * 1000.0 / packets;
-
-            Some((after.name.as_str(), cpu_ns, parks))
-        })
-        .collect::<Vec<_>>();
-
-    if std::env::var_os("FZ_BENCH_THREADS").is_some() {
-        for (name, cpu_ns, parks) in &per_thread {
-            eprintln!("{name:>16}: {cpu_ns:>8.1} CPU ns/packet, {parks:>6.2} parks/1k packets");
-        }
-    }
-
-    let event_loop_parks = per_thread
-        .iter()
-        .find_map(|(name, _, parks)| (*name == EVENT_LOOP_THREAD).then_some(*parks))
-        .unwrap();
     assert!(
-        event_loop_parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Event loop parked {event_loop_parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
+        parks <= MAX_PARKS_PER_1K_PACKETS,
+        "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
     );
-}
-
-/// CPU time and parks of one of our threads.
-struct ThreadStats {
-    name: String,
-    cpu_ns: u64,
-    parks: u64,
-}
-
-/// Reads [`ThreadStats`] for all threads of this process from `/proc/self/task`.
-fn threads() -> BTreeMap<u32, ThreadStats> {
-    std::fs::read_dir("/proc/self/task")
-        .unwrap()
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            let tid = path.file_name()?.to_str()?.parse().ok()?;
-            let name = std::fs::read_to_string(path.join("comm")).ok()?;
-            let schedstat = std::fs::read_to_string(path.join("schedstat")).ok()?;
-            let status = std::fs::read_to_string(path.join("status")).ok()?;
-            let parks = status
-                .lines()
-                .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))?;
-
-            Some((
-                tid,
-                ThreadStats {
-                    name: name.trim_end().to_owned(),
-                    cpu_ns: schedstat.split_whitespace().next()?.parse().ok()?,
-                    parks: parks.trim().parse().ok()?,
-                },
-            ))
-        })
-        .collect()
 }
 
 /// Returns [`PACKETS`] copies of `packet` in full batches.
