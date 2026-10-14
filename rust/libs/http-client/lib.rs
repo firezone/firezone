@@ -3,7 +3,7 @@
 use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 
@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use bytes::Bytes;
 use futures::{StreamExt as _, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full};
-use rustls::ClientConfig;
+use rustls::{ClientConfig, RootCertStore};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio_rustls::TlsConnector;
 use tokio_util::task::AbortOnDropHandle;
@@ -32,15 +32,50 @@ enum Sender {
 /// connection types share one return shape.
 type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
 
+/// The TLS configuration of an [`HttpClient`] connection.
+#[derive(Clone)]
+pub struct TlsConfig(Arc<ClientConfig>);
+
+impl TlsConfig {
+    /// Returns the configuration that trusts the roots bundled via `webpki-roots`.
+    ///
+    /// It is built on first use and shared by all callers.
+    pub fn webpki_roots() -> Self {
+        // TODO: Use `rustls-platform-verifier` instead.
+        static CONFIG: LazyLock<TlsConfig> = LazyLock::new(|| {
+            TlsConfig::new(RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+            })
+        });
+
+        CONFIG.clone()
+    }
+
+    /// Builds a configuration that trusts `roots`.
+    pub fn new(roots: RootCertStore) -> Self {
+        // An explicit provider cannot panic for lack of a process-default one.
+        let mut config =
+            ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_safe_default_protocol_versions()
+                .expect("ring supports the default protocol versions")
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+        Self(Arc::new(config))
+    }
+}
+
 /// An HTTP client that plugs into our [`SocketFactory`] abstraction.
 ///
-/// One instance is tied to a given host. It negotiates HTTP/2 if the server
+/// One instance is tied to a given host and port. It negotiates HTTP/2 if the server
 /// supports it (ALPN `h2`) and falls back to HTTP/1.1 otherwise. The connection is
 /// maintained for the client's lifetime; once it fails, every request errors with
 /// [`Closed`] and the client should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
+    port: u16,
     sender: Sender,
 
     #[expect(dead_code, reason = "We only need to keep it around.")]
@@ -48,28 +83,18 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
+    /// Connects to `host` on `port` via the first of `addresses` that succeeds.
+    ///
+    /// `host` is spelled as in a URI, i.e. an IPv6 address is enclosed in brackets.
     pub async fn new(
         host: String,
+        port: u16,
         addresses: Vec<IpAddr>,
+        tls_config: TlsConfig,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Result<Self> {
-        // TODO: Use `rustls-platform-verifier` instead.
-        let mut root_cert_store = rustls::RootCertStore::empty();
-        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_cert_store)
-            .with_no_client_auth();
-        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
-        let (sender, driver) = connect(
-            addresses,
-            443,
-            host.clone(),
-            Arc::new(config),
-            socket_factory,
-        )
-        .await?;
+        let (sender, driver) =
+            connect(addresses, port, host.clone(), tls_config.0, socket_factory).await?;
 
         let connection = tokio::spawn({
             let host = host.clone();
@@ -82,6 +107,7 @@ impl HttpClient {
 
         Ok(Self {
             host,
+            port,
             sender,
             connection: Arc::new(AbortOnDropHandle::new(connection)),
         })
@@ -104,9 +130,12 @@ impl HttpClient {
         request: http::Request<Bytes>,
     ) -> Result<impl Future<Output = Result<http::Response<Bytes>>> + use<>> {
         anyhow::ensure!(!self.is_closed(), Closed);
+
+        let port = request.uri().port_u16().unwrap_or(443);
         anyhow::ensure!(
-            request.uri().port_u16().is_none_or(|p| p == 443),
-            "Only supports requests to port 443"
+            port == self.port,
+            "Can only send HTTP requests to port {}",
+            self.port
         );
 
         let host = request
@@ -119,6 +148,11 @@ impl HttpClient {
             "Can only send HTTP requests to host {}",
             self.host
         );
+
+        let authority = match port {
+            443 => host,
+            port => format!("{host}:{port}"),
+        };
 
         let sender = self.sender.clone();
 
@@ -144,8 +178,8 @@ impl HttpClient {
                     // `:authority` pseudo-header derived from the URI), so add it if
                     // the caller didn't.
                     if !request.headers().contains_key(http::header::HOST) {
-                        let value =
-                            http::HeaderValue::from_str(&host).context("Invalid host header")?;
+                        let value = http::HeaderValue::from_str(&authority)
+                            .context("Invalid host header")?;
                         request.headers_mut().insert(http::header::HOST, value);
                     }
 
@@ -239,7 +273,11 @@ async fn connect_one(
         .context("Failed to connect TCP stream")?;
 
     let connector = TlsConnector::from(tls_client_config);
-    let tls_domain = rustls_pki_types::ServerName::try_from(domain)?;
+    // A URI encloses an IPv6 address in brackets, a `ServerName` does not.
+    let tls_domain = rustls_pki_types::ServerName::try_from(
+        domain.trim_start_matches('[').trim_end_matches(']'),
+    )?
+    .to_owned();
 
     let stream = connector.connect(tls_domain, stream).await?;
 
@@ -295,13 +333,11 @@ mod tests {
     #[tokio::test]
     #[ignore = "Requires Internet"]
     async fn parallel_doh_queries() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
-
         let http_client = HttpClient::new(
             "one.one.one.one".to_owned(),
+            443,
             vec![IpAddr::from([1, 1, 1, 1])],
+            TlsConfig::webpki_roots(),
             Arc::new(socket_factory::tcp),
         )
         .await

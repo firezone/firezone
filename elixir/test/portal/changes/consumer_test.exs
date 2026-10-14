@@ -3,6 +3,7 @@ defmodule Portal.Changes.ConsumerTest do
 
   import ExUnit.CaptureLog
   alias Portal.Changes.Consumer
+  alias Portal.Fixture
 
   setup do
     tables =
@@ -70,7 +71,7 @@ defmodule Portal.Changes.ConsumerTest do
             end
           end)
 
-        refute log_output =~ "No hook defined for insert"
+        refute Fixture.logged_lines(log_output, table) =~ "No hook defined for insert"
       end
     end
   end

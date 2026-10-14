@@ -8853,7 +8853,6 @@ dependencies = [
  "opentelemetry",
  "otel-instruments",
  "rand 0.10.3",
- "rustls",
  "snownet",
  "socket-factory",
  "thiserror 2.0.21",

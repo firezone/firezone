@@ -4,6 +4,7 @@ defmodule PortalAPI.Relay.SocketTest do
   import PortalAPI.Relay.Socket, except: [connect: 3]
   import Portal.TokenFixtures
   import Portal.RelayFixtures
+  alias Portal.Fixture
   alias PortalAPI.Relay.Socket
 
   describe "connect/3" do
@@ -230,7 +231,8 @@ defmodule PortalAPI.Relay.SocketTest do
     end
 
     test "does not log for other termination reasons" do
-      relay = relay_fixture()
+      n = Fixture.unique_integer()
+      relay = relay_fixture(ipv4: "10.#{rem(div(n, 65_536), 256)}.#{rem(div(n, 256), 256)}.#{rem(n, 256)}")
       socket = socket(PortalAPI.Relay.Socket, "", %{relay: relay})
 
       log =
@@ -238,7 +240,7 @@ defmodule PortalAPI.Relay.SocketTest do
           assert :ok = Socket.terminate(:shutdown, {%{}, socket})
         end)
 
-      refute log =~ "Relay missed heartbeat"
+      refute Fixture.logged_lines(log, relay.ipv4) =~ "Relay missed heartbeat"
     end
   end
 end

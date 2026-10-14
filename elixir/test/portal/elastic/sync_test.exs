@@ -9,6 +9,7 @@ defmodule Portal.Elastic.SyncTest do
   import Portal.SessionLogFixtures
 
   alias Portal.Elastic
+  alias Portal.Fixture
   alias Portal.FlowLog
   alias Portal.LogSinkCursor
 
@@ -292,7 +293,7 @@ defmodule Portal.Elastic.SyncTest do
           assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
-      refute log_output =~ "cannot be delivered"
+      refute Fixture.logged_lines(log_output, sink.id) =~ "cannot be delivered"
       refute_receive {:rollover, _path}
 
       cursor = get_cursor(sink, :session, :live)
