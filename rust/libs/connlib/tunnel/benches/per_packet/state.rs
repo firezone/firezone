@@ -1,22 +1,16 @@
 //! Per-packet work of the sans-IO Client and Gateway state.
 
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
 use divan::Bencher;
 use snownet::TransmitBuffer;
 
 use crate::setup::{
-    RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client, encapsulate_on_gateway,
+    CLIENT_SOCKET, GATEWAY_SOCKET, RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client,
+    encapsulate_on_gateway,
 };
-
-const CLIENT_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 1111));
-const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 2), 2222));
 
 #[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource, CLIENT_SOCKET, GATEWAY_SOCKET);
+    let mut tunnel = Tunnel::established(resource);
     let packet = tunnel.request(SIZE);
     let mut transmits = TransmitBuffer::default();
 
@@ -33,7 +27,7 @@ fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
 
 #[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource, CLIENT_SOCKET, GATEWAY_SOCKET);
+    let mut tunnel = Tunnel::established(resource);
     let packet = tunnel.request(SIZE);
     let Tunnel {
         client,
@@ -55,7 +49,7 @@ fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
 
 #[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource, CLIENT_SOCKET, GATEWAY_SOCKET);
+    let mut tunnel = Tunnel::established(resource);
     let reply = tunnel.reply(SIZE);
     let mut transmits = TransmitBuffer::default();
 
@@ -72,7 +66,7 @@ fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
 
 #[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
 fn client_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource, CLIENT_SOCKET, GATEWAY_SOCKET);
+    let mut tunnel = Tunnel::established(resource);
     let reply = tunnel.reply(SIZE);
     let Tunnel {
         client,

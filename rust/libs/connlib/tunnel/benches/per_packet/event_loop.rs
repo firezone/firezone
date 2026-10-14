@@ -2,11 +2,12 @@
 //!
 //! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
 //! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
-//! event loop. Set `FZ_BENCH_THREADS=1` to print the CPU time and parks of every thread.
+//! event loop.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::future::poll_fn;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
@@ -19,12 +20,11 @@ use ip_packet::{Ecn, IpPacket};
 use snownet::TransmitBuffer;
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use tun::{MAX_BATCH_SIZE, PacketBatch};
-use tunnel::{
-    ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed, TunnelError,
-};
+use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 
 use crate::setup::{
-    RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client, encapsulate_on_gateway,
+    CLIENT_SOCKET, GATEWAY_SOCKET, RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client,
+    encapsulate_on_gateway,
 };
 
 /// How many packets each iteration sends through the tunnel.
@@ -40,8 +40,6 @@ const IN_FLIGHT: usize = 2_048;
 /// The event loop idles between iterations. Within one, it would park about once per batch of
 /// packets if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
-
-const EVENT_LOOP_THREAD: &str = "event-loop";
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
 
@@ -88,18 +86,12 @@ fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
         }
     });
 
-    measure(bencher, &arrivals, |bencher| {
-        bencher
-            .with_inputs(|| batches(&local.reads))
-            .bench_local_values(|batches| {
-                let start = arrivals.count();
-                for (i, batch) in batches.into_iter().enumerate() {
-                    arrivals
-                        .wait_for(start + (i * MAX_BATCH_SIZE).saturating_sub(IN_FLIGHT) as u64);
-                    event_loop.tun_reads.blocking_send(batch).unwrap();
-                }
-                arrivals.wait_for(start + PACKETS as u64);
-            });
+    let inputs = || batches(&local.reads);
+    measure(bencher, &event_loop, &arrivals, inputs, |batch| {
+        let packets = batch.len();
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        packets
     });
 
     event_loop.stop();
@@ -123,19 +115,12 @@ fn inbound(bencher: Bencher, local: Side, mut peer: Side, now: Instant) {
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
 
-    measure(bencher, &arrivals, |bencher| {
-        bencher
-            .with_inputs(|| peer.state.encapsulate(&peer.reads, now, local.socket))
-            .bench_local_values(|datagrams| {
-                let start = arrivals.count();
-                let mut sent = 0_usize;
-                for datagram in datagrams {
-                    arrivals.wait_for(start + sent.saturating_sub(IN_FLIGHT) as u64);
-                    sent += datagram.packet.len() / datagram.segment_size;
-                    runtime.block_on(socket.send(datagram)).unwrap();
-                }
-                arrivals.wait_for(start + PACKETS as u64);
-            });
+    let inputs = || peer.state.encapsulate(&peer.reads, now, local.socket);
+    measure(bencher, &event_loop, &arrivals, inputs, |datagram| {
+        let packets = datagram.packet.len() / datagram.segment_size;
+        runtime.block_on(socket.send(datagram)).unwrap();
+
+        packets
     });
 
     event_loop.stop();
@@ -155,22 +140,19 @@ enum State {
     Gateway(GatewayState),
 }
 
-/// Establishes a connection between a Client on 127.0.0.1 and a Gateway on 127.0.0.2.
 fn connect(resource: Resource, size: usize) -> (Side, Side, Instant) {
-    let client_socket = unused_socket(Ipv4Addr::new(127, 0, 0, 1));
-    let gateway_socket = unused_socket(Ipv4Addr::new(127, 0, 0, 2));
-    let mut tunnel = Tunnel::established(resource, client_socket, gateway_socket);
+    let mut tunnel = Tunnel::established(resource);
     let request = tunnel.request(size);
     let reply = tunnel.reply(size);
 
     let client = Side {
         state: State::Client(tunnel.client),
-        socket: client_socket,
+        socket: CLIENT_SOCKET,
         reads: request,
     };
     let gateway = Side {
         state: State::Gateway(tunnel.gateway),
-        socket: gateway_socket,
+        socket: GATEWAY_SOCKET,
         reads: reply,
     };
 
@@ -226,6 +208,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
+    /// The `/proc` status file of its thread.
+    status: PathBuf,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -248,7 +232,7 @@ impl EventLoop {
             .enable_all()
             .build()
             .unwrap();
-        let poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
+        let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
 
             match state {
@@ -269,44 +253,59 @@ impl EventLoop {
             }
         };
 
+        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
-            .name(EVENT_LOOP_THREAD.to_owned())
-            .spawn(move || runtime.block_on(run(poll_next_event)))
+            .name("event-loop".to_owned())
+            .spawn(move || {
+                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
+                status_tx
+                    .send(Path::new("/proc").join(thread_self).join("status"))
+                    .unwrap();
+                // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
+                // are irrelevant here: a lost packet fails the benchmark.
+                runtime.block_on(poll_fn(|cx| {
+                    loop {
+                        match poll_next_event(cx) {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(mut errors)) => {
+                                if errors.drain().any(|e| e.any_is::<TunChannelClosed>()) {
+                                    return Poll::Ready(());
+                                }
+                            }
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+                }))
+            })
             .unwrap();
+        let status = status_rx.recv().unwrap();
 
-        (Self { thread, tun_reads }, tun_writes)
+        (
+            Self {
+                thread,
+                status,
+                tun_reads,
+            },
+            tun_writes,
+        )
+    }
+
+    /// Returns how often the event loop's thread has parked.
+    fn parks(&self) -> u64 {
+        std::fs::read_to_string(&self.status)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
     }
 
     fn stop(self) {
         drop(self.tun_reads);
         self.thread.join().unwrap();
     }
-}
-
-/// Polls the tunnel until its TUN device closes.
-///
-/// Other errors, like the IPv6 socket failing to bind, are irrelevant here: a lost packet stalls
-/// the benchmark.
-async fn run(mut poll_next_event: impl FnMut(&mut Context<'_>) -> Poll<Result<(), TunnelError>>) {
-    poll_fn(|cx| {
-        loop {
-            match poll_next_event(cx) {
-                Poll::Ready(Ok(())) => {}
-                Poll::Ready(Err(mut errors)) => {
-                    let closed = errors
-                        .drain()
-                        .filter(|e| e.any_is::<TunChannelClosed>())
-                        .count();
-
-                    if closed > 0 {
-                        return Poll::Ready(());
-                    }
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-    })
-    .await;
 }
 
 struct FakeTun {
@@ -331,22 +330,22 @@ impl tun::Tun for FakeTun {
 /// Counts the packets arriving at the far end.
 #[derive(Default)]
 struct Arrivals {
-    count: Mutex<u64>,
+    count: Mutex<usize>,
     changed: Condvar,
 }
 
 impl Arrivals {
-    fn count(&self) -> u64 {
+    fn count(&self) -> usize {
         *self.count.lock().unwrap()
     }
 
     fn add(&self, packets: usize) {
-        *self.count.lock().unwrap() += packets as u64;
+        *self.count.lock().unwrap() += packets;
         self.changed.notify_one();
     }
 
     /// Waits until `target` packets have arrived, failing if they do not within a few seconds.
-    fn wait_for(&self, target: u64) {
+    fn wait_for(&self, target: usize) {
         let (count, timeout) = self
             .changed
             .wait_timeout_while(
@@ -360,72 +359,37 @@ impl Arrivals {
     }
 }
 
-/// Runs the benchmark and asserts that the event loop did not park while packets were in flight.
-fn measure(bencher: Bencher, arrivals: &Arrivals, bench: impl FnOnce(Bencher)) {
-    let before = (threads(), arrivals.count());
-    bench(bencher.counter(ItemsCount::new(PACKETS)));
-    let after = (threads(), arrivals.count());
-    let packets = (after.1 - before.1) as f64;
+/// Sends the inputs, at most [`IN_FLIGHT`] packets ahead of those that arrived, and asserts that
+/// the event loop did not park while packets were in flight.
+///
+/// `send` returns how many packets an input holds.
+fn measure<T>(
+    bencher: Bencher,
+    event_loop: &EventLoop,
+    arrivals: &Arrivals,
+    inputs: impl FnMut() -> Vec<T>,
+    mut send: impl FnMut(T) -> usize,
+) {
+    let before = (event_loop.parks(), arrivals.count());
+    bencher
+        .counter(ItemsCount::new(PACKETS))
+        .with_inputs(inputs)
+        .bench_local_values(|inputs| {
+            let start = arrivals.count();
+            let mut sent = 0_usize;
+            for input in inputs {
+                arrivals.wait_for(start + sent.saturating_sub(IN_FLIGHT));
+                sent += send(input);
+            }
+            arrivals.wait_for(start + PACKETS);
+        });
+    let parks =
+        (event_loop.parks() - before.0) as f64 * 1000.0 / (arrivals.count() - before.1) as f64;
 
-    let per_thread = after
-        .0
-        .iter()
-        .filter_map(|(tid, after)| {
-            let before = before.0.get(tid)?;
-            let cpu_ns = (after.cpu_ns - before.cpu_ns) as f64 / packets;
-            let parks = (after.parks - before.parks) as f64 * 1000.0 / packets;
-
-            Some((after.name.as_str(), cpu_ns, parks))
-        })
-        .collect::<Vec<_>>();
-
-    if std::env::var_os("FZ_BENCH_THREADS").is_some() {
-        for (name, cpu_ns, parks) in &per_thread {
-            eprintln!("{name:>16}: {cpu_ns:>8.1} CPU ns/packet, {parks:>6.2} parks/1k packets");
-        }
-    }
-
-    let event_loop_parks = per_thread
-        .iter()
-        .find_map(|(name, _, parks)| (*name == EVENT_LOOP_THREAD).then_some(*parks))
-        .unwrap();
     assert!(
-        event_loop_parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Event loop parked {event_loop_parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
+        parks <= MAX_PARKS_PER_1K_PACKETS,
+        "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
     );
-}
-
-/// CPU time and parks of one of our threads.
-struct ThreadStats {
-    name: String,
-    cpu_ns: u64,
-    parks: u64,
-}
-
-/// Reads [`ThreadStats`] for all threads of this process from `/proc/self/task`.
-fn threads() -> BTreeMap<u32, ThreadStats> {
-    std::fs::read_dir("/proc/self/task")
-        .unwrap()
-        .filter_map(|entry| {
-            let path = entry.ok()?.path();
-            let tid = path.file_name()?.to_str()?.parse().ok()?;
-            let name = std::fs::read_to_string(path.join("comm")).ok()?;
-            let schedstat = std::fs::read_to_string(path.join("schedstat")).ok()?;
-            let status = std::fs::read_to_string(path.join("status")).ok()?;
-            let parks = status
-                .lines()
-                .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))?;
-
-            Some((
-                tid,
-                ThreadStats {
-                    name: name.trim_end().to_owned(),
-                    cpu_ns: schedstat.split_whitespace().next()?.parse().ok()?,
-                    parks: parks.trim().parse().ok()?,
-                },
-            ))
-        })
-        .collect()
 }
 
 /// Returns [`PACKETS`] copies of `packet` in full batches.
@@ -440,13 +404,6 @@ fn batches(packet: &IpPacket) -> Vec<PacketBatch> {
             batch
         })
         .collect()
-}
-
-fn unused_socket(ip: Ipv4Addr) -> SocketAddr {
-    std::net::UdpSocket::bind((ip, 0))
-        .unwrap()
-        .local_addr()
-        .unwrap()
 }
 
 /// Binds the peer's socket, on a runtime with a single worker thread.
