@@ -13,7 +13,7 @@ use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
 use lru::LruCache;
 
-use crate::filter_engine::FilterEngine;
+use crate::{filter_engine::FilterEngine, last::Last};
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
@@ -42,7 +42,7 @@ type MatchKey = (IpAddr, FilterProtocol, FilterMode);
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
     /// The most recent match, checked before `match_cache` because packets of a flow arrive in batches.
-    last: Option<(MatchKey, Option<Vec<T>>)>,
+    last: Last<MatchKey, Option<Vec<T>>>,
     match_cache: LruCache<MatchKey, Option<Vec<T>>, FastRandomState>,
 }
 
@@ -90,7 +90,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            last: None,
+            last: Last::default(),
             match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
         }
     }
@@ -127,7 +127,7 @@ where
     ///
     /// Returns `true` if the entry was not already present (i.e. it was newly inserted).
     pub(crate) fn upsert(&mut self, network: IpNetwork, entry: T) -> bool {
-        self.last = None;
+        self.last.clear();
         self.match_cache.clear();
 
         match self.inner.exact_match_mut(network) {
@@ -141,7 +141,7 @@ where
 
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
-        self.last = None;
+        self.last.clear();
         self.match_cache.clear();
 
         for (_, entries) in self.inner.iter_mut() {
@@ -164,50 +164,54 @@ where
         filter_mode: FilterMode,
     ) -> Option<&[T]> {
         let key = (ip, FilterProtocol::from(&protocol), filter_mode);
-        if self.last.as_ref().is_some_and(|(last, _)| *last == key) {
-            return self
-                .last
-                .as_ref()
-                .and_then(|(_, matches)| matches.as_deref());
-        }
 
-        let matches = self
-            .match_cache
-            .get_or_insert(key, || {
-                let mut entries = self
-                    .inner
-                    .matches(ip)
-                    .flat_map(|(network, entries)| {
-                        entries.iter().map(move |entry| (network, entry))
+        self.last
+            .get_or_insert_with(key, || {
+                self.match_cache
+                    .get_or_insert(key, || {
+                        sorted_matches(&self.inner, ip, protocol, filter_mode)
                     })
-                    .peekable();
-                entries.peek()?;
-
-                Some(
-                    entries
-                        .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
-                        .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
-                            r_entry
-                                .filter()
-                                .breadth()
-                                .cmp(&l_entry.filter().breadth())
-                                .then(l_entry.specificity(r_entry))
-                                .then(by_netmask(l_net, r_net))
-                                .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
-                                .reverse()
-                        })
-                        .map(|(_, entry)| entry.clone())
-                        .collect(),
-                )
+                    .clone()
             })
-            .clone();
-
-        self.last.insert((key, matches)).1.as_deref()
+            .as_deref()
     }
 
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
         self.inner.iter().map(|(n, _)| n)
     }
+}
+
+fn sorted_matches<T>(
+    table: &IpNetworkTable<BTreeSet<T>>,
+    ip: IpAddr,
+    protocol: Result<Protocol, UnsupportedProtocol>,
+    filter_mode: FilterMode,
+) -> Option<Vec<T>>
+where
+    T: RouteEntry,
+{
+    let mut entries = table
+        .matches(ip)
+        .flat_map(|(network, entries)| entries.iter().map(move |entry| (network, entry)))
+        .peekable();
+    entries.peek()?;
+
+    Some(
+        entries
+            .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
+            .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
+                r_entry
+                    .filter()
+                    .breadth()
+                    .cmp(&l_entry.filter().breadth())
+                    .then(l_entry.specificity(r_entry))
+                    .then(by_netmask(l_net, r_net))
+                    .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
+                    .reverse()
+            })
+            .map(|(_, entry)| entry.clone())
+            .collect(),
+    )
 }
 
 /// Compares two networks by their prefix length (netmask).
