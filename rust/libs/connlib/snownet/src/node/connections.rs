@@ -556,7 +556,6 @@ mod tests {
         noise::Tunn,
         x25519::{PublicKey, StaticSecret},
     };
-    use bufferpool::BufferPool;
     use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
@@ -778,7 +777,6 @@ mod tests {
             candidate_timeout: None,
             first_handshake_completed_at: None,
             buffer: Default::default(),
-            buffer_pool: BufferPool::new(0, "test"),
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),

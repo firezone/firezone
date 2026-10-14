@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 
-use bufferpool::BufferPool;
 use ip_packet::Ecn;
 
 use crate::node::Transmit;
@@ -42,14 +41,12 @@ pub trait Reservation {
 
 /// Collects datagrams as standalone [`Transmit`]s.
 pub struct TransmitBuffer {
-    buffer_pool: BufferPool<Vec<u8>>,
     transmits: VecDeque<Transmit>,
 }
 
 impl TransmitBuffer {
     pub fn new() -> Self {
         Self {
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "transmit-buffer"),
             transmits: VecDeque::default(),
         }
     }
@@ -98,7 +95,7 @@ impl BufferProvider for TransmitBuffer {
         ecn: Ecn,
         len: usize,
     ) -> TransmitReservation<'_> {
-        let mut payload = self.buffer_pool.pull();
+        let mut payload = crate::PAYLOADS.pull();
         payload.resize(len, 0);
 
         self.transmits.push_back(Transmit {

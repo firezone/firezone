@@ -26,7 +26,7 @@ use boringtun::noise::{
 };
 use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Buffer;
 use core::fmt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use is::stun::{StunMessage, StunPacket};
@@ -107,8 +107,6 @@ pub struct Node<TId, RId> {
     /// returns it while transmits or events are queued so the driver drains
     /// them without delay.
     last_now: Instant,
-
-    buffer_pool: BufferPool<Vec<u8>>,
 
     connection_count: Gauge<u64>,
 
@@ -208,7 +206,6 @@ where
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
             connection_count: otel_instruments::connection_count(),
             unix_now: now,
             unix_ts,
@@ -851,7 +848,6 @@ where
                 wg_buffer: AllocRingBuffer::new(128),
             },
             disconnected_at: None,
-            buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
             default_ice_config,
@@ -1368,9 +1364,6 @@ struct Connection<RId> {
     default_ice_config: IceConfig,
     idle_ice_config: IceConfig,
 
-    #[debug(skip)]
-    buffer_pool: BufferPool<Vec<u8>>,
-
     poll_timeout_cache: TimeoutCache,
 }
 
@@ -1528,7 +1521,6 @@ where
                                     self.relay,
                                     remote_socket,
                                     &packet,
-                                    &self.buffer_pool,
                                     allocations,
                                     now,
                                 )
@@ -1619,14 +1611,9 @@ where
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
                 path_agent::Payload::Ciphertext(ref bytes) => {
-                    if let Some(transmit) = make_owned_transmit(
-                        self.relay,
-                        peer_socket,
-                        bytes,
-                        &self.buffer_pool,
-                        allocations,
-                        now,
-                    ) {
+                    if let Some(transmit) =
+                        make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
+                    {
                         transmits.push(transmit);
                     }
                 }
@@ -1656,7 +1643,7 @@ where
                 transmits.push(Transmit {
                     src: Some(source),
                     dst,
-                    payload: self.buffer_pool.pull_initialised(&stun_packet_bytes),
+                    payload: crate::PAYLOADS.pull_initialised(&stun_packet_bytes),
                     ecn: Ecn::NonEct,
                 });
                 continue;
@@ -1676,7 +1663,7 @@ where
             transmits.push(Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: self.buffer_pool.pull_initialised(&data_channel_packet),
+                payload: crate::PAYLOADS.pull_initialised(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
         }
@@ -1715,7 +1702,6 @@ where
                         self.relay,
                         peer_socket,
                         b,
-                        &self.buffer_pool,
                         allocations,
                         now,
                     ));
@@ -1746,14 +1732,7 @@ where
                     "Iceless primary selected; flushing buffered packets",
                 );
                 transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
-                    make_owned_transmit(
-                        self.relay,
-                        peer_socket,
-                        &packet,
-                        &self.buffer_pool,
-                        allocations,
-                        now,
-                    )
+                    make_owned_transmit(self.relay, peer_socket, &packet, allocations, now)
                 }));
                 self.state = ConnectionState::Connected {
                     peer_socket,
@@ -1949,7 +1928,6 @@ where
                             self.relay,
                             *peer_socket,
                             bytes,
-                            &self.buffer_pool,
                             allocations,
                             now,
                         ));
@@ -1962,7 +1940,6 @@ where
                                 self.relay,
                                 *peer_socket,
                                 packet,
-                                &self.buffer_pool,
                                 allocations,
                                 now,
                             ));
@@ -2098,14 +2075,7 @@ where
 
         self.last_proactive_handshake_sent_at = Some(now);
 
-        if let Some(transmit) = make_owned_transmit(
-            self.relay,
-            socket,
-            bytes,
-            &self.buffer_pool,
-            allocations,
-            now,
-        ) {
+        if let Some(transmit) = make_owned_transmit(self.relay, socket, bytes, allocations, now) {
             transmits.push(transmit);
         }
     }
@@ -2234,7 +2204,6 @@ fn make_owned_transmit<RId>(
     relay: Option<RId>,
     socket: PeerSocket,
     message: &[u8],
-    buffer_pool: &BufferPool<Vec<u8>>,
     allocations: &mut Allocations<RId>,
     now: Instant,
 ) -> Option<Transmit>
@@ -2252,7 +2221,7 @@ where
         } => Transmit {
             src: Some(source),
             dst: remote,
-            payload: buffer_pool.pull_initialised(message),
+            payload: crate::PAYLOADS.pull_initialised(message),
             ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
@@ -2264,7 +2233,7 @@ where
             Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: buffer_pool.pull_initialised(&channel_data),
+                payload: crate::PAYLOADS.pull_initialised(&channel_data),
                 ecn: Ecn::NonEct,
             }
         }

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, net::SocketAddr};
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Buffer;
 use ip_packet::Ecn;
 use snownet::{BufferProvider, Reservation};
 use socket_factory::DatagramOut;
@@ -8,7 +8,7 @@ use socket_factory::DatagramOut;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
-/// The size every buffer in the [`UdpGsoQueue`]'s pool is allocated with.
+/// The size every buffer in [`GSO_BUFFERS`] is allocated with.
 ///
 /// An IP packet - and therefore the payload of one GSO send - can never exceed 65535 bytes.
 /// Batches are capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which is
@@ -18,6 +18,8 @@ const MAX_SEGMENT_SIZE: usize =
 /// in-flight [`DatagramOut`] pins one, which is why the outbound socket queue's depth directly bounds
 /// the send path's memory footprint.
 pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
+
+bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-queue"));
 
 /// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
 ///
@@ -30,14 +32,12 @@ pub struct UdpGsoQueue {
     /// A datagram may only be appended to the most recent batch of its connection,
     /// so per-connection ordering is preserved by construction.
     batches: VecDeque<Batch>,
-    buffer_pool: BufferPool<Vec<u8>>,
 }
 
 impl UdpGsoQueue {
     pub fn new() -> Self {
         Self {
             batches: VecDeque::new(),
-            buffer_pool: BufferPool::new(GSO_BUFFER_SIZE, "gso-queue"),
         }
     }
 
@@ -105,7 +105,7 @@ impl BufferProvider for UdpGsoQueue {
                     "GSO_BUFFER_SIZE is miscalculated"
                 );
 
-                let mut buffer = self.buffer_pool.pull();
+                let mut buffer = GSO_BUFFERS.pull();
                 buffer.clear();
                 buffer.resize(len, 0);
 

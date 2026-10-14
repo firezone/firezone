@@ -83,6 +83,8 @@ const MAX_BATCH: usize = 64;
 /// How many probes the peer sends to open its NAT mapping toward the relayed address.
 const PUNCH_COUNT: usize = 5;
 
+bufferpool::buffer_pool!(static PACKETS: Vec<u8>, "turn-loadtest");
+
 /// Extra time the receiver keeps listening after the sender stops, to drain in-flight datagrams.
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -311,10 +313,10 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
     let client = bind_socket(bind_addr).context("Failed to bind client socket")?;
 
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
-    let pool = BufferPool::<Vec<u8>>::new(MAX_BATCH * frame_size, "turn-loadtest");
+    let pool = PACKETS.init(MAX_BATCH * frame_size);
 
     // Create a single authenticated allocation on the client socket; all flows share it.
-    let allocation = allocate(&client, config.server, &config, &pool)
+    let allocation = allocate(&client, config.server, &config, pool)
         .await
         .context("TURN allocation failed")?;
     tracing::info!(relayed = %allocation.relayed_address, "Created TURN allocation");
@@ -327,7 +329,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
     for index in 0..config.flows.get() {
         let peer = bind_socket(bind_addr).context("Failed to bind peer socket")?;
 
-        let peer_address = stun_binding(&peer, config.server, &pool)
+        let peer_address = stun_binding(&peer, config.server, pool)
             .await
             .context("STUN binding for peer socket failed")?;
 
@@ -338,12 +340,12 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
             &allocation.credentials,
             channel,
             peer_address,
-            &pool,
+            pool,
         )
         .await
         .context("TURN channel bind failed")?;
 
-        punch(&peer, allocation.relayed_address, &pool)
+        punch(&peer, allocation.relayed_address, pool)
             .await
             .context("Failed to open peer NAT mapping")?;
 
@@ -381,7 +383,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
         })
         .collect::<Vec<_>>();
 
-    let send_stats = send(&client, &pool, config.flows, &config, data_start, &counters)
+    let send_stats = send(&client, pool, config.flows, &config, data_start, &counters)
         .await
         .context("Failed while sending datagrams")?;
 
@@ -393,7 +395,7 @@ async fn run(config: TestConfig, seed: u64) -> Result<TurnTestSummary> {
 
     // Clean exit: delete the allocation. Best-effort, as it would otherwise expire
     // on its own and the test has already produced its results.
-    match delete_allocation(&client, config.server, &allocation.credentials, &pool).await {
+    match delete_allocation(&client, config.server, &allocation.credentials, pool).await {
         Ok(()) => tracing::info!("Deleted TURN allocation"),
         Err(error) => tracing::warn!(error = %error, "Failed to delete TURN allocation on exit"),
     }
@@ -424,7 +426,7 @@ struct Flow {
 async fn stun_binding(
     socket: &PerfUdpSocket,
     server: SocketAddr,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<SocketAddr> {
     let request = Message::new(MessageClass::Request, BINDING, TransactionId::new(random()));
     let response = request_response(socket, server, request, pool, "Binding").await?;
@@ -441,7 +443,7 @@ async fn allocate(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     config: &TestConfig,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<Allocation> {
     // The initial, unauthenticated request is expected to be rejected with a 401
     // carrying the realm and nonce we then authenticate with.
@@ -507,7 +509,7 @@ async fn channel_bind(
     credentials: &Credentials,
     channel: u16,
     peer: SocketAddr,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let mut credentials = credentials.clone();
     let build = |credentials: &Credentials| authenticated_channel_bind(credentials, channel, peer);
@@ -523,7 +525,7 @@ async fn delete_allocation(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     credentials: &Credentials,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let mut credentials = credentials.clone();
 
@@ -544,7 +546,7 @@ async fn delete_allocation(
 async fn punch(
     socket: &PerfUdpSocket,
     relayed: SocketAddr,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let probe = [0u8; 8];
 
@@ -581,7 +583,7 @@ struct SendStats {
 /// average matches the target even across timer jitter.
 async fn send(
     socket: &PerfUdpSocket,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
     flows: NonZeroUsize,
     config: &TestConfig,
     data_start: Instant,
@@ -941,7 +943,7 @@ async fn authenticated_request(
     server: SocketAddr,
     credentials: &mut Credentials,
     build: impl Fn(&Credentials) -> Message<Attribute>,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
     label: &str,
 ) -> Result<Message<Attribute>> {
     let mut refreshed_nonce = false;
@@ -1125,7 +1127,7 @@ async fn request_response(
     socket: &PerfUdpSocket,
     server: SocketAddr,
     request: Message<Attribute>,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
     label: &str,
 ) -> Result<Message<Attribute>> {
     let bytes = encode(request);
@@ -1169,7 +1171,7 @@ async fn send_datagram(
     dst: SocketAddr,
     bytes: &[u8],
     segment_size: usize,
-    pool: &BufferPool<Vec<u8>>,
+    pool: &'static BufferPool<Vec<u8>>,
 ) -> Result<()> {
     let packet = pool.pull_initialised(bytes);
 

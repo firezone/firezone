@@ -3,9 +3,8 @@
 mod workers;
 pub use workers::Workers;
 
-use bufferpool::{Buffer, BufferPool, Magazine, VecBuf};
+use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpPacket;
-use std::sync::LazyLock;
 use tokio::sync::mpsc;
 
 /// How many packets a single item on the TUN channels may at most hold.
@@ -42,11 +41,7 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
-static BATCH_POOL: LazyLock<BufferPool<VecBuf<IpPacket>>> = LazyLock::new(|| {
-    thread_local!(static MAGAZINE: Magazine<VecBuf<IpPacket>> = const { Magazine::new() });
-
-    BufferPool::new_static(MAX_BATCH_SIZE, "ip-packet-batch", &MAGAZINE)
-});
+bufferpool::buffer_pool!(static PACKET_BATCHES: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"));
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
@@ -76,7 +71,7 @@ pub struct PacketBatch {
 impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: BATCH_POOL.pull(),
+            inner: PACKET_BATCHES.pull(),
         }
     }
 }

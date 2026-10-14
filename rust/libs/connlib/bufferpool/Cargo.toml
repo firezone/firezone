@@ -9,7 +9,6 @@ path = "lib.rs"
 
 [dependencies]
 bytes = { workspace = true }
-crossbeam-queue = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 tracing = { workspace = true }

@@ -27,7 +27,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool, Magazine};
+use bufferpool::Buffer;
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -38,13 +38,8 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-use std::sync::LazyLock;
 
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| {
-    thread_local!(static MAGAZINE: Magazine<Vec<u8>> = const { Magazine::new() });
-
-    BufferPool::new_static(MAX_FZ_PAYLOAD, "ip-packet", &MAGAZINE)
-});
+bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"));
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -141,7 +136,7 @@ pub struct IpPacketBuf {
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: BUFFER_POOL.pull(),
+            inner: IP_PACKETS.pull(),
         }
     }
 }

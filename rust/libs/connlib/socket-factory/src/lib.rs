@@ -301,7 +301,6 @@ impl UdpSocket {
 
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
-        let socket_addr = self.inner.local_addr()?;
         let quinn_state = self.state;
 
         #[cfg(apple)]
@@ -321,13 +320,7 @@ impl UdpSocket {
 
         Ok(PerfUdpSocket {
             pool: SocketPool::new(wildcard),
-            recv_buffers: RecvBuffers::new(
-                recv_buf_size,
-                match socket_addr.ip() {
-                    IpAddr::V4(_) => "udp-socket-v4",
-                    IpAddr::V6(_) => "udp-socket-v6",
-                },
-            ),
+            recv_buffers: RecvBuffers::new(recv_buf_size),
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
             source_ip_resolver: self.source_ip_resolver,
@@ -906,10 +899,12 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 /// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
 /// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
-    bytes: BufferPool<Vec<u8>>,
-    buffers: BufferPool<VecBuf<Buffer<Vec<u8>>>>,
-    metas: BufferPool<VecBuf<quinn_udp::RecvMeta>>,
+    bytes: &'static BufferPool<Vec<u8>>,
 }
+
+bufferpool::buffer_pool!(static UDP_RECV_BYTES: Vec<u8>, "udp-recv-bytes");
+bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"));
+bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"));
 
 /// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
 pub(crate) struct RecvBatch {
@@ -939,18 +934,16 @@ impl RecvBatch {
 }
 
 impl RecvBuffers {
-    fn new(recv_buf_size: usize, tag: &'static str) -> Self {
+    fn new(recv_buf_size: usize) -> Self {
         Self {
-            bytes: BufferPool::new(recv_buf_size, tag),
-            buffers: BufferPool::new(quinn_udp::BATCH_SIZE, "udp-recv-buffers"),
-            metas: BufferPool::new(quinn_udp::BATCH_SIZE, "udp-recv-metas"),
+            bytes: UDP_RECV_BYTES.init(recv_buf_size),
         }
     }
 
     /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
     pub(crate) fn pull_batch(&self) -> RecvBatch {
-        let mut buffers = self.buffers.pull();
-        let mut metas = self.metas.pull();
+        let mut buffers = UDP_RECV_BUFFERS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
 
         buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(quinn_udp::BATCH_SIZE));
         metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
@@ -1187,6 +1180,9 @@ mod tests {
         }
     }
 
+    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"));
+    bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"));
+
     /// The batch is the item of the channel to the main thread; keeping it small is
     /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
     /// allocates channel slots in blocks, so a large item would cross musl's mmap
@@ -1194,22 +1190,19 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 104);
+        assert_eq!(size_of::<DatagramBatch>(), 88);
     }
 
     #[test]
     fn drain_segments_buffers_correctly() {
-        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(3, "test");
-        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(3, "test");
-
-        let mut buffers = buffer_pool.pull();
+        let mut buffers = DUMMY_BUFFERS.pull();
         buffers.extend([
             DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
             DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
             DummyBuffer(b"".to_vec()),
         ]);
 
-        let mut metas = meta_pool.pull();
+        let mut metas = DUMMY_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1246,13 +1239,10 @@ mod tests {
 
     #[test]
     fn drained_batch_yields_nothing() {
-        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(1, "test");
-        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(1, "test");
-
-        let mut buffers = buffer_pool.pull();
+        let mut buffers = DUMMY_BUFFERS.pull();
         buffers.extend([DummyBuffer(b"foo".to_vec())]);
 
-        let mut metas = meta_pool.pull();
+        let mut metas = DUMMY_METAS.pull();
         metas.extend([recv_meta(
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1272,16 +1262,13 @@ mod tests {
     /// is dropped and iteration moves on to the next buffer.
     #[test]
     fn zero_stride_buffer_is_skipped() {
-        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
-        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
-
-        let mut buffers = buffer_pool.pull();
+        let mut buffers = DUMMY_BUFFERS.pull();
         buffers.extend([
             DummyBuffer(b"garbage    ".to_vec()),
             DummyBuffer(b"foo        ".to_vec()),
         ]);
 
-        let mut metas = meta_pool.pull();
+        let mut metas = DUMMY_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1321,18 +1308,15 @@ mod tests {
 
     #[test]
     fn drain_drops_segments_larger_than_max_fz_payload() {
-        let buffer_pool = BufferPool::<VecBuf<DummyBuffer>>::new(2, "test");
-        let meta_pool = BufferPool::<VecBuf<quinn_udp::RecvMeta>>::new(2, "test");
-
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
-        let mut buffers = buffer_pool.pull();
+        let mut buffers = DUMMY_BUFFERS.pull();
         buffers.extend([
             DummyBuffer(vec![0; oversized]),
             DummyBuffer(b"foobar1".to_vec()),
         ]);
 
-        let mut metas = meta_pool.pull();
+        let mut metas = DUMMY_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
