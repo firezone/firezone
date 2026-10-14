@@ -1710,7 +1710,9 @@ where
         // hanging.
         self.tunnel.handle_timeout(now);
 
-        let (messages, expired) = drain_tunnel_events(&mut self.tunnel, now);
+        let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) else {
+            return;
+        };
 
         if expired {
             tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
@@ -1892,12 +1894,13 @@ where
 
         // Handshakes make the tunnel reply, i.e. with a handshake response or a keepalive.
         // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-        let (messages, expired) = drain_tunnel_events(&mut self.tunnel, now);
-        if expired {
-            tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
-            self.state = ConnectionState::Failed;
+        if let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) {
+            if expired {
+                tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
+                self.state = ConnectionState::Failed;
+            }
+            self.buffer_or_send(&cid, messages, allocations, transmits, now);
         }
-        self.buffer_or_send(&cid, messages, allocations, transmits, now);
 
         let pending = match result {
             Ok(Some(pending)) => pending,
@@ -2198,11 +2201,16 @@ where
 }
 
 /// Drains the events of `tunnel`, returning the messages it wants to send and whether the connection expired.
-fn drain_tunnel_events(tunnel: &mut Tunnel, now: Instant) -> (SmallVec<[Vec<u8>; 2]>, bool) {
+/// Returns `None` without building anything if no event is queued, which is the case after every data message.
+fn drain_tunnel_events(
+    tunnel: &mut Tunnel,
+    now: Instant,
+) -> Option<(SmallVec<[Vec<u8>; 2]>, bool)> {
+    let mut next = Some(tunnel.poll_event()?);
     let mut messages = SmallVec::new();
     let mut expired = false;
 
-    while let Some(event) = tunnel.poll_event() {
+    while let Some(event) = next {
         match event {
             sanstun::Event::SendHandshakeInitiation(message) => messages.push(message.to_vec()),
             sanstun::Event::SendHandshakeResponse(message) => messages.push(message.to_vec()),
@@ -2214,9 +2222,11 @@ fn drain_tunnel_events(tunnel: &mut Tunnel, now: Instant) -> (SmallVec<[Vec<u8>;
             }
             sanstun::Event::ConnectionExpired => expired = true,
         }
+
+        next = tunnel.poll_event();
     }
 
-    (messages, expired)
+    Some((messages, expired))
 }
 
 fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> Interface {
