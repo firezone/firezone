@@ -1345,12 +1345,12 @@ impl ClientState {
             return ControlFlow::Break(());
         }
 
-        let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
-            if is_dns_sentinel(dst) {
-                return ControlFlow::Break(());
-            }
-
+        if !is_dns_sentinel(dst) {
             return ControlFlow::Continue(packet);
+        }
+
+        let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
+            return ControlFlow::Break(());
         };
 
         if self.tcp_dns_server.accepts(&packet) {
@@ -1633,7 +1633,7 @@ impl ClientState {
             return self.dns_config.system_dns_resolvers();
         };
 
-        let dns_by_sentinel = self.dns_config.mapping();
+        let dns_by_sentinel = self.dns_config.mapping().clone();
 
         self.maybe_update_tun_config(TunConfig {
             dns_by_sentinel,
@@ -1666,7 +1666,7 @@ impl ClientState {
                     v4: config.ipv4,
                     v6: config.ipv6,
                 },
-                dns_by_sentinel: self.dns_config.mapping(),
+                dns_by_sentinel: self.dns_config.mapping().clone(),
                 search_domain: config.search_domain.clone(),
                 routes: existing.routes.clone(),
             })
@@ -1675,7 +1675,7 @@ impl ClientState {
                     v4: config.ipv4,
                     v6: config.ipv6,
                 },
-                dns_by_sentinel: self.dns_config.mapping(),
+                dns_by_sentinel: self.dns_config.mapping().clone(),
                 search_domain: config.search_domain.clone(),
                 routes: BTreeSet::from_iter(self.routes()),
             });
