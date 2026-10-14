@@ -5,7 +5,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bufferpool::BufferPool;
 use is::Candidate;
 use itertools::Itertools as _;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
@@ -27,8 +26,6 @@ pub(crate) struct Allocations<RId> {
     /// Relays we freed an allocation of because of a failure, and until when we ignore them.
     blocked: BTreeMap<RId, Instant>,
 
-    buffer_pool: BufferPool<Vec<u8>>,
-
     rng: StdRng,
 }
 
@@ -44,7 +41,6 @@ where
             inner: BTreeMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
             blocked: BTreeMap::default(),
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
             rng: StdRng::from_seed(seed),
         }
     }
@@ -159,13 +155,7 @@ where
                 self.rng.fill_bytes(&mut seed);
 
                 v.insert(Allocation::new(
-                    server,
-                    username,
-                    password,
-                    realm,
-                    now,
-                    self.buffer_pool.clone(),
-                    seed,
+                    server, username, password, realm, now, seed,
                 ));
 
                 UpsertResult::Added
@@ -183,13 +173,7 @@ where
                 self.rng.fill_bytes(&mut seed);
 
                 let previous = o.insert(Allocation::new(
-                    server,
-                    username,
-                    password,
-                    realm,
-                    now,
-                    self.buffer_pool.clone(),
-                    seed,
+                    server, username, password, realm, now, seed,
                 ));
 
                 self.previous_relays_by_ip

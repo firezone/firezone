@@ -11,10 +11,10 @@
 
 #![allow(clippy::unwrap_used)]
 
-use std::sync::{LazyLock, mpsc as std_mpsc};
+use std::sync::mpsc as std_mpsc;
 use std::thread;
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::{Buffer, buffer_pool};
 use divan::{Bencher, black_box, counter::ItemsCount};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
@@ -29,7 +29,7 @@ const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
 
-static POOL: LazyLock<BufferPool<Vec<u8>>> = LazyLock::new(|| BufferPool::new(CAPACITY, "bench"));
+buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"), batch: 64);
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
@@ -44,8 +44,8 @@ fn pooled() -> Buffer<Vec<u8>> {
     POOL.pull()
 }
 
-fn plain() -> [usize; 4] {
-    black_box([0; 4])
+fn plain() -> [u8; size_of::<Buffer<Vec<u8>>>()] {
+    black_box([0; size_of::<Buffer<Vec<u8>>>()])
 }
 
 fn alloc() -> Vec<u8> {

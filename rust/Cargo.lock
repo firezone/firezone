@@ -977,13 +977,11 @@ name = "bufferpool"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "crossbeam-queue",
  "divan",
  "opentelemetry",
  "opentelemetry_sdk",
  "otel-instruments",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -1640,15 +1638,6 @@ name = "crossbeam-epoch"
 version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
-dependencies = [
- "crossbeam-utils",
-]
-
-[[package]]
-name = "crossbeam-queue"
-version = "0.3.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03e8bd762f7479489c70ed6c768ddca99d7296857de437a68dcb2a94365b3fae"
 dependencies = [
  "crossbeam-utils",
 ]

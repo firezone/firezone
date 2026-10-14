@@ -3,7 +3,6 @@ use crate::{
     channel_data,
     node::Transmit,
 };
-use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
@@ -102,8 +101,6 @@ pub struct Allocation {
     /// Smoothed round-trip time to the relay, computed via an exponential moving
     /// average over response times. `None` until we receive the first response.
     rtt: Option<Duration>,
-
-    buffer_pool: BufferPool<Vec<u8>>,
 
     rng: StdRng,
 }
@@ -231,7 +228,6 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
-        buffer_pool: BufferPool<Vec<u8>>,
         seed: [u8; 32],
     ) -> Self {
         let mut allocation = Self {
@@ -259,7 +255,6 @@ impl Allocation {
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
             rtt: None,
-            buffer_pool,
             rng: StdRng::from_seed(seed),
         };
 
@@ -287,15 +282,7 @@ impl Allocation {
             return;
         };
 
-        *self = Self::new(
-            self.server,
-            username,
-            password,
-            realm,
-            now,
-            self.buffer_pool.clone(),
-            seed,
-        );
+        *self = Self::new(self.server, username, password, realm, now, seed);
     }
 
     pub fn host_and_server_reflexive_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
@@ -1240,7 +1227,7 @@ impl Allocation {
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: self.buffer_pool.pull_initialised(&encode(message)),
+            payload: crate::DATAGRAMS.pull_initialised(&encode(message)),
             ecn: Ecn::NonEct,
         });
 
@@ -3177,7 +3164,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                BufferPool::new(500, "test"),
                 [0; 32],
             )
         }
@@ -3192,7 +3178,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                BufferPool::new(500, "test"),
                 [1; 32],
             )
         }
