@@ -2341,31 +2341,72 @@ defmodule PortalWeb.Resources.Components do
           |> filter_online_only(online_only?, online_ids)
           |> filter_recently_seen(recently_seen?, online_ids)
 
-        total = count_devices(query, subject)
-        page = clamp_page(Keyword.get(opts, :page, 1), total)
-
-        devices =
-          query
-          |> order_by([devices: d],
-            desc: d.id in ^online_ids,
-            desc_nulls_last: d.last_seen_at,
-            asc: d.id
-          )
-          |> preload([actors: a], actor: a)
-          # Fetch the next page too: the scan dominates the cost, so the extra rows are nearly free
-          # and let the picker backfill the page as devices are added without another query.
-          |> limit(^(@device_search_page_size * 2))
-          |> offset(^((page - 1) * @device_search_page_size))
-          |> Safe.scoped(subject)
-          |> Safe.all()
-          |> case do
-            {:error, _} -> []
-            devices -> Enum.map(devices, &%{&1 | online?: &1.id in online_ids})
-          end
-
+        {devices, page, total} = fetch_device_search_page(query, subject, Keyword.get(opts, :page, 1), online_ids)
         {devices, reserve} = Enum.split(devices, @device_search_page_size)
 
         %{devices: devices, reserve: reserve, page: page, page_size: @device_search_page_size, total: total}
+      end
+    end
+
+    # A page past the end returns no rows, and so no total to clamp it with. That only happens
+    # when the results shrank under a later page, so count separately just for that case.
+    defp fetch_device_search_page(query, subject, page, online_ids) do
+      page = max(page, 1)
+
+      case fetch_device_search_rows(query, subject, page, online_ids) do
+        {[], 0} when page > 1 ->
+          total = count_devices(query, subject)
+          page = clamp_page(page, total)
+          {devices, _total} = fetch_device_search_rows(query, subject, page, online_ids)
+          {devices, page, total}
+
+        {devices, total} ->
+          {devices, page, total}
+      end
+    end
+
+    # One scan both pages and counts the matches. The window runs over the ids and sort keys
+    # only: carrying whole rows through it spills to disk on large accounts, which made
+    # broad searches slower than counting separately. The full rows are joined for just the page.
+    defp fetch_device_search_rows(query, subject, page, online_ids) do
+      page_query =
+        query
+        |> where([devices: d], d.account_id == ^subject.account.id)
+        |> order_by([devices: d],
+          desc: d.id in ^online_ids,
+          desc_nulls_last: d.last_seen_at,
+          asc: d.id
+        )
+        # Fetch the next page too: the scan dominates the cost, so the extra rows are nearly free
+        # and let the picker backfill the page as devices are added without another query.
+        |> limit(^(@device_search_page_size * 2))
+        |> offset(^((page - 1) * @device_search_page_size))
+        |> select([devices: d], %{
+          id: d.id,
+          account_id: d.account_id,
+          online: d.id in ^online_ids,
+          last_seen_at: d.last_seen_at,
+          total: over(count(d.id))
+        })
+
+      from(d in Device, as: :devices)
+      |> join(:inner, [devices: d], p in subquery(page_query),
+        on: p.id == d.id and p.account_id == d.account_id,
+        as: :page
+      )
+      |> join(:inner, [devices: d], a in assoc(d, :actor), on: a.account_id == d.account_id, as: :actors)
+      |> order_by([page: p], desc: p.online, desc_nulls_last: p.last_seen_at, asc: p.id)
+      |> select([devices: d, page: p], {d, p.total})
+      |> preload([actors: a], actor: a)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {[], 0}
+
+        rows ->
+          {devices, totals} = Enum.unzip(rows)
+          {Enum.map(devices, &%{&1 | online?: &1.id in online_ids}), List.first(totals, 0)}
       end
     end
 

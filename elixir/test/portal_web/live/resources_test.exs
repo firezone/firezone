@@ -567,10 +567,31 @@ defmodule PortalWeb.ResourcesTest do
       assert {length(first), length(second), length(third)} == {10, 10, 5}
       assert first |> Enum.concat(second) |> Enum.concat(third) |> Enum.uniq() |> length() == 25
 
-      assert %{page: 3, total: 25} = Database.search_devices("Paged", subject, [], page: 99)
+      # A page past the end falls back to the last page.
+      assert %{page: 3, total: 25, devices: last_page} = Database.search_devices("Paged", subject, [], page: 99)
+      assert Enum.map(last_page, & &1.id) == third
       assert %{page: 1} = Database.search_devices("Paged", subject, [], page: 0)
       assert %{page: 1, total: 0, devices: []} = Database.search_devices("Nope", subject, [], page: 2)
       assert Database.search_devices("", subject, []) == nil
+    end
+
+    test "device picker search leaves out and does not count other accounts' devices", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+
+      for i <- 1..3 do
+        client_fixture(account: other_account, actor: other_actor, name: "Isolated #{i}")
+      end
+
+      own = client_fixture(account: account, actor: actor, name: "Isolated Own")
+
+      assert %{devices: [%{id: id}], reserve: [], total: 1} = Database.search_devices("Isolated", subject, [])
+      assert id == own.id
     end
 
     test "device picker search filters by online and recently seen", %{account: account, actor: actor} do
