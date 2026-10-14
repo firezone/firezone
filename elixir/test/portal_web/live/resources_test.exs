@@ -4,6 +4,7 @@ defmodule PortalWeb.ResourcesTest do
   alias Portal.{Policy, Repo}
   alias Portal.Changes.Change
   alias Portal.Resource
+  alias PortalWeb.Resources.Components.Database
 
   import Portal.AccountFixtures
   import Portal.DevicePostureFixtures
@@ -480,32 +481,29 @@ defmodule PortalWeb.ResourcesTest do
       assert render_focus(element(lv, "input[name='device_search']")) =~ "Search devices to add"
 
       html =
-        lv
-        |> element("input[name='device_search']")
-        |> render_change(%{"device_search" => "Workstation"})
+        search_devices_in(lv, "Workstation")
 
       assert html =~ device.name
 
+      # Adding a device keeps the search and only drops that device from the results.
       html = render_click(lv, "add_device", %{"device_id" => device.id})
-      assert html =~ device.name
+      assert html =~ "No devices found"
+      assert has_element?(lv, "input[name='device_search'][value='Workstation']")
+      assert has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+      refute has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{device.id}']")
 
-      html = render_click(lv, "remove_device", %{"device_id" => device.id})
-      assert html =~ "Search above to add devices"
+      # Removing it puts it back into the results for the same search.
+      render_click(lv, "remove_device", %{"device_id" => device.id})
+      render_async(lv)
+      refute has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+      assert has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{device.id}']")
 
-      lv
-      |> element("input[name='device_search']")
-      |> render_change(%{"device_search" => "Workstation"})
-
-      html = render_click(lv, "add_device", %{"device_id" => device.id})
-      assert html =~ device.name
-
-      assert has_element?(
-               lv,
-               "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']"
-             )
+      # Device details live in a popover on the info icon rather than the whole card.
+      assert has_element?(lv, "[role='tooltip'] dd", device.id)
+      assert has_element?(lv, "[phx-hook='Popover'] .ri-information-line")
     end
 
-    test "device picker search surfaces online devices ahead of the result limit", %{
+    test "device picker search surfaces online devices ahead of the page", %{
       account: account,
       actor: actor
     } do
@@ -518,11 +516,401 @@ defmodule PortalWeb.ResourcesTest do
       online_device = client_fixture(account: account, actor: actor, name: "Bulk Online")
       :ok = Portal.Presence.Devices.Account.track(online_device)
 
-      results = PortalWeb.Resources.Components.Database.search_devices("Bulk", subject, [])
-
-      assert length(results) == 10
-      assert [%{id: id, online?: true} | _] = results
+      assert %{devices: devices, total: 11, page: 1} = Database.search_devices("Bulk", subject, [])
+      assert length(devices) == 10
+      assert [%{id: id, online?: true} | _] = devices
       assert id == online_device.id
+    end
+
+    test "device picker search orders offline devices by most recently seen", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      never_seen = client_fixture(account: account, actor: actor, name: "Ordered Never")
+      stale = client_fixture(account: account, actor: actor, name: "Ordered Stale")
+      recent = client_fixture(account: account, actor: actor, name: "Ordered Recent")
+      online = client_fixture(account: account, actor: actor, name: "Ordered Online")
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      now = DateTime.utc_now()
+      set_last_seen_at(never_seen, nil)
+      set_last_seen_at(stale, DateTime.add(now, -60, :day))
+      set_last_seen_at(recent, DateTime.add(now, -1, :hour))
+      set_last_seen_at(online, DateTime.add(now, -90, :day))
+
+      %{devices: devices} = Database.search_devices("Ordered", subject, [])
+
+      assert Enum.map(devices, & &1.id) == [online.id, recent.id, stale.id, never_seen.id]
+    end
+
+    test "device picker search pages through results", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      for i <- 1..25 do
+        client_fixture(account: account, actor: actor, name: "Paged #{i}")
+      end
+
+      page_ids = fn page ->
+        %{devices: devices} = Database.search_devices("Paged", subject, [], page: page)
+        Enum.map(devices, & &1.id)
+      end
+
+      [first, second, third] = Enum.map(1..3, page_ids)
+
+      # Each page carries the next page's devices as a reserve for backfilling.
+      %{reserve: reserve} = Database.search_devices("Paged", subject, [], page: 1)
+      assert Enum.map(reserve, & &1.id) == second
+      assert %{reserve: []} = Database.search_devices("Paged", subject, [], page: 3)
+
+      assert {length(first), length(second), length(third)} == {10, 10, 5}
+      assert first |> Enum.concat(second) |> Enum.concat(third) |> Enum.uniq() |> length() == 25
+
+      # A page past the end falls back to the last page.
+      assert %{page: 3, total: 25, devices: last_page} = Database.search_devices("Paged", subject, [], page: 99)
+      assert Enum.map(last_page, & &1.id) == third
+      assert %{page: 1} = Database.search_devices("Paged", subject, [], page: 0)
+      assert %{page: 1, total: 0, devices: []} = Database.search_devices("Nope", subject, [], page: 2)
+      assert Database.search_devices("", subject, []) == nil
+    end
+
+    test "device picker search leaves out and does not count other accounts' devices", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+
+      for i <- 1..3 do
+        client_fixture(account: other_account, actor: other_actor, name: "Isolated #{i}")
+      end
+
+      own = client_fixture(account: account, actor: actor, name: "Isolated Own")
+
+      assert %{devices: [%{id: id}], reserve: [], total: 1} = Database.search_devices("Isolated", subject, [])
+      assert id == own.id
+    end
+
+    test "device picker search filters by online and recently seen", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      online = client_fixture(account: account, actor: actor, name: "Filter Online")
+      recent = client_fixture(account: account, actor: actor, name: "Filter Recent")
+      stale = client_fixture(account: account, actor: actor, name: "Filter Stale")
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      set_last_seen_at(online, nil)
+      set_last_seen_at(recent, DateTime.add(DateTime.utc_now(), -2, :day))
+      set_last_seen_at(stale, DateTime.add(DateTime.utc_now(), -45, :day))
+
+      ids = fn search, opts ->
+        search |> Database.search_devices(subject, [], opts) |> Map.fetch!(:devices) |> Enum.map(& &1.id)
+      end
+
+      assert ids.("Filter", online_only: true) == [online.id]
+      assert ids.("Filter", recently_seen: true) == [online.id, recent.id]
+      assert ids.("Filter", []) == [online.id, recent.id, stale.id]
+
+      # Filters list devices even without a search term.
+      assert online.id in ids.("", online_only: true)
+    end
+
+    test "device picker pages and filters results in the form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      devices =
+        for i <- 1..15 do
+          client_fixture(account: account, actor: actor, name: "Paging Box #{i}")
+        end
+
+      online = List.last(devices)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        search_devices_in(lv, "Paging Box")
+
+      assert result_count(lv) == 10
+      assert html =~ "1–10 of 15"
+      assert html =~ "1 / 2"
+
+      # Each result shows its owner, with identifiers moved into a hover popover.
+      assert html =~ actor.email
+      assert has_element?(lv, "[role='tooltip'] dd", online.id)
+      assert has_element?(lv, "button[aria-label='Previous page'][disabled]")
+
+      html = click_and_await(lv, "button[aria-label='Next page']")
+
+      assert result_count(lv) == 5
+      assert html =~ "11–15 of 15"
+      assert has_element?(lv, "button[aria-label='Next page'][disabled]")
+
+      # Adding and removing a device keeps the current page and search.
+      on_page = Enum.find(devices, &has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{&1.id}']"))
+      render_click(lv, "add_device", %{"device_id" => on_page.id})
+      assert render(lv) =~ "11–14 of 14"
+
+      render_click(lv, "remove_device", %{"device_id" => on_page.id})
+      render_async(lv)
+
+      assert render(lv) =~ "11–15 of 15"
+
+      # Toggling a filter returns to the first page.
+      html =
+        click_and_await(lv, "button[phx-click='toggle_device_search_filter'][phx-value-filter='online_only']")
+
+      assert result_count(lv) == 1
+      assert html =~ online.name
+      refute has_element?(lv, "button[aria-label='Next page']")
+
+      assert has_element?(lv, "button[role='switch'][phx-value-filter='online_only'][aria-checked='true']")
+      assert has_element?(lv, "button[phx-value-filter='online_only'] .ri-checkbox-fill")
+      assert has_element?(lv, "button[role='switch'][phx-value-filter='recently_seen'][aria-checked='false']")
+      assert has_element?(lv, "button[phx-value-filter='recently_seen'] .ri-checkbox-blank-line")
+    end
+
+    test "adding a device drops it from the results without searching again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device = client_fixture(account: account, actor: actor, name: "Requery Box 1")
+      client_fixture(account: account, actor: actor, name: "Requery Box 2")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Requery Box")
+
+      # A device created after the search only shows up if the search runs again.
+      late = client_fixture(account: account, actor: actor, name: "Requery Box 3")
+
+      render_click(lv, "add_device", %{"device_id" => device.id})
+
+      assert result_count(lv) == 1
+      refute has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{late.id}']")
+      assert has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+    end
+
+    test "adding the last result on a page loads the previous page", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      devices =
+        for i <- 1..11 do
+          client_fixture(account: account, actor: actor, name: "Last Page Box #{i}")
+        end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Last Page Box")
+
+      html = click_and_await(lv, "button[aria-label='Next page']")
+      assert html =~ "11–11 of 11"
+
+      [last_on_page] =
+        Enum.filter(devices, &has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{&1.id}']"))
+
+      render_click(lv, "add_device", %{"device_id" => last_on_page.id})
+      render_async(lv)
+
+      assert result_count(lv) == 10
+      refute has_element?(lv, "button[aria-label='Next page']")
+    end
+
+    test "adding a device backfills the page from the next page's results", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..15 do
+        client_fixture(account: account, actor: actor, name: "Backfill Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Backfill Box")
+
+      [first | _] = before = result_ids(lv)
+
+      html = render_click(lv, "add_device", %{"device_id" => first})
+      after_add = result_ids(lv)
+
+      # The page stays full: the added device is gone and one new device slid in from the reserve.
+      assert length(after_add) == 10
+      assert after_add -- before != []
+      refute first in after_add
+      assert html =~ "1–10 of 14"
+    end
+
+    test "the reserve is topped up once it gets down to 5", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..30 do
+        client_fixture(account: account, actor: actor, name: "Topup Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Topup Box")
+
+      # Only a fresh search can find this device, and it sorts ahead of every other offline one.
+      late = client_fixture(account: account, actor: actor, name: "Topup Box Late")
+      set_last_seen_at(late, DateTime.utc_now())
+
+      # Five adds take the reserve from 10 down to 5, which starts the top-up.
+      for _ <- 1..5 do
+        [id | _] = result_ids(lv)
+        render_click(lv, "add_device", %{"device_id" => id})
+        render_async(lv)
+      end
+
+      refute late.id in result_ids(lv)
+
+      # The topped-up reserve now leads with the late device, so the next add slides it in.
+      [id | _] = result_ids(lv)
+      render_click(lv, "add_device", %{"device_id" => id})
+
+      assert late.id in result_ids(lv)
+      assert result_count(lv) == 10
+    end
+
+    test "running out of backfill refills the page in the background", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..25 do
+        client_fixture(account: account, actor: actor, name: "Refill Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Refill Box")
+
+      # The first 10 adds are backfilled from the reserve; the 11th needs a refill.
+      for _ <- 1..11 do
+        [id | _] = result_ids(lv)
+        render_click(lv, "add_device", %{"device_id" => id})
+        render_async(lv)
+      end
+
+      html = render(lv)
+      assert html =~ "Selected (11)"
+      assert result_count(lv) == 10
+      assert html =~ "1–10 of 14"
+    end
+
+    test "device picker lists the most recently selected device first", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = client_fixture(account: account, actor: actor, name: "Chosen First")
+      second = client_fixture(account: account, actor: actor, name: "Chosen Second")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      render_click(lv, "add_device", %{"device_id" => first.id})
+      html = render_click(lv, "add_device", %{"device_id" => second.id})
+
+      assert html =~ "Selected (2)"
+
+      selected_ids =
+        html
+        |> Floki.parse_document!()
+        |> Floki.find("#device-picker-selected button[phx-click='remove_device']")
+        |> Enum.flat_map(&Floki.attribute(&1, "phx-value-device_id"))
+
+      assert selected_ids == [second.id, first.id]
+    end
+
+    test "device picker shows a searching state until results arrive", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor, name: "Loading Box")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      # The event handler only starts the search, so its render shows the searching state.
+      html =
+        lv
+        |> element("input[name='device_search']")
+        |> render_change(%{"device_search" => "Loading Box"})
+
+      assert html =~ "Searching…"
+      assert html =~ "ri-loader-4-line"
+
+      html = render_async(lv)
+
+      refute html =~ "Searching…"
+      assert result_count(lv) == 1
     end
 
     test "device picker search matches the device slug", %{account: account, actor: actor} do
@@ -530,8 +918,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor, slug: "build-box-7")
       client_fixture(account: account, actor: actor)
 
-      assert [%{id: id}] =
-               PortalWeb.Resources.Components.Database.search_devices("build-box", subject, [])
+      assert %{devices: [%{id: id}]} = Database.search_devices("build-box", subject, [])
 
       assert id == device.id
     end
@@ -1151,6 +1538,8 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "[data-pool-count-for='listed']", "1")
 
       render_click(lv, "remove_device", %{"device_id" => in_group.id})
+      render_async(lv)
+
       assert has_element?(lv, "[data-pool-count-for='listed']", "0")
 
       lv
@@ -1304,6 +1693,8 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ warning
 
       html = render_click(lv, "remove_device", %{"device_id" => listed.id})
+      render_async(lv)
+
       refute html =~ warning
     end
 
@@ -2012,6 +2403,41 @@ defmodule PortalWeb.ResourcesTest do
 
       assert Floki.raw_html(site_select(html)) == Floki.raw_html(before)
     end
+  end
+
+  defp set_last_seen_at(device, last_seen_at) do
+    device
+    |> Ecto.Changeset.change(last_seen_at: last_seen_at)
+    |> Repo.update!()
+  end
+
+  defp search_devices_in(lv, term) do
+    lv
+    |> element("input[name='device_search']")
+    |> render_change(%{"device_search" => term})
+
+    render_async(lv)
+  end
+
+  defp click_and_await(lv, selector) do
+    lv |> element(selector) |> render_click()
+    render_async(lv)
+  end
+
+  defp result_ids(lv) do
+    lv
+    |> render()
+    |> Floki.parse_document!()
+    |> Floki.find("button[phx-click='add_device']")
+    |> Enum.flat_map(&Floki.attribute(&1, "phx-value-device_id"))
+  end
+
+  defp result_count(lv) do
+    lv
+    |> render()
+    |> Floki.parse_document!()
+    |> Floki.find("button[phx-click='add_device']")
+    |> length()
   end
 
   defp count_occurrences(haystack, needle) do

@@ -14,6 +14,8 @@ defmodule PortalWeb.Resources do
   alias __MODULE__.Database
   alias PortalWeb.Policies.Postures
 
+  @device_search_refill_threshold 5
+
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
@@ -218,7 +220,11 @@ defmodule PortalWeb.Resources do
         selected_devices: [],
         pool_counts: %{},
         device_search: "",
-        device_search_results: nil
+        device_search_results: nil,
+        device_search_online_only?: false,
+        device_search_recently_seen?: false,
+        device_search_refilling?: false,
+        device_search_loading?: false
       }
     )
   end
@@ -812,30 +818,38 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("focus_device_search", _params, socket) do
-    results =
-      Database.search_devices(
-        socket.assigns.resource_form.device_search,
-        socket.assigns.subject,
-        socket.assigns.resource_form.selected_devices
-      )
-
-    {:noreply, merge_state(socket, :resource_form, device_search_results: results)}
+    {:noreply, run_device_search(socket, page: 1)}
   end
 
   def handle_event("blur_device_search", _params, socket) do
-    {:noreply, merge_state(socket, :resource_form, device_search_results: nil)}
+    {:noreply,
+     socket
+     |> cancel_async(:device_search)
+     |> merge_state(:resource_form, device_search_results: nil, device_search_loading?: false)}
   end
 
   def handle_event("search_device", %{"device_search" => search}, socket) do
-    results =
-      Database.search_devices(
-        search,
-        socket.assigns.subject,
-        socket.assigns.resource_form.selected_devices
-      )
+    socket = merge_state(socket, :resource_form, device_search: search)
+    {:noreply, run_device_search(socket, page: 1)}
+  end
 
-    {:noreply,
-     merge_state(socket, :resource_form, device_search: search, device_search_results: results)}
+  def handle_event("device_search_page", %{"page" => page}, socket) do
+    case Integer.parse(page) do
+      {page, ""} -> {:noreply, run_device_search(socket, page: page)}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_device_search_filter", %{"filter" => filter}, socket) do
+    case device_search_filter_key(filter) do
+      nil ->
+        {:noreply, socket}
+
+      key ->
+        enabled? = !Map.fetch!(socket.assigns.resource_form, key)
+        socket = merge_state(socket, :resource_form, [{key, enabled?}])
+        {:noreply, run_device_search(socket, page: 1)}
+    end
   end
 
   def handle_event("add_device", %{"device_id" => device_id}, socket) do
@@ -844,34 +858,31 @@ defmodule PortalWeb.Resources do
         {:noreply, socket}
 
       device ->
-        selected =
-          Enum.uniq_by([device | socket.assigns.resource_form.selected_devices], & &1.id)
+        form = socket.assigns.resource_form
+        selected = Enum.uniq_by([device | form.selected_devices], & &1.id)
+        socket = merge_state(socket, :resource_form, selected_devices: selected)
 
-        {:noreply,
-         merge_state(socket, :resource_form,
-           selected_devices: selected,
-           device_search: "",
-           device_search_results: nil
-         )}
+        # Re-running the search is a full scan on large accounts, so backfill the page from the
+        # reserve fetched with it and only top the reserve up in the background once it runs out.
+        case take_device_search_result(form.device_search_results, device.id) do
+          nil ->
+            {:noreply, socket}
+
+          results ->
+            socket
+            |> merge_state(:resource_form, device_search_results: results)
+            |> maybe_refill_device_search()
+            |> then(&{:noreply, &1})
+        end
     end
   end
 
   def handle_event("remove_device", %{"device_id" => device_id}, socket) do
-    selected =
-      Enum.reject(socket.assigns.resource_form.selected_devices, &(&1.id == device_id))
+    form = socket.assigns.resource_form
+    selected = Enum.reject(form.selected_devices, &(&1.id == device_id))
 
-    results =
-      Database.search_devices(
-        socket.assigns.resource_form.device_search,
-        socket.assigns.subject,
-        selected
-      )
-
-    {:noreply,
-     merge_state(socket, :resource_form,
-       selected_devices: selected,
-       device_search_results: results
-     )}
+    socket = merge_state(socket, :resource_form, selected_devices: selected)
+    {:noreply, run_device_search(socket, page: current_device_search_page(form))}
   end
 
   def handle_event("open_grant_form", _params, socket) do
@@ -1279,6 +1290,155 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
+  def handle_async(:device_search, {:ok, results}, socket) do
+    selected = socket.assigns.resource_form.selected_devices
+
+    socket
+    |> merge_state(:resource_form,
+      device_search_results: without_selected_devices(results, selected),
+      device_search_loading?: false
+    )
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_async(:device_search, {:exit, _reason}, socket),
+    do: {:noreply, merge_state(socket, :resource_form, device_search_loading?: false)}
+
+  def handle_async(:device_search_refill, {:ok, {key, fresh}}, socket) do
+    socket = merge_state(socket, :resource_form, device_search_refilling?: false)
+    form = socket.assigns.resource_form
+
+    if form.device_search_results && key == device_search_key(form) do
+      results = merge_device_search_refill(form.device_search_results, fresh, form.selected_devices)
+
+      # Devices added while the top-up was running may have used up the reserve again.
+      socket
+      |> merge_state(:resource_form, device_search_results: results)
+      |> maybe_refill_device_search()
+      |> then(&{:noreply, &1})
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:device_search_refill, {:exit, _reason}, socket),
+    do: {:noreply, merge_state(socket, :resource_form, device_search_refilling?: false)}
+
+  defp device_search_filter_key("online_only"), do: :device_search_online_only?
+  defp device_search_filter_key("recently_seen"), do: :device_search_recently_seen?
+  defp device_search_filter_key(_filter), do: nil
+
+  defp take_device_search_result(%{devices: devices} = results, device_id) do
+    case Enum.split_with(devices, &(&1.id == device_id)) do
+      {[], _devices} ->
+        nil
+
+      {_taken, devices} ->
+        {fill, reserve} = Enum.split(results.reserve, 1)
+        %{results | devices: devices ++ fill, reserve: reserve, total: results.total - 1}
+    end
+  end
+
+  defp take_device_search_result(_results, _device_id), do: nil
+
+  defp maybe_refill_device_search(socket) do
+    form = socket.assigns.resource_form
+    results = form.device_search_results
+    shown_through = (results.page - 1) * results.page_size + length(results.devices)
+
+    # Top up once the reserve is running low and more devices exist past it, or when the page
+    # emptied out while earlier pages still have devices (the last one on the last page was added).
+    # A top-up already in flight is left to finish rather than restarted on every add.
+    low_reserve? =
+      length(results.reserve) <= @device_search_refill_threshold and
+        results.total > shown_through + length(results.reserve)
+
+    if not form.device_search_refilling? and (low_reserve? or (results.devices == [] and results.total > 0)) do
+      key = device_search_key(form)
+      subject = socket.assigns.subject
+
+      socket
+      |> merge_state(:resource_form, device_search_refilling?: true)
+      |> start_async(:device_search_refill, fn ->
+        {key, Database.search_devices(form.device_search, subject, form.selected_devices, device_search_opts(form))}
+      end)
+    else
+      socket
+    end
+  end
+
+  # The results were closed (or the search cleared) while the refill was running.
+  defp merge_device_search_refill(results, fresh, _selected) when is_nil(results) or is_nil(fresh),
+    do: results
+
+  # The page shifted (e.g. its last device was added), so show the fresh results as they are.
+  defp merge_device_search_refill(%{page: page}, %{page: fresh_page} = fresh, _selected)
+       when page != fresh_page,
+       do: fresh
+
+  defp merge_device_search_refill(%{devices: devices} = results, fresh, selected_devices) do
+    hidden_ids = MapSet.new(devices ++ selected_devices, & &1.id)
+    pool = Enum.reject(fresh.devices ++ fresh.reserve, &MapSet.member?(hidden_ids, &1.id))
+    {fill, reserve} = Enum.split(pool, results.page_size - length(devices))
+
+    %{results | devices: devices ++ fill, reserve: reserve, total: fresh.total}
+  end
+
+  defp device_search_key(form) do
+    page = current_device_search_page(form)
+    {form.device_search, form.device_search_online_only?, form.device_search_recently_seen?, page}
+  end
+
+  defp device_search_opts(form, opts \\ []) do
+    Keyword.merge(opts,
+      online_only: form.device_search_online_only?,
+      recently_seen: form.device_search_recently_seen?,
+      page: Keyword.get(opts, :page, current_device_search_page(form))
+    )
+  end
+
+  defp current_device_search_page(%{device_search_results: %{page: page}}), do: page
+  defp current_device_search_page(_form), do: 1
+
+  defp run_device_search(socket, opts) do
+    form = socket.assigns.resource_form
+
+    subject = socket.assigns.subject
+    socket = cancel_async(socket, :device_search_refill)
+
+    if form.device_search in [nil, ""] and not form.device_search_online_only? and
+         not form.device_search_recently_seen? do
+      socket
+      |> cancel_async(:device_search)
+      |> merge_state(:resource_form,
+        device_search_results: nil,
+        device_search_loading?: false,
+        device_search_refilling?: false
+      )
+    else
+      # The search scans every device in the account, so run it off the LiveView process and
+      # drop any search still in flight: typing then never queues up behind stale searches.
+      socket
+      |> cancel_async(:device_search)
+      |> merge_state(:resource_form, device_search_loading?: true, device_search_refilling?: false)
+      |> start_async(:device_search, fn ->
+        Database.search_devices(form.device_search, subject, form.selected_devices, device_search_opts(form, opts))
+      end)
+    end
+  end
+
+  # Devices may have been added from the previous results while this search was running.
+  defp without_selected_devices(%{devices: devices, reserve: reserve, total: total} = results, selected) do
+    selected_ids = MapSet.new(selected, & &1.id)
+    keep? = &(not MapSet.member?(selected_ids, &1.id))
+    {devices, dropped} = Enum.split_with(devices, keep?)
+    {reserve, dropped_reserve} = Enum.split_with(reserve, keep?)
+
+    %{results | devices: devices, reserve: reserve, total: total - length(dropped) - length(dropped_reserve)}
+  end
+
+  defp without_selected_devices(results, _selected), do: results
+
   defp online_ids(account_id) do
     account_id
     |> Presence.Devices.online_ids()
@@ -1327,6 +1487,9 @@ defmodule PortalWeb.Resources do
       resource_form_pool_counts: assigns.resource_form.pool_counts,
       resource_form_device_search: assigns.resource_form.device_search,
       resource_form_device_search_results: assigns.resource_form.device_search_results,
+      resource_form_device_search_online_only: assigns.resource_form.device_search_online_only?,
+      resource_form_device_search_recently_seen: assigns.resource_form.device_search_recently_seen?,
+      resource_form_device_search_loading: assigns.resource_form.device_search_loading?,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
       filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
@@ -1412,7 +1575,7 @@ defmodule PortalWeb.Resources do
     @update_fields ~w[address address_description name type device_membership_criteria ip_stack site_id]a
 
     defdelegate get_device(device_id, subject), to: Components.Database
-    defdelegate search_devices(search_term, subject, selected_devices), to: Components.Database
+    defdelegate search_devices(search_term, subject, selected_devices, opts), to: Components.Database
 
     def all_sites(subject) do
       from(s in Site, as: :sites)

@@ -204,6 +204,17 @@ defmodule PortalWeb.FormatTest do
     end
   end
 
+  describe "number/1" do
+    test "adds thousands separators" do
+      assert Format.number(0) == "0"
+      assert Format.number(999) == "999"
+      assert Format.number(1_000) == "1,000"
+      assert Format.number(101_142) == "101,142"
+      assert Format.number(1_234_567) == "1,234,567"
+      assert Format.number(-12_345) == "-12,345"
+    end
+  end
+
   describe "cardinal_pluralize/2" do
     test "returns :one option when number is 1" do
       assert Format.cardinal_pluralize(1, %{one: "item", other: "items"}) == "item"
