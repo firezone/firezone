@@ -326,28 +326,27 @@ async fn connect_one(
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr};
 
     use super::*;
 
     #[tokio::test]
-    #[ignore = "Requires Internet"]
     async fn parallel_doh_queries() {
+        let server = doh_test_server::DohTestServer::spawn(Ipv4Addr::LOCALHOST)
+            .await
+            .unwrap();
         let http_client = HttpClient::new(
-            "one.one.one.one".to_owned(),
-            443,
-            vec![IpAddr::from([1, 1, 1, 1])],
-            TlsConfig::webpki_roots(),
+            "127.0.0.1".to_owned(),
+            server.url().port(),
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            TlsConfig::new(server.root_cert_store()),
             Arc::new(socket_factory::tcp),
         )
         .await
         .unwrap();
 
-        let query = http::Request::builder()
-            .uri("https://one.one.one.one/dns-query?name=example.com")
-            .method("GET")
-            .header("Accept", "application/dns-json")
-            .body(Bytes::new())
+        let query = dns_types::Query::new("example.com".parse().unwrap(), dns_types::RecordType::A)
+            .try_into_http_request(&server.url())
             .unwrap();
 
         let response1 = http_client.send_request(query.clone()).unwrap();
