@@ -47,6 +47,8 @@ jobs:
           # Usage: run-bench <group> [divan args...]
           set -euo pipefail
           ip link set lo up 2>/dev/null || true
+          echo 16777216 > /proc/sys/net/core/rmem_max || true
+          echo 16777216 > /proc/sys/net/core/wmem_max || true
           group="$1"
           shift
           /usr/local/bin/per_packet --bench "$@" "$group" | tee /tmp/divan.txt
@@ -140,7 +142,7 @@ jobs:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           IMAGE: ${{ needs.build.outputs.image }}
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           mkdir -p out
           for i in $(seq 1 "$RUNS"); do
             for group in state event_loop; do
@@ -180,8 +182,9 @@ jobs:
           path: image
       - name: Run on GitHub runner
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           chmod +x image/per_packet
+          sudo sysctl -w net.core.rmem_max=16777216 net.core.wmem_max=16777216
           nproc
           mkdir -p out
           for i in $(seq 1 "$RUNS"); do
