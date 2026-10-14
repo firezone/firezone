@@ -28,7 +28,7 @@ defmodule PortalWeb.SupportForm do
         phx-hook="SupportForm"
         phx-target={@myself}
         class="text-sm text-body hover:text-heading"
-      >Feedback</button>
+      >Report an issue</button>
       <Form.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
         <:title>{if @sent?, do: "Thank you for your feedback", else: "Submit feedback"}</:title>
         <:body>
