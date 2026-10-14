@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 use std::future::poll_fn;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
@@ -23,7 +23,8 @@ use tun::{MAX_BATCH_SIZE, PacketBatch};
 use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 
 use crate::setup::{
-    RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client, encapsulate_on_gateway,
+    CLIENT_SOCKET, GATEWAY_SOCKET, RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client,
+    encapsulate_on_gateway,
 };
 
 /// How many packets each iteration sends through the tunnel.
@@ -139,22 +140,19 @@ enum State {
     Gateway(GatewayState),
 }
 
-/// Establishes a connection between a Client on 127.0.0.1 and a Gateway on 127.0.0.2.
 fn connect(resource: Resource, size: usize) -> (Side, Side, Instant) {
-    let client_socket = unused_socket(Ipv4Addr::new(127, 0, 0, 1));
-    let gateway_socket = unused_socket(Ipv4Addr::new(127, 0, 0, 2));
-    let mut tunnel = Tunnel::established(resource, client_socket, gateway_socket);
+    let mut tunnel = Tunnel::established(resource);
     let request = tunnel.request(size);
     let reply = tunnel.reply(size);
 
     let client = Side {
         state: State::Client(tunnel.client),
-        socket: client_socket,
+        socket: CLIENT_SOCKET,
         reads: request,
     };
     let gateway = Side {
         state: State::Gateway(tunnel.gateway),
-        socket: gateway_socket,
+        socket: GATEWAY_SOCKET,
         reads: reply,
     };
 
@@ -406,13 +404,6 @@ fn batches(packet: &IpPacket) -> Vec<PacketBatch> {
             batch
         })
         .collect()
-}
-
-fn unused_socket(ip: Ipv4Addr) -> SocketAddr {
-    std::net::UdpSocket::bind((ip, 0))
-        .unwrap()
-        .local_addr()
-        .unwrap()
 }
 
 /// Binds the peer's socket, on a runtime with a single worker thread.

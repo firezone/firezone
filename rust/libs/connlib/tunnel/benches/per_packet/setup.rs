@@ -24,6 +24,10 @@ pub enum Resource {
 
 pub const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 
+pub const CLIENT_SOCKET: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
+pub const GATEWAY_SOCKET: SocketAddr =
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), 2222));
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
@@ -75,18 +79,12 @@ pub struct Tunnel {
     pub client: ClientState,
     pub gateway: GatewayState,
     pub now: Instant,
-    client_socket: SocketAddr,
-    gateway_socket: SocketAddr,
     /// Where the Client sends packets for the resource: its address or the DNS proxy IP.
     dst: IpAddr,
 }
 
 impl Tunnel {
-    pub fn established(
-        resource: Resource,
-        client_socket: SocketAddr,
-        gateway_socket: SocketAddr,
-    ) -> Self {
+    pub fn established(resource: Resource) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -130,8 +128,6 @@ impl Tunnel {
             client,
             gateway,
             now,
-            client_socket,
-            gateway_socket,
             dst,
         };
 
@@ -162,12 +158,7 @@ impl Tunnel {
         );
         let request = self
             .gateway
-            .handle_network_input(
-                self.gateway_socket,
-                self.client_socket,
-                &datagram.payload,
-                self.now,
-            )
+            .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
         let udp = request.as_udp().unwrap();
@@ -221,10 +212,10 @@ impl Tunnel {
         }
 
         while let Some(transmit) = self.client.poll_transmit() {
-            self.route(self.client_socket, transmit);
+            self.route(CLIENT_SOCKET, transmit);
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
-            self.route(self.gateway_socket, transmit);
+            self.route(GATEWAY_SOCKET, transmit);
         }
         for _ in std::iter::from_fn(|| self.client.poll_packets()) {}
     }
@@ -291,12 +282,12 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == self.client_socket {
+        if to == CLIENT_SOCKET {
             let _ = self
                 .client
                 .handle_network_input(to, from, payload, self.now);
         }
-        if to == self.gateway_socket {
+        if to == GATEWAY_SOCKET {
             let _ = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now);
