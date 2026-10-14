@@ -20,8 +20,8 @@ use ip_packet::checksum;
 /// are 16 bits wide), and so neither can our super packets.
 const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 
-bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"));
-bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer");
+bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"), batch: 4);
+bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer", batch: 2);
 
 /// The kernel rejects `VIRTIO_NET_HDR_GSO_UDP_L4` writes with more segments than this
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).

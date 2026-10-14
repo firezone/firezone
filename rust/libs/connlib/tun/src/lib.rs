@@ -41,7 +41,7 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
-bufferpool::buffer_pool!(static PACKET_BATCHES: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"));
+bufferpool::buffer_pool!(static PACKET_BATCHES: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"), batch: 4);
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.

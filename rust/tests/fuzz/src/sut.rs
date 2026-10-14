@@ -34,7 +34,7 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
-bufferpool::buffer_pool!(static PAYLOADS: Vec<u8> = (1024, "test"));
+bufferpool::buffer_pool!(static PAYLOADS: Vec<u8> = (1024, "test"), batch: 64);
 
 /// The actual system-under-test.
 ///

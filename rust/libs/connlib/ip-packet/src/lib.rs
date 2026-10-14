@@ -39,7 +39,7 @@ use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
 
-bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"));
+bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"), batch: 64);
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;

@@ -52,7 +52,8 @@ bufferpool::buffer_pool!(
     /// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
     /// Dropping the collection after processing returns it to the pool, keeping the
     /// receive path free of allocations.
-    static DATAGRAM_BATCHES: VecBuf<DatagramBatch> = (2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches")
+    static DATAGRAM_BATCHES: VecBuf<DatagramBatch> = (2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"),
+    batch: 4
 );
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =

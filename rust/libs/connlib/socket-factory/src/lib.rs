@@ -902,9 +902,16 @@ pub(crate) struct RecvBuffers {
     bytes: &'static BufferPool<Vec<u8>>,
 }
 
-bufferpool::buffer_pool!(static UDP_RECV_BYTES: Vec<u8>, "udp-recv-bytes");
-bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"));
-bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"));
+bufferpool::buffer_pool!(
+    static UDP_RECV_BYTES: Vec<u8>,
+    "udp-recv-bytes",
+    batch: cfg_select! {
+        apple => { quinn_udp::BATCH_SIZE }
+        _ => { 2 }
+    }
+);
+bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4);
+bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"), batch: 4);
 
 /// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
 pub(crate) struct RecvBatch {
@@ -1180,8 +1187,8 @@ mod tests {
         }
     }
 
-    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"));
-    bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"));
+    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4);
+    bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"), batch: 4);
 
     /// The batch is the item of the channel to the main thread; keeping it small is
     /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio

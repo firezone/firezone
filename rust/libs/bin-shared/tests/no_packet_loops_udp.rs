@@ -10,7 +10,7 @@ use std::{
     time::Duration,
 };
 
-bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (0, "test"));
+bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (0, "test"), batch: 64);
 
 // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`), and checks if we can still send packets to IPs outside of our tunnel.
 #[tokio::test]

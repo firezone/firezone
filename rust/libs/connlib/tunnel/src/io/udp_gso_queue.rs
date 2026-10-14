@@ -19,7 +19,7 @@ const MAX_SEGMENT_SIZE: usize =
 /// the send path's memory footprint.
 pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
 
-bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-queue"));
+bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-queue"), batch: 2);
 
 /// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
 ///

@@ -84,9 +84,10 @@ const PUNCH_COUNT: usize = 5;
 
 bufferpool::buffer_pool!(
     /// Room for any STUN control message or probe we send.
-    static CONTROL_MESSAGES: Vec<u8> = (2048, "turn-loadtest-control")
+    static CONTROL_MESSAGES: Vec<u8> = (2048, "turn-loadtest-control"),
+    batch: 4
 );
-bufferpool::buffer_pool!(static BATCHES: Vec<u8>, "turn-loadtest");
+bufferpool::buffer_pool!(static BATCHES: Vec<u8>, "turn-loadtest", batch: 2);
 
 /// Extra time the receiver keeps listening after the sender stops, to drain in-flight datagrams.
 const DRAIN_GRACE: Duration = Duration::from_secs(2);

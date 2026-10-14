@@ -29,7 +29,7 @@ const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
 
-buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"));
+buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"), batch: 64);
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
