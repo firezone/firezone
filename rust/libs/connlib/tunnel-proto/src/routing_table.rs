@@ -6,14 +6,12 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
-use lru::LruCache;
 
-use crate::{filter_engine::FilterEngine, last::Last};
+use crate::{cache::Cache, filter_engine::FilterEngine};
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
@@ -41,9 +39,7 @@ type MatchKey = (IpAddr, FilterProtocol, FilterMode);
 
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    /// The most recent match, checked before `match_cache` because packets of a flow arrive in batches.
-    last: Last<MatchKey, Option<Vec<T>>>,
-    match_cache: LruCache<MatchKey, Option<Vec<T>>, FastRandomState>,
+    match_cache: Cache<MatchKey, Option<Vec<T>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -90,8 +86,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            last: Last::default(),
-            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
+            match_cache: Cache::new(MAX_CACHE_ENTRIES),
         }
     }
 }
@@ -127,7 +122,6 @@ where
     ///
     /// Returns `true` if the entry was not already present (i.e. it was newly inserted).
     pub(crate) fn upsert(&mut self, network: IpNetwork, entry: T) -> bool {
-        self.last.clear();
         self.match_cache.clear();
 
         match self.inner.exact_match_mut(network) {
@@ -141,7 +135,6 @@ where
 
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
-        self.last.clear();
         self.match_cache.clear();
 
         for (_, entries) in self.inner.iter_mut() {
@@ -165,13 +158,9 @@ where
     ) -> Option<&[T]> {
         let key = (ip, FilterProtocol::from(&protocol), filter_mode);
 
-        self.last
+        self.match_cache
             .get_or_insert_with(key, || {
-                self.match_cache
-                    .get_or_insert(key, || {
-                        sorted_matches(&self.inner, ip, protocol, filter_mode)
-                    })
-                    .clone()
+                sorted_matches(&self.inner, ip, protocol, filter_mode)
             })
             .as_deref()
     }

@@ -20,13 +20,13 @@ use std::{
 };
 
 mod authorization_rejections;
+mod cache;
 mod client;
 mod conn_track;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
 mod gateway;
-mod last;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
 pub mod messages;

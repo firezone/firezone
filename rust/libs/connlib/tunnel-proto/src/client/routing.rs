@@ -5,9 +5,9 @@ use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
 
 use crate::{
+    cache::Last,
     dns::{self, resource_stub_resolver::DnsResourceDomain},
     filter_engine::FilterEngine,
-    last::Last,
     routing_table::{FilterMode, RouteEntry, RoutingTable},
 };
 

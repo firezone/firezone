@@ -5,13 +5,11 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use lru::LruCache;
 
-use crate::{IpConfig, NotAllowedResource, last::Last};
+use crate::{IpConfig, NotAllowedResource, cache::Cache};
 
 const MAX_CACHED_SOURCES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
@@ -19,19 +17,14 @@ const MAX_CACHED_SOURCES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 
 pub(crate) struct GatewayOnClient {
     gateway_tun: IpConfig,
     allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-    /// Whether the last source IP matched `allowed_ips`.
-    last_src: Last<IpAddr, bool>,
-    /// Source IPs that matched `allowed_ips`.
-    ///
-    /// Only approvals are cached, so spoofed sources cannot fill it.
-    /// Removing a resource can revoke an approval, so it clears the cache.
-    allowed_src_cache: LruCache<IpAddr, (), FastRandomState>,
+    /// Whether a source IP matched `allowed_ips`.
+    allowed_src_cache: Cache<IpAddr, bool>,
 }
 
 impl GatewayOnClient {
     pub(crate) fn allow_ip_for_resource(&mut self, ip: impl Into<IpNetwork>, id: ResourceId) {
         let ip = ip.into();
-        self.last_src.clear();
+        self.allowed_src_cache.clear();
 
         if let Some(resources) = self.allowed_ips.exact_match_mut(ip) {
             resources.insert(id);
@@ -52,7 +45,6 @@ impl GatewayOnClient {
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         self.allowed_ips.retain(|_, r| !r.is_empty());
-        self.last_src.clear();
         self.allowed_src_cache.clear();
     }
 
@@ -80,11 +72,7 @@ impl GatewayOnClient {
     pub(crate) fn new(gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             allowed_ips: IpNetworkTable::new(),
-            last_src: Last::default(),
-            allowed_src_cache: LruCache::with_hasher(
-                MAX_CACHED_SOURCES,
-                FastRandomState::default(),
-            ),
+            allowed_src_cache: Cache::new(MAX_CACHED_SOURCES),
             gateway_tun,
         }
     }
@@ -98,19 +86,9 @@ impl GatewayOnClient {
             return Ok(());
         }
 
-        let allowed = *self.last_src.get_or_insert_with(src, || {
-            if self.allowed_src_cache.get(&src).is_some() {
-                return true;
-            }
-
-            let allowed = self.allowed_ips.longest_match(src).is_some();
-
-            if allowed {
-                self.allowed_src_cache.put(src, ());
-            }
-
-            allowed
-        });
+        let allowed = *self
+            .allowed_src_cache
+            .get_or_insert_with(src, || self.allowed_ips.longest_match(src).is_some());
 
         if !allowed {
             return Err(anyhow::Error::new(NotAllowedResource(src)));
