@@ -1,14 +1,13 @@
 use std::{cmp::Ordering, net::IpAddr};
 
 use connlib_model::ResourceId;
-use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use lru::LruCache;
 
 use crate::{
-    dns,
+    dns::{self, resource_stub_resolver::DnsResourceDomain},
     filter_engine::FilterEngine,
     routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
 };
@@ -30,7 +29,7 @@ impl MatchedRoutes {
 
 pub(super) struct GatewayRoute {
     pub(super) resource_id: ResourceId,
-    pub(super) domain: Option<DomainName>,
+    pub(super) domain: Option<DnsResourceDomain>,
 }
 
 #[derive(Debug)]
@@ -109,7 +108,7 @@ impl RoutingTables {
         &mut self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> Vec<(ResourceId, DomainName)> {
+    ) -> Vec<(ResourceId, DnsResourceDomain)> {
         self.dns
             .matches(destination, protocol, outbound_filter_mode())
             .into_iter()
@@ -144,7 +143,7 @@ impl RoutingTables {
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
-        domain: DomainName,
+        domain: DnsResourceDomain,
         pattern: dns::Pattern,
         filter: FilterEngine,
     ) -> bool {
@@ -251,7 +250,7 @@ impl RouteEntry for DevicePoolEntry {
 struct DnsEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
-    domain: DomainName,
+    domain: DnsResourceDomain,
     pattern: dns::Pattern,
 }
 
@@ -327,7 +326,7 @@ mod tests {
         tables.upsert_dns(
             destination.into(),
             dns_id,
-            "example.com".parse().unwrap(),
+            DnsResourceDomain::for_test(0, "example.com".parse().unwrap()),
             dns::Pattern::new("example.com").unwrap(),
             FilterEngine::DenyAll,
         );
@@ -372,7 +371,7 @@ mod tests {
                     tables.upsert_dns(
                         destination.into(),
                         resource_id,
-                        "example.com".parse().unwrap(),
+                        DnsResourceDomain::for_test(0, "example.com".parse().unwrap()),
                         dns::Pattern::new("example.com").unwrap(),
                         filter,
                     );
@@ -441,7 +440,7 @@ mod tests {
     fn dns_resources_return_ordered_filter_candidates() {
         let mut tables = RoutingTables::default();
         let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
-        let domain = "example.com".parse::<DomainName>().unwrap();
+        let domain = DnsResourceDomain::for_test(0, "example.com".parse().unwrap());
         let a = ResourceId::from_u128(2);
         let b = ResourceId::from_u128(1);
         for resource in [a, b] {
