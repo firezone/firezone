@@ -2,8 +2,6 @@
 
 source "./scripts/tests/lib.sh"
 
-client sh -c "apk add --update --no-cache bind-tools" # The compat tests run using the production image which doesn't have `dig`.
-
 echo "Resolving DNS resource over TCP with search domain"
 client sh -c "dig +search +tcp dns"
 
