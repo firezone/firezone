@@ -153,6 +153,8 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteRotatedGatewayTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
+       {worker_dev_schedule, Portal.Workers.RollupAccountActivity},
+       {worker_dev_schedule, Portal.Workers.SweepInactiveAccounts},
        {worker_dev_schedule, Portal.Workers.PartitionLogTables},
        {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
      ] ++ posture_sync_dev_crontab}

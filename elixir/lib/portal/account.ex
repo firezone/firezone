@@ -97,6 +97,10 @@ defmodule Portal.Account do
     field :disabled_reason, :string
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
+    # Coalesced by RollupAccountActivity, never written on every connection.
+    field :last_active_at, :utc_datetime_usec, read_after_writes: true
+    field :inactivity_reminded_at, :utc_datetime_usec
+
     field :scheduled_deletion_at, :utc_datetime_usec
 
     # Set by Ops Admins only. Prevents account admins from modifying account settings.

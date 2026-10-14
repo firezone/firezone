@@ -1,0 +1,13 @@
+<%= @heading %>
+
+Firezone account: <%= @account.name %> (<%= @account.slug %>)
+Account ID: <%= @account.id %>
+
+<%= @message %>
+
+<%= @action %>
+
+<%= @link %>
+
+Thanks,
+The Firezone Team

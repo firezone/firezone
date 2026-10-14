@@ -179,6 +179,7 @@ defmodule Portal.Accounts.Deletion do
         attrs
         |> Map.take([:is_disabled, :scheduled_deletion_at])
         |> Map.put(:updated_at, now)
+        |> reset_inactivity_on_cancellation(action, now)
 
       case query |> Safe.scoped(subject) |> Safe.update_all(set: Map.to_list(updates)) do
         {1, [updated_account]} ->
@@ -195,6 +196,12 @@ defmodule Portal.Accounts.Deletion do
     end
 
     defp transition_account_deletion(_account, _attrs, _action, _subject), do: {:error, :unauthorized}
+
+    defp reset_inactivity_on_cancellation(updates, :cancel, now) do
+      Map.merge(updates, %{last_active_at: now, inactivity_reminded_at: nil})
+    end
+
+    defp reset_inactivity_on_cancellation(updates, _action, _now), do: updates
 
     defp maybe_insert_reminder_job({:transitioned, account}) do
       reminder_at = DateTime.add(account.scheduled_deletion_at, -48, :hour)

@@ -119,6 +119,23 @@ defmodule Portal.Ops do
     |> Enum.sort()
   end
 
+  @doc """
+  Previews Starter accounts with no surviving activity or non-default setup.
+  This is a review query, not proof an account has never signed in.
+
+      Portal.Ops.default_accounts_query() |> Portal.Safe.unscoped() |> Portal.Safe.all()
+  """
+  def default_accounts_query, do: Portal.Accounts.Inactivity.default_accounts_query()
+
+  @doc """
+  Queues at most 100 default-account inactivity reminders per invocation.
+  Run again after the batch drains to process the next accounts. Pending jobs
+  and previously reminded accounts are excluded. Delivery rechecks eligibility.
+
+      Portal.Ops.remind_default_accounts()
+  """
+  def remind_default_accounts, do: Portal.Accounts.Inactivity.queue_default_reminders()
+
   def sync_pricing_plans do
     {:ok, subscriptions} = Portal.Billing.list_all_subscriptions()
 

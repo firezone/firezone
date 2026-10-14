@@ -195,3 +195,53 @@ Two request parameters are easy to miss:
 A client running off the machine needs `api_external_url` and `web_external_url`
 pointed at a reachable hostname, such as a tunnel, since the metadata documents
 and the token audience are all derived from them.
+
+### Account inactivity operations
+
+Only unlocked, enabled Starter accounts without an existing deletion schedule
+are eligible for inactivity cleanup. `last_active_at` starts at the migration
+or account-creation time, so historical inactivity is not guessed.
+
+`RollupAccountActivity` runs daily at 00:00 UTC. It coalesces session logs,
+API request logs, retained device/token timestamps, and live device/portal
+presences into one monotonic timestamp per account. A durable watermark and
+one-day overlap allow missed runs to catch up without rescanning all history.
+An outage longer than the retained log window restarts the observation period.
+There are no additional writes in the session-creation path.
+
+`SweepInactiveAccounts` runs every five minutes. After twelve calendar months
+without activity, it queues up to 100 reminders through the outbound email
+queue. The two-week response period starts only after the mail adapter accepts
+the reminder. Fresh activity clears the warning on the next rollup or sweep;
+reminder delivery and deletion scheduling both check for fresh activity first.
+A rollup older than two days prevents inactivity transitions.
+
+If the reminder period expires, the account is disabled and scheduled for the
+existing seven-day deletion grace period. `SweepAccountDeletions` and
+`DeleteAccount` handle the actual deletion. Neither inactivity deadline uses
+a future scheduled Oban job. Upgrading away from Starter clears an outstanding
+inactivity warning on the next sweep.
+
+For the initial cleanup, preview accounts with no surviving activity or custom
+setup from IEx:
+
+```elixir
+Portal.Ops.default_accounts_query()
+|> Portal.Safe.unscoped()
+|> Portal.Safe.all()
+```
+
+After reviewing the results, enqueue a batch of at most 100 reminders:
+
+```elixir
+Portal.Ops.remind_default_accounts()
+```
+
+Run again after the batch drains for the next accounts. This manual path bypasses
+the twelve-month requirement, but applies the same two-week reminder and seven-day
+deletion grace periods. It excludes default signup objects, paid accounts, locked
+accounts, pending reminders, and previously reminded accounts, and rechecks setup
+at delivery. Absence of surviving setup is a cleanup heuristic, not proof an
+account has never signed in. The preview includes account IDs and owner actor
+associations can be inspected with normal queries before sending. Cancelling
+an existing deletion also clears the inactivity warning and restarts its clock.
