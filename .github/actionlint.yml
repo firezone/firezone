@@ -10,3 +10,8 @@ self-hosted-runner:
     - windows-2022-xlarge
     - windows-2025-xlarge
     - windows-latest-xlarge
+paths:
+  # actionlint does not know `concurrency.queue` yet.
+  .github/workflows/_{apt,rpm}.yml:
+    ignore:
+      - 'unexpected key "queue" for "concurrency" section'
