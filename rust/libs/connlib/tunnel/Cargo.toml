@@ -32,6 +32,7 @@ tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
 [dev-dependencies]
+doh-test-server = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }

@@ -1,12 +1,11 @@
 use std::{cmp::Ordering, net::IpAddr};
 
 use connlib_model::ResourceId;
-use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
-use lru::LruCache;
 
 use crate::{
+    cache::Cache,
     dns::{self, resource_stub_resolver::DnsResourceDomain},
     filter_engine::FilterEngine,
     routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
@@ -40,11 +39,8 @@ pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     device_pool: RoutingTable<DevicePoolEntry>,
-    resolved: LruCache<
-        (IpAddr, Protocol, Option<ResourceId>, FilterMode),
-        Result<MatchedRoutes, Denied>,
-        FastRandomState,
-    >,
+    resolved:
+        Cache<(IpAddr, Protocol, Option<ResourceId>, FilterMode), Result<MatchedRoutes, Denied>>,
 }
 
 impl Default for RoutingTables {
@@ -53,7 +49,7 @@ impl Default for RoutingTables {
             cidr: RoutingTable::default(),
             dns: RoutingTable::default(),
             device_pool: RoutingTable::default(),
-            resolved: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
+            resolved: Cache::new(MAX_CACHE_ENTRIES),
         }
     }
 }
@@ -69,7 +65,7 @@ impl RoutingTables {
         let mode = outbound_filter_mode();
 
         self.resolved
-            .get_or_insert((destination, protocol, internet_resource, mode), || {
+            .get_or_insert_with((destination, protocol, internet_resource, mode), || {
                 if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
                     let resources = routes(pools, |entry| entry.resource_id)?;
                     return Ok(MatchedRoutes::DevicePools(resources));

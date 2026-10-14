@@ -63,6 +63,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/proto",
     "relay/server",
+    "tests/doh-test-server",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
@@ -119,6 +120,7 @@ dirs = "7.0.0"
 divan = "0.1.21"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
+doh-test-server = { path = "tests/doh-test-server" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
