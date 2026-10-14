@@ -1227,7 +1227,7 @@ impl Allocation {
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: crate::PAYLOADS.pull_initialised(&encode(message)),
+            payload: crate::DATAGRAMS.pull_initialised(&encode(message)),
             ecn: Ecn::NonEct,
         });
 

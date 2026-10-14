@@ -95,7 +95,7 @@ impl BufferProvider for TransmitBuffer {
         ecn: Ecn,
         len: usize,
     ) -> TransmitReservation<'_> {
-        let mut payload = crate::PAYLOADS.pull();
+        let mut payload = crate::DATAGRAMS.pull();
         payload.resize(len, 0);
 
         self.transmits.push_back(Transmit {

@@ -1643,7 +1643,7 @@ where
                 transmits.push(Transmit {
                     src: Some(source),
                     dst,
-                    payload: crate::PAYLOADS.pull_initialised(&stun_packet_bytes),
+                    payload: crate::DATAGRAMS.pull_initialised(&stun_packet_bytes),
                     ecn: Ecn::NonEct,
                 });
                 continue;
@@ -1663,7 +1663,7 @@ where
             transmits.push(Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: crate::PAYLOADS.pull_initialised(&data_channel_packet),
+                payload: crate::DATAGRAMS.pull_initialised(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
         }
@@ -2221,7 +2221,7 @@ where
         } => Transmit {
             src: Some(source),
             dst: remote,
-            payload: crate::PAYLOADS.pull_initialised(message),
+            payload: crate::DATAGRAMS.pull_initialised(message),
             ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
@@ -2233,7 +2233,7 @@ where
             Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: crate::PAYLOADS.pull_initialised(&channel_data),
+                payload: crate::DATAGRAMS.pull_initialised(&channel_data),
                 ecn: Ecn::NonEct,
             }
         }
