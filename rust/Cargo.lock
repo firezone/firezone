@@ -2154,6 +2154,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "doh-test-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "base64 0.23.1",
+ "bytes",
+ "dns-types",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rcgen",
+ "rustls",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+]
+
+[[package]]
 name = "dom_query"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3689,6 +3707,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bytes",
+ "dns-types",
+ "doh-test-server",
  "futures",
  "http",
  "http-body-util",
@@ -8849,6 +8869,7 @@ dependencies = [
  "bufferpool",
  "connlib-model",
  "dns-types",
+ "doh-test-server",
  "eventloop-budget",
  "futures",
  "futures-bounded",
