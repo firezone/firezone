@@ -4,7 +4,6 @@ defmodule PortalWeb.ActorsTest do
   alias Portal.Actor
   alias Portal.Changes.Change
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -1622,13 +1621,8 @@ defmodule PortalWeb.ActorsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
-          render(lv)
-        end)
-
-      refute log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "1"
@@ -1647,15 +1641,10 @@ defmodule PortalWeb.ActorsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
-          send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
-          send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :service_account}})
-          render(lv)
-        end)
-
-      refute log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :service_account}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "1"

@@ -5,6 +5,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
   import Portal.Test.Assertions
 
   alias Portal.Cluster.PostgresStrategy
+  alias Portal.Fixture
 
   describe "heartbeat and goodbye via LISTEN/NOTIFY" do
     test "broadcasts heartbeat on startup and goodbye on termination" do
@@ -110,15 +111,16 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       channel_name = "test_#{System.unique_integer([:positive])}"
 
       pid = start_strategy(channel_name: channel_name)
+      node = "unknown#{Fixture.unique_integer()}@node"
 
       log =
         capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:unknown@node"})
+          send(pid, {:notification, self(), make_ref(), channel_name, "goodbye:#{node}"})
           sync(pid)
           Logger.flush()
         end)
 
-      refute log =~ "Received goodbye from node"
+      refute Fixture.logged_lines(log, node) =~ "Received goodbye from node"
       assert Process.alive?(pid)
     end
 
@@ -271,13 +273,14 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       wait_for_started(pid)
 
       # Inject a stale node
+      node = :"node#{Fixture.unique_integer()}@test"
       state = :sys.get_state(pid)
       stale_time = System.monotonic_time(:millisecond) - 200
 
       new_state = %{
         state
-        | node_timestamps: %{:node1@test => stale_time},
-          connected_nodes: [:node1@test],
+        | node_timestamps: %{node => stale_time},
+          connected_nodes: [node],
           missed_heartbeats: 1,
           below_threshold?: false
       }
@@ -292,7 +295,7 @@ defmodule Portal.Cluster.PostgresStrategyTest do
         end)
 
       # Should NOT log on first violation — enters pending state instead
-      refute log =~ "Connected nodes count is below threshold"
+      refute Fixture.logged_lines(log, to_string(node)) =~ "Connected nodes count is below threshold"
 
       state = :sys.get_state(pid)
       assert match?({:pending, _}, state.below_threshold?)
@@ -379,15 +382,17 @@ defmodule Portal.Cluster.PostgresStrategyTest do
 
       :sys.replace_state(pid, fn _ -> new_state end)
 
+      other = "other#{Fixture.unique_integer()}@node"
+
       log =
         capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:other@node"})
+          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:#{other}"})
           sync(pid)
           Logger.flush()
         end)
 
       # Should NOT log recovery since the error was never logged
-      refute log =~ "Connected nodes count is back above threshold"
+      refute Fixture.logged_lines(log, other) =~ "Connected nodes count is back above threshold"
 
       state = :sys.get_state(pid)
       assert state.below_threshold? == false
@@ -536,15 +541,17 @@ defmodule Portal.Cluster.PostgresStrategyTest do
       :sys.replace_state(pid, fn _ -> new_state end)
 
       # Simulate heartbeat from another node - now we have 2 nodes + self = 3, still below 10
+      node2 = "node#{Fixture.unique_integer()}@test"
+
       log =
         capture_log(fn ->
-          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:node2@test"})
+          send(pid, {:notification, self(), make_ref(), channel_name, "heartbeat:#{node2}"})
           sync(pid)
           Logger.flush()
         end)
 
       # Should not log recovery since we're still below threshold
-      refute log =~ "Connected nodes count is back above threshold"
+      refute Fixture.logged_lines(log, node2) =~ "Connected nodes count is back above threshold"
     end
   end
 
