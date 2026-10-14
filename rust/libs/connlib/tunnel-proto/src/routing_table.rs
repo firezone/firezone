@@ -37,9 +37,13 @@ pub(crate) trait RouteEntry: Ord + Clone {
     }
 }
 
+type MatchKey = (IpAddr, FilterProtocol, FilterMode);
+
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FastRandomState>,
+    /// The most recent match, checked before `match_cache` because packets of a flow arrive in batches.
+    last: Option<(MatchKey, Option<Vec<T>>)>,
+    match_cache: LruCache<MatchKey, Option<Vec<T>>, FastRandomState>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,6 +90,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
+            last: None,
             match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
         }
     }
@@ -122,6 +127,7 @@ where
     ///
     /// Returns `true` if the entry was not already present (i.e. it was newly inserted).
     pub(crate) fn upsert(&mut self, network: IpNetwork, entry: T) -> bool {
+        self.last = None;
         self.match_cache.clear();
 
         match self.inner.exact_match_mut(network) {
@@ -135,6 +141,7 @@ where
 
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
+        self.last = None;
         self.match_cache.clear();
 
         for (_, entries) in self.inner.iter_mut() {
@@ -156,8 +163,17 @@ where
         protocol: Result<Protocol, UnsupportedProtocol>,
         filter_mode: FilterMode,
     ) -> Option<&[T]> {
-        self.match_cache
-            .get_or_insert((ip, FilterProtocol::from(&protocol), filter_mode), || {
+        let key = (ip, FilterProtocol::from(&protocol), filter_mode);
+        if self.last.as_ref().is_some_and(|(last, _)| *last == key) {
+            return self
+                .last
+                .as_ref()
+                .and_then(|(_, matches)| matches.as_deref());
+        }
+
+        let matches = self
+            .match_cache
+            .get_or_insert(key, || {
                 let mut entries = self
                     .inner
                     .matches(ip)
@@ -184,7 +200,9 @@ where
                         .collect(),
                 )
             })
-            .as_deref()
+            .clone();
+
+        self.last.insert((key, matches)).1.as_deref()
     }
 
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -485,6 +503,28 @@ mod tests {
             t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn last_match_is_forgotten_on_upsert_and_remove() {
+        let mut t = RoutingTable::new();
+        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
+        let ids = |t: &mut RoutingTable<TestEntry>| {
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .map(|m| m.iter().map(|e| e.id).collect::<Vec<_>>())
+        };
+
+        assert_eq!(ids(&mut t), Some(vec![R1]));
+        assert_eq!(ids(&mut t), Some(vec![R1]));
+
+        t.upsert(net("10.1.0.0/16"), entry(1, R2, permit_all()));
+        assert_eq!(ids(&mut t), Some(vec![R2, R1]));
+
+        t.remove_by_id(R2);
+        assert_eq!(ids(&mut t), Some(vec![R1]));
+
+        t.remove_by_id(R1);
+        assert_eq!(ids(&mut t), None);
     }
 
     #[test]
