@@ -152,6 +152,25 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ ~s(href="/#{account.slug}/sign_in")
     end
 
+    test "signing up with a different email goes back to the sign-up method chooser", %{
+      conn: conn
+    } do
+      email = "owner@example.com"
+      account_fixture(metadata: %{stripe: %{billing_email: email}})
+      conn = with_google_identity(conn, email: email)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      html =
+        lv
+        |> element("a", "Sign up with a different email.")
+        |> render_click()
+
+      assert_patch(lv, ~p"/sign_up")
+      assert html =~ "Sign up with <strong>GitHub</strong>"
+      refute html =~ "You already have an account"
+    end
+
     test "too-short company name stays on the form with errors", %{conn: conn} do
       conn = with_google_identity(conn)
 

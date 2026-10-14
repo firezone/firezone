@@ -642,7 +642,7 @@ defmodule PortalWeb.SignUp do
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Want a separate organization?
-        <Navigation.link patch={~p"/sign_up/email"}>Sign up with a different email.</Navigation.link>
+        <Navigation.link patch={~p"/sign_up"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
     """
