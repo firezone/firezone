@@ -1,6 +1,4 @@
-//! Per-packet work of connlib's main thread on an established Client <> Gateway connection.
-
-#![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
+//! An established Client <> Gateway connection to measure per-packet work on.
 
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
@@ -8,7 +6,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
-use divan::Bencher;
 use dns_types::{Query, RecordType, Response};
 use ip_packet::IpPacket;
 use snownet::{RelaySocket, Transmit, TransmitBuffer};
@@ -17,98 +14,16 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, ClientState, GatewayEvent, GatewayState, IpConfig};
 
-const SIZES: [usize; 2] = [64, 1280];
+pub const SIZES: [usize; 2] = [64, 1280];
 
 #[derive(Debug, Clone, Copy)]
-enum Resource {
+pub enum Resource {
     Cidr,
     Dns,
 }
 
-const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
+pub const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 
-#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
-fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource);
-    let packet = tunnel.request(SIZE);
-    let mut transmits = TransmitBuffer::default();
-
-    bencher
-        .with_inputs(|| packet.clone())
-        .bench_local_values(|packet| {
-            tunnel
-                .client
-                .handle_tun_input(packet, tunnel.now, &mut transmits)
-                .unwrap();
-            assert!(transmits.poll_transmit().is_some());
-        });
-}
-
-#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
-fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource);
-    let packet = tunnel.request(SIZE);
-    let Tunnel {
-        client,
-        gateway,
-        now,
-        ..
-    } = &mut tunnel;
-    let mut transmits = TransmitBuffer::default();
-
-    bencher
-        .with_inputs(|| encapsulate_on_client(client, packet.clone(), *now, &mut transmits))
-        .bench_local_refs(|datagram| {
-            let packet = gateway
-                .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, *now)
-                .unwrap();
-            assert!(packet.is_some());
-        });
-}
-
-#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
-fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource);
-    let reply = tunnel.reply(SIZE);
-    let mut transmits = TransmitBuffer::default();
-
-    bencher
-        .with_inputs(|| reply.clone())
-        .bench_local_values(|reply| {
-            tunnel
-                .gateway
-                .handle_tun_input(reply, tunnel.now, &mut transmits)
-                .unwrap();
-            assert!(transmits.poll_transmit().is_some());
-        });
-}
-
-#[divan::bench(args = RESOURCES, consts = SIZES, sample_size = 64)]
-fn client_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let mut tunnel = Tunnel::established(resource);
-    let reply = tunnel.reply(SIZE);
-    let Tunnel {
-        client,
-        gateway,
-        now,
-        ..
-    } = &mut tunnel;
-    let mut transmits = TransmitBuffer::default();
-
-    bencher
-        .with_inputs(|| encapsulate_on_gateway(gateway, reply.clone(), *now, &mut transmits))
-        .bench_local_refs(|datagram| {
-            let packet = client
-                .handle_network_input(CLIENT_SOCKET, GATEWAY_SOCKET, &datagram.payload, *now)
-                .unwrap();
-            assert!(packet.is_some());
-        });
-}
-
-const CLIENT_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 1111));
-const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 2), 2222));
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
@@ -156,16 +71,22 @@ impl Resource {
 
 /// A Client and a Gateway with an established connection through which the Client may reach the
 /// given resource.
-struct Tunnel {
-    client: ClientState,
-    gateway: GatewayState,
-    now: Instant,
+pub struct Tunnel {
+    pub client: ClientState,
+    pub gateway: GatewayState,
+    pub now: Instant,
+    client_socket: SocketAddr,
+    gateway_socket: SocketAddr,
     /// Where the Client sends packets for the resource: its address or the DNS proxy IP.
     dst: IpAddr,
 }
 
 impl Tunnel {
-    fn established(resource: Resource) -> Self {
+    pub fn established(
+        resource: Resource,
+        client_socket: SocketAddr,
+        gateway_socket: SocketAddr,
+    ) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -209,6 +130,8 @@ impl Tunnel {
             client,
             gateway,
             now,
+            client_socket,
+            gateway_socket,
             dst,
         };
 
@@ -224,12 +147,12 @@ impl Tunnel {
         tunnel
     }
 
-    fn request(&self, size: usize) -> IpPacket {
+    pub fn request(&self, size: usize) -> IpPacket {
         udp_packet(CLIENT_TUN_V4.into(), self.dst, size)
     }
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
-    fn reply(&mut self, size: usize) -> IpPacket {
+    pub fn reply(&mut self, size: usize) -> IpPacket {
         let request = self.request(size);
         let datagram = encapsulate_on_client(
             &mut self.client,
@@ -239,7 +162,12 @@ impl Tunnel {
         );
         let request = self
             .gateway
-            .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
+            .handle_network_input(
+                self.gateway_socket,
+                self.client_socket,
+                &datagram.payload,
+                self.now,
+            )
             .unwrap()
             .unwrap();
         let udp = request.as_udp().unwrap();
@@ -293,10 +221,10 @@ impl Tunnel {
         }
 
         while let Some(transmit) = self.client.poll_transmit() {
-            self.route(CLIENT_SOCKET, transmit);
+            self.route(self.client_socket, transmit);
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
-            self.route(GATEWAY_SOCKET, transmit);
+            self.route(self.gateway_socket, transmit);
         }
         for _ in std::iter::from_fn(|| self.client.poll_packets()) {}
     }
@@ -363,12 +291,12 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == CLIENT_SOCKET {
+        if to == self.client_socket {
             let _ = self
                 .client
                 .handle_network_input(to, from, payload, self.now);
         }
-        if to == GATEWAY_SOCKET {
+        if to == self.gateway_socket {
             let _ = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now);
@@ -376,7 +304,7 @@ impl Tunnel {
     }
 }
 
-fn encapsulate_on_client(
+pub fn encapsulate_on_client(
     client: &mut ClientState,
     packet: IpPacket,
     now: Instant,
@@ -387,7 +315,7 @@ fn encapsulate_on_client(
     transmits.poll_transmit().unwrap()
 }
 
-fn encapsulate_on_gateway(
+pub fn encapsulate_on_gateway(
     gateway: &mut GatewayState,
     packet: IpPacket,
     now: Instant,

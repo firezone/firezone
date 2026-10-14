@@ -32,10 +32,19 @@ tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
 [dev-dependencies]
+bytecodec = { workspace = true }
+divan = { workspace = true }
 doh-test-server = { workspace = true }
+flow-tracker = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
+serde_json = { workspace = true }
+stun_codec = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
+
+[[bench]]
+name = "per_packet"
+harness = false
 
 [lints]
 workspace = true
