@@ -81,7 +81,7 @@ jobs:
       # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-screenshots
           path: kotlin/android/screenshots
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk-space
       # Where a local build leaves them, so the tasks below find them the same way here.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Android debug APK
           path: kotlin/android
@@ -138,13 +138,13 @@ jobs:
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
           script: ${{ matrix.script }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-coverage-${{ matrix.suite }}
           path: kotlin/android/coverage.ec
       # System screens the tests photographed, such as the KeyChain chooser, which
       # `commit-screenshots` puts next to the rendered ones.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !startsWith(github.head_ref, 'chore/publish-') }}
         with:
           name: android-emulator-screenshots-${{ matrix.suite }}
@@ -156,15 +156,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: android-debug-classes
           path: kotlin/android/classes
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: android-jacoco-cli
           path: kotlin/android/jacoco-cli
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: android-coverage-*
           path: kotlin/android/execution-data
@@ -204,7 +204,7 @@ jobs:
         uses: ./.github/actions/check-release-review-lock
         with:
           release-name: ${{ env.RELEASE_NAME }}
-      - uses: release-drafter/release-drafter@c345907820e0396f6f44bcfd9ac4763325f8feb0 # v7.8.0
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -269,7 +269,7 @@ jobs:
         run: |
           sentry-cli debug-files upload --log-level info --project android-client --include-sources ../../rust/target
       - name: Upload package artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android ${{ matrix.package-type }}
           path: |
@@ -350,7 +350,7 @@ jobs:
         run: |
           ./gradlew assembleDebug assembleDebugAndroidTest :dpc:assembleDebug copyJacocoCli collectDebugClasses
       - name: Upload debug APK
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Android debug APK
           # Two paths, so the artifact is rooted at kotlin/android rather than inside app/.
@@ -360,7 +360,7 @@ jobs:
       # Execution data records which probes ran, and says nothing about what they belong to, so
       # reporting on it later needs the classes these tests were built from.
       - name: Upload the compiled classes
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-debug-classes
           # The default is to warn and upload nothing, which only surfaces much later as a
@@ -370,7 +370,7 @@ jobs:
       # Kept apart from the classes: the report reads that directory as the code under test, and
       # would happily measure JaCoCo itself if the tool sat in it.
       - name: Upload the reporting tool
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-jacoco-cli
           path: ./kotlin/android/app/build/jacoco-cli
