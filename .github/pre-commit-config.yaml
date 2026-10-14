@@ -24,7 +24,7 @@ repos:
       - id: mixed-line-ending
         args: ["--fix=lf"]
         description: Forces to replace line ending by the UNIX 'lf' character.
-        exclude: "(^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^elixir/priv/static/)"
+        exclude: "(^kotlin/android/gradlew.bat|^rust/windows-client/wintun/|^rust/libs/bin-shared/src/tundra/bin/|^elixir/priv/static/)"
       - id: check-yaml
       - id: check-xml
         files: '\.(xml|manifest|wxs|svg)$'

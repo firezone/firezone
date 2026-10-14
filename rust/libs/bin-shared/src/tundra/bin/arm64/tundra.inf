@@ -1,0 +1,171 @@
+;
+; Tundra layer-3 tunnel adapter
+;
+
+[Version]
+Signature = "$Windows NT$"
+Class = Net
+ClassGUID = {4D36E972-E325-11CE-BFC1-08002BE10318}
+Provider = %Tundra.CompanyName%
+CatalogFile.NT = tundra.cat
+DriverVer = 10/01/2026,0.1.0.15
+PnpLockdown = 1
+
+[Manufacturer]
+%Tundra.CompanyName% = %Tundra.Name%, NTarm64.10.0...19041
+
+[SourceDisksNames]
+1 = %Tundra.DiskDesc%, "", ,
+
+[SourceDisksFiles]
+tundra.sys = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+Tundra.CopyFiles.Sys = 13
+
+[Tundra.CopyFiles.Sys]
+tundra.sys
+
+[Tundra.NTarm64.10.0...19041]
+%Tundra.DeviceDesc% = Tundra.Install, Tundra
+
+[Tundra.Install]
+Characteristics = 0x1 ; NCF_VIRTUAL
+AddReg = Tundra.Ndi, Tundra.Params
+CopyFiles = Tundra.CopyFiles.Sys
+*IfType = 53 ; IF_TYPE_PROP_VIRTUAL
+*MediaType = 0 ; NdisMedium802_3 (TCP/IP only enables task offloads on Ethernet)
+*PhysicalMediaType = 0 ; NdisPhysicalMediumUnspecified
+*IfConnectorPresent = 0 ; false
+*ConnectionType = 1 ; NET_IF_CONNECTION_DEDICATED
+*DirectionType = 0 ; NET_IF_DIRECTION_SENDRECEIVE
+*AccessType = 2 ; NET_IF_ACCESS_BROADCAST
+*HardwareLoopback = 0 ; false
+EnableDhcp = 0
+
+[Tundra.Install.Services]
+AddService = tundra, 2, Tundra.Service, Tundra.EventLog ; 2 = SPSVCINST_ASSOCSERVICE
+
+[Tundra.Ndi]
+HKR, Ndi, Service, 0, tundra
+HKR, Ndi\Interfaces, UpperRange, , "ndis5"
+HKR, Ndi\Interfaces, LowerRange, , "nolower"
+
+; Standardized offload keywords, adjustable via Set-NetAdapterAdvancedProperty.
+[Tundra.Params]
+HKR, Ndi\Params\*IPChecksumOffloadIPv4, ParamDesc, 0, %IPChksumOffv4%
+HKR, Ndi\Params\*IPChecksumOffloadIPv4, default, 0, "3"
+HKR, Ndi\Params\*IPChecksumOffloadIPv4, type, 0, "enum"
+HKR, Ndi\Params\*IPChecksumOffloadIPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*IPChecksumOffloadIPv4\enum, "1", 0, %TxEnabled%
+HKR, Ndi\Params\*IPChecksumOffloadIPv4\enum, "2", 0, %RxEnabled%
+HKR, Ndi\Params\*IPChecksumOffloadIPv4\enum, "3", 0, %TxRxEnabled%
+
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4, ParamDesc, 0, %TCPChksumOffv4%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4, default, 0, "3"
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4, type, 0, "enum"
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4\enum, "1", 0, %TxEnabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4\enum, "2", 0, %RxEnabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv4\enum, "3", 0, %TxRxEnabled%
+
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4, ParamDesc, 0, %UDPChksumOffv4%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4, default, 0, "3"
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4, type, 0, "enum"
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4\enum, "1", 0, %TxEnabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4\enum, "2", 0, %RxEnabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv4\enum, "3", 0, %TxRxEnabled%
+
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6, ParamDesc, 0, %TCPChksumOffv6%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6, default, 0, "3"
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6, type, 0, "enum"
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6\enum, "1", 0, %TxEnabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6\enum, "2", 0, %RxEnabled%
+HKR, Ndi\Params\*TCPChecksumOffloadIPv6\enum, "3", 0, %TxRxEnabled%
+
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6, ParamDesc, 0, %UDPChksumOffv6%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6, default, 0, "3"
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6, type, 0, "enum"
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6\enum, "1", 0, %TxEnabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6\enum, "2", 0, %RxEnabled%
+HKR, Ndi\Params\*UDPChecksumOffloadIPv6\enum, "3", 0, %TxRxEnabled%
+
+HKR, Ndi\Params\*LsoV2IPv4, ParamDesc, 0, %LsoV2IPv4%
+HKR, Ndi\Params\*LsoV2IPv4, default, 0, "1"
+HKR, Ndi\Params\*LsoV2IPv4, type, 0, "enum"
+HKR, Ndi\Params\*LsoV2IPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*LsoV2IPv4\enum, "1", 0, %Enabled%
+
+HKR, Ndi\Params\*LsoV2IPv6, ParamDesc, 0, %LsoV2IPv6%
+HKR, Ndi\Params\*LsoV2IPv6, default, 0, "1"
+HKR, Ndi\Params\*LsoV2IPv6, type, 0, "enum"
+HKR, Ndi\Params\*LsoV2IPv6\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*LsoV2IPv6\enum, "1", 0, %Enabled%
+
+HKR, Ndi\Params\*UsoIPv4, ParamDesc, 0, %UsoIPv4%
+HKR, Ndi\Params\*UsoIPv4, default, 0, "1"
+HKR, Ndi\Params\*UsoIPv4, type, 0, "enum"
+HKR, Ndi\Params\*UsoIPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*UsoIPv4\enum, "1", 0, %Enabled%
+
+HKR, Ndi\Params\*UsoIPv6, ParamDesc, 0, %UsoIPv6%
+HKR, Ndi\Params\*UsoIPv6, default, 0, "1"
+HKR, Ndi\Params\*UsoIPv6, type, 0, "enum"
+HKR, Ndi\Params\*UsoIPv6\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*UsoIPv6\enum, "1", 0, %Enabled%
+
+HKR, Ndi\Params\*UdpRsc, ParamDesc, 0, %UdpRsc%
+HKR, Ndi\Params\*UdpRsc, default, 0, "1"
+HKR, Ndi\Params\*UdpRsc, type, 0, "enum"
+HKR, Ndi\Params\*UdpRsc\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*UdpRsc\enum, "1", 0, %Enabled%
+HKR, Ndi\Params\*RscIPv4, ParamDesc, 0, %RscIPv4%
+HKR, Ndi\Params\*RscIPv4, default, 0, "1"
+HKR, Ndi\Params\*RscIPv4, type, 0, "enum"
+HKR, Ndi\Params\*RscIPv4\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*RscIPv4\enum, "1", 0, %Enabled%
+
+HKR, Ndi\Params\*RscIPv6, ParamDesc, 0, %RscIPv6%
+HKR, Ndi\Params\*RscIPv6, default, 0, "1"
+HKR, Ndi\Params\*RscIPv6, type, 0, "enum"
+HKR, Ndi\Params\*RscIPv6\enum, "0", 0, %Disabled%
+HKR, Ndi\Params\*RscIPv6\enum, "1", 0, %Enabled%
+
+[Tundra.Service]
+DisplayName = %Tundra.Name%
+Description = %Tundra.DeviceDesc%
+ServiceType = 1 ; SERVICE_KERNEL_DRIVER
+StartType = 3 ; SERVICE_DEMAND_START
+ErrorControl = 1 ; SERVICE_ERROR_NORMAL
+ServiceBinary = %13%\tundra.sys
+
+[Tundra.EventLog]
+HKR, , EventMessageFile, 0x00020000, "%11%\IoLogMsg.dll;%13%\tundra.sys"
+HKR, , TypesSupported, 0x00010001, 7
+
+[Strings]
+Tundra.Name = "Tundra"
+Tundra.DiskDesc = "Tundra Driver Install Disk"
+Tundra.DeviceDesc = "Tundra Tunnel"
+Tundra.CompanyName = "Firezone"
+IPChksumOffv4 = "IPv4 Checksum Offload"
+TCPChksumOffv4 = "TCP Checksum Offload (IPv4)"
+UDPChksumOffv4 = "UDP Checksum Offload (IPv4)"
+TCPChksumOffv6 = "TCP Checksum Offload (IPv6)"
+UDPChksumOffv6 = "UDP Checksum Offload (IPv6)"
+LsoV2IPv4 = "Large Send Offload V2 (IPv4)"
+LsoV2IPv6 = "Large Send Offload V2 (IPv6)"
+UsoIPv4 = "UDP Segmentation Offload (IPv4)"
+UsoIPv6 = "UDP Segmentation Offload (IPv6)"
+UdpRsc = "UDP Receive Segment Coalescing"
+RscIPv4 = "Recv Segment Coalescing (IPv4)"
+RscIPv6 = "Recv Segment Coalescing (IPv6)"
+Disabled = "Disabled"
+Enabled = "Enabled"
+TxEnabled = "Tx Enabled"
+RxEnabled = "Rx Enabled"
+TxRxEnabled = "Rx & Tx Enabled"

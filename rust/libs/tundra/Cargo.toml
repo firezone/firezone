@@ -1,0 +1,30 @@
+[package]
+name = "tundra"
+version = "0.1.0"
+description = "Rust bindings for the Tundra Windows TUN driver"
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Enumeration_Pnp",
+    "Win32_Devices_Properties",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_Ioctl",
+] }
+
+[lints]
+workspace = true
