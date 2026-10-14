@@ -19,7 +19,7 @@ use futures::{
     future::{BoxFuture, Shared},
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
-use http_client::HttpClient;
+use http_client::{HttpClient, TlsConfig};
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
@@ -53,6 +53,7 @@ pub struct Io {
     bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, DohClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
+    doh_tls_config: TlsConfig,
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
@@ -163,6 +164,7 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
+            doh_tls_config: TlsConfig::webpki_roots(),
             gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -502,6 +504,7 @@ impl Io {
             let (ready, client) = oneshot::channel();
             let addresses = self.bootstrap_dns_client.resolve(server.host());
             let socket_factory = self.tcp_socket_factory.clone();
+            let tls_config = self.doh_tls_config.clone();
 
             let bootstrap = {
                 let server = server.clone();
@@ -510,9 +513,14 @@ impl Io {
                     tracing::debug!(%server, "Bootstrapping DoH client");
 
                     let addresses = addresses.await?;
-                    let http_client =
-                        HttpClient::new(server.host().to_string(), addresses, socket_factory)
-                            .await?;
+                    let http_client = HttpClient::new(
+                        server.host().into_owned(),
+                        server.port(),
+                        addresses,
+                        tls_config,
+                        socket_factory,
+                    )
+                    .await?;
 
                     tracing::debug!(%server, "Bootstrapped DoH client");
 
@@ -585,9 +593,6 @@ mod tests {
     #[tokio::test]
     async fn bootstrap_doh() {
         let _guard = logging::test("debug");
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
 
         let mut io = Io::for_test();
         // The bootstrap DNS client doesn't retransmit; production relies on outer

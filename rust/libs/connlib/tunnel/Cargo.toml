@@ -34,7 +34,6 @@ tunnel-proto = { workspace = true, features = ["telemetry"] }
 [dev-dependencies]
 ip-packet = { workspace = true, features = ["proptest"] }
 rand = { workspace = true }
-rustls = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 
 [lints]

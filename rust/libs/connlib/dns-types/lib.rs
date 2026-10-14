@@ -498,6 +498,13 @@ impl DoHUrl {
         }
     }
 
+    pub fn port(&self) -> u16 {
+        match &self.0 {
+            InnerUrl::KnownProvider(_) => 443,
+            InnerUrl::Other(url) => url.port_or_known_default().expect("validated in ctor"),
+        }
+    }
+
     pub fn to_str(&self) -> Cow<'static, str> {
         match &self.0 {
             InnerUrl::KnownProvider(Provider::Cloudflare) => Cow::Borrowed(Self::CLOUDFLARE_URL),
@@ -675,6 +682,25 @@ mod tests {
                 .host(),
             "dnsserver.example.net"
         );
+    }
+
+    #[test]
+    fn port_of_known_provider_is_443() {
+        assert_eq!(DoHUrl::google().port(), 443);
+        assert_eq!(DoHUrl::cloudflare().port(), 443);
+        assert_eq!(DoHUrl::quad9().port(), 443);
+        assert_eq!(DoHUrl::opendns().port(), 443);
+    }
+
+    #[test]
+    fn port_of_custom_url() {
+        let explicit = "https://dns.example:8443/dns-query"
+            .parse::<DoHUrl>()
+            .unwrap();
+        let default = "https://dns.example/dns-query".parse::<DoHUrl>().unwrap();
+
+        assert_eq!(explicit.port(), 8443);
+        assert_eq!(default.port(), 443);
     }
 
     // Test-vector from https://datatracker.ietf.org/doc/html/rfc8484#section-4.1.1
