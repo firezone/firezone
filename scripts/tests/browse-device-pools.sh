@@ -5,6 +5,8 @@
 
 source "./scripts/tests/lib.sh"
 
+client sh -c "apk add --update --no-cache bind-tools" # The compat tests run using the production image which doesn't have `dig`.
+
 # Matches the ipv4 pinned for the pool member device in elixir/priv/repo/seeds.exs
 pool_member_ip="100.64.0.2"
 
