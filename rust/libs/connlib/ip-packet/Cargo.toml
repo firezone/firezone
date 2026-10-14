@@ -29,5 +29,9 @@ test-strategy = { workspace = true }
 name = "parse"
 harness = false
 
+[[bench]]
+name = "checksum"
+harness = false
+
 [lints]
 workspace = true

@@ -11,30 +11,32 @@ use crate::IpProtocol;
 /// Sums `bytes` as big-endian 16-bit words into a ones-complement accumulator.
 ///
 /// The result is unfolded; combine multiple sums by addition and finish with [`fold`].
+///
+/// The ones-complement sum is independent of byte order up to a final byte swap (RFC 1071),
+/// so the bytes are summed as native-endian `u64` words and only the folded result is swapped.
 pub fn sum(bytes: &[u8], initial: u64) -> u64 {
-    let mut acc = initial;
+    let (chunks, rest) = bytes.as_chunks::<32>();
 
-    // Sum eight bytes at a time. Folding a wider big-endian word is equivalent to summing its
-    // 16-bit halves separately: the high bits just carry down later in [`fold`]. A `u64`
-    // accumulator holds the sum of ~8k such words without overflowing, so no intermediate
-    // fold is needed for a single packet (at most 65535 bytes).
-    let (chunks, rest) = bytes.as_chunks::<8>();
+    // The tail starts at an even offset, so zero-padding it keeps every byte in its 16-bit word.
+    let mut tail = [0u8; 32];
+    tail[..rest.len()].copy_from_slice(rest);
+
+    // Independent accumulators let the CPU run the additions in parallel.
+    let mut accs = [0u128; 4];
+    let mut add = |chunk: &[u8; 32]| {
+        for (acc, word) in accs.iter_mut().zip(chunk.as_chunks::<8>().0) {
+            *acc += u128::from(u64::from_ne_bytes(*word));
+        }
+    };
     for chunk in chunks {
-        let word = u64::from_be_bytes(*chunk);
-        acc += word >> 32;
-        acc += word & 0xFFFF_FFFF;
+        add(chunk);
     }
+    add(&tail);
 
-    let (words, tail) = rest.as_chunks::<2>();
-    for word in words {
-        acc += u64::from(u16::from_be_bytes(*word));
-    }
+    let acc = accs.iter().sum::<u128>();
+    let (acc, carry) = (acc as u64).overflowing_add((acc >> 64) as u64);
 
-    if let [last] = tail {
-        acc += u64::from(u16::from_be_bytes([*last, 0]));
-    }
-
-    acc
+    initial + u64::from(u16::from_be(fold(acc + u64::from(carry))))
 }
 
 /// Folds a ones-complement accumulator into a 16-bit value without complementing it.
@@ -125,26 +127,35 @@ mod tests {
 
     #[test]
     fn matches_naive_sum_over_varied_lengths() {
-        // The straightforward 16-bit-word sum, against which the wide-word `sum` must agree
-        // across every chunk / tail / remainder combination.
-        fn naive(bytes: &[u8]) -> u16 {
-            let mut acc = 0u64;
-            let (words, remainder) = bytes.as_chunks::<2>();
-            for word in words {
-                acc += u64::from(u16::from_be_bytes(*word));
-            }
-            if let [last] = remainder {
-                acc += u64::from(u16::from_be_bytes([*last, 0]));
-            }
-            fold(acc)
-        }
-
-        for len in 0..40usize {
+        for len in 0..100usize {
             let bytes: Vec<u8> = (0..len)
                 .map(|i| (i as u8).wrapping_mul(37).wrapping_add(3))
                 .collect();
 
-            assert_eq!(fold(sum(&bytes, 0)), naive(&bytes), "len={len}");
+            assert_eq!(fold(sum(&bytes, 0)), naive(&bytes, 0), "len={len}");
         }
+    }
+
+    #[cfg(feature = "proptest")]
+    #[test_strategy::proptest()]
+    fn matches_naive_sum(
+        #[strategy(proptest::collection::vec(proptest::arbitrary::any::<u8>(), 0..=65535))]
+        bytes: Vec<u8>,
+        #[strategy(0..=0xFFFF_FFFFu64)] initial: u64,
+    ) {
+        proptest::prop_assert_eq!(fold(sum(&bytes, initial)), naive(&bytes, initial));
+    }
+
+    /// Sums one big-endian 16-bit word at a time.
+    fn naive(bytes: &[u8], initial: u64) -> u16 {
+        let mut acc = initial;
+        let (words, remainder) = bytes.as_chunks::<2>();
+        for word in words {
+            acc += u64::from(u16::from_be_bytes(*word));
+        }
+        if let [last] = remainder {
+            acc += u64::from(u16::from_be_bytes([*last, 0]));
+        }
+        fold(acc)
     }
 }
