@@ -5,9 +5,6 @@
 
 source "./scripts/tests/lib.sh"
 
-# The compat tests run using the production image, whose busybox `nslookup` does not retry truncated answers over TCP and which has no `dig`.
-client sh -c "apk add --update --no-cache bind-tools"
-
 # Matches the ipv4 pinned for the pool member device in elixir/priv/repo/seeds.exs
 pool_member_ip="100.64.0.2"
 
