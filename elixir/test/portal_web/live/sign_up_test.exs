@@ -72,6 +72,14 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(name="registration[phone]")
     end
 
+    test "renders the sign-up on a branded card for small screens", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "#auth-brand-mobile", "Firezone")
+      assert has_element?(lv, "#auth-card", "Create your organization")
+      assert has_element?(lv, "#auth-trust-mobile", "WireGuard encrypted")
+    end
+
     test "choosing email shows the sign-up form", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
