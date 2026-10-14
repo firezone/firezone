@@ -648,19 +648,18 @@ impl ClientState {
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
                 let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools.iter().map(|p| p.resource_id)),
+                        AuthorizationRequest::device(dst, pools.iter().copied()),
                         packet,
                         now,
                     );
                     return Ok(());
                 };
 
-                let Some(token) = pools.iter().find_map(|pool| {
-                    self.outbound_authorizations
-                        .client_token(pool.resource_id, cid)
+                let Some(token) = pools.iter().find_map(|&resource_id| {
+                    self.outbound_authorizations.client_token(resource_id, cid)
                 }) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools.iter().map(|p| p.resource_id)),
+                        AuthorizationRequest::device(dst, pools.iter().copied()),
                         packet,
                         now,
                     );
@@ -696,7 +695,7 @@ impl ClientState {
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
-                let packet = if let Some(domain) = route.domain {
+                let packet = if let Some(domain) = &route.domain {
                     flow_tracker::record_domain(domain.name().clone());
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
@@ -1397,7 +1396,7 @@ impl ClientState {
 
                 let pools = pools
                     .iter()
-                    .map(|pool| pool.resource_id)
+                    .copied()
                     .filter(|pool| {
                         self.outbound_authorizations
                             .client_token(*pool, cid)
