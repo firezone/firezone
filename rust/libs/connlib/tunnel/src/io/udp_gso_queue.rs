@@ -88,13 +88,12 @@ impl BufferProvider for UdpGsoQueue {
         let index = match existing {
             Some((index, batch)) => {
                 // A rolled-back reservation may have left the batch empty; it starts over with our segment size.
-                if batch.buffer.is_empty() {
+                if batch.len == 0 {
                     batch.segment_size = len;
                     batch.max_len = DatagramOut::max_len(dst, len);
                 }
 
-                let new_len = batch.buffer.len() + len;
-                batch.buffer.resize(new_len, 0);
+                batch.len += len;
 
                 index
             }
@@ -105,15 +104,12 @@ impl BufferProvider for UdpGsoQueue {
                     "GSO_BUFFER_SIZE is miscalculated"
                 );
 
-                let mut buffer = GSO_BUFFERS.pull();
-                buffer.clear();
-                buffer.resize(len, 0);
-
                 self.batches.push_back(Batch {
                     connection,
                     segment_size: len,
                     max_len,
-                    buffer,
+                    len,
+                    buffer: GSO_BUFFERS.pull(),
                 });
 
                 self.batches.len() - 1
@@ -135,6 +131,9 @@ struct Batch {
     segment_size: usize,
     /// The batch's size limit: as many whole segments as one GSO send can carry to this destination.
     max_len: usize,
+    /// How many bytes at the start of `buffer` belong to the batch.
+    len: usize,
+    /// Stays at [`GSO_BUFFER_SIZE`] bytes; whatever lies past `len` is left over from previous use.
     buffer: Buffer<Vec<u8>>,
 }
 
@@ -143,13 +142,13 @@ impl Batch {
     fn can_append(&self, len: usize) -> bool {
         // A batch is "ongoing" as long as every segment so far has been full-size;
         // a shorter, final segment seals it.
-        let is_ongoing = self.buffer.len().is_multiple_of(self.segment_size);
+        let is_ongoing = self.len.is_multiple_of(self.segment_size);
 
         // Only equal-size segments plus at most one shorter, final one form a valid GSO batch.
         let fits_segment = len <= self.segment_size;
 
         // A batch never grows past what one GSO send can carry.
-        let fits_send = self.buffer.len() + len <= self.max_len;
+        let fits_send = self.len + len <= self.max_len;
 
         is_ongoing && fits_segment && fits_send
     }
@@ -164,9 +163,9 @@ pub struct GsoReservation<'a> {
 
 impl Reservation for GsoReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
-        let offset = self.batch.buffer.len() - self.len;
+        let end = self.batch.len;
 
-        &mut self.batch.buffer[offset..]
+        &mut self.batch.buffer[end - self.len..end]
     }
 
     fn commit(mut self) {
@@ -177,8 +176,7 @@ impl Reservation for GsoReservation<'_> {
 impl Drop for GsoReservation<'_> {
     fn drop(&mut self) {
         if !self.committed {
-            let new_len = self.batch.buffer.len().saturating_sub(self.len);
-            self.batch.buffer.truncate(new_len);
+            self.batch.len -= self.len;
         }
     }
 }
@@ -203,12 +201,13 @@ impl Iterator for DrainDatagramsIter<'_> {
             let Batch {
                 connection,
                 segment_size,
+                len,
                 buffer,
                 ..
             } = self.queue.batches.pop_front()?;
 
             // A rolled-back reservation may leave an empty batch behind; there is nothing to send for it.
-            if buffer.is_empty() {
+            if len == 0 {
                 continue;
             }
 
@@ -216,6 +215,7 @@ impl Iterator for DrainDatagramsIter<'_> {
                 src: connection.src,
                 dst: connection.dst,
                 packet: buffer,
+                len,
                 segment_size,
                 ecn: connection.ecn,
             });
@@ -242,7 +242,7 @@ mod tests {
 
         assert_eq!(datagrams.len(), 1);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
+        assert_eq!(datagrams[0].payload(), b"foobar");
     }
 
     #[test]
@@ -257,7 +257,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazfoo");
+        assert_eq!(datagrams[0].payload(), b"foobarbarbazfoobazfoo");
         assert_eq!(datagrams[0].segment_size, 6);
     }
 
@@ -274,10 +274,10 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbaz");
+        assert_eq!(datagrams[0].payload(), b"foobarbarbaz");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
+        assert_eq!(datagrams[1].payload(), b"barbarbafoofoo");
         assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
@@ -298,10 +298,10 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazfoobazbazfoo");
+        assert_eq!(datagrams[0].payload(), b"foobarbarbazfoobazbazfoo");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbarbafoofoo");
+        assert_eq!(datagrams[1].payload(), b"barbarbafoofoo");
         assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
@@ -319,10 +319,10 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(&datagrams[0].packet[..], b"foobarbarbazbar");
+        assert_eq!(datagrams[0].payload(), b"foobarbarbazbar");
         assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
-        assert_eq!(&datagrams[1].packet[..], b"barbaz");
+        assert_eq!(datagrams[1].payload(), b"barbaz");
         assert_eq!(datagrams[1].segment_size, 6);
         assert_eq!(datagrams[1].dst, DST_1);
     }
@@ -342,9 +342,9 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 3);
-        assert_eq!(&datagrams[0].packet[..], b"aaaa");
-        assert_eq!(&datagrams[1].packet[..], b"bbbbbbccc");
-        assert_eq!(&datagrams[2].packet[..], b"dd");
+        assert_eq!(datagrams[0].payload(), b"aaaa");
+        assert_eq!(datagrams[1].payload(), b"bbbbbbccc");
+        assert_eq!(datagrams[2].payload(), b"dd");
     }
 
     #[test]
@@ -366,11 +366,8 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(
-            datagrams[0].packet.len(),
-            segments_per_send * MAX_SEGMENT_SIZE
-        );
-        assert_eq!(datagrams[1].packet.len(), MAX_SEGMENT_SIZE);
+        assert_eq!(datagrams[0].len, segments_per_send * MAX_SEGMENT_SIZE);
+        assert_eq!(datagrams[1].len, MAX_SEGMENT_SIZE);
     }
 
     #[test]
@@ -389,8 +386,8 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 2);
-        assert_eq!(datagrams[0].packet.len(), segments_per_send * segment.len());
-        assert_eq!(datagrams[1].packet.len(), segment.len());
+        assert_eq!(datagrams[0].len, segments_per_send * segment.len());
+        assert_eq!(datagrams[1].len, segment.len());
     }
 
     #[test]
@@ -420,7 +417,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
+        assert_eq!(datagrams[0].payload(), b"foobar");
     }
 
     #[test]
@@ -439,7 +436,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
+        assert_eq!(datagrams[0].payload(), b"foobar");
         assert_eq!(datagrams[0].segment_size, 6);
     }
 
@@ -470,8 +467,22 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foo");
+        assert_eq!(datagrams[0].payload(), b"foo");
         assert_eq!(datagrams[0].segment_size, 3);
+    }
+
+    #[test]
+    fn reused_buffer_only_sends_new_datagram() {
+        let mut send_queue = UdpGsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobarbaz", Ecn::NonEct);
+        drop(send_queue.datagrams().collect::<Vec<_>>());
+
+        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].payload(), b"foo");
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));

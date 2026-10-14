@@ -380,7 +380,7 @@ impl Io {
                 break;
             };
 
-            for segment in datagram.packet.chunks(datagram.segment_size) {
+            for segment in datagram.payload().chunks(datagram.segment_size) {
                 transmitted.record(segment);
             }
 

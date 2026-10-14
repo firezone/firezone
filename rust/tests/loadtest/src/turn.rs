@@ -617,6 +617,7 @@ async fn send(
             .send(DatagramOut {
                 src: None,
                 dst: config.server,
+                len: packet.len(),
                 packet,
                 segment_size: frame_size,
                 ecn: Ecn::NonEct,
@@ -1162,6 +1163,7 @@ async fn send_datagram(
         .send(DatagramOut {
             src: None,
             dst,
+            len: packet.len(),
             packet,
             segment_size,
             ecn: Ecn::NonEct,

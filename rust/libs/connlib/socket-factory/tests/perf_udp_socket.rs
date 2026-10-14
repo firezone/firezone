@@ -28,6 +28,7 @@ async fn sends_and_receives_a_datagram() {
             src: None,
             dst: peer_addr,
             packet: PACKETS.pull_initialised(&b"hello".repeat(DATAGRAMS)),
+            len: 5 * DATAGRAMS,
             segment_size: 5,
             ecn: Ecn::NonEct,
         })

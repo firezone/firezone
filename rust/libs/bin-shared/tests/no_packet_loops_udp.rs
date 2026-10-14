@@ -51,6 +51,7 @@ async fn no_packet_loops_udp() {
             src: None,
             dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
             segment_size: packet.len(),
+            len: packet.len(),
             packet,
             ecn: Ecn::NonEct,
         })

@@ -370,7 +370,9 @@ pub struct DatagramIn<'a> {
 pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
+    /// Holds the datagrams in its first [`DatagramOut::len`] bytes; the rest is never sent.
     pub packet: Buffer<Vec<u8>>,
+    pub len: usize,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -379,7 +381,12 @@ pub struct DatagramOut {
 const MAX_GSO_SEGMENTS: usize = 64;
 
 impl DatagramOut {
-    /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
+    /// Returns the bytes to send: one or more datagrams of [`DatagramOut::segment_size`], laid out back-to-back.
+    pub fn payload(&self) -> &[u8] {
+        &self.packet[..self.len]
+    }
+
+    /// The largest [`DatagramOut::payload`] that can be flushed to `dst` in a single GSO send.
     ///
     /// One send's payload is bounded by the maximum IP packet size less IP/UDP header overhead,
     /// and by the kernel's segment limit; the result is a whole number of segments.
@@ -467,7 +474,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.as_slice(),
+            datagram.payload(),
             datagram.segment_size,
             datagram.ecn,
         )?;
