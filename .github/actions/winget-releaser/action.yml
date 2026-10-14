@@ -73,14 +73,6 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
       id: version-and-urls
       shell: pwsh
-    # Fast-forwards the fork to upstream's HEAD, which only works while the
-    # fork's `master` is a plain mirror: a commit of our own on that branch
-    # makes the update non-fast-forward and fails every release after it.
-    - run: komac sync-fork
-      env:
-        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
-        GITHUB_TOKEN: ${{ inputs.token }}
-      shell: pwsh
     - run: |
         $ReplaceFlag = $Null
         $ReleaseNotesUrlFlag = $Null
