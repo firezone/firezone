@@ -20,9 +20,7 @@ use ip_packet::{Ecn, IpPacket};
 use snownet::TransmitBuffer;
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use tun::{MAX_BATCH_SIZE, PacketBatch};
-use tunnel::{
-    ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed, TunnelError,
-};
+use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 
 use crate::setup::{
     RESOURCES, Resource, SIZES, Tunnel, encapsulate_on_client, encapsulate_on_gateway,
@@ -87,18 +85,12 @@ fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
         }
     });
 
-    measure(bencher, &event_loop, &arrivals, |bencher| {
-        bencher
-            .with_inputs(|| batches(&local.reads))
-            .bench_local_values(|batches| {
-                let start = arrivals.count();
-                for (i, batch) in batches.into_iter().enumerate() {
-                    arrivals
-                        .wait_for(start + (i * MAX_BATCH_SIZE).saturating_sub(IN_FLIGHT) as u64);
-                    event_loop.tun_reads.blocking_send(batch).unwrap();
-                }
-                arrivals.wait_for(start + PACKETS as u64);
-            });
+    let inputs = || batches(&local.reads);
+    measure(bencher, &event_loop, &arrivals, inputs, |batch| {
+        let packets = batch.len();
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        packets
     });
 
     event_loop.stop();
@@ -122,19 +114,12 @@ fn inbound(bencher: Bencher, local: Side, mut peer: Side, now: Instant) {
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
 
-    measure(bencher, &event_loop, &arrivals, |bencher| {
-        bencher
-            .with_inputs(|| peer.state.encapsulate(&peer.reads, now, local.socket))
-            .bench_local_values(|datagrams| {
-                let start = arrivals.count();
-                let mut sent = 0_usize;
-                for datagram in datagrams {
-                    arrivals.wait_for(start + sent.saturating_sub(IN_FLIGHT) as u64);
-                    sent += datagram.packet.len() / datagram.segment_size;
-                    runtime.block_on(socket.send(datagram)).unwrap();
-                }
-                arrivals.wait_for(start + PACKETS as u64);
-            });
+    let inputs = || peer.state.encapsulate(&peer.reads, now, local.socket);
+    measure(bencher, &event_loop, &arrivals, inputs, |datagram| {
+        let packets = datagram.packet.len() / datagram.segment_size;
+        runtime.block_on(socket.send(datagram)).unwrap();
+
+        packets
     });
 
     event_loop.stop();
@@ -249,7 +234,7 @@ impl EventLoop {
             .enable_all()
             .build()
             .unwrap();
-        let poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
+        let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
 
             match state {
@@ -270,19 +255,32 @@ impl EventLoop {
             }
         };
 
-        let (tid_tx, tid_rx) = std::sync::mpsc::channel();
+        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("event-loop".to_owned())
             .spawn(move || {
-                tid_tx
-                    .send(std::fs::read_link("/proc/thread-self").unwrap())
+                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
+                status_tx
+                    .send(Path::new("/proc").join(thread_self).join("status"))
                     .unwrap();
-                runtime.block_on(run(poll_next_event))
+                // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
+                // are irrelevant here: a lost packet fails the benchmark.
+                runtime.block_on(poll_fn(|cx| {
+                    loop {
+                        match poll_next_event(cx) {
+                            Poll::Ready(Ok(())) => {}
+                            Poll::Ready(Err(mut errors)) => {
+                                if errors.drain().any(|e| e.any_is::<TunChannelClosed>()) {
+                                    return Poll::Ready(());
+                                }
+                            }
+                            Poll::Pending => return Poll::Pending,
+                        }
+                    }
+                }))
             })
             .unwrap();
-        let status = Path::new("/proc")
-            .join(tid_rx.recv().unwrap())
-            .join("status");
+        let status = status_rx.recv().unwrap();
 
         (
             Self {
@@ -312,32 +310,6 @@ impl EventLoop {
     }
 }
 
-/// Polls the tunnel until its TUN device closes.
-///
-/// Other errors, like the IPv6 socket failing to bind, are irrelevant here: a lost packet stalls
-/// the benchmark.
-async fn run(mut poll_next_event: impl FnMut(&mut Context<'_>) -> Poll<Result<(), TunnelError>>) {
-    poll_fn(|cx| {
-        loop {
-            match poll_next_event(cx) {
-                Poll::Ready(Ok(())) => {}
-                Poll::Ready(Err(mut errors)) => {
-                    let closed = errors
-                        .drain()
-                        .filter(|e| e.any_is::<TunChannelClosed>())
-                        .count();
-
-                    if closed > 0 {
-                        return Poll::Ready(());
-                    }
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-    })
-    .await;
-}
-
 struct FakeTun {
     reads: tun::InboundRx,
     writes: tun::OutboundTx,
@@ -360,22 +332,22 @@ impl tun::Tun for FakeTun {
 /// Counts the packets arriving at the far end.
 #[derive(Default)]
 struct Arrivals {
-    count: Mutex<u64>,
+    count: Mutex<usize>,
     changed: Condvar,
 }
 
 impl Arrivals {
-    fn count(&self) -> u64 {
+    fn count(&self) -> usize {
         *self.count.lock().unwrap()
     }
 
     fn add(&self, packets: usize) {
-        *self.count.lock().unwrap() += packets as u64;
+        *self.count.lock().unwrap() += packets;
         self.changed.notify_one();
     }
 
     /// Waits until `target` packets have arrived, failing if they do not within a few seconds.
-    fn wait_for(&self, target: u64) {
+    fn wait_for(&self, target: usize) {
         let (count, timeout) = self
             .changed
             .wait_timeout_while(
@@ -389,15 +361,30 @@ impl Arrivals {
     }
 }
 
-/// Runs the benchmark and asserts that the event loop did not park while packets were in flight.
-fn measure(
+/// Sends the inputs, at most [`IN_FLIGHT`] packets ahead of those that arrived, and asserts that
+/// the event loop did not park while packets were in flight.
+///
+/// `send` returns how many packets an input holds.
+fn measure<T>(
     bencher: Bencher,
     event_loop: &EventLoop,
     arrivals: &Arrivals,
-    bench: impl FnOnce(Bencher),
+    inputs: impl FnMut() -> Vec<T>,
+    mut send: impl FnMut(T) -> usize,
 ) {
     let before = (event_loop.parks(), arrivals.count());
-    bench(bencher.counter(ItemsCount::new(PACKETS)));
+    bencher
+        .counter(ItemsCount::new(PACKETS))
+        .with_inputs(inputs)
+        .bench_local_values(|inputs| {
+            let start = arrivals.count();
+            let mut sent = 0_usize;
+            for input in inputs {
+                arrivals.wait_for(start + sent.saturating_sub(IN_FLIGHT));
+                sent += send(input);
+            }
+            arrivals.wait_for(start + PACKETS);
+        });
     let parks =
         (event_loop.parks() - before.0) as f64 * 1000.0 / (arrivals.count() - before.1) as f64;
 
