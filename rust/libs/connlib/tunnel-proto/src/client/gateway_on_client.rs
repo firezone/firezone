@@ -1,34 +1,27 @@
 use std::{
     collections::HashSet,
     net::{IpAddr, SocketAddr},
-    num::NonZeroUsize,
 };
 
 use connlib_model::ResourceId;
-use fast_random_state::FastRandomState;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use lru::LruCache;
 
-use crate::{IpConfig, NotAllowedResource};
-
-const MAX_CACHED_SOURCES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+use crate::{IpConfig, NotAllowedResource, last::Last};
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     gateway_tun: IpConfig,
     allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-    /// Source IPs that matched `allowed_ips`.
-    ///
-    /// Only approvals are cached, so spoofed sources cannot fill it.
-    /// Removing a resource can revoke an approval, so it clears the cache.
-    allowed_src_cache: LruCache<IpAddr, (), FastRandomState>,
+    /// Whether the last source IP matched `allowed_ips`.
+    allowed_src: Last<IpAddr, bool>,
 }
 
 impl GatewayOnClient {
     pub(crate) fn allow_ip_for_resource(&mut self, ip: impl Into<IpNetwork>, id: ResourceId) {
         let ip = ip.into();
+        self.allowed_src.clear();
 
         if let Some(resources) = self.allowed_ips.exact_match_mut(ip) {
             resources.insert(id);
@@ -49,7 +42,7 @@ impl GatewayOnClient {
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         self.allowed_ips.retain(|_, r| !r.is_empty());
-        self.allowed_src_cache.clear();
+        self.allowed_src.clear();
     }
 
     pub(crate) fn no_allowed_resources(&self) -> bool {
@@ -76,10 +69,7 @@ impl GatewayOnClient {
     pub(crate) fn new(gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             allowed_ips: IpNetworkTable::new(),
-            allowed_src_cache: LruCache::with_hasher(
-                MAX_CACHED_SOURCES,
-                FastRandomState::default(),
-            ),
+            allowed_src: Last::default(),
             gateway_tun,
         }
     }
@@ -89,15 +79,17 @@ impl GatewayOnClient {
     pub(crate) fn ensure_allowed_src(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
-        if self.gateway_tun.is_ip(src) || self.allowed_src_cache.get(&src).is_some() {
+        if self.gateway_tun.is_ip(src) {
             return Ok(());
         }
 
-        if self.allowed_ips.longest_match(src).is_none() {
+        let allowed = *self
+            .allowed_src
+            .get_or_insert_with(src, || self.allowed_ips.longest_match(src).is_some());
+
+        if !allowed {
             return Err(anyhow::Error::new(NotAllowedResource(src)));
         }
-
-        self.allowed_src_cache.put(src, ());
 
         Ok(())
     }
