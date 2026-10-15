@@ -23,7 +23,7 @@ defmodule PortalWeb.Policies do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
-      |> assign(selected_policy: nil, policy_providers: [])
+      |> assign(selected_policy: nil, policy_providers: [], policy_disabled_providers: [])
       |> assign(
         x509_auth_provider_id: Database.x509_auth_provider_id(subject),
         has_trust_anchors?: Database.has_trust_anchors?(subject)
@@ -70,14 +70,13 @@ defmodule PortalWeb.Policies do
            socket,
            [
              selected_policy: policy,
-             policy_providers:
-               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
              return_to: uri_path(uri),
              policy_authorizations: policy_authorizations,
              policy_authorizations_page: page,
              policy_authorizations_has_next: has_next,
              policy_authorizations_expanded_id: nil
-           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+           ] ++ provider_assigns(socket.assigns.subject) ++
+             policy_filter_assigns(params, socket.assigns.subject) ++
              show_policy_assigns(socket, tab)
          )}
     end
@@ -94,10 +93,8 @@ defmodule PortalWeb.Policies do
          filter_site: nil,
          filter_resource: nil,
          selected_policy: nil,
-         policy_providers:
-           Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
          return_to: uri_path(uri)
-       ] ++ new_policy_assigns(socket, form)
+       ] ++ provider_assigns(socket.assigns.subject) ++ new_policy_assigns(socket, form)
      )}
   end
 
@@ -116,10 +113,9 @@ defmodule PortalWeb.Policies do
            socket,
            [
              selected_policy: policy,
-             policy_providers:
-               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
              return_to: uri_path(uri)
-           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+           ] ++ provider_assigns(socket.assigns.subject) ++
+             policy_filter_assigns(params, socket.assigns.subject) ++
              edit_policy_assigns(socket, policy, form)
          )}
     end
@@ -134,6 +130,7 @@ defmodule PortalWeb.Policies do
        [
          selected_policy: nil,
          policy_providers: [],
+         policy_disabled_providers: [],
          return_to: uri_path(uri)
        ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
          default_policy_assigns(socket)
@@ -348,6 +345,7 @@ defmodule PortalWeb.Policies do
         account={@account}
         policy={@selected_policy}
         providers={@policy_providers}
+        disabled_providers={@policy_disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         subject={@subject}
@@ -362,6 +360,12 @@ defmodule PortalWeb.Policies do
       />
     </div>
     """
+  end
+
+  # Disabled providers can't be selected, but conditions may still reference them.
+  defp provider_assigns(subject) do
+    {disabled, active} = subject |> Database.list_providers() |> Enum.split_with(& &1.is_disabled)
+    [policy_providers: active, policy_disabled_providers: disabled]
   end
 
   defp policy_panel_state(assigns) do
@@ -1294,7 +1298,7 @@ defmodule PortalWeb.Policies do
       |> Safe.delete()
     end
 
-    def all_active_providers(_account, subject) do
+    def list_providers(subject) do
       schemas = [
         Portal.Userpass.AuthProvider,
         Portal.EmailOTP.AuthProvider,
@@ -1313,7 +1317,7 @@ defmodule PortalWeb.Policies do
         end
 
       Enum.flat_map(schemas, fn schema ->
-        from(p in schema, where: not p.is_disabled)
+        schema
         |> Safe.scoped(subject)
         |> Safe.all()
       end)

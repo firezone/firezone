@@ -307,6 +307,16 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, assign(socket, default_provider_changed: true)}
   end
 
+  def handle_event("request_confirm", %{"id" => id, "action" => "delete"}, socket) do
+    policy_count = Database.count_policies_referencing_provider(id, socket.assigns.subject)
+
+    {:noreply,
+     assign(socket,
+       pending_confirm: %{id: id, action: "delete", policy_count: policy_count},
+       open_provider_actions_id: nil
+     )}
+  end
+
   def handle_event("request_confirm", %{"id" => id, "action" => action}, socket) do
     {:noreply,
      assign(socket, pending_confirm: %{id: id, action: action}, open_provider_actions_id: nil)}
@@ -1019,9 +1029,18 @@ defmodule PortalWeb.Settings.Authentication do
           <%= if @is_pending_delete do %>
             <td colspan="6" class="px-6 py-3">
               <div class="flex items-center gap-4">
-                <span class="text-xs text-danger">
-                  Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
-                </span>
+                <div class="text-xs text-danger space-y-1">
+                  <p>
+                    Delete this provider? This will immediately sign out all users authenticated via this provider and cannot be undone.
+                  </p>
+                  <p :if={@referencing_policy_count > 0} id={"provider-#{@provider.id}-policy-warning"}>
+                    {@referencing_policy_count} {ngettext(
+                      "policy references",
+                      "policies reference",
+                      @referencing_policy_count
+                    )} this provider and will need to be updated.
+                  </p>
+                </div>
                 <div class="flex items-center gap-2 ml-auto shrink-0">
                   <Form.button
                     phx-click="cancel_confirm"
@@ -1178,6 +1197,7 @@ defmodule PortalWeb.Settings.Authentication do
       is_pending_toggle: pending_state == :toggle,
       is_pending_delete: pending_state == :delete,
       is_pending_revoke: pending_state == :revoke,
+      referencing_policy_count: provider_referencing_policy_count(pending_state, pending_confirm),
       portal_ttl: provider_portal_ttl(provider),
       client_ttl: provider_client_ttl(provider)
     }
@@ -1195,6 +1215,9 @@ defmodule PortalWeb.Settings.Authentication do
     do: String.to_existing_atom(action)
 
   defp provider_pending_state(_provider, _pending_confirm), do: nil
+
+  defp provider_referencing_policy_count(:delete, %{policy_count: count}), do: count
+  defp provider_referencing_policy_count(_pending_state, _pending_confirm), do: 0
 
   defp provider_portal_ttl(%{context: context} = provider)
        when context in [:clients_and_portal, :portal_only] do
@@ -1981,6 +2004,25 @@ defmodule PortalWeb.Settings.Authentication do
         |> Safe.one!()
 
       parent |> Safe.scoped(subject) |> Safe.delete()
+    end
+
+    # Policies keep referencing a deleted provider, so admins are warned how many need updating.
+    def count_policies_referencing_provider(provider_id, subject) do
+      from(p in Portal.Policy,
+        where:
+          fragment(
+            """
+            EXISTS (
+              SELECT 1 FROM unnest(?) AS c
+              WHERE c->>'property' = 'auth_provider_id' AND jsonb_exists(c->'values', ?)
+            )
+            """,
+            p.conditions,
+            ^provider_id
+          )
+      )
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
     end
 
     def set_default_provider(provider, assigns) do

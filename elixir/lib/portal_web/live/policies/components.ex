@@ -89,6 +89,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, default: nil
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :subject, :any, required: true
@@ -142,6 +143,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         panel_form={@panel.panel_form}
@@ -158,6 +160,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         panel_form={@panel.panel_form}
@@ -191,6 +194,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         tab={@panel.panel_tab}
@@ -208,6 +212,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :panel_form, :any, default: nil
@@ -235,6 +240,7 @@ defmodule PortalWeb.Policies.Components do
           mode={@mode}
           subject={@subject}
           providers={@providers}
+          disabled_providers={@disabled_providers}
           x509_auth_provider_id={@x509_auth_provider_id}
           has_trust_anchors?={@has_trust_anchors?}
           panel_form={@panel_form}
@@ -269,6 +275,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :panel_form, :any, default: nil
@@ -297,6 +304,7 @@ defmodule PortalWeb.Policies.Components do
           panel_active_conditions={@panel_active_conditions}
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
           providers={@providers}
+          disabled_providers={@disabled_providers}
           x509_auth_provider_id={@x509_auth_provider_id}
           has_trust_anchors?={@has_trust_anchors?}
           conditions_state={@conditions_state}
@@ -541,6 +549,7 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
@@ -580,6 +589,7 @@ defmodule PortalWeb.Policies.Components do
           <.policy_conditions_cards
             panel_active_conditions={@panel_active_conditions}
             providers={@providers}
+            disabled_providers={@disabled_providers}
             account={@account}
             x509_auth_provider_id={@x509_auth_provider_id}
             has_trust_anchors?={@has_trust_anchors?}
@@ -629,6 +639,7 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_active_conditions, :list, default: []
   attr :account, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
@@ -647,6 +658,7 @@ defmodule PortalWeb.Policies.Components do
         type={type}
         account={@account}
         providers={@providers}
+        disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
@@ -707,6 +719,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :tab, :atom, default: :overview
@@ -725,6 +738,7 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
         has_trust_anchors?={@has_trust_anchors?}
         tab={@tab}
@@ -742,6 +756,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :tab, :atom, default: :overview
@@ -797,6 +812,7 @@ defmodule PortalWeb.Policies.Components do
             account={@account}
             policy={@policy}
             providers={@providers}
+            disabled_providers={@disabled_providers}
             x509_auth_provider_id={@x509_auth_provider_id}
             has_trust_anchors?={@has_trust_anchors?}
           />
@@ -944,6 +960,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
 
@@ -972,6 +989,7 @@ defmodule PortalWeb.Policies.Components do
             account={@account}
             condition={condition}
             providers={@providers}
+            disabled_providers={@disabled_providers}
             x509_auth_provider_id={@x509_auth_provider_id}
             has_trust_anchors?={@has_trust_anchors?}
           />
@@ -985,6 +1003,7 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :condition, :map, required: true
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
 
@@ -998,7 +1017,15 @@ defmodule PortalWeb.Policies.Components do
         <.policy_tod_condition_values values={@condition.values} />
       <% else %>
         <div class="text-xs text-body flex-1 min-w-0 mt-0.5 space-y-2">
-          <span>{condition_values_display(@condition, @providers, @account)}</span>
+          <.auth_provider_condition_values
+            :if={@condition.property == :auth_provider_id}
+            values={@condition.values}
+            providers={@providers}
+            disabled_providers={@disabled_providers}
+          />
+          <span :if={@condition.property != :auth_provider_id}>
+            {condition_values_display(@condition, @providers, @account)}
+          </span>
           <.x509_trust_anchor_warning
             show?={
               @condition.property == :auth_provider_id and not @has_trust_anchors? and
@@ -1012,6 +1039,74 @@ defmodule PortalWeb.Policies.Components do
     </li>
     """
   end
+
+  attr :values, :list, required: true
+  attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
+
+  defp auth_provider_condition_values(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :labels,
+        auth_provider_labels(assigns.values, assigns.providers, assigns.disabled_providers)
+      )
+
+    ~H"""
+    <span class="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5">
+      <Core.intersperse_blocks>
+        <:separator>,</:separator>
+        <:item :for={label <- @labels}>
+          <span :if={label.status == :active}>{label.name}</span>
+          <.unavailable_auth_provider :if={label.status != :active} label={label} />
+        </:item>
+      </Core.intersperse_blocks>
+    </span>
+    """
+  end
+
+  attr :label, :map, required: true
+
+  defp unavailable_auth_provider(assigns) do
+    ~H"""
+    <span
+      class="inline-flex items-center gap-1 text-warning"
+      title={unavailable_auth_provider_hint(@label.status)}
+      data-auth-provider-status={@label.status}
+    >
+      <Core.icon name="ri-error-warning-line" class="w-3 h-3 shrink-0" />
+      {unavailable_auth_provider_name(@label)}
+    </span>
+    """
+  end
+
+  # Conditions store provider IDs without a foreign key, so a value can outlive its provider.
+  @spec auth_provider_labels([String.t()], list(), list()) :: [
+          %{id: String.t(), status: :active | :disabled | :deleted, name: String.t() | nil}
+        ]
+  defp auth_provider_labels(values, providers, disabled_providers) do
+    Enum.map(values, fn id ->
+      cond do
+        provider = Enum.find(providers, &(&1.id == id)) ->
+          %{id: id, status: :active, name: provider.name}
+
+        provider = Enum.find(disabled_providers, &(&1.id == id)) ->
+          %{id: id, status: :disabled, name: provider.name}
+
+        true ->
+          %{id: id, status: :deleted, name: nil}
+      end
+    end)
+  end
+
+  defp unavailable_auth_provider_name(%{status: :disabled, name: name}), do: "#{name} (disabled)"
+  defp unavailable_auth_provider_name(%{status: :deleted}), do: "Deleted provider"
+
+  defp unavailable_auth_provider_hint(:disabled),
+    do: "This provider is disabled. Users can't sign in with it until it is enabled again."
+
+  defp unavailable_auth_provider_hint(:deleted),
+    do: "This provider was deleted. Update this condition to use another provider."
 
   attr :values, :list, required: true
 
@@ -1372,20 +1467,6 @@ defmodule PortalWeb.Policies.Components do
     do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
-         %{property: :auth_provider_id, values: values},
-         providers,
-         _account
-       ) do
-    names =
-      values
-      |> Enum.map(fn id -> Enum.find(providers, &(&1.id == id)) end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(& &1.name)
-
-    if names == [], do: Enum.join(values, ", "), else: Enum.join(names, ", ")
-  end
-
-  defp condition_values_display(
          %{property: :remote_ip_location_region, values: values},
          _providers,
          _account
@@ -1645,6 +1726,7 @@ defmodule PortalWeb.Policies.Components do
   attr :type, :atom, required: true
   attr :account, :any, default: nil
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
@@ -1672,6 +1754,7 @@ defmodule PortalWeb.Policies.Components do
       type={@type}
       account={@account}
       providers={@providers}
+      disabled_providers={@disabled_providers}
       x509_auth_provider_id={@x509_auth_provider_id}
       has_trust_anchors?={@has_trust_anchors?}
       auth_provider_operator={@conditions_state.auth_provider_operator}
@@ -1986,6 +2069,7 @@ defmodule PortalWeb.Policies.Components do
   attr :type, :atom, required: true
   attr :account, :any, default: nil
   attr :providers, :list, default: []
+  attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
   attr :auth_provider_operator, :string, default: "is_in"
@@ -2051,14 +2135,29 @@ defmodule PortalWeb.Policies.Components do
         />
         <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
           <span
-            :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
-            class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] bg-brand-muted text-brand border border-brand/20"
+            :for={
+              label <- auth_provider_labels(@auth_provider_values, @providers, @disabled_providers)
+            }
+            class={[
+              "inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] border",
+              if(label.status == :active,
+                do: "bg-brand-muted text-brand border-brand/20",
+                else: "bg-warning-light text-warning border-warning/30"
+              )
+            ]}
+            title={label.status != :active && unavailable_auth_provider_hint(label.status)}
+            data-auth-provider-status={label.status}
           >
-            {p.name}
+            <Core.icon
+              :if={label.status != :active}
+              name="ri-error-warning-line"
+              class="w-2.5 h-2.5 shrink-0"
+            />
+            {if label.status == :active, do: label.name, else: unavailable_auth_provider_name(label)}
             <button
               type="button"
               phx-click="toggle_auth_provider_value"
-              phx-value-id={p.id}
+              phx-value-id={label.id}
               class="hover:text-error transition-colors"
             >
               <Core.icon name="ri-close-line" class="w-2.5 h-2.5" />

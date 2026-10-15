@@ -1211,6 +1211,81 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ auth_provider.name
     end
 
+    test "flags disabled and deleted providers referenced by a saved condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      active = google_provider_fixture(account: account, name: "Active Google")
+      disabled = github_provider_fixture(account: account, name: "Old GitHub", is_disabled: true)
+      deleted_id = Ecto.UUID.generate()
+
+      policy =
+        policy_fixture(
+          account: account,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [active.id, disabled.id, deleted_id]
+            }
+          ]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      assert render(lv) =~ "Active Google"
+      assert has_element?(lv, "[data-auth-provider-status='disabled']", "Old GitHub (disabled)")
+      assert has_element?(lv, "[data-auth-provider-status='deleted']", "Deleted provider")
+    end
+
+    test "keeps stale provider values on the edit form until they are removed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      disabled = github_provider_fixture(account: account, name: "Old GitHub", is_disabled: true)
+      deleted_id = Ecto.UUID.generate()
+
+      policy =
+        policy_fixture(
+          account: account,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [disabled.id, deleted_id]
+            }
+          ]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      value_input = "input[name='policy[conditions][auth_provider_id][values][]']"
+
+      assert has_element?(lv, "[data-auth-provider-status='disabled']", "Old GitHub (disabled)")
+      assert has_element?(lv, "[data-auth-provider-status='deleted']", "Deleted provider")
+      assert has_element?(lv, "#{value_input}[value='#{disabled.id}']")
+      assert has_element?(lv, "#{value_input}[value='#{deleted_id}']")
+
+      # Disabled providers stay out of the selection list
+      refute has_element?(lv, "label[phx-click='toggle_auth_provider_value'][phx-value-id='#{disabled.id}']")
+
+      lv
+      |> element("button[phx-click='toggle_auth_provider_value'][phx-value-id='#{deleted_id}']")
+      |> render_click()
+
+      refute has_element?(lv, "[data-auth-provider-status='deleted']")
+      refute has_element?(lv, "#{value_input}[value='#{deleted_id}']")
+      assert has_element?(lv, "#{value_input}[value='#{disabled.id}']")
+    end
+
     test "warns when a saved policy condition uses X.509 without a trust anchor", %{
       conn: conn,
       account: account,
