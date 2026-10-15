@@ -184,6 +184,81 @@ jobs:
       - name: Run tests
         run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
 
+  event-loop-bench:
+    name: event-loop-bench
+    # Dependabot's PRs have no access to the Bencher API key.
+    if: (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    # Bencher runs one Bare Metal job at a time, so a run may queue behind others.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write # post Bencher PR comments
+      checks: write # Bencher check annotations
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+      BENCHER_SPEC: intel-v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - name: Build bench
+        run: |
+          cargo build --release -p tunnel-bench
+          cp target/release/tunnel-bench tests/tunnel-bench/
+      - name: Push image to the Bencher registry
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          image="registry.bencher.dev/$BENCHER_PROJECT:$GITHUB_SHA"
+          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
+          docker build --platform linux/amd64 -t "$image" tests/tunnel-bench
+          docker push "$image"
+          echo "IMAGE=$image" >>"$GITHUB_ENV"
+      - name: Run on Bencher Bare Metal
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            branch=(
+              --branch "$GITHUB_HEAD_REF"
+              --start-point "$GITHUB_BASE_REF"
+              --start-point-hash "$BASE_SHA"
+              --start-point-clone-thresholds
+              --start-point-reset
+            )
+          else
+            branch=(
+              --branch main
+              --threshold-measure latency
+              --threshold-test t_test
+              --threshold-max-sample-size 64
+              --threshold-upper-boundary 0.99
+              --thresholds-reset
+            )
+          fi
+
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --testbed "bare-metal-$BENCHER_SPEC" \
+            --spec "$BENCHER_SPEC" \
+            --image "$IMAGE" \
+            --job-timeout 300 \
+            "${branch[@]}" \
+            --adapter rust_criterion \
+            --github-actions "$GITHUB_TOKEN" \
+            --ci-id event-loop \
+            --error-on-alert
+
   fuzz-targets:
     name: fuzz-targets
     runs-on: ubuntu-24.04
