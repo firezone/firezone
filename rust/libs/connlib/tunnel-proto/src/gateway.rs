@@ -220,11 +220,7 @@ impl GatewayState {
             .translate_outbound(packet, now)
             .context("Failed to translate outbound packet")?
         {
-            TranslateOutboundResult::Send(packet) => {
-                flow_tracker::record_translated_packet(&packet);
-
-                Ok(Some(packet))
-            }
+            TranslateOutboundResult::Send(packet) => Ok(Some(packet)),
             TranslateOutboundResult::IcmpError {
                 reply,
                 no_authorization,
