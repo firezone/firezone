@@ -37,5 +37,4 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
-      pull-requests: write # post perf result comments
       checks: write # Bencher check annotations
