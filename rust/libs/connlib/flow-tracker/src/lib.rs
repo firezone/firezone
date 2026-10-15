@@ -884,15 +884,16 @@ pub fn record_decrypted_packet(packet: &IpPacket) {
     });
 }
 
-/// Records the current packet's fields again after NAT rewrote it.
-pub fn record_translated_packet(packet: &IpPacket) {
+/// Records that NAT rewrote the current packet's destination to `dst` and its
+/// source protocol to `src_proto`.
+pub fn record_translated_destination(src_proto: Protocol, dst: IpAddr) {
     update_current_flow(|data| {
         let Some(inner) = data.inner.as_mut() else {
             return;
         };
 
-        inner.dst_ip = packet.destination();
-        inner.src_proto = packet.source_protocol();
+        inner.dst_ip = dst;
+        inner.src_proto = Ok(src_proto);
     });
 }
 
@@ -935,15 +936,45 @@ struct InnerFlow {
 
 impl From<&IpPacket> for InnerFlow {
     fn from(packet: &IpPacket) -> Self {
+        let (src_ip, dst_ip) = packet.source_and_destination();
+
+        if let Some(tcp) = packet.as_tcp() {
+            return InnerFlow {
+                src_ip,
+                dst_ip,
+                src_proto: Ok(Protocol::Tcp(tcp.source_port())),
+                dst_proto: Ok(Protocol::Tcp(tcp.destination_port())),
+                tcp_syn: tcp.syn(),
+                tcp_ack: tcp.ack(),
+                tcp_fin: tcp.fin(),
+                tcp_rst: tcp.rst(),
+                payload_len: tcp.payload().len(),
+            };
+        }
+
+        if let Some(udp) = packet.as_udp() {
+            return InnerFlow {
+                src_ip,
+                dst_ip,
+                src_proto: Ok(Protocol::Udp(udp.source_port())),
+                dst_proto: Ok(Protocol::Udp(udp.destination_port())),
+                tcp_syn: false,
+                tcp_ack: false,
+                tcp_fin: false,
+                tcp_rst: false,
+                payload_len: udp.payload().len(),
+            };
+        }
+
         InnerFlow {
-            src_ip: packet.source(),
-            dst_ip: packet.destination(),
+            src_ip,
+            dst_ip,
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
-            tcp_syn: packet.as_tcp().map(|tcp| tcp.syn()).unwrap_or(false),
-            tcp_ack: packet.as_tcp().map(|tcp| tcp.ack()).unwrap_or(false),
-            tcp_fin: packet.as_tcp().map(|tcp| tcp.fin()).unwrap_or(false),
-            tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
+            tcp_syn: false,
+            tcp_ack: false,
+            tcp_fin: false,
+            tcp_rst: false,
             payload_len: packet.layer4_payload_len(),
         }
     }
