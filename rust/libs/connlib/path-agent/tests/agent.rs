@@ -6,15 +6,16 @@
 //! lives in the tunnel proptest.
 
 use std::net::{IpAddr, SocketAddr};
+use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use boringtun::noise::{Index, Tunn, TunnResult};
-use boringtun::x25519::{PublicKey, StaticSecret};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
     Candidate, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent, Payload,
     REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
+use sanstun::{Interface, Received, StaticSecret, Tunnel, TunnelConfig};
+use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
 
@@ -54,7 +55,7 @@ fn retransmit_ladder_runs_once_then_stops() {
     let _ = a.transmits();
 
     // Gaps after the first 50ms fire. The ladder ends at 1600ms and stops —
-    // boringtun's own re-init drives retransmission after that, so it does not
+    // WireGuard's own re-init drives retransmission after that, so it does not
     // repeat the tail.
     let mut t = now + ms(50);
     let gaps: [u64; 7] = [50, 50, 100, 200, 400, 800, 1600];
@@ -77,7 +78,7 @@ fn retransmit_ladder_runs_once_then_stops() {
 }
 
 #[test]
-fn a_boringtun_reinit_refans_once_without_re_arming_the_ladder() {
+fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
@@ -94,7 +95,7 @@ fn a_boringtun_reinit_refans_once_without_re_arming_the_ladder() {
         let _ = a.transmits();
     }
 
-    // A boringtun re-init (fresh bytes, still no session) re-fans to every relay
+    // A WireGuard re-init (fresh bytes, still no session) re-fans to every relay
     // pair once but does not restart the fast ladder.
     let mut reinit = handshake_init_bytes();
     reinit[4] = 7;
@@ -127,7 +128,13 @@ fn inbound_handshake_response_stops_the_fanout() {
     let _ = a.transmits();
 
     let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, (addr(2), addr(4)), now);
+    let _ = a.receive(
+        &mut hs.initiator,
+        &mut hs.initiator_interface,
+        &hs.response,
+        (addr(2), addr(4)),
+        now,
+    );
     a.drain_events();
     let _ = a.transmits();
 
@@ -151,7 +158,13 @@ fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     // The peer's init lands before ours went out, e.g. a stale re-key from a
     // connection the peer has since replaced and no longer knows the session of.
     let mut hs = Handshake::new(now);
-    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), now);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    );
     a.drain_events();
     let _ = a.transmits();
 
@@ -175,9 +188,15 @@ fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
 fn rejected_handshake_leaves_state_untouched() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    let hs = Handshake::new(now);
+    let mut hs = Handshake::new(now);
 
-    let _ = a.handle_inbound_network(&mut reject_all(), &hs.init, (addr(2), addr(4)), now);
+    let _ = a.receive(
+        &mut reject_all(),
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    );
 
     assert!(a.poll_event().is_none());
     assert!(a.poll_transmit().is_none());
@@ -192,27 +211,32 @@ fn responder_dedup_replays_within_window_then_expires() {
     let path = (addr(2), addr(4));
 
     assert!(
-        a.handle_inbound_network(&mut hs.responder, &hs.init, path, now)
-            .is_break()
+        a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            path,
+            now
+        )
+        .is_break()
     );
     a.drain_events();
     let _ = a.transmits();
 
-    // A replay inside the window is served from the cache; `reject_all` proves
-    // boringtun isn't touched.
+    // The interface rejects a replay; one inside the window is answered from the cache.
     let replay_at = now + RESPONDER_DEDUP_TTL - ms(1);
-    let _ = a.handle_inbound_network(&mut reject_all(), &hs.init, path, replay_at);
+    assert!(
+        hs.responder_interface
+            .receive(path.1, &hs.init, replay_at)
+            .is_err()
+    );
+    assert!(a.replay_cached_response(&hs.init, path, replay_at));
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 
     a.handle_timeout(now + RESPONDER_DEDUP_TTL);
     let _ = a.transmits();
 
-    let _ = a.handle_inbound_network(
-        &mut reject_all(),
-        &hs.init,
-        path,
-        now + RESPONDER_DEDUP_TTL + secs(1),
-    );
+    assert!(!a.replay_cached_response(&hs.init, path, now + RESPONDER_DEDUP_TTL + secs(1)));
     assert!(a.poll_transmit().is_none(), "cache expired");
 }
 
@@ -228,7 +252,13 @@ fn establishing_init_adopts_its_relay_path_as_the_primary() {
     let now = Instant::now();
     let mut hs = Handshake::new(now);
 
-    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), now);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        now,
+    );
 
     assert_eq!(
         a.primary(),
@@ -312,7 +342,13 @@ fn a_pathless_agent_probes_forever() {
     let mut a = agent_with_relay_pairs();
     let t0 = Instant::now();
     let mut hs = Handshake::new(t0);
-    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t0);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(2), addr(4)),
+        t0,
+    );
     a.confirm_session(t0);
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
     a.drain_events();
@@ -391,10 +427,12 @@ fn an_answered_rekey_resets_the_distress_count() {
     a.handle_outbound(handshake_init_bytes(), t0 + secs(1));
     let _ = a.transmits();
 
-    // A response answers it, resetting the count.
-    let mut hs = Handshake::new(t0).with_response(t0);
-    let _ = a.handle_inbound_network(
+    // A response answers it, resetting the count. It must differ from the
+    // bootstrap response, which is dropped as a duplicate.
+    let mut hs = Handshake::new_seeded(t0, 1).with_response(t0);
+    let _ = a.receive(
         &mut hs.initiator,
+        &mut hs.initiator_interface,
         &hs.response,
         (addr(1), addr(3)),
         t0 + secs(1),
@@ -446,8 +484,14 @@ fn a_second_peer_rekey_without_data_clears_the_primary() {
     let mut t = t0;
     for i in 0..REKEY_DISTRESS_ATTEMPTS {
         t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u64::from(i));
-        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
+        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
+        let _ = a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            (addr(2), addr(4)),
+            t,
+        );
     }
     a.drain_events();
     let _ = a.transmits();
@@ -467,8 +511,14 @@ fn peer_data_resets_the_peer_rekey_count() {
     let mut t = t0;
     for i in 0..(REKEY_DISTRESS_ATTEMPTS + 2) {
         t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u64::from(i));
-        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
+        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
+        let _ = a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            (addr(2), addr(4)),
+            t,
+        );
         let _ = a.handle_inbound_tun(decrypted_data_packet(), (addr(2), addr(4)), t);
     }
     a.drain_events();
@@ -488,10 +538,17 @@ fn unauthenticated_peer_data_does_not_reset_the_peer_rekey_count() {
     let mut t = t0;
     for i in 0..REKEY_DISTRESS_ATTEMPTS {
         t += secs(1);
-        let mut hs = Handshake::new_seeded(t0, u64::from(i));
-        let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(2), addr(4)), t);
-        let _ = a.handle_inbound_network(
+        let mut hs = Handshake::new_seeded(t0, u8::try_from(i).unwrap());
+        let _ = a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            (addr(2), addr(4)),
+            t,
+        );
+        let _ = a.receive(
             &mut reject_all(),
+            &mut hs.responder_interface,
             &data_packet_bytes(),
             (addr(2), addr(4)),
             t,
@@ -669,7 +726,13 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // An inbound init from an unadvertised address registers it peer-reflexive
     // and, as the establishing init, adopts the pair as the primary.
     let mut hs = Handshake::new(t0);
-    let _ = a.handle_inbound_network(&mut hs.responder, &hs.init, (addr(1), addr(9)), t0);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(1), addr(9)),
+        t0,
+    );
     a.confirm_session(t0);
     assert_eq!(a.primary(), Some((addr(1), addr(9))));
 
@@ -784,6 +847,14 @@ impl Activity {
 }
 
 trait AgentExt {
+    fn receive(
+        &mut self,
+        tunnel: &mut Tunnel,
+        interface: &mut Interface,
+        bytes: &[u8],
+        path: Pair,
+        now: Instant,
+    ) -> ControlFlow<()>;
     fn transmits(&mut self) -> Vec<Transmit>;
     fn drain_events(&mut self);
     fn tick(&mut self, now: Instant) -> Vec<Transmit>;
@@ -792,6 +863,22 @@ trait AgentExt {
 }
 
 impl AgentExt for PathAgent {
+    fn receive(
+        &mut self,
+        tunnel: &mut Tunnel,
+        interface: &mut Interface,
+        bytes: &[u8],
+        path: Pair,
+        now: Instant,
+    ) -> ControlFlow<()> {
+        let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
+            panic!("expected a verified packet");
+        };
+
+        self.handle_inbound_network(tunnel, packet, bytes, path, now)
+            .map_continue(|_| ())
+    }
+
     fn transmits(&mut self) -> Vec<Transmit> {
         std::iter::from_fn(|| self.poll_transmit()).collect()
     }
@@ -896,14 +983,22 @@ fn decrypted_data_packet() -> IpPacket {
 
 fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
     let mut hs = Handshake::new(now).with_response(now);
-    let _ = a.handle_inbound_network(&mut hs.initiator, &hs.response, recv_path, now);
+    let _ = a.receive(
+        &mut hs.initiator,
+        &mut hs.initiator_interface,
+        &hs.response,
+        recv_path,
+        now,
+    );
     a.drain_events();
     let _ = a.transmits();
 }
 
 struct Handshake {
-    initiator: Tunn,
-    responder: Tunn,
+    initiator: Tunnel,
+    initiator_interface: Interface,
+    responder: Tunnel,
+    responder_interface: Interface,
     init: Vec<u8>,
     response: Vec<u8>,
 }
@@ -915,59 +1010,49 @@ impl Handshake {
 
     /// `seed` varies the initiator's ephemeral so distinct handshakes produce
     /// distinct init bytes (else they'd be dropped as duplicates).
-    fn new_seeded(now: Instant, seed: u64) -> Self {
-        let priv_a = StaticSecret::from([1u8; 32]);
-        let pub_a = PublicKey::from(&priv_a);
-        let priv_b = StaticSecret::from([2u8; 32]);
-        let pub_b = PublicKey::from(&priv_b);
+    fn new_seeded(now: Instant, seed: u8) -> Self {
+        let mut initiator_interface = interface(now, seed * 2, 1);
+        let mut responder_interface = interface(now, seed * 2 + 1, 2);
 
-        let unix = Duration::from_secs(1);
-        let mut initiator = Tunn::new_at(
-            priv_a,
-            pub_b,
-            None,
-            None,
-            Index::new_local(seed as u32 * 2),
-            None,
-            seed * 2,
-            now,
-            now,
-            unix,
-        );
-        let responder = Tunn::new_at(
-            priv_b,
-            pub_a,
-            None,
-            None,
-            Index::new_local(seed as u32 * 2 + 1),
-            None,
-            seed * 2 + 1,
-            now,
-            now,
-            unix,
-        );
+        let mut initiator = initiator_interface
+            .new_tunnel(
+                responder_interface.static_public(),
+                TunnelConfig::default(),
+                now,
+            )
+            .unwrap();
+        let responder = responder_interface
+            .new_tunnel(
+                initiator_interface.static_public(),
+                TunnelConfig::default(),
+                now,
+            )
+            .unwrap();
 
-        let mut buf = [0u8; 148];
-        let TunnResult::WriteToNetwork(init) =
-            initiator.format_handshake_initiation_at(&mut buf, true, now)
-        else {
-            panic!("expected init");
-        };
-        let init = init.to_vec();
+        let init = initiator
+            .restart_handshake(now)
+            .expect("expected init")
+            .to_vec();
 
         Self {
             initiator,
+            initiator_interface,
             responder,
+            responder_interface,
             init,
             response: Vec::new(),
         }
     }
 
     fn with_response(mut self, now: Instant) -> Self {
-        let mut buf = [0u8; 148];
-        let TunnResult::WriteToNetwork(response) = self
-            .responder
-            .decapsulate_at(None, &self.init, &mut buf, now)
+        let Ok(Received::Message(init)) =
+            self.responder_interface
+                .receive("127.0.0.1:1".parse().unwrap(), &self.init, now)
+        else {
+            panic!("expected init");
+        };
+        self.responder.begin_decapsulate(init, now).unwrap();
+        let Some(sanstun::Event::SendHandshakeResponse(response)) = self.responder.poll_event()
         else {
             panic!("expected response");
         };
@@ -976,21 +1061,19 @@ impl Handshake {
     }
 }
 
-/// Mismatched keypair — every `decapsulate_at` call rejects.
-fn reject_all() -> Tunn {
+fn interface(now: Instant, seed: u8, static_private: u8) -> Interface {
+    Interface::new(Zeroizing::new([seed; 32]), now, Duration::from_secs(1))
+        .with_static_private(StaticSecret::from(Zeroizing::new([static_private; 32])))
+}
+
+/// Mismatched keypair: every `begin_decapsulate` call rejects.
+fn reject_all() -> Tunnel {
     let now = Instant::now();
-    Tunn::new_at(
-        StaticSecret::from([3u8; 32]),
-        PublicKey::from(&StaticSecret::from([4u8; 32])),
-        None,
-        None,
-        Index::new_local(99),
-        None,
-        99,
-        now,
-        now,
-        Duration::from_secs(1),
-    )
+    let peer = interface(now, 98, 4).static_public();
+
+    interface(now, 99, 3)
+        .new_tunnel(peer, TunnelConfig::default(), now)
+        .unwrap()
 }
 
 fn build_echo_request(id: u16, seq: u16) -> IpPacket {

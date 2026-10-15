@@ -41,7 +41,6 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
-use boringtun::x25519;
 use connlib_model::{
     ClientId, ClientOrGatewayId, ConnectedDeviceView, DevicePoolResourceView, GatewayId,
     IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
@@ -54,6 +53,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
+use sanstun::StaticSecret;
 use secrecy::ExposeSecret as _;
 use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
@@ -62,6 +62,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
+use zeroize::Zeroizing;
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -1053,7 +1054,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
-            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             client_ice.into(),
             gateway_ice.into(),
             snownet::IceRole::Controlling,
@@ -1174,7 +1175,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
-            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             local_client_ice.into(),
             remote_client_ice.into(),
             ice_role.into(),

@@ -7,7 +7,7 @@
 //! ## Bootstrap
 //!
 //! Probes ride the WireGuard session, so a session must exist before any path
-//! can be probed. To get one, the agent fans a boringtun `init` out over every
+//! can be probed. To get one, the agent fans a WireGuard `init` out over every
 //! pair that involves a relay candidate — relays are always reachable, even
 //! behind double symmetric NAT. A session is *established* the moment we see a
 //! handshake (an init or a response), and the establishing handshake seeds a
