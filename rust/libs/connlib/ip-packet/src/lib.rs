@@ -397,6 +397,28 @@ impl IpPacket {
         }
     }
 
+    /// The source and destination address, read with a single parse of the IP header.
+    pub fn source_and_destination(&self) -> (IpAddr, IpAddr) {
+        match self.version {
+            IpVersion::V4 => {
+                let header = self.ipv4_header_unchecked();
+
+                (
+                    IpAddr::V4(header.source().into()),
+                    IpAddr::V4(header.destination().into()),
+                )
+            }
+            IpVersion::V6 => {
+                let header = self.ipv6_header_unchecked();
+
+                (
+                    IpAddr::V6(header.source().into()),
+                    IpAddr::V6(header.destination().into()),
+                )
+            }
+        }
+    }
+
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         if let Some(p) = self.as_tcp() {
             return Ok(Protocol::Tcp(p.source_port()));
