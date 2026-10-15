@@ -33,9 +33,8 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sanstun::{
-    Committed, Datagram, Decrypted, Interface, PendingDecapsulate, PendingEncapsulate,
-    PresharedKey, PublicKey, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig,
-    TunnelId,
+    Committed, Datagram, Decrypted, Interface, PendingEncapsulate, PresharedKey, PublicKey,
+    Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig, TunnelId,
 };
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -1970,28 +1969,62 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         let path = (destination, from);
-        let is_handshake = matches!(
-            packet,
-            ReceivedMessage::HandshakeInitiation(_) | ReceivedMessage::HandshakeResponse(_)
-        );
 
-        let result = match &mut self.agent {
-            Agent::Path(agent) => {
-                agent.handle_inbound_network(&mut self.tunnel, packet, datagram, path, now)
+        match packet {
+            ReceivedMessage::HandshakeInitiation(init) => {
+                let result = match &mut self.agent {
+                    Agent::Path(agent) => agent.handle_handshake_initiation(
+                        &mut self.tunnel,
+                        init,
+                        datagram,
+                        path,
+                        now,
+                    ),
+                    Agent::Ice(_) => {
+                        self.tunnel
+                            .handle_handshake_initiation(init, now)
+                            .map(|reply| {
+                                self.buffer_or_send_ice(&cid, [reply], allocations, transmits, now)
+                            })
+                    }
+                };
+
+                ControlFlow::Break(result.context("handshake packet"))
             }
-            Agent::Ice(_) => self.handle_inbound_ice(&cid, packet, allocations, transmits, now),
-        };
+            ReceivedMessage::HandshakeResponse(response) => {
+                let result = match &mut self.agent {
+                    Agent::Path(agent) => agent.handle_handshake_response(
+                        &mut self.tunnel,
+                        response,
+                        datagram,
+                        path,
+                        now,
+                    ),
+                    Agent::Ice(_) => {
+                        self.tunnel
+                            .handle_handshake_response(response, now)
+                            .map(|reply| {
+                                self.buffer_or_send_ice(&cid, [reply], allocations, transmits, now)
+                            })
+                    }
+                };
 
-        let pending = match result {
-            ControlFlow::Continue(pending) => pending,
-            ControlFlow::Break(Ok(())) => return ControlFlow::Break(Ok(())),
-            ControlFlow::Break(Err(e)) if is_handshake => {
-                return ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")));
+                ControlFlow::Break(result.context("handshake packet"))
             }
-            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
-        };
-
-        ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
+            ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
+                self.tunnel
+                    .handle_cookie_reply(reply, now)
+                    .map_err(anyhow::Error::new),
+            ),
+            ReceivedMessage::TransportData(data) => {
+                match self.tunnel.begin_decapsulate(data, now) {
+                    Ok(pending) => {
+                        ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
+                    }
+                    Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+                }
+            }
+        }
     }
 
     fn commit_decrypted<TId>(
@@ -2043,47 +2076,6 @@ where
         // socket. On the controlled side the handshake can complete before nomination, in
         // which case the event is emitted from the `NominatedSend` handler instead.
         self.state.has_nominated_socket()
-    }
-
-    /// Runs `message` through the tunnel, sending a handshake's reply on the nominated socket.
-    fn handle_inbound_ice<TId>(
-        &mut self,
-        cid: &TId,
-        message: ReceivedMessage,
-        allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
-        now: Instant,
-    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate>
-    where
-        TId: fmt::Display,
-        RId: Ord + fmt::Display + Copy,
-    {
-        let reply = match message {
-            ReceivedMessage::HandshakeInitiation(init) => {
-                self.tunnel.handle_handshake_initiation(init, now)
-            }
-            ReceivedMessage::HandshakeResponse(response) => {
-                self.tunnel.handle_handshake_response(response, now)
-            }
-            ReceivedMessage::CookieReply(reply) => {
-                return ControlFlow::Break(self.tunnel.handle_cookie_reply(reply, now));
-            }
-            ReceivedMessage::TransportData(data) => {
-                return match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => ControlFlow::Continue(pending),
-                    Err(e) => ControlFlow::Break(Err(e)),
-                };
-            }
-        };
-
-        match reply {
-            Ok(reply) => {
-                self.buffer_or_send_ice(cid, [reply], allocations, transmits, now);
-
-                ControlFlow::Break(Ok(()))
-            }
-            Err(e) => ControlFlow::Break(Err(e)),
-        }
     }
 
     fn buffer_or_send<TId>(

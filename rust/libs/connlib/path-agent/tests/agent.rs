@@ -6,7 +6,6 @@
 //! lives in the tunnel proptest.
 
 use std::net::{IpAddr, SocketAddr};
-use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
@@ -219,7 +218,7 @@ fn responder_dedup_replays_within_window_then_expires() {
             path,
             now
         )
-        .is_break()
+        .is_ok()
     );
     a.drain_events();
     let _ = a.transmits();
@@ -855,7 +854,7 @@ trait AgentExt {
         bytes: &[u8],
         path: Pair,
         now: Instant,
-    ) -> ControlFlow<()>;
+    ) -> Result<(), sanstun::Error>;
     fn transmits(&mut self) -> Vec<Transmit>;
     fn drain_events(&mut self);
     fn tick(&mut self, now: Instant) -> Vec<Transmit>;
@@ -871,13 +870,20 @@ impl AgentExt for PathAgent {
         bytes: &[u8],
         path: Pair,
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> Result<(), sanstun::Error> {
         let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
             panic!("expected a verified packet");
         };
-        self.handle_inbound_network(tunnel, packet, bytes, path, now)
-            .map_break(|_| ())
-            .map_continue(|_| ())
+        match packet {
+            ReceivedMessage::HandshakeInitiation(init) => {
+                self.handle_handshake_initiation(tunnel, init, bytes, path, now)
+            }
+            ReceivedMessage::HandshakeResponse(response) => {
+                self.handle_handshake_response(tunnel, response, bytes, path, now)
+            }
+            ReceivedMessage::CookieReply(reply) => tunnel.handle_cookie_reply(reply, now),
+            ReceivedMessage::TransportData(data) => tunnel.begin_decapsulate(data, now).map(drop),
+        }
     }
 
     fn transmits(&mut self) -> Vec<Transmit> {

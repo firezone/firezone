@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use sanstun::{Datagram, PendingDecapsulate, ReceivedMessage, Tunnel};
+use sanstun::{Datagram, HandshakeInitiation, HandshakeResponse, Tunnel};
 
 use crate::candidate::Candidate;
 use crate::event::{Event, Outbound, Payload, Transmit};
@@ -504,127 +504,116 @@ impl PathAgent {
         }
     }
 
-    /// Runs `message`, received on `path` as `datagram`, through `tunnel`.
+    /// Runs `init`, received on `path` as `datagram`, through `tunnel`.
     ///
-    /// Handshakes are handled here: duplicates are dropped before they reach
-    /// `tunnel`, accepted ones are recorded and their replies are queued.
-    /// Data messages continue as the pending decapsulation.
-    pub fn handle_inbound_network(
+    /// Duplicates are dropped before they reach `tunnel`; an accepted init is
+    /// recorded and its response queued on `path`.
+    pub fn handle_handshake_initiation(
         &mut self,
         tunnel: &mut Tunnel,
-        message: ReceivedMessage,
+        init: HandshakeInitiation,
         datagram: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate> {
-        match message {
-            // Drop dups arriving on multiple pairs in one tick so WireGuard
-            // doesn't reject them as replays.
-            ReceivedMessage::HandshakeInitiation(_)
-                if self.responder.last_init.as_deref() == Some(datagram) =>
-            {
-                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
+    ) -> Result<(), sanstun::Error> {
+        // Drop dups arriving on multiple pairs in one tick so WireGuard
+        // doesn't reject them as replays.
+        if self.responder.last_init.as_deref() == Some(datagram) {
+            tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
-                ControlFlow::Break(Ok(()))
-            }
-            ReceivedMessage::HandshakeResponse(_)
-                if self.forwarded_response.as_deref() == Some(datagram) =>
-            {
-                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
-
-                ControlFlow::Break(Ok(()))
-            }
-            ReceivedMessage::HandshakeInitiation(init) => {
-                let response = match tunnel.handle_handshake_initiation(init, now) {
-                    Ok(response) => response,
-                    Err(e) => return ControlFlow::Break(Err(e)),
-                };
-                self.last_now = Some(now);
-
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
-
-                // Remembered so fanned-out duplicates arriving on other pairs in
-                // this tick are dropped (see the duplicate-init arm above).
-                self.responder.last_init = Some(datagram.to_vec());
-
-                self.register_peer_reflexive(path, now);
-
-                // The init that *establishes* the session hands us a working
-                // path for free: it arrived over the relay fan-out (the worst
-                // tier), so adopting it as the preliminary primary is sound:
-                // probing can only promote away from a relay, never get trapped.
-                // Without this the responder stays pathless until its first
-                // probe reply and its connection drops inbound data until then.
-                //
-                // A *mid-session* init (a re-key) is different: it rides the
-                // peer's primary, which may be a better tier we haven't validated
-                // for our own sending, so it must not move our primary; probing
-                // decides. Hence we only adopt on the establishing init.
-                if !self.session_confirmed
-                    && self.primary.is_none()
-                    && self.pairs.contains_key(&path)
-                {
-                    self.set_primary(path);
-                }
-
-                // Distinct inits with no data in between mean the peer isn't
-                // hearing us: WireGuard distress.
-                self.peer_rekeys = self.peer_rekeys.saturating_add(1);
-                if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
-                    self.clear_and_reprobe(now);
-                }
-
-                // The response MUST go back on the path the init arrived on,
-                // never the primary: otherwise bootstrap (and re-keys) can't
-                // complete. Cache it so a retransmitted init is answered from
-                // memory without re-decapsulating.
-                tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
-
-                self.responder.dedup = Some(ResponderDedup {
-                    init_bytes: datagram.to_vec(),
-                    response_bytes: response.clone(),
-                    cached_at: now,
-                });
-                self.pending_transmits.push_back(Transmit {
-                    local: path.0,
-                    remote: path.1,
-                    payload: Payload::Ciphertext(response),
-                });
-
-                ControlFlow::Break(Ok(()))
-            }
-            ReceivedMessage::HandshakeResponse(response) => {
-                let keepalive = match tunnel.handle_handshake_response(response, now) {
-                    Ok(keepalive) => keepalive,
-                    Err(e) => return ControlFlow::Break(Err(e)),
-                };
-                self.last_now = Some(now);
-
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
-
-                // Our re-key was answered: the path works both ways.
-                self.outbound_init = None;
-                self.unanswered_rekeys = 0;
-                self.forwarded_response = Some(datagram.to_vec());
-                self.confirm_session(now);
-
-                // A response is bidirectionally validated, so it is safe to
-                // adopt as a (tier-ranked) preliminary primary before probing.
-                self.promote_from_handshake(path);
-
-                self.handle_outbound(Outbound::Data(keepalive), now);
-
-                ControlFlow::Break(Ok(()))
-            }
-            ReceivedMessage::CookieReply(reply) => {
-                ControlFlow::Break(tunnel.handle_cookie_reply(reply, now))
-            }
-            ReceivedMessage::TransportData(data) => match tunnel.begin_decapsulate(data, now) {
-                Ok(pending) => ControlFlow::Continue(pending),
-                Err(e) => ControlFlow::Break(Err(e)),
-            },
+            return Ok(());
         }
+
+        let response = tunnel.handle_handshake_initiation(init, now)?;
+        self.last_now = Some(now);
+
+        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
+
+        // Remembered so fanned-out duplicates arriving on other pairs in
+        // this tick are dropped (see the duplicate check above).
+        self.responder.last_init = Some(datagram.to_vec());
+
+        self.register_peer_reflexive(path, now);
+
+        // The init that *establishes* the session hands us a working
+        // path for free: it arrived over the relay fan-out (the worst
+        // tier), so adopting it as the preliminary primary is sound:
+        // probing can only promote away from a relay, never get trapped.
+        // Without this the responder stays pathless until its first
+        // probe reply and its connection drops inbound data until then.
+        //
+        // A *mid-session* init (a re-key) is different: it rides the
+        // peer's primary, which may be a better tier we haven't validated
+        // for our own sending, so it must not move our primary; probing
+        // decides. Hence we only adopt on the establishing init.
+        if !self.session_confirmed && self.primary.is_none() && self.pairs.contains_key(&path) {
+            self.set_primary(path);
+        }
+
+        // Distinct inits with no data in between mean the peer isn't
+        // hearing us: WireGuard distress.
+        self.peer_rekeys = self.peer_rekeys.saturating_add(1);
+        if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
+            tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
+            self.clear_and_reprobe(now);
+        }
+
+        // The response MUST go back on the path the init arrived on,
+        // never the primary: otherwise bootstrap (and re-keys) can't
+        // complete. Cache it so a retransmitted init is answered from
+        // memory without re-decapsulating.
+        tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
+
+        self.responder.dedup = Some(ResponderDedup {
+            init_bytes: datagram.to_vec(),
+            response_bytes: response.clone(),
+            cached_at: now,
+        });
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::Ciphertext(response),
+        });
+
+        Ok(())
+    }
+
+    /// Runs `response`, received on `path` as `datagram`, through `tunnel`.
+    ///
+    /// Duplicates are dropped before they reach `tunnel`; an accepted response
+    /// confirms the session and its keepalive is queued.
+    pub fn handle_handshake_response(
+        &mut self,
+        tunnel: &mut Tunnel,
+        response: HandshakeResponse,
+        datagram: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> Result<(), sanstun::Error> {
+        if self.forwarded_response.as_deref() == Some(datagram) {
+            tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+
+            return Ok(());
+        }
+
+        let keepalive = tunnel.handle_handshake_response(response, now)?;
+        self.last_now = Some(now);
+
+        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
+
+        // Our re-key was answered: the path works both ways.
+        self.outbound_init = None;
+        self.unanswered_rekeys = 0;
+        self.forwarded_response = Some(datagram.to_vec());
+        self.confirm_session(now);
+
+        // A response is bidirectionally validated, so it is safe to
+        // adopt as a (tier-ranked) preliminary primary before probing.
+        self.promote_from_handshake(path);
+
+        self.handle_outbound(Outbound::Data(keepalive), now);
+
+        Ok(())
     }
 
     /// Answers a retransmitted init with the response cached for it, returning
