@@ -193,6 +193,7 @@ defmodule PortalWeb.Policies.Components do
         :if={@policy && @panel.panel_view == :list}
         account={@account}
         policy={@policy}
+        connected_posture_providers={@postures.connected}
         providers={@providers}
         disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
@@ -729,12 +730,14 @@ defmodule PortalWeb.Policies.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_details_view(assigns) do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.policy_details_header policy={@policy} />
       <.policy_details_layout
+        connected_posture_providers={@connected_posture_providers}
         account={@account}
         policy={@policy}
         providers={@providers}
@@ -766,6 +769,7 @@ defmodule PortalWeb.Policies.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_details_layout(assigns) do
     ~H"""
@@ -809,6 +813,7 @@ defmodule PortalWeb.Policies.Components do
         <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
           <.policy_access_mapping account={@account} policy={@policy} />
           <.policy_conditions_list
+            connected_posture_providers={@connected_posture_providers}
             account={@account}
             policy={@policy}
             providers={@providers}
@@ -963,6 +968,7 @@ defmodule PortalWeb.Policies.Components do
   attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_conditions_list(assigns) do
     ~H"""
@@ -995,7 +1001,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
-      <PostureComponents.postures_summary postures={@policy.postures} />
+      <PostureComponents.postures_summary postures={@policy.postures} connected={@connected_posture_providers} />
     </div>
     """
   end

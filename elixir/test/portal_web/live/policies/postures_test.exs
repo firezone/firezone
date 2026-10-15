@@ -88,6 +88,25 @@ defmodule PortalWeb.Policies.PosturesTest do
     assert Postures.check_available?(iru, encryption)
   end
 
+  test "custom rules list the provider types they use that are not connected" do
+    custom =
+      cast(%{
+        "or" => [
+          %{"not" => expansion(:compliant)},
+          %{"field" => "sophos.health_overall", "op" => "is", "value" => "good"},
+          expansion(:client_up_to_date)
+        ]
+      })
+
+    assert Postures.new(:enabled, custom, connected: []) |> Postures.unconnected_providers() == [:intune, :sophos]
+    assert Postures.new(:enabled, custom, connected: [:sophos]) |> Postures.unconnected_providers() == [:intune]
+    assert Postures.new(:enabled, custom, connected: [:intune, :sophos]) |> Postures.unconnected_providers() == []
+
+    # Checks are judged one at a time, so they never appear here
+    checks = cast(expansion(:compliant))
+    assert Postures.new(:enabled, checks, connected: []) |> Postures.unconnected_providers() == []
+  end
+
   test "maybe_drop_unsupported/2 keeps postures only when enabled" do
     attrs = %{"postures" => "{}", "description" => "x"}
     assert Postures.maybe_drop_unsupported(attrs, %{availability: :enabled}) == attrs
