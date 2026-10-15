@@ -839,6 +839,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            tunnel_events_queued_at: None,
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1055,16 +1056,7 @@ where
             Err(e) => return ControlFlow::Break(Err(e)),
         };
 
-        let control_flow = conn.decapsulate(
-            cid,
-            from,
-            destination,
-            parsed_packet,
-            packet,
-            &mut self.allocations,
-            &mut self.buffered_transmits,
-            now,
-        );
+        let control_flow = conn.decapsulate(cid, from, destination, parsed_packet, packet, now);
 
         let mut established = false;
 
@@ -1409,6 +1401,8 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
+    /// When an accepted handshake queued a reply in [`Tunnel`], drained in `handle_timeout`.
+    tunnel_events_queued_at: Option<Instant>,
 }
 
 impl<RId> Connection<RId>
@@ -1471,6 +1465,10 @@ where
                     .map(|instant| (instant, "disconnect timeout")),
             )
             .chain(self.state.poll_timeout(&self.agent))
+            .chain(
+                self.tunnel_events_queued_at
+                    .map(|instant| (instant, "WireGuard events")),
+            )
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
@@ -1520,7 +1518,7 @@ where
             return;
         }
 
-        self.handle_tunnel_timeout(now, allocations, transmits);
+        self.handle_tunnel_timeout(&cid, now, allocations, transmits);
 
         while let Some(event) = self.agent.poll_ice_event() {
             match event {
@@ -1717,16 +1715,21 @@ where
         }
     }
 
-    fn handle_tunnel_timeout(
+    fn handle_tunnel_timeout<TId>(
         &mut self,
+        cid: &TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-    ) {
+    ) where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
         // Advance unconditionally — even in `Connecting` — so a stuck
         // bootstrap eventually surfaces `ConnectionExpired` instead of
         // hanging.
         self.tunnel.handle_timeout(now);
+        self.tunnel_events_queued_at = None;
 
         let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) else {
             return;
@@ -1737,19 +1740,7 @@ where
             self.state = ConnectionState::Failed;
         }
 
-        for message in messages {
-            if self.agent.is_iceless() {
-                self.agent.handle_outbound(message, now);
-            } else if let Some(peer_socket) = self.socket() {
-                transmits.extend(make_owned_transmit(
-                    self.relay,
-                    peer_socket,
-                    &message.into_bytes(),
-                    allocations,
-                    now,
-                ));
-            }
-        }
+        self.buffer_or_send(cid, messages, allocations, transmits, now);
     }
 
     fn adopt_iceless_peer_socket<TId>(
@@ -1884,8 +1875,6 @@ where
         destination: SocketAddr,
         packet: ReceivedMessage,
         datagram: &[u8],
-        allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where
@@ -1911,16 +1900,7 @@ where
             && result.is_ok()
         {
             self.agent.handshake_accepted(kind, datagram, path, now);
-        }
-
-        // Handshakes make the tunnel reply, i.e. with a handshake response or a keepalive.
-        // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
-        if let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) {
-            if expired {
-                tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
-                self.state = ConnectionState::Failed;
-            }
-            self.buffer_or_send(&cid, messages, allocations, transmits, now);
+            self.tunnel_events_queued_at = Some(now);
         }
 
         let pending = match result {
