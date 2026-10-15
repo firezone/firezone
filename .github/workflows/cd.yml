@@ -126,8 +126,10 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
     permissions:
+      checks: write # Bencher check annotations
       contents: read
       id-token: write # OIDC auth
+      pull-requests: write # post Bencher PR comments
       security-events: write # trivy SARIF upload from setup-mise
 
   elixir:
