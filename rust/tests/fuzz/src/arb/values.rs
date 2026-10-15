@@ -166,10 +166,8 @@ pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
         .collect()
 }
 
-pub(super) fn arb_tree_name(g: &mut Generator) -> DomainName {
-    let index = g.choose_index(g.domain_tree.len());
-
-    g.domain_tree[index].clone()
+pub(super) fn arb_tree_name(g: &mut Generator, domain_tree: &[DomainName]) -> DomainName {
+    domain_tree[g.choose_index(domain_tree.len())].clone()
 }
 
 pub(super) fn arb_cidr_resource_address(g: &mut Generator) -> IpNetwork {
@@ -230,8 +228,8 @@ pub(super) fn arb_different_cidr_resource_address(
     }
 }
 
-pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
-    let name = arb_tree_name(g).to_string();
+pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainName]) -> String {
+    let name = arb_tree_name(g, domain_tree).to_string();
     if g.bool() {
         return name;
     }
@@ -254,9 +252,12 @@ pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
     }
 }
 
-pub(super) fn arb_domain_matching_dns_resource(g: &mut Generator, address: &str) -> DomainName {
-    let in_tree = g
-        .domain_tree
+pub(super) fn arb_domain_matching_dns_resource(
+    g: &mut Generator,
+    address: &str,
+    domain_tree: &[DomainName],
+) -> DomainName {
+    let in_tree = domain_tree
         .iter()
         .filter(|name| dns::is_subdomain(name, address))
         .cloned()
@@ -296,7 +297,7 @@ pub(super) fn arb_different_dns_resource_address(
         }
     }
 
-    let address = arb_dns_resource_address(g);
+    let address = arb_dns_resource_address(g, &state.domain_tree);
 
     if address != current {
         return address;

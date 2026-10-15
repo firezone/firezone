@@ -373,7 +373,7 @@ fn arb_resource_edit(
     old: Resource,
 ) -> ResourceEdit {
     if g.flip(25) {
-        let new = arb_resource_with_different_type(g, portal, &old);
+        let new = arb_resource_with_different_type(g, portal, &state.domain_tree, &old);
 
         return ResourceEdit { old, new };
     }
@@ -486,6 +486,7 @@ fn arb_different_name(g: &mut Generator, current: &str) -> String {
 fn arb_resource_with_different_type(
     g: &mut Generator,
     portal: &StubPortal,
+    domain_tree: &[DomainName],
     resource: &Resource,
 ) -> Resource {
     #[derive(Clone, Copy)]
@@ -524,7 +525,7 @@ fn arb_resource_with_different_type(
         }),
         ResourceType::Dns => Resource::Dns(DnsResource {
             id,
-            address: arb_dns_resource_address(g),
+            address: arb_dns_resource_address(g, domain_tree),
             name,
             address_description: arb_address_description(g),
             sites: vec![site],

@@ -126,7 +126,7 @@ pub(super) fn generate(
     state: &ReferenceState,
 ) -> Transition {
     let target = targets[g.choose_index(targets.len())].clone();
-    let (client_id, query) = generate_query(g, target);
+    let (client_id, query) = generate_query(g, target, &state.domain_tree);
     let known_ptr_target = (query.r_type == RecordType::PTR)
         .then(|| arb_known_ptr_target(g, state, client_id))
         .flatten();
@@ -151,7 +151,7 @@ pub(super) fn generate(
     let queries = std::iter::once((client_id, query))
         .chain((0..g.count(0, 4)).map(|_| {
             let target = targets[g.choose_index(targets.len())].clone();
-            generate_query(g, target)
+            generate_query(g, target, &state.domain_tree)
         }))
         .unique_by(|(client_id, query)| {
             (
@@ -166,11 +166,15 @@ pub(super) fn generate(
     Transition::SendDnsQueries(queries)
 }
 
-fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQuery) {
+fn generate_query(
+    g: &mut Generator,
+    target: DnsQueryTarget,
+    domain_tree: &[DomainName],
+) -> (ClientId, DnsQuery) {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
         DnsNameSpec::Resource { address } => {
-            let domain = arb_domain_matching_dns_resource(g, &address);
+            let domain = arb_domain_matching_dns_resource(g, &address, domain_tree);
             let rtypes = if g.bool() {
                 vec![RecordType::A]
             } else {
@@ -178,7 +182,7 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
             };
             (domain, rtypes)
         }
-        DnsNameSpec::TreeName => (arb_tree_name(g), vec![RecordType::A]),
+        DnsNameSpec::TreeName => (arb_tree_name(g, domain_tree), vec![RecordType::A]),
         DnsNameSpec::KnownLabel { base, labels } => {
             let label = &labels[g.choose_index(labels.len())];
             (
