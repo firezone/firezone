@@ -52,11 +52,9 @@ tracing = { workspace = true, features = ["attributes"] }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-bytecodec = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest = { workspace = true }
 rand = { workspace = true }
-stun_codec = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
 
