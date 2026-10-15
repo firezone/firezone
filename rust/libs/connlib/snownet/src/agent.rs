@@ -7,7 +7,8 @@ use std::time::Instant;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use path_agent::{HandshakeKind, Outbound};
+use path_agent::Outbound;
+use sanstun::{PendingDecapsulate, ReceivedMessage, Tunnel};
 
 use crate::{IceConfig, IceRole};
 
@@ -180,27 +181,21 @@ impl Agent {
         }
     }
 
-    pub(crate) fn is_duplicate_handshake(
-        &self,
-        kind: HandshakeKind,
-        bytes: &[u8],
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-    ) -> bool {
-        match self {
-            Self::Ice(_) => false,
-            Self::Path(agent) => agent.is_duplicate_handshake(kind, bytes, path),
-        }
-    }
-
-    pub(crate) fn handshake_accepted(
+    pub(crate) fn handle_inbound_network(
         &mut self,
-        kind: HandshakeKind,
-        bytes: &[u8],
+        tunnel: &mut Tunnel,
+        message: ReceivedMessage,
+        datagram: &[u8],
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) {
-        if let Self::Path(agent) = self {
-            agent.handshake_accepted(kind, bytes, path, now);
+    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate> {
+        match self {
+            Self::Ice(_) => match tunnel.begin_decapsulate(message, now) {
+                Ok(Some(pending)) => ControlFlow::Continue(pending),
+                Ok(None) => ControlFlow::Break(Ok(())),
+                Err(e) => ControlFlow::Break(Err(e)),
+            },
+            Self::Path(agent) => agent.handle_inbound_network(tunnel, message, datagram, path, now),
         }
     }
 
@@ -266,6 +261,12 @@ impl Agent {
     pub(crate) fn handle_outbound(&mut self, outbound: Outbound, now: Instant) {
         if let Self::Path(path) = self {
             path.handle_outbound(outbound, now);
+        }
+    }
+
+    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
+        if let Self::Path(path) = self {
+            path.initiate_handshake(tunnel, now);
         }
     }
 

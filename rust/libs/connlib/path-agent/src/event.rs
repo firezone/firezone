@@ -42,7 +42,7 @@ impl Outbound {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HandshakeKind {
+pub(crate) enum HandshakeKind {
     Initiation,
     Response,
 }
