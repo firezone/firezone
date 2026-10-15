@@ -281,6 +281,7 @@ impl Recorder {
     /// Records observed state combinations that should guide future fuzzing.
     pub fn record(&mut self, reference: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
         record_translated_icmp_error_feedback(reference, state);
+        record_site_network_feedback(reference);
         record_dns_refresh_feedback(reference, state);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
@@ -802,6 +803,45 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             received.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
             responds_with_icmp_error,
+        );
+    }
+}
+
+/// Records probes sent through a Gateway whose site cannot reach or resolve their destination.
+fn record_site_network_feedback(reference: &ReferenceState) {
+    let networks = &reference.site_networks;
+
+    for expected in reference.expected_probes.values() {
+        let request = &expected.request;
+        let client = reference.clients[&expected.origin].inner();
+        let Some(gateway) = client
+            .resource_by_dst(request.source(), request.destination(), request.protocol())
+            .and_then(|resource| client.gateway_for_resource(resource))
+        else {
+            continue;
+        };
+        let site = reference.gateways[&gateway].inner().site;
+        let (local, reachable, resolves) = match request.destination() {
+            Destination::DomainName { name, .. } => (
+                networks.local_site(name).is_some(),
+                networks.reaches_name(site, name),
+                networks.resolves(site, name),
+            ),
+            Destination::IpAddr(ip) => (
+                networks.owner_of(*ip).is_some(),
+                networks.reaches(site, *ip),
+                true,
+            ),
+        };
+
+        record!(
+            local,
+            reachable,
+            resolves,
+            matches!(request.destination(), Destination::DomainName { .. }),
+            networks.unreachable_response(site).is_some(),
+            matches!(request, ProbeRequest::Udp { .. }),
+            matches!(request, ProbeRequest::Tcp { .. }),
         );
     }
 }
