@@ -33,8 +33,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sanstun::{
-    Committed, Decrypted, Interface, PendingEncapsulate, PresharedKey, PublicKey, Received,
-    ReceivedMessage, StaticSecret, Tunnel, TunnelConfig, TunnelId,
+    Committed, Datagram, Decrypted, Interface, PendingDecapsulate, PendingEncapsulate,
+    PresharedKey, PublicKey, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig,
+    TunnelId,
 };
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -1120,7 +1121,16 @@ where
             Err(e) => return ControlFlow::Break(Err(e)),
         };
 
-        let control_flow = conn.decapsulate(from, destination, parsed_packet, packet, now);
+        let control_flow = conn.decapsulate(
+            cid,
+            from,
+            destination,
+            parsed_packet,
+            packet,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            now,
+        );
 
         // A responder completes the handshake on the initiator's first transport data (key
         // confirmation), not on the init; see `handle_decrypted`.
@@ -1816,7 +1826,7 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) else {
+        let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel) else {
             return;
         };
 
@@ -1940,15 +1950,23 @@ where
         }))
     }
 
-    fn decapsulate(
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Handshake replies are sent while decapsulating."
+    )]
+    fn decapsulate<TId>(
         &mut self,
+        cid: TId,
         from: SocketAddr,
         destination: SocketAddr,
         packet: ReceivedMessage,
         datagram: &[u8],
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
         now: Instant,
     ) -> ControlFlow<Result<()>, DecryptJob>
     where
+        TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
         let path = (destination, from);
@@ -1957,9 +1975,12 @@ where
             ReceivedMessage::HandshakeInitiation(_) | ReceivedMessage::HandshakeResponse(_)
         );
 
-        let result =
-            self.agent
-                .handle_inbound_network(&mut self.tunnel, packet, datagram, path, now);
+        let result = match &mut self.agent {
+            Agent::Path(agent) => {
+                agent.handle_inbound_network(&mut self.tunnel, packet, datagram, path, now)
+            }
+            Agent::Ice(_) => self.handle_inbound_ice(&cid, packet, allocations, transmits, now),
+        };
 
         let pending = match result {
             ControlFlow::Continue(pending) => pending,
@@ -2024,6 +2045,47 @@ where
         self.state.has_nominated_socket()
     }
 
+    /// Runs `message` through the tunnel, sending a handshake's reply on the nominated socket.
+    fn handle_inbound_ice<TId>(
+        &mut self,
+        cid: &TId,
+        message: ReceivedMessage,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+        now: Instant,
+    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate>
+    where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
+        let reply = match message {
+            ReceivedMessage::HandshakeInitiation(init) => {
+                self.tunnel.handle_handshake_initiation(init, now)
+            }
+            ReceivedMessage::HandshakeResponse(response) => {
+                self.tunnel.handle_handshake_response(response, now)
+            }
+            ReceivedMessage::CookieReply(reply) => {
+                return ControlFlow::Break(self.tunnel.handle_cookie_reply(reply, now));
+            }
+            ReceivedMessage::TransportData(data) => {
+                return match self.tunnel.begin_decapsulate(data, now) {
+                    Ok(pending) => ControlFlow::Continue(pending),
+                    Err(e) => ControlFlow::Break(Err(e)),
+                };
+            }
+        };
+
+        match reply {
+            Ok(reply) => {
+                self.buffer_or_send_ice(cid, [reply], allocations, transmits, now);
+
+                ControlFlow::Break(Ok(()))
+            }
+            Err(e) => ControlFlow::Break(Err(e)),
+        }
+    }
+
     fn buffer_or_send<TId>(
         &mut self,
         cid: &TId,
@@ -2047,12 +2109,32 @@ where
             return;
         }
 
+        self.buffer_or_send_ice(
+            cid,
+            messages.into_iter().map(Outbound::into_datagram),
+            allocations,
+            transmits,
+            now,
+        );
+    }
+
+    fn buffer_or_send_ice<TId>(
+        &mut self,
+        cid: &TId,
+        messages: impl IntoIterator<Item = Datagram>,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+        now: Instant,
+    ) where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
         match &mut self.state {
             ConnectionState::Connecting { wg_buffer, .. } => {
                 tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
                 for message in messages {
-                    wg_buffer.enqueue(message.into_datagram());
+                    wg_buffer.enqueue(message);
                 }
             }
             ConnectionState::Connected { peer_socket, .. }
@@ -2061,7 +2143,7 @@ where
                     transmits.extend(make_owned_transmit(
                         self.relay,
                         *peer_socket,
-                        &message.into_datagram(),
+                        &message,
                         allocations,
                         now,
                     ));
@@ -2290,10 +2372,7 @@ where
 
 /// Drains the events of `tunnel`, returning the messages it wants to send and whether the connection expired.
 /// Returns `None` without building anything if no event is queued, which is the case after every data message.
-fn drain_tunnel_events(
-    tunnel: &mut Tunnel,
-    now: Instant,
-) -> Option<(SmallVec<[Outbound; 2]>, bool)> {
+fn drain_tunnel_events(tunnel: &mut Tunnel) -> Option<(SmallVec<[Outbound; 2]>, bool)> {
     let mut next = Some(tunnel.poll_event()?);
     let mut messages = SmallVec::new();
     let mut expired = false;
@@ -2303,15 +2382,7 @@ fn drain_tunnel_events(
             sanstun::Event::SendHandshakeInitiation(message) => {
                 messages.push(Outbound::HandshakeInitiation(message))
             }
-            sanstun::Event::SendHandshakeResponse(message) => {
-                messages.push(Outbound::HandshakeResponse(message))
-            }
-            sanstun::Event::KeepaliveDue(keepalive) => {
-                match tunnel.encapsulate_keepalive(keepalive, now) {
-                    Ok(message) => messages.push(Outbound::Data(message)),
-                    Err(e) => tracing::debug!("Failed to encapsulate keepalive: {e}"),
-                }
-            }
+            sanstun::Event::SendKeepalive(message) => messages.push(Outbound::Data(message)),
             sanstun::Event::ConnectionExpired => expired = true,
         }
 

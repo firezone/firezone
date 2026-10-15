@@ -8,7 +8,7 @@ use std::time::Instant;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 use path_agent::Outbound;
-use sanstun::{PendingDecapsulate, ReceivedMessage, Tunnel};
+use sanstun::Tunnel;
 
 use crate::{IceConfig, IceRole};
 
@@ -178,24 +178,6 @@ impl Agent {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),
             Self::Path(_) => false,
-        }
-    }
-
-    pub(crate) fn handle_inbound_network(
-        &mut self,
-        tunnel: &mut Tunnel,
-        message: ReceivedMessage,
-        datagram: &[u8],
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate> {
-        match self {
-            Self::Ice(_) => match tunnel.begin_decapsulate(message, now) {
-                Ok(Some(pending)) => ControlFlow::Continue(pending),
-                Ok(None) => ControlFlow::Break(Ok(())),
-                Err(e) => ControlFlow::Break(Err(e)),
-            },
-            Self::Path(agent) => agent.handle_inbound_network(tunnel, message, datagram, path, now),
         }
     }
 
