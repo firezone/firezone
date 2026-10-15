@@ -1008,13 +1008,12 @@ where
                 return ControlFlow::Break(Ok(()));
             }
             Err(sanstun::Error::ReplayedHandshakeInitiation { peer_static_public })
-                if self
-                    .connections
-                    .get_established_mut_by_public_key(peer_static_public.to_bytes(), now)
-                    .is_ok_and(|(_, c)| {
-                        c.agent
-                            .replay_cached_response(packet, (destination, from), now)
-                    }) =>
+                if self.replay_handshake_response(
+                    &peer_static_public,
+                    packet,
+                    (destination, from),
+                    now,
+                ) =>
             {
                 return ControlFlow::Break(Ok(()));
             }
@@ -1098,6 +1097,22 @@ where
         control_flow
             .map_continue(|c| (cid, c))
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+    }
+
+    /// Lets the connection to `peer` answer a replayed handshake initiation from its cache,
+    /// returning whether it did.
+    // `#[cold]` keeps this lookup from bloating the inlined path every data message takes.
+    #[cold]
+    fn replay_handshake_response(
+        &mut self,
+        peer: &PublicKey,
+        init: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> bool {
+        self.connections
+            .get_established_mut_by_public_key(peer.to_bytes(), now)
+            .is_ok_and(|(_, c)| c.agent.replay_cached_response(init, path, now))
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
