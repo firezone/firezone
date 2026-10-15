@@ -998,15 +998,6 @@ where
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
-        // WireGuard rejects a retransmitted init as a replay, so answer it from the cache first.
-        if let Ok(init) = <&[u8; 148]>::try_from(packet)
-            && self
-                .connections
-                .replay_handshake_response(init, (destination, from), now)
-        {
-            return ControlFlow::Break(Ok(()));
-        }
-
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(Received::Message(parsed_packet)) => parsed_packet,
             Ok(Received::SendCookieReply(reply)) => {
@@ -1014,6 +1005,17 @@ where
 
                 self.reply_on_arrival_path(destination, from, &reply, now);
 
+                return ControlFlow::Break(Ok(()));
+            }
+            Err(sanstun::Error::ReplayedHandshakeInitiation { peer_static_public })
+                if self
+                    .connections
+                    .get_established_mut_by_public_key(peer_static_public.to_bytes(), now)
+                    .is_ok_and(|(_, c)| {
+                        c.agent
+                            .replay_cached_response(packet, (destination, from), now)
+                    }) =>
+            {
                 return ControlFlow::Break(Ok(()));
             }
             // If the packet is not a WireGuard packet, bail early.
@@ -1027,13 +1029,6 @@ where
                     anyhow::Error::new(e).context("Failed to verify WireGuard packet")
                 ));
             }
-        };
-
-        let init = match &parsed_packet {
-            ReceivedMessage::HandshakeInitiation(_) => <[u8; 148]>::try_from(packet).ok(),
-            ReceivedMessage::HandshakeResponse(_)
-            | ReceivedMessage::TransportData(_)
-            | ReceivedMessage::CookieReply(_) => None,
         };
 
         // A responder completes the handshake on the initiator's first transport data (key
@@ -1087,13 +1082,6 @@ where
             // socket. On the controlled side the handshake can complete before nomination, in
             // which case the event is emitted from the `NominatedSend` handler instead.
             established = conn.state.has_nominated_socket();
-        }
-
-        if let Some(init) = init
-            && conn.agent.is_iceless()
-            && matches!(control_flow, ControlFlow::Break(Ok(())))
-        {
-            self.connections.insert_answered_init(init, cid);
         }
 
         let is_closing = self.connections.is_closing(&cid);
