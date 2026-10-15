@@ -1,6 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod spin;
 mod workers;
+pub use spin::SpinningReceiver;
 pub use workers::Workers;
 
 use bufferpool::{Buffer, VecBuf};
@@ -125,7 +127,7 @@ pub trait Tun: Send + Sync + 'static {
 pub fn outbound_channel() -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
 
-    (OutboundTx(tx), OutboundRx(rx))
+    (OutboundTx(tx), OutboundRx(SpinningReceiver::new(rx)))
 }
 
 /// Creates the channel connecting the thread reading from the TUN device to the main thread.
@@ -141,7 +143,7 @@ pub fn inbound_channel() -> (InboundTx, InboundRx) {
 pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(capacity);
 
-    (OutboundTx(tx), OutboundRx(rx))
+    (OutboundTx(tx), OutboundRx(SpinningReceiver::new(rx)))
 }
 
 /// The sending half of the channel to the thread writing to the TUN device.
@@ -172,7 +174,7 @@ impl OutboundTx {
 }
 
 /// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx(mpsc::Receiver<PacketBatch>);
+pub struct OutboundRx(SpinningReceiver<PacketBatch>);
 
 impl OutboundRx {
     pub async fn recv(&mut self) -> Option<PacketBatch> {

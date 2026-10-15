@@ -234,7 +234,8 @@ struct Channels {
 
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
-        let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let mut outbound_rx = tun::SpinningReceiver::new(outbound_rx);
         let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
         let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
