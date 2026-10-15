@@ -737,7 +737,7 @@ impl PathAgent {
     /// Records that the session is confirmed, which starts probing and ends the
     /// bootstrap fan-out.
     ///
-    /// [`Self::handle_inbound_network`] detects an answered init itself; the
+    /// [`Self::handle_handshake_response`] detects an answered init itself; the
     /// caller reports the other case: the peer's transport data decrypting
     /// under a session we answered.
     pub fn confirm_session(&mut self, now: Instant) {
