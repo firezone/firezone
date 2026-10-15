@@ -23,7 +23,7 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: apple-client-1.5.22
+      RELEASE_NAME: apple-client-1.5.23
     steps:
       - name: Set release metadata
         id: release-metadata
@@ -36,7 +36,7 @@ jobs:
         uses: ./.github/actions/check-release-review-lock
         with:
           release-name: ${{ env.RELEASE_NAME }}
-      - uses: release-drafter/release-drafter@c345907820e0396f6f44bcfd9ac4763325f8feb0 # v7.8.0
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -112,7 +112,7 @@ jobs:
       # the test runner need.
       - name: Pack the test products
         run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/macos-ui-tests-build.tar" Products
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-ui-tests-build
           path: ${{ runner.temp }}/macos-ui-tests-build.tar
@@ -165,7 +165,7 @@ jobs:
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: macos-ui-tests-build
           path: ${{ runner.temp }}
@@ -178,12 +178,12 @@ jobs:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:macos-ui-tests
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-${{ matrix.release }}-screenshots
           path: swift/apple/screenshots/macos/${{ matrix.release }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: macos-${{ matrix.release }}-ui-tests-xcresult
@@ -225,7 +225,7 @@ jobs:
       # the test runner need.
       - name: Pack the test products
         run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/ios-ui-tests-build.tar" Products
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-ui-tests-build
           path: ${{ runner.temp }}/ios-ui-tests-build.tar
@@ -264,7 +264,7 @@ jobs:
           sw_vers -productVersion
           sysctl -n hw.model machdep.cpu.brand_string
           system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ios-ui-tests-build
           path: ${{ runner.temp }}
@@ -279,11 +279,11 @@ jobs:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:ios-ui-tests
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-${{ matrix.device }}-screenshots
           path: swift/apple/screenshots/ios/${{ matrix.device }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: ios-${{ matrix.device }}-ui-tests-xcresult
@@ -327,10 +327,10 @@ jobs:
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
-            artifact-file: "firezone-ios-client-1.5.22.ipa"
+            artifact-file: "firezone-ios-client-1.5.23.ipa"
             platform: iOS
             # mark:next-apple-version
-            release-name: apple-client-1.5.22
+            release-name: apple-client-1.5.23
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -344,11 +344,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.22.dmg"
+            artifact-file: "firezone-macos-client-1.5.23.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.22.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.23.pkg"
             # mark:next-apple-version
-            release-name: apple-client-1.5.22
+            release-name: apple-client-1.5.23
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -390,7 +390,7 @@ jobs:
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
       - name: Preserve the App Store package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: github.event_name == 'workflow_dispatch' && matrix.job_name != 'build-macos-standalone'
         with:
           name: ${{ matrix.job_name }}-package
@@ -398,14 +398,14 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Upload .dmg artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-dmg
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           retention-days: 7
       - name: Upload .pkg artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-pkg

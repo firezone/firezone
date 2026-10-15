@@ -7,6 +7,7 @@ defmodule PortalWeb.Resources.Components do
   alias PortalWeb.Devices.Components, as: DeviceComponents
 
   alias __MODULE__.Database
+  alias PortalWeb.Format
 
   @resource_types %{
     internet: %{index: 1, label: nil},
@@ -477,6 +478,9 @@ defmodule PortalWeb.Resources.Components do
   attr :selected_devices, :list, required: true
   attr :device_search_results, :any, default: nil
   attr :device_search, :string, default: ""
+  attr :device_search_online_only, :boolean, default: false
+  attr :device_search_recently_seen, :boolean, default: false
+  attr :device_search_loading, :boolean, default: false
 
   def resource_device_pool_section(assigns) do
     ~H"""
@@ -491,6 +495,9 @@ defmodule PortalWeb.Resources.Components do
         selected_devices={@selected_devices}
         device_search={@device_search}
         device_search_results={@device_search_results}
+        device_search_online_only={@device_search_online_only}
+        device_search_recently_seen={@device_search_recently_seen}
+        device_search_loading={@device_search_loading}
       />
     </div>
     """
@@ -743,14 +750,20 @@ defmodule PortalWeb.Resources.Components do
   attr :selected_devices, :list, required: true
   attr :device_search_results, :any, default: nil
   attr :device_search, :string, default: ""
+  attr :device_search_online_only, :boolean, default: false
+  attr :device_search_recently_seen, :boolean, default: false
+  attr :device_search_loading, :boolean, default: false
 
   def device_picker(assigns) do
     ~H"""
-    <div class="space-y-1">
-      <div class="relative mb-2" phx-click-away="blur_device_search">
+    <div class="space-y-1" phx-click-away="blur_device_search">
+      <div class="relative mb-2">
         <Core.icon
-          name="ri-search-line"
-          class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
+          name={if @device_search_loading, do: "ri-loader-4-line", else: "ri-search-line"}
+          class={[
+            "absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none",
+            @device_search_loading && "animate-spin"
+          ]}
         />
         <input
           type="text"
@@ -766,80 +779,238 @@ defmodule PortalWeb.Resources.Components do
         />
       </div>
 
-      <ul :if={@selected_devices != []} class="space-y-1 mb-1">
-        <li :for={device <- @selected_devices}>
-          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-brand bg-brand-muted">
-            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-              <Core.icon name="ri-computer-line" class="w-4 h-4 text-brand" />
-            </div>
-            <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-brand truncate">{device.name}</p>
-              <p class="text-[10px] text-subtle truncate">{device_details(device)}</p>
-            </div>
-            <button
-              type="button"
-              phx-click="remove_device"
-              phx-value-device_id={device.id}
-              class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-brand/50 hover:text-brand transition-colors"
-              aria-label="Remove device"
-            >
-              <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </li>
-      </ul>
-
-      <ul :if={@device_search_results != nil && @device_search_results != []} class="space-y-1">
-        <li :for={device <- @device_search_results}>
-          <button
-            type="button"
-            phx-click="add_device"
-            phx-value-device_id={device.id}
-            class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-border bg-raised hover:border-border-emphasis hover:bg-surface cursor-pointer transition-colors"
-          >
-            <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-              <Core.icon name="ri-computer-line" class="w-4 h-4 text-subtle" />
-            </div>
-            <div class="flex-1 min-w-0 text-left">
-              <p class="text-sm font-medium text-heading truncate">{device.name}</p>
-              <p class="text-[10px] text-subtle truncate">{device_details(device)}</p>
-            </div>
-            <span class={[
-              "w-1.5 h-1.5 rounded-full shrink-0",
-              if(device.online?, do: "bg-success", else: "bg-neutral-status")
-            ]} />
-          </button>
-        </li>
-      </ul>
-
-      <div
-        :if={@device_search_results == []}
-        class="flex items-center justify-center h-16 text-xs text-subtle"
-      >
-        No devices found
+      <div class="flex items-center gap-1.5 mb-2">
+        <span class="text-[10px] text-subtle">Filters:</span>
+        <.device_search_filter_chip
+          filter="online_only"
+          label="Online only"
+          active={@device_search_online_only}
+        />
+        <.device_search_filter_chip
+          filter="recently_seen"
+          label="Seen in last 30 days"
+          active={@device_search_recently_seen}
+        />
       </div>
 
-      <div
-        :if={@selected_devices == [] && is_nil(@device_search_results)}
-        class="flex items-center justify-center h-12 text-xs text-subtle"
-      >
-        Search above to add devices
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div class="flex flex-col min-w-0">
+          <p class="mb-1 text-[10px] font-medium text-subtle">
+            Selected ({Format.number(length(@selected_devices))})
+          </p>
+          <ul
+            :if={@selected_devices != []}
+            id="device-picker-selected"
+            class="h-64 overflow-y-auto space-y-1 pr-1"
+          >
+            <li :for={device <- @selected_devices} class="min-w-0">
+              <.device_chip device={device} selected />
+            </li>
+          </ul>
+          <div
+            :if={@selected_devices == []}
+            class="flex items-center justify-center h-64 rounded border border-dashed border-border text-xs text-subtle"
+          >
+            No devices selected
+          </div>
+        </div>
+
+        <div class="flex flex-col min-w-0 sm:col-span-2">
+          <div class="flex items-center justify-between mb-1 text-[10px] text-subtle">
+            <p class="font-medium">Search results</p>
+            <p
+              :if={@device_search_loading && @device_search_results}
+              id="device-search-loading" role="status" class="flex items-center gap-1">
+              <Core.icon name="ri-loader-4-line" class="w-3 h-3 animate-spin" /> Searching…
+            </p>
+          </div>
+          <ul
+            :if={@device_search_results && @device_search_results.devices != []}
+            aria-busy={to_string(@device_search_loading)}
+            class={[
+              "grid grid-cols-1 gap-1 sm:h-64 sm:grid-cols-2 sm:grid-rows-5 sm:grid-flow-col transition-opacity",
+              @device_search_loading && "opacity-50 pointer-events-none"
+            ]}
+          >
+            <li :for={device <- @device_search_results.devices} class="min-w-0">
+              <.device_chip device={device} />
+            </li>
+          </ul>
+          <div
+            :if={@device_search_results && @device_search_results.total == 0}
+            class={[
+              "flex items-center justify-center h-64 rounded border border-dashed border-border text-xs text-subtle",
+              @device_search_loading && "opacity-50"
+            ]}
+          >
+            No devices found
+          </div>
+          <div
+            :if={is_nil(@device_search_results)}
+            class="flex items-center justify-center gap-1.5 h-64 rounded border border-dashed border-border text-xs text-subtle"
+          >
+            <%= if @device_search_loading do %>
+              <span id="device-search-loading" role="status" class="flex items-center gap-1.5">
+                <Core.icon name="ri-loader-4-line" class="w-3.5 h-3.5 animate-spin" /> Searching…
+              </span>
+            <% else %>
+              Search or filter above to add devices
+            <% end %>
+          </div>
+          <.device_search_pager
+            :if={@device_search_results && @device_search_results.total > @device_search_results.page_size}
+            results={@device_search_results}
+          />
+        </div>
       </div>
     </div>
     """
   end
 
+  attr :filter, :string, required: true
+  attr :label, :string, required: true
+  attr :active, :boolean, required: true
+
+  defp device_search_filter_chip(assigns) do
+    ~H"""
+    <button
+      type="button"
+      role="switch"
+      phx-click="toggle_device_search_filter"
+      phx-value-filter={@filter}
+      aria-checked={to_string(@active)}
+      class={[
+        "inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border transition-colors",
+        if(@active,
+          do: "border-brand bg-brand-muted text-brand",
+          else: "border-dashed border-border-strong bg-transparent text-subtle hover:text-heading hover:border-border-emphasis"
+        )
+      ]}
+    >
+      <Core.icon name={if @active, do: "ri-checkbox-fill", else: "ri-checkbox-blank-line"} class="w-3 h-3" />
+      {@label}
+    </button>
+    """
+  end
+
+  attr :results, :map, required: true
+
+  defp device_search_pager(assigns) do
+    %{page: page, page_size: page_size, total: total} = assigns.results
+    last_page = div(total + page_size - 1, page_size)
+
+    assigns =
+      assign(assigns,
+        range:
+          "#{Format.number((page - 1) * page_size + 1)}–#{Format.number(min(page * page_size, total))} " <>
+            "of #{Format.number(total)}",
+        position: "#{Format.number(page)} / #{Format.number(last_page)}",
+        last_page: last_page
+      )
+
+    ~H"""
+    <div class="flex items-center justify-between pt-1 text-[10px] text-subtle">
+      <span>{@range}</span>
+      <div class="flex items-center gap-1">
+        <button
+          type="button"
+          phx-click="device_search_page"
+          phx-value-page={@results.page - 1}
+          disabled={@results.page <= 1}
+          class="flex items-center justify-center w-5 h-5 rounded hover:text-heading disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          aria-label="Previous page"
+        >
+          <Core.icon name="ri-arrow-left-s-line" class="w-3.5 h-3.5" />
+        </button>
+        <span>{@position}</span>
+        <button
+          type="button"
+          phx-click="device_search_page"
+          phx-value-page={@results.page + 1}
+          disabled={@results.page >= @last_page}
+          class="flex items-center justify-center w-5 h-5 rounded hover:text-heading disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          aria-label="Next page"
+        >
+          <Core.icon name="ri-arrow-right-s-line" class="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :device, Portal.Device, required: true
+  attr :selected, :boolean, default: false
+
+  defp device_chip(assigns) do
+    ~H"""
+    <div class={[
+      "relative flex items-center gap-2 px-2.5 py-1.5 w-full rounded border transition-colors",
+      if(@selected,
+        do: "border-brand bg-brand-muted",
+        else: "border-border bg-raised hover:border-border-emphasis hover:bg-surface"
+      )
+    ]}>
+      <button
+        :if={not @selected}
+        type="button"
+        phx-click="add_device"
+        phx-value-device_id={@device.id}
+        class="absolute inset-0 rounded cursor-pointer"
+        aria-label={"Add #{@device.name}"}
+      />
+      <span class={[
+        "w-1.5 h-1.5 rounded-full shrink-0",
+        if(@device.online?, do: "bg-success", else: "bg-neutral-status")
+      ]} />
+      <div class="flex-1 min-w-0">
+        <p class={["text-xs font-medium truncate", if(@selected, do: "text-brand", else: "text-heading")]}>
+          {@device.name}
+        </p>
+        <p :if={device_owner(@device)} class="text-[10px] text-subtle truncate">
+          {device_owner(@device)}
+        </p>
+      </div>
+      <Core.popover class="relative z-10 shrink-0 flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading cursor-help transition-colors">
+        <:target>
+          <Core.icon name="ri-information-line" class="w-3.5 h-3.5" />
+          <span class="sr-only">Details for {@device.name}</span>
+        </:target>
+        <:content>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[10px]">
+            <%= for {label, value} <- device_details(@device) do %>
+              <dt class="text-subtle">{label}</dt>
+              <dd class="font-mono text-body break-all">{value}</dd>
+            <% end %>
+          </dl>
+        </:content>
+      </Core.popover>
+      <button
+        :if={@selected}
+        type="button"
+        phx-click="remove_device"
+        phx-value-device_id={@device.id}
+        class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-brand/50 hover:text-brand transition-colors"
+        aria-label="Remove device"
+      >
+        <Core.icon name="ri-close-line" class="w-3.5 h-3.5" />
+      </button>
+    </div>
+    """
+  end
+
+  defp device_owner(%{actor: %Portal.Actor{} = actor}), do: actor.email || actor.name
+  defp device_owner(_device), do: nil
+
   defp device_details(device) do
     [
-      Portal.Types.INET.to_string(device.ipv4),
-      Portal.Types.INET.to_string(device.ipv6),
-      Portal.Device.fqdn(device),
-      device.device_serial,
-      device.device_uuid,
-      device.id
+      {"IPv4", Portal.Types.INET.to_string(device.ipv4)},
+      {"IPv6", Portal.Types.INET.to_string(device.ipv6)},
+      {"FQDN", Portal.Device.fqdn(device)},
+      {"Serial", device.device_serial},
+      {"UUID", device.device_uuid},
+      {"ID", device.id}
     ]
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.join(" | ")
+    |> Enum.reject(fn {_label, value} -> value in [nil, ""] end)
   end
 
   attr :open, :boolean, required: true
@@ -911,6 +1082,9 @@ defmodule PortalWeb.Resources.Components do
             selected_devices={@resource_form_selected_devices}
             device_search={@resource_form_device_search}
             device_search_results={@resource_form_device_search_results}
+            device_search_online_only={@resource_form_device_search_online_only}
+            device_search_recently_seen={@resource_form_device_search_recently_seen}
+            device_search_loading={@resource_form_device_search_loading}
           />
 
           <.resource_dns_ip_stack_section
@@ -2119,37 +2293,153 @@ defmodule PortalWeb.Resources.Components do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id == ^device_id)
+      |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.one()
+      |> case do
+        %Device{} = device -> device |> List.wrap() |> Portal.Presence.Devices.preload_presence() |> hd()
+        other -> other
+      end
     end
 
-    def search_devices(search_term, _subject, _selected_devices) when search_term in [nil, ""],
-      do: nil
+    @device_search_page_size 10
+    @recently_seen_days 30
 
-    def search_devices(search_term, subject, selected_devices) do
-      selected_ids = Enum.map(selected_devices, & &1.id)
-      online_ids = Portal.Presence.Devices.online_ids(subject.account.id)
-      pattern = "%#{search_term}%"
+    @type device_search_opts :: [
+            page: pos_integer(),
+            online_only: boolean(),
+            recently_seen: boolean()
+          ]
+    @type device_search_page :: %{
+            devices: [Device.t()],
+            reserve: [Device.t()],
+            page: pos_integer(),
+            page_size: pos_integer(),
+            total: non_neg_integer()
+          }
 
-      query =
-        from(d in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
-        |> join(:inner, [devices: d], a in assoc(d, :actor),
-          on: a.account_id == d.account_id,
-          as: :actors
-        )
-        |> where([devices: d], d.id not in ^selected_ids)
-        |> where(^device_search_filter(pattern))
-        |> order_by([devices: d], desc: d.id in ^online_ids)
-        |> limit(10)
+    @spec search_devices(String.t() | nil, Portal.Authentication.Subject.t(), [Device.t()], device_search_opts()) ::
+            device_search_page() | nil
+    def search_devices(search_term, subject, selected_devices, opts \\ []) do
+      online_only? = Keyword.get(opts, :online_only, false)
+      recently_seen? = Keyword.get(opts, :recently_seen, false)
 
-      case query |> Safe.scoped(subject) |> Safe.all() do
-        {:error, _} ->
-          []
+      if search_term in [nil, ""] and not online_only? and not recently_seen? do
+        nil
+      else
+        online_ids = Portal.Presence.Devices.online_ids(subject.account.id)
 
-        devices ->
-          Enum.map(devices, &%{&1 | online?: &1.id in online_ids})
+        query =
+          from(d in Device, as: :devices)
+          |> where([devices: d], d.type == :client)
+          |> join(:inner, [devices: d], a in assoc(d, :actor),
+            on: a.account_id == d.account_id,
+            as: :actors
+          )
+          |> where([devices: d], d.id not in ^Enum.map(selected_devices, & &1.id))
+          |> filter_device_search(search_term)
+          |> filter_online_only(online_only?, online_ids)
+          |> filter_recently_seen(recently_seen?, online_ids)
+
+        {devices, page, total} = fetch_device_search_page(query, subject, Keyword.get(opts, :page, 1), online_ids)
+        {devices, reserve} = Enum.split(devices, @device_search_page_size)
+
+        %{devices: devices, reserve: reserve, page: page, page_size: @device_search_page_size, total: total}
       end
+    end
+
+    # A page past the end returns no rows, and so no total to clamp it with. That only happens
+    # when the results shrank under a later page, so count separately just for that case.
+    defp fetch_device_search_page(query, subject, page, online_ids) do
+      page = max(page, 1)
+
+      case fetch_device_search_rows(query, subject, page, online_ids) do
+        {[], 0} when page > 1 ->
+          total = count_devices(query, subject)
+          page = clamp_page(page, total)
+          {devices, _total} = fetch_device_search_rows(query, subject, page, online_ids)
+          {devices, page, total}
+
+        {devices, total} ->
+          {devices, page, total}
+      end
+    end
+
+    # One scan both pages and counts the matches. The window runs over the ids and sort keys
+    # only: carrying whole rows through it spills to disk on large accounts, which made
+    # broad searches slower than counting separately. The full rows are joined for just the page.
+    defp fetch_device_search_rows(query, subject, page, online_ids) do
+      page_query =
+        query
+        |> where([devices: d], d.account_id == ^subject.account.id)
+        |> order_by([devices: d],
+          desc: d.id in ^online_ids,
+          desc_nulls_last: d.last_seen_at,
+          asc: d.id
+        )
+        # Fetch the next page too: the scan dominates the cost, so the extra rows are nearly free
+        # and let the picker backfill the page as devices are added without another query.
+        |> limit(^(@device_search_page_size * 2))
+        |> offset(^((page - 1) * @device_search_page_size))
+        |> select([devices: d], %{
+          id: d.id,
+          account_id: d.account_id,
+          online: d.id in ^online_ids,
+          last_seen_at: d.last_seen_at,
+          total: over(count(d.id))
+        })
+
+      from(d in Device, as: :devices)
+      |> join(:inner, [devices: d], p in subquery(page_query),
+        on: p.id == d.id and p.account_id == d.account_id,
+        as: :page
+      )
+      |> join(:inner, [devices: d], a in assoc(d, :actor), on: a.account_id == d.account_id, as: :actors)
+      |> order_by([page: p], desc: p.online, desc_nulls_last: p.last_seen_at, asc: p.id)
+      |> select([devices: d, page: p], {d, p.total})
+      |> preload([actors: a], actor: a)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} ->
+          {[], 0}
+
+        rows ->
+          {devices, totals} = Enum.unzip(rows)
+          {Enum.map(devices, &%{&1 | online?: &1.id in online_ids}), List.first(totals, 0)}
+      end
+    end
+
+    defp filter_device_search(query, search_term) when search_term in [nil, ""], do: query
+
+    defp filter_device_search(query, search_term),
+      do: where(query, ^device_search_filter("%#{search_term}%"))
+
+    defp filter_online_only(query, false, _online_ids), do: query
+
+    defp filter_online_only(query, true, online_ids),
+      do: where(query, [devices: d], d.id in ^online_ids)
+
+    defp filter_recently_seen(query, false, _online_ids), do: query
+
+    defp filter_recently_seen(query, true, online_ids) do
+      where(
+        query,
+        [devices: d],
+        d.id in ^online_ids or d.last_seen_at > ago(^@recently_seen_days, "day")
+      )
+    end
+
+    defp count_devices(query, subject) do
+      case query |> Safe.scoped(subject) |> Safe.aggregate(:count) do
+        {:error, _} -> 0
+        count -> count
+      end
+    end
+
+    defp clamp_page(page, total) do
+      last_page = max(div(total + @device_search_page_size - 1, @device_search_page_size), 1)
+      page |> max(1) |> min(last_page)
     end
 
     defp device_search_filter(pattern) do

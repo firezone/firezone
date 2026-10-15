@@ -49,6 +49,7 @@ use connlib_model::{
 use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -695,7 +696,7 @@ impl ClientState {
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
                 let packet = if let Some(domain) = &route.domain {
-                    flow_tracker::record_domain(domain.clone());
+                    flow_tracker::record_domain(domain.name().clone());
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
@@ -785,9 +786,15 @@ impl ClientState {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
                         .context("Failed to decode `DomainStatus`")?;
 
+                    let Some(domain) = self.resource_stub_resolver.resolved_domain(&res.domain)
+                    else {
+                        tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
+                        return Ok(None);
+                    };
+
                     let buffered_packets = self
                         .dns_resource_nat
-                        .on_domain_status(gid, res)
+                        .on_domain_status(gid, domain, res)
                         .into_iter()
                         .collect::<Vec<_>>();
 
@@ -1338,12 +1345,12 @@ impl ClientState {
             return ControlFlow::Break(());
         }
 
-        let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
-            if is_dns_sentinel(dst) {
-                return ControlFlow::Break(());
-            }
-
+        if !is_dns_sentinel(dst) {
             return ControlFlow::Continue(packet);
+        }
+
+        let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
+            return ControlFlow::Break(());
         };
 
         if self.tcp_dns_server.accepts(&packet) {
@@ -1626,7 +1633,7 @@ impl ClientState {
             return self.dns_config.system_dns_resolvers();
         };
 
-        let dns_by_sentinel = self.dns_config.mapping();
+        let dns_by_sentinel = self.dns_config.mapping().clone();
 
         self.maybe_update_tun_config(TunConfig {
             dns_by_sentinel,
@@ -1659,7 +1666,7 @@ impl ClientState {
                     v4: config.ipv4,
                     v6: config.ipv6,
                 },
-                dns_by_sentinel: self.dns_config.mapping(),
+                dns_by_sentinel: self.dns_config.mapping().clone(),
                 search_domain: config.search_domain.clone(),
                 routes: existing.routes.clone(),
             })
@@ -1668,7 +1675,7 @@ impl ClientState {
                     v4: config.ipv4,
                     v6: config.ipv6,
                 },
-                dns_by_sentinel: self.dns_config.mapping(),
+                dns_by_sentinel: self.dns_config.mapping().clone(),
                 search_domain: config.search_domain.clone(),
                 routes: BTreeSet::from_iter(self.routes()),
             });
@@ -2711,8 +2718,8 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 
 #[derive(Default)]
 struct OutboundAuthorizations {
-    gateways: HashMap<ResourceId, GatewayAuthorization>,
-    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>>,
+    gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
+    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>, FastRandomState>,
 }
 
 struct GatewayAuthorization {

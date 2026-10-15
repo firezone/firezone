@@ -123,12 +123,12 @@ jobs:
   #
   # We deliberately do NOT grant the `workflow` scope: it would give the bot
   # write access to workflow files in every repo where it is a collaborator,
-  # which we consider too broad. The cost is that `komac sync-fork` fails
-  # ("UpdateRef" denied) whenever upstream microsoft/winget-pkgs has new
-  # commits touching `.github/workflows/*`, because fast-forwarding the fork
-  # then rewrites workflow files. The `winget-pkgs` environment below
-  # covers that: its required reviewers hold this job and get notified, which
-  # is the prompt to hit "Sync fork" on firezone/winget-pkgs and then approve.
+  # which we consider too broad. The cost is that the bot cannot sync the
+  # fork whenever upstream microsoft/winget-pkgs has new commits touching
+  # `.github/workflows/*`, so this job does not sync it at all. The
+  # `winget-pkgs` environment below covers that: its required reviewers
+  # hold this job and get notified, which is the prompt to hit "Sync fork"
+  # on firezone/winget-pkgs and then approve.
   # GitHub creates a referenced-but-missing environment with no protection
   # rules, so that hold only exists while the environment has reviewers.
   #

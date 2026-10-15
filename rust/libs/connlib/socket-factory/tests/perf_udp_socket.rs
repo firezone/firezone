@@ -1,8 +1,9 @@
 //! Integration tests for [`socket_factory::PerfUdpSocket`], exercising it through its public API.
 
-use bufferpool::BufferPool;
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
+
+bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (2048, "test"), batch: 64);
 
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
@@ -22,13 +23,11 @@ async fn sends_and_receives_a_datagram() {
         .into_perf()
         .unwrap();
 
-    let pool = BufferPool::<Vec<u8>>::new(2048, "test");
-
     socket
         .send(DatagramOut {
             src: None,
             dst: peer_addr,
-            packet: pool.pull_initialised(&b"hello".repeat(DATAGRAMS)),
+            packet: PACKETS.pull_initialised(&b"hello".repeat(DATAGRAMS)),
             segment_size: 5,
             ecn: Ecn::NonEct,
         })

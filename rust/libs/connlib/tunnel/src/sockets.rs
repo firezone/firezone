@@ -1,6 +1,6 @@
 use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, VecBuf};
 use futures::{SinkExt, ready};
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::{Arc, LazyLock},
+    sync::Arc,
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
@@ -46,13 +46,15 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     _ => { 8 }
 };
 
-/// Pool for the `Vec`s that collect one poll's worth of received datagram batches.
-///
-/// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
-/// Dropping the collection after processing returns it to the pool, keeping the
-/// receive path free of allocations.
-static BATCHES_POOL: LazyLock<BufferPool<VecBuf<DatagramBatch>>> =
-    LazyLock::new(|| BufferPool::new(2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"));
+bufferpool::buffer_pool!(
+    /// Pool for the `Vec`s that collect one poll's worth of received datagram batches.
+    ///
+    /// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
+    /// Dropping the collection after processing returns it to the pool, keeping the
+    /// receive path free of allocations.
+    static DATAGRAM_BATCHES: VecBuf<DatagramBatch> = (2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"),
+    batch: 4
+);
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -130,7 +132,7 @@ impl Sockets {
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
     pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
-        let mut batches = BATCHES_POOL.pull();
+        let mut batches = DATAGRAM_BATCHES.pull();
 
         if let Some(socket) = self.socket_v4.as_mut() {
             socket.poll_recv_from(cx, &mut batches);

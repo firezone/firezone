@@ -460,6 +460,7 @@ defmodule PortalWeb.SignUp do
 
   @referral_source_options [
     {"Google / web search", "search"},
+    {"AI / LLM (ChatGPT, Claude, etc.)", "ai_llm"},
     {"GitHub", "github"},
     {"Reddit", "reddit"},
     {"Hacker News", "hacker_news"},
@@ -641,7 +642,7 @@ defmodule PortalWeb.SignUp do
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Want a separate organization?
-        <Navigation.link patch={~p"/sign_up/email"}>Sign up with a different email.</Navigation.link>
+        <Navigation.link patch={~p"/sign_up"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
     """

@@ -13,6 +13,7 @@ defmodule Portal.AuthenticationTest do
   alias Portal.Authentication
   alias Portal.Authentication.Credential
   alias Portal.ClientToken
+  alias Portal.Fixture
 
   describe "create_non_interactive_client_token/3" do
     test "returns valid client token for a given service account" do
@@ -214,14 +215,14 @@ defmodule Portal.AuthenticationTest do
     test "does not log malformed tokens" do
       context = build_context(type: :client)
 
-      # capture_log/1 captures the whole deployment's log, not this process's,
-      # so an empty string only holds while no other async test happens to log.
+      token = "invalid.#{Fixture.unique_integer()}"
+
       log =
         capture_log(fn ->
-          assert authenticate("invalid.token", context) == {:error, :invalid_token}
+          assert authenticate(token, context) == {:error, :invalid_token}
         end)
 
-      refute log =~ "invalid.token"
+      refute log =~ token
     end
 
     test "returns error when token is invalid" do

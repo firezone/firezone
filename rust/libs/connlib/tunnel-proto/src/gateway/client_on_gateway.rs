@@ -493,6 +493,8 @@ impl ClientOnGateway {
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
 
+        flow_tracker::record_translated_destination(source_protocol, real_ip);
+
         Ok(TranslateOutboundResult::Send(packet))
     }
 

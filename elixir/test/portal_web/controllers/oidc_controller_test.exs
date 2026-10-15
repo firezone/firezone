@@ -1881,15 +1881,13 @@ defmodule PortalWeb.OIDCControllerTest do
 
       cookie = build_oidc_auth_state(ctx.account, ctx.provider)
 
-      log = capture_log(fn -> send(self(), {:conn, perform_callback(ctx.conn, cookie)}) end)
+      send(self(), {:conn, perform_callback(ctx.conn, cookie)})
       assert_receive {:conn, conn}
 
       assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
 
       assert flash(conn, :error) ==
                "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
-
-      refute log =~ "OIDC identity email not verified"
     end
 
     test "rejects sign-in when verified email is required and email_verified is missing", ctx do
@@ -1975,11 +1973,10 @@ defmodule PortalWeb.OIDCControllerTest do
 
       cookie = build_oidc_auth_state(ctx.account, ctx.provider)
 
-      log = capture_log(fn -> send(self(), {:conn, perform_callback(ctx.conn, cookie)}) end)
+      send(self(), {:conn, perform_callback(ctx.conn, cookie)})
       assert_receive {:conn, conn}
 
       assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
-      refute log =~ "OIDC identity email not verified"
     end
 
     test "successful sign-in matches actor email using citext semantics", ctx do

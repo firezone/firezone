@@ -27,7 +27,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Buffer;
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -38,10 +38,8 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-use std::sync::LazyLock;
 
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
+bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"), batch: 64);
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -138,7 +136,7 @@ pub struct IpPacketBuf {
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: BUFFER_POOL.pull(),
+            inner: IP_PACKETS.pull(),
         }
     }
 }
@@ -396,6 +394,28 @@ impl IpPacket {
             IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
                 self.ipv6_header_unchecked().destination(),
             )),
+        }
+    }
+
+    /// The source and destination address, read with a single parse of the IP header.
+    pub fn source_and_destination(&self) -> (IpAddr, IpAddr) {
+        match self.version {
+            IpVersion::V4 => {
+                let header = self.ipv4_header_unchecked();
+
+                (
+                    IpAddr::V4(header.source().into()),
+                    IpAddr::V4(header.destination().into()),
+                )
+            }
+            IpVersion::V6 => {
+                let header = self.ipv6_header_unchecked();
+
+                (
+                    IpAddr::V6(header.source().into()),
+                    IpAddr::V6(header.destination().into()),
+                )
+            }
         }
     }
 
