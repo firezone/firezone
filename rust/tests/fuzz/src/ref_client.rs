@@ -730,6 +730,30 @@ impl RefClient {
         self.connected_through(resource, Some(gateway));
     }
 
+    /// Connects to a resource the portal granted ahead of the one we route through.
+    pub(crate) fn connect_to_granted_resource(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        global_dns_records: &DnsRecords,
+    ) {
+        let is_dns_resource = self
+            .resources
+            .iter()
+            .cloned()
+            .filter_map(|r| r.into_dns())
+            .any(|r| r.id == resource);
+
+        if is_dns_resource {
+            self.prepare_dns_resource_connection(resource, global_dns_records);
+            self.connected_dns_resources.insert(resource);
+        } else {
+            self.connect_to_internet_or_cidr_resource(resource);
+        }
+
+        self.connected_through(resource, Some(gateway));
+    }
+
     /// `resource` is online, and we prefer the Gateway the portal handed us for its site.
     fn connected_through(&mut self, resource: ResourceId, gateway: Option<GatewayId>) {
         if let (Ok(site), Some(gateway)) = (self.site_for_resource(resource), gateway) {
@@ -1003,20 +1027,29 @@ impl RefClient {
         destination: &Destination,
         proto: Protocol,
     ) -> Option<ResourceId> {
-        match destination {
+        self.resource_candidates_by_dst(src, destination, proto)
+            .first()
+            .copied()
+    }
+
+    /// The resources connlib may route `destination` through, most preferred first.
+    pub(crate) fn resource_candidates_by_dst(
+        &self,
+        src: IpAddr,
+        destination: &Destination,
+        proto: Protocol,
+    ) -> Vec<ResourceId> {
+        let candidates = match destination {
             Destination::DomainName { name, .. } => {
-                if let Some(r) = self.dns_resource_by_domain_and_proto(name, src, proto) {
-                    return Some(r.id);
-                }
+                self.dns_resource_candidates_by_proto(name, src, proto)
             }
-            Destination::IpAddr(addr) => {
-                if let Some(id) = self.cidr_resource_by_ip_and_proto(*addr, proto) {
-                    return Some(id);
-                }
-            }
+            Destination::IpAddr(addr) => self.cidr_resource_candidates_by_proto(*addr, proto),
+        };
+        if !candidates.is_empty() {
+            return candidates;
         }
 
-        self.active_internet_resource()
+        self.active_internet_resource().into_iter().collect()
     }
 
     fn resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
@@ -1048,12 +1081,12 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
-    pub(crate) fn dns_resource_by_domain_and_proto(
+    fn dns_resource_candidates_by_proto(
         &self,
         domain: &DomainName,
         src: IpAddr,
         proto: Protocol,
-    ) -> Option<DnsResource> {
+    ) -> Vec<ResourceId> {
         let mut candidates = self.dns_resources_by_domain(
             domain,
             |resource| resource.ip_stack.supports_ip(src),
@@ -1074,10 +1107,11 @@ impl RefClient {
             .filter(|resource| self.filter_allows(&resource.filters, proto))
             .map(|resource| resource.id)
             .collect_vec();
-        let selected = self
-            .select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))?;
-        candidates.into_iter().find(|r| r.id == selected)
+        if ids.is_empty() {
+            return candidates.first().map(|r| r.id).into_iter().collect();
+        }
+
+        ids
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1121,21 +1155,30 @@ impl RefClient {
             .collect()
     }
 
-    /// Prefers existing connections, then applies the portal's sampled candidate index.
-    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
-        if candidates.is_empty() {
-            return None;
-        }
-
-        candidates
+    /// Returns the candidates the portal grants ahead of the first one, in the order it grants them.
+    ///
+    /// connlib only routes through the first candidate and requests every candidate ahead of the
+    /// first one it is connected to. The portal grants the candidate at its sampled index, so each
+    /// grant of a later candidate shortens the next request until the portal grants the first one.
+    pub(crate) fn grants_ahead_of(&self, candidates: &[ResourceId]) -> Vec<ResourceId> {
+        let mut requested = candidates
             .iter()
             .copied()
-            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
-            .or_else(|| {
-                candidates
-                    .get(self.resource_selector as usize % candidates.len())
-                    .copied()
-            })
+            .take_while(|candidate| self.connected_resources().all(|id| id != *candidate))
+            .collect_vec();
+        let mut grants = Vec::new();
+
+        while requested.len() > 1 {
+            let index = self.resource_selector as usize % requested.len();
+            if index == 0 {
+                break;
+            }
+
+            grants.push(requested[index]);
+            requested.truncate(index);
+        }
+
+        grants
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1246,11 +1289,7 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn cidr_resource_by_ip_and_proto(
-        &self,
-        ip: IpAddr,
-        proto: Protocol,
-    ) -> Option<ResourceId> {
+    fn cidr_resource_candidates_by_proto(&self, ip: IpAddr, proto: Protocol) -> Vec<ResourceId> {
         let mut candidates =
             self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
         candidates.sort_by(|left, right| {
@@ -1264,8 +1303,11 @@ impl RefClient {
             .filter(|resource| self.filter_allows(&resource.filters, proto))
             .map(|resource| resource.id)
             .collect_vec();
-        self.select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))
+        if ids.is_empty() {
+            return candidates.first().map(|r| r.id).into_iter().collect();
+        }
+
+        ids
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1349,21 +1391,41 @@ impl RefClient {
         query: &DnsQuery,
         upstream_do53: &[UpstreamDo53],
     ) -> Option<ResourceId> {
+        self.dns_query_via_resource_candidates(query, upstream_do53)
+            .first()
+            .copied()
+    }
+
+    fn dns_query_via_resource_candidates(
+        &self,
+        query: &DnsQuery,
+        upstream_do53: &[UpstreamDo53],
+    ) -> Vec<ResourceId> {
         // System resolvers are contacted outside the tunnel.
         if upstream_do53.is_empty() {
-            return None;
+            return Vec::new();
         }
 
-        self.upstream_dns_server_via_resource(&query.dns_server)?;
+        if self
+            .upstream_dns_server_via_resource(&query.dns_server)
+            .is_none()
+        {
+            return Vec::new();
+        }
         let dns::Upstream::Do53 { server } = query.dns_server else {
-            return None;
+            return Vec::new();
         };
         let protocol = match query.transport {
             DnsTransport::Udp { .. } => Protocol::Udp(server.port()),
             DnsTransport::Tcp => Protocol::Tcp(server.port()),
         };
-        self.cidr_resource_by_ip_and_proto(server.ip(), protocol)
-            .or_else(|| self.active_internet_resource())
+
+        let candidates = self.cidr_resource_candidates_by_proto(server.ip(), protocol);
+        if !candidates.is_empty() {
+            return candidates;
+        }
+
+        self.active_internet_resource().into_iter().collect()
     }
 
     fn is_local_dns_resource_query(&self, query: &DnsQuery) -> bool {
@@ -1494,19 +1556,51 @@ impl RefClient {
     }
 
     pub(crate) fn is_site_specific_dns_query(&self, query: &DnsQuery) -> Option<ResourceId> {
+        self.site_specific_dns_query_candidates(query)
+            .first()
+            .copied()
+    }
+
+    fn site_specific_dns_query_candidates(&self, query: &DnsQuery) -> Vec<ResourceId> {
         let is_site_specific_record =
             query.r_type == RecordType::SRV || query.r_type == RecordType::TXT;
 
         if !is_site_specific_record {
-            return None;
+            return Vec::new();
         }
 
-        let candidates = self
-            .dns_resources_by_domain(&query.domain, |_| true, |_| true)
+        self.dns_resources_by_domain(&query.domain, |_| true, |_| true)
             .into_iter()
             .map(|r| r.id)
-            .collect_vec();
-        self.select_gateway_resource(&candidates)
+            .collect_vec()
+    }
+
+    /// The resources connlib may forward `query` through, most preferred first.
+    pub(crate) fn dns_query_resource_candidates(
+        &self,
+        query: &DnsQuery,
+        upstream_do53: &[UpstreamDo53],
+    ) -> Vec<ResourceId> {
+        if self.is_device_dns_query(query) {
+            return Vec::new();
+        }
+
+        let candidates = self.site_specific_dns_query_candidates(query);
+        if !candidates.is_empty() {
+            return candidates;
+        }
+
+        if self.is_local_dns_resource_query(query)
+            && !self.local_dns_resource_query_has_records(query)
+        {
+            return Vec::new();
+        }
+
+        if self.local_dns_resource(query).is_some() {
+            return Vec::new();
+        }
+
+        self.dns_query_via_resource_candidates(query, upstream_do53)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
