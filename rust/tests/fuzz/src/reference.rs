@@ -199,18 +199,15 @@ impl ReferenceState {
             }),
             Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
+                let global_dns_records = &self.global_dns_records;
+                let icmp_error_hosts = &self.icmp_error_hosts;
 
                 for (client_id, query) in queries {
-                    let candidates = self.clients[client_id]
-                        .inner()
-                        .dns_query_resource_candidates(query, upstream_do53);
-                    self.connect_grants_ahead_of(portal, *client_id, &candidates);
-                    let global_dns_records = &self.global_dns_records;
-                    let icmp_error_hosts = &self.icmp_error_hosts;
                     let client = self.clients[client_id].inner();
-                    let gateway = candidates
-                        .first()
-                        .and_then(|resource| self.select_gateway(portal, *client_id, *resource));
+                    let gateway = client
+                        .is_site_specific_dns_query(query)
+                        .or_else(|| client.dns_query_via_resource(query, upstream_do53))
+                        .and_then(|resource| self.select_gateway(portal, *client_id, resource));
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
@@ -919,10 +916,6 @@ impl ReferenceState {
             Ok(resource) => resource,
             Err(outcome) => return outcome,
         };
-        let candidates = self.clients[&origin]
-            .inner()
-            .resource_candidates_by_dst(src, dst, protocol);
-        self.connect_grants_ahead_of(portal, origin, &candidates);
         let Some(gateway) = self.select_gateway(portal, origin, resource) else {
             return ExpectedOutcome::Dropped;
         };
@@ -970,24 +963,6 @@ impl ReferenceState {
         }
 
         Ok(resource)
-    }
-
-    /// Connects `origin` to the resources the portal grants before the one it routes through.
-    fn connect_grants_ahead_of(
-        &mut self,
-        portal: &StubPortal,
-        origin: ClientId,
-        candidates: &[ResourceId],
-    ) {
-        for grant in self.clients[&origin].inner().grants_ahead_of(candidates) {
-            let Some(gateway) = self.select_gateway(portal, origin, grant) else {
-                continue;
-            };
-
-            self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-                client.connect_to_granted_resource(grant, gateway, &self.global_dns_records)
-            });
-        }
     }
 
     /// The Gateway the portal hands `origin` for `resource`.

@@ -346,12 +346,7 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
     portal
         .client_tunnel_ips()
-        .map(|(id, tun4, tun6)| {
-            (
-                id,
-                arb_client_host(g, id, tun4, tun6, portal.resource_selector()),
-            )
-        })
+        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
         .collect::<BTreeMap<_, _>>()
 }
 
@@ -360,7 +355,6 @@ fn arb_client_host(
     id: ClientId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
-    resource_selector: u32,
 ) -> Host<RefClient> {
     let key = g.fresh_private_key();
     let system_dns = arb_system_dns_servers(g);
@@ -383,7 +377,6 @@ fn arb_client_host(
             ignore_no_authorization_events,
         },
         os,
-        resource_selector,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
