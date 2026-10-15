@@ -2,17 +2,19 @@ use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bufferpool::{Buffer, VecBuf};
 use futures::{SinkExt, ready};
+use ip_packet::IpVersion;
+use itertools::Either;
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
 use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
-    io,
+    io, iter,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::PollSender;
 
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
@@ -125,17 +127,48 @@ impl Sockets {
                 )
             })?,
         };
-        socket.send(datagram)?;
+        socket.send(Outbound::Datagram(datagram))?;
 
         Ok(())
     }
 
-    /// Returns handles for sending datagrams from other threads.
-    pub fn senders(&self) -> UdpSenders {
-        UdpSenders {
-            v4: self.socket_v4.as_ref().and_then(ThreadedUdpSocket::sender),
-            v6: self.socket_v6.as_ref().and_then(ThreadedUdpSocket::sender),
-        }
+    /// Waits until the socket for `version` has room for another [`Outbound`].
+    pub fn poll_send_ready_for(
+        &mut self,
+        version: IpVersion,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<()>> {
+        ready!(self.socket_mut(version)?.poll_send_ready(cx))?;
+
+        Poll::Ready(Ok(()))
+    }
+
+    /// Queues datagrams that are still being encrypted on the socket for `version`.
+    ///
+    /// Call [`Sockets::poll_send_ready_for`] first.
+    pub fn send_encrypting(
+        &mut self,
+        version: IpVersion,
+        encrypting: oneshot::Receiver<Encrypted>,
+    ) -> Result<()> {
+        self.socket_mut(version)?
+            .send(Outbound::Encrypting(encrypting))?;
+
+        Ok(())
+    }
+
+    fn socket_mut(&mut self, version: IpVersion) -> io::Result<&mut ThreadedUdpSocket> {
+        let (socket, name) = match version {
+            IpVersion::V4 => (self.socket_v4.as_mut(), "IPv4"),
+            IpVersion::V6 => (self.socket_v6.as_mut(), "IPv6"),
+        };
+
+        socket.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotConnected,
+                format!("failed to send packets: no {name} socket"),
+            )
+        })
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
@@ -178,34 +211,24 @@ impl Sockets {
     }
 }
 
-/// Sends datagrams to the UDP socket threads from a thread outside of any async runtime.
-pub(crate) struct UdpSenders {
-    v4: Option<mpsc::Sender<DatagramOut>>,
-    v6: Option<mpsc::Sender<DatagramOut>>,
+/// What a UDP socket thread sends, in queue order.
+pub(crate) enum Outbound {
+    Datagram(DatagramOut),
+    /// Datagrams still being encrypted by a crypto worker.
+    ///
+    /// A worker that stopped drops the sender; there is nothing to send then.
+    Encrypting(oneshot::Receiver<Encrypted>),
 }
 
-impl UdpSenders {
-    /// Sends `datagram`, blocking while the socket thread's queue is full.
-    pub fn blocking_send(&self, datagram: DatagramOut) -> Result<()> {
-        let sender = match datagram.dst {
-            SocketAddr::V4(_) => self.v4.as_ref(),
-            SocketAddr::V6(_) => self.v6.as_ref(),
-        }
-        .with_context(|| format!("Failed to send packet to {}: no socket", datagram.dst))?;
-
-        sender
-            .blocking_send(datagram)
-            .map_err(|_| UdpSocketThreadStopped)?;
-
-        Ok(())
-    }
-}
+/// Datagrams encrypted by a crypto worker.
+pub(crate) type Encrypted = Buffer<VecBuf<DatagramOut>>;
 
 /// How big the queue for outgoing UDP batches and socket errors is at most.
 ///
-/// Every queued [`DatagramOut`] owns a GSO buffer of [`crate::io::GSO_BUFFER_SIZE`] bytes that it
-/// pins until the send task drains it - and, because the buffer pool never shrinks, for the rest of
-/// the session once a backlog has ever built up. We therefore size it as two drains' worth of
+/// Every queued [`Outbound`] owns a GSO buffer of [`crate::io::GSO_BUFFER_SIZE`] bytes per
+/// connection it sends to, which it pins until the send task drains it - and, because the buffer
+/// pool never shrinks, for the rest of the session once a backlog has ever built up. We therefore
+/// size it as two drains' worth of
 /// [`UDP_SEND_BATCH_LIMIT`]: deep enough to keep the send task fed, shallow enough that a transient
 /// send backlog cannot balloon memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
 /// See [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound.
@@ -222,8 +245,8 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// Worst-case memory pinned by the outbound UDP datagram queues.
 ///
 /// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
-/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
-/// [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
+/// [`QUEUE_SIZE`] datagrams or encrypted batches to a single connection (hence the `2 *`). Each
+/// owns a GSO buffer from the [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
 /// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
 /// queues pins this much memory for the rest of the session.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
@@ -257,7 +280,7 @@ struct ThreadedUdpSocket {
 }
 
 struct Channels {
-    outbound_tx: PollSender<DatagramOut>,
+    outbound_tx: PollSender<Outbound>,
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
@@ -289,55 +312,56 @@ impl ThreadedUdpSocket {
             SocketAddr::V4(_) => "UDP IPv4".to_owned(),
             SocketAddr::V6(_) => "UDP IPv6".to_owned(),
         };
-        let join_handle = std::thread::Builder::new()
-            .name(thread_name.clone())
-            .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        let _ = startup_tx.send(Err(e));
-                        return;
-                    }
-                };
+        let join_handle =
+            std::thread::Builder::new()
+                .name(thread_name.clone())
+                .spawn(move || {
+                    let runtime = match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            let _ = startup_tx.send(Err(e));
+                            return;
+                        }
+                    };
 
-                // Enter guard to create UDP socket.
-                let _guard = runtime.enter();
+                    // Enter guard to create UDP socket.
+                    let _guard = runtime.enter();
 
-                let mut socket = match listen(
-                    sf,
-                    // Listen on the preferred address, fall back to picking a free port if that doesn't work
-                    &[preferred_addr, SocketAddr::new(preferred_addr.ip(), 0)],
-                ) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        let _ = startup_tx.send(Err(e));
-                        return;
-                    }
-                };
+                    let mut socket = match listen(
+                        sf,
+                        // Listen on the preferred address, fall back to picking a free port if that doesn't work
+                        &[preferred_addr, SocketAddr::new(preferred_addr.ip(), 0)],
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            let _ = startup_tx.send(Err(e));
+                            return;
+                        }
+                    };
 
-                let io_error_counter = otel_instruments::network_errors();
+                    let io_error_counter = otel_instruments::network_errors();
 
-                let send_buffer_size = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
-                    .inspect_err(|e| {
-                        tracing::debug!("Failed to read `FIREZONE_UDP_SEND_BUFFER_SIZE`: {e}")
-                    })
-                    .unwrap_or_default()
-                    .unwrap_or(socket_factory::SEND_BUFFER_SIZE);
-                let recv_buffer_size = read_end_var_usize("FIREZONE_UDP_RECV_BUFFER_SIZE")
-                    .inspect_err(|e| {
-                        tracing::debug!("Failed to read `FIREZONE_UDP_RECV_BUFFER_SIZE`: {e}")
-                    })
-                    .unwrap_or_default()
-                    .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
+                    let send_buffer_size = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
+                        .inspect_err(|e| {
+                            tracing::debug!("Failed to read `FIREZONE_UDP_SEND_BUFFER_SIZE`: {e}")
+                        })
+                        .unwrap_or_default()
+                        .unwrap_or(socket_factory::SEND_BUFFER_SIZE);
+                    let recv_buffer_size = read_end_var_usize("FIREZONE_UDP_RECV_BUFFER_SIZE")
+                        .inspect_err(|e| {
+                            tracing::debug!("Failed to read `FIREZONE_UDP_RECV_BUFFER_SIZE`: {e}")
+                        })
+                        .unwrap_or_default()
+                        .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
 
-                socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
+                    socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
-                let socket = Arc::new(socket);
+                    let socket = Arc::new(socket);
 
-                let send = runtime.spawn({
+                    let send = runtime.spawn({
                     let io_error_counter = io_error_counter.clone();
                     let error_tx = error_tx.clone();
                     let socket = socket.clone();
@@ -357,7 +381,23 @@ impl ThreadedUdpSocket {
                                 return;
                             }
 
-                            for datagram in pending_datagrams.drain(..) {
+                            for outbound in pending_datagrams.drain(..) {
+                                let mut encrypted;
+                                let datagrams = match outbound {
+                                    Outbound::Datagram(datagram) => {
+                                        Either::Left(iter::once(datagram))
+                                    }
+                                    Outbound::Encrypting(encrypting) => {
+                                        let Ok(datagrams) = encrypting.await else {
+                                            continue;
+                                        };
+                                        encrypted = datagrams;
+
+                                        Either::Right(encrypted.drain(..))
+                                    }
+                                };
+
+                                for datagram in datagrams {
                                 if let Err(e) = socket.send(datagram).await {
                                     if let Some(io) = e.any_downcast_ref::<io::Error>() {
                                         io_error_counter.add(
@@ -379,11 +419,12 @@ impl ThreadedUdpSocket {
                                         return;
                                     }
                                 };
+                                }
                             }
                         }
                     }
                 });
-                let receive = runtime.spawn({
+                    let receive = runtime.spawn({
                     let error_tx = error_tx.clone();
 
                     async move {
@@ -424,15 +465,15 @@ impl ThreadedUdpSocket {
                     }
                 });
 
-                let _ = startup_tx.send(Ok(()));
+                    let _ = startup_tx.send(Ok(()));
 
-                runtime.block_on(async move {
-                    futures::future::select(send, receive).await;
+                    runtime.block_on(async move {
+                        futures::future::select(send, receive).await;
 
-                    // A stopped task tears down the runtime; report it so `Io` shuts down.
-                    let _ = error_tx.send(UdpSocketThreadStopped.into()).await;
-                });
-            })?;
+                        // A stopped task tears down the runtime; report it so `Io` shuts down.
+                        let _ = error_tx.send(UdpSocketThreadStopped.into()).await;
+                    });
+                })?;
 
         startup_rx.recv().map_err(io::Error::other)??;
 
@@ -454,10 +495,10 @@ impl ThreadedUdpSocket {
         Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, datagram: DatagramOut) -> Result<()> {
+    fn send(&mut self, outbound: Outbound) -> Result<()> {
         self.channels_mut()?
             .outbound_tx
-            .start_send_unpin(datagram)
+            .start_send_unpin(outbound)
             .map_err(|_| UdpSocketThreadStopped)?;
 
         Ok(())
@@ -489,10 +530,6 @@ impl ThreadedUdpSocket {
         };
 
         Poll::Ready(error)
-    }
-
-    fn sender(&self) -> Option<mpsc::Sender<DatagramOut>> {
-        self.channels.as_ref()?.outbound_tx.get_ref().cloned()
     }
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {

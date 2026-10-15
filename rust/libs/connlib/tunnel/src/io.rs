@@ -405,7 +405,7 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        ready!(self.crypto.poll_flush(&self.sockets, cx));
+        ready!(self.crypto.poll_flush(&mut self.sockets, cx))?;
 
         Poll::Ready(Ok(()))
     }

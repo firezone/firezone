@@ -1,23 +1,24 @@
 use std::{
-    hash::BuildHasher as _,
+    collections::VecDeque,
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
+    pin::Pin,
+    sync::mpsc,
     task::{Context, Poll, ready},
     thread,
 };
 
+use anyhow::Result;
 use bufferpool::{Buffer, VecBuf};
-use fast_random_state::FastRandomState;
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::{Ecn, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
-use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
+use tokio::sync::oneshot;
 
 use super::UdpGsoQueue;
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::{Sockets, UdpSenders};
+use crate::sockets::{Encrypted, Sockets};
 
 /// How many encrypt and decrypt workers to spawn.
 ///
@@ -30,8 +31,10 @@ fn num_workers() -> (usize, usize) {
     (encrypt, total - encrypt)
 }
 
-/// How many batches may queue for an encrypt worker on top of the one it is encrypting.
-const ENCRYPT_QUEUE_CAPACITY: usize = 2;
+/// How many packets go to an encrypt worker in one batch at most.
+///
+/// Small enough for a batch to one connection to fit into a single GSO send.
+const ENCRYPT_BATCH_SIZE: usize = 32;
 
 /// How many received packets go to a decrypt worker in one batch at most.
 const DECRYPT_BATCH_SIZE: usize = 64;
@@ -43,7 +46,11 @@ const DECRYPT_BATCH_SIZE: usize = 64;
 const MAX_DECRYPTS_IN_FLIGHT: usize = 4 * DECRYPT_BATCH_SIZE;
 
 bufferpool::buffer_pool!(
-    static ENCRYPT_JOBS: VecBuf<EncryptJob> = (tun::MAX_BATCH_SIZE, "encrypt-jobs"),
+    static ENCRYPT_JOBS: VecBuf<EncryptJob> = (ENCRYPT_BATCH_SIZE, "encrypt-jobs"),
+    batch: 4
+);
+bufferpool::buffer_pool!(
+    static ENCRYPTED: VecBuf<socket_factory::DatagramOut> = (4, "encrypted"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -65,93 +72,81 @@ pub struct Received<P> {
 
 /// Encrypts and decrypts WireGuard data messages on two pools of worker threads.
 ///
-/// Packets are handed to the workers in batches. The packets of one flow always go to the same
-/// encrypt worker, which sends them to the UDP socket. The packets of one peer always go to the
-/// same decrypt worker, which returns them to us in order.
-///
-/// WireGuard counters are reserved in order on the main thread, so packets of different flows to
-/// the same peer may leave out of counter order. The peer's replay window accepts counters up to
-/// 8192 behind the newest one, so a worker would have to fall that far behind before any of its
-/// packets are dropped.
+/// Packets go to the workers of each pool in batches, round-robin. The results come back
+/// through a `oneshot` channel per batch, which we queue in submission order: the UDP socket
+/// threads send the encrypted batches in that order and we accept the decrypted ones in that order.
 pub struct CryptoWorkers {
-    encrypt: Vec<EncryptWorker>,
-    decrypt: Vec<DecryptWorker>,
-    decrypted: mpsc::UnboundedReceiver<Buffer<VecBuf<Received<DecryptedPacket>>>>,
+    encrypt: Vec<mpsc::Sender<EncryptBatch>>,
+    decrypt: Vec<mpsc::Sender<DecryptBatch>>,
+    next_encrypt: usize,
+    next_decrypt: usize,
+
+    staged_encrypts: VecDeque<Buffer<VecBuf<EncryptJob>>>,
+    staged_decrypts: Buffer<VecBuf<Received<DecryptJob>>>,
+
+    /// The batches handed to the decrypt workers, with how many packets each holds.
+    decrypting: VecDeque<(
+        usize,
+        oneshot::Receiver<Buffer<VecBuf<Received<DecryptedPacket>>>>,
+    )>,
     decrypts_in_flight: usize,
-    hasher: FastRandomState,
-}
-
-struct EncryptWorker {
-    batches: PollSender<EncryptBatch>,
-    staged: Buffer<VecBuf<EncryptJob>>,
-}
-
-struct DecryptWorker {
-    batches: mpsc::UnboundedSender<Buffer<VecBuf<Received<DecryptJob>>>>,
-    staged: Buffer<VecBuf<Received<DecryptJob>>>,
 }
 
 struct EncryptBatch {
     jobs: Buffer<VecBuf<EncryptJob>>,
-    sockets: UdpSenders,
+    v4: Option<oneshot::Sender<Encrypted>>,
+    v6: Option<oneshot::Sender<Encrypted>>,
+}
+
+struct DecryptBatch {
+    jobs: Buffer<VecBuf<Received<DecryptJob>>>,
+    decrypted: oneshot::Sender<Buffer<VecBuf<Received<DecryptedPacket>>>>,
 }
 
 impl CryptoWorkers {
     pub fn new(packet_counter: Counter<u64>) -> Self {
         let (num_encrypt, num_decrypt) = num_workers();
-        let (decrypted_tx, decrypted_rx) = mpsc::unbounded_channel();
 
         let encrypt = (0..num_encrypt)
             .filter_map(|i| {
-                let (tx, rx) = mpsc::channel(ENCRYPT_QUEUE_CAPACITY);
+                let (tx, rx) = mpsc::channel();
                 let packet_counter = packet_counter.clone();
 
                 spawn(format!("wg-encrypt-{i}"), move || {
                     encrypt(rx, packet_counter)
                 })?;
 
-                Some(EncryptWorker {
-                    batches: PollSender::new(tx),
-                    staged: ENCRYPT_JOBS.pull(),
-                })
+                Some(tx)
             })
             .collect();
         let decrypt = (0..num_decrypt)
             .filter_map(|i| {
-                let (tx, rx) = mpsc::unbounded_channel();
-                let decrypted_tx = decrypted_tx.clone();
+                let (tx, rx) = mpsc::channel();
 
-                spawn(format!("wg-decrypt-{i}"), move || decrypt(rx, decrypted_tx))?;
+                spawn(format!("wg-decrypt-{i}"), move || decrypt(rx))?;
 
-                Some(DecryptWorker {
-                    batches: tx,
-                    staged: DECRYPT_JOBS.pull(),
-                })
+                Some(tx)
             })
             .collect();
 
         Self {
             encrypt,
             decrypt,
-            decrypted: decrypted_rx,
+            next_encrypt: 0,
+            next_decrypt: 0,
+            staged_encrypts: VecDeque::new(),
+            staged_decrypts: DECRYPT_JOBS.pull(),
+            decrypting: VecDeque::new(),
             decrypts_in_flight: 0,
-            hasher: FastRandomState::default(),
         }
     }
 
-    /// Stages `job` for decryption by the worker of its peer.
+    /// Stages `job` for decryption.
     pub fn decrypt(&mut self, job: Received<DecryptJob>) {
-        let Some(index) = worker_index(&self.decrypt, self.hasher.hash_one(job.packet.tunnel_id()))
-        else {
-            tracing::debug!("No decrypt worker running; dropping packet");
-            return;
-        };
-        let worker = &mut self.decrypt[index];
+        self.staged_decrypts.push(job);
 
-        worker.staged.push(job);
-
-        if worker.staged.len() >= DECRYPT_BATCH_SIZE {
-            self.decrypts_in_flight += worker.submit();
+        if self.staged_decrypts.len() >= DECRYPT_BATCH_SIZE {
+            self.submit_decrypts();
         }
     }
 
@@ -160,110 +155,147 @@ impl CryptoWorkers {
         self.decrypts_in_flight < MAX_DECRYPTS_IN_FLIGHT
     }
 
-    /// Returns the next batch of decrypted packets, in the order they were received per peer.
+    /// Returns the next batch of decrypted packets, in the order they were received.
     pub fn poll_decrypted(
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Buffer<VecBuf<Received<DecryptedPacket>>>> {
-        // `None` means no worker is running and none will ever return a packet.
-        let Some(decrypted) = ready!(self.decrypted.poll_recv(cx)) else {
-            return Poll::Pending;
-        };
-        self.decrypts_in_flight -= decrypted.len();
+        loop {
+            let Some((len, decrypted)) = self.decrypting.front_mut() else {
+                return Poll::Pending;
+            };
+            let len = *len;
+            let result = ready!(Pin::new(decrypted).poll(cx));
 
-        Poll::Ready(decrypted)
+            self.decrypting.pop_front();
+            self.decrypts_in_flight -= len;
+
+            match result {
+                Ok(decrypted) => return Poll::Ready(decrypted),
+                Err(_) => {
+                    tracing::debug!(
+                        num_packets = len,
+                        "Decrypt worker stopped; dropping packets"
+                    );
+                }
+            }
+        }
     }
 
-    /// Hands all staged packets to their workers, sending encrypted packets to `sockets`.
+    /// Hands all staged packets to the workers and queues the encrypted batches on `sockets`.
     ///
-    /// Pending while an encrypt worker has no room for another batch.
-    pub fn poll_flush(&mut self, sockets: &Sockets, cx: &mut Context<'_>) -> Poll<()> {
-        for worker in &mut self.decrypt {
-            if worker.staged.is_empty() {
-                continue;
+    /// Pending while a UDP socket has no room for another batch.
+    pub fn poll_flush(&mut self, sockets: &mut Sockets, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.submit_decrypts();
+
+        while let Some(jobs) = self.staged_encrypts.front() {
+            let v4 = jobs.iter().any(|job| job.dst().is_ipv4());
+            let v6 = jobs.iter().any(|job| job.dst().is_ipv6());
+
+            if let Err(e) = ready!(poll_send_ready(sockets, v4, v6, cx)) {
+                self.staged_encrypts.clear();
+                return Poll::Ready(Err(e));
             }
 
-            self.decrypts_in_flight += worker.submit();
-        }
-
-        for worker in &mut self.encrypt {
-            if worker.staged.is_empty() {
-                continue;
-            }
-
-            if ready!(worker.batches.poll_reserve(cx)).is_err() {
-                tracing::debug!(
-                    num_packets = worker.staged.len(),
-                    "Encrypt worker stopped; dropping packets"
-                );
-                worker.staged.clear();
-                continue;
-            }
-
-            let jobs = mem::replace(&mut worker.staged, ENCRYPT_JOBS.pull());
-            let _ = worker.batches.send_item(EncryptBatch {
+            let Some(jobs) = self.staged_encrypts.pop_front() else {
+                break;
+            };
+            let batch = EncryptBatch {
                 jobs,
-                sockets: sockets.senders(),
-            });
+                v4: v4
+                    .then(|| send_encrypting(sockets, IpVersion::V4))
+                    .transpose()?,
+                v6: v6
+                    .then(|| send_encrypting(sockets, IpVersion::V6))
+                    .transpose()?,
+            };
+            let Some(worker) = next(&self.encrypt, &mut self.next_encrypt) else {
+                tracing::debug!("No encrypt worker running; dropping packets");
+                continue;
+            };
+
+            // A stopped worker drops the senders, so the socket skips the batch.
+            let _ = worker.send(batch);
         }
 
-        Poll::Ready(())
+        Poll::Ready(Ok(()))
     }
 
     /// Drops all staged packets.
     pub fn clear(&mut self) {
-        for worker in &mut self.encrypt {
-            worker.staged.clear();
+        self.staged_encrypts.clear();
+        self.staged_decrypts.clear();
+    }
+
+    fn submit_decrypts(&mut self) {
+        if self.staged_decrypts.is_empty() {
+            return;
         }
 
-        for worker in &mut self.decrypt {
-            worker.staged.clear();
-        }
+        let jobs = mem::replace(&mut self.staged_decrypts, DECRYPT_JOBS.pull());
+        let len = jobs.len();
+        let Some(worker) = next(&self.decrypt, &mut self.next_decrypt) else {
+            tracing::debug!("No decrypt worker running; dropping packets");
+            return;
+        };
+        let (tx, rx) = oneshot::channel();
+
+        // A stopped worker drops the sender, so `poll_decrypted` skips the batch.
+        let _ = worker.send(DecryptBatch {
+            jobs,
+            decrypted: tx,
+        });
+        self.decrypting.push_back((len, rx));
+        self.decrypts_in_flight += len;
     }
 }
 
 impl Encryptor for CryptoWorkers {
     fn encrypt(&mut self, job: EncryptJob) {
-        let Some(index) = worker_index(&self.encrypt, self.hasher.hash_one(flow(job.packet())))
-        else {
-            tracing::debug!("No encrypt worker running; dropping packet");
-            return;
-        };
-
-        self.encrypt[index].staged.push(job);
-    }
-}
-
-impl DecryptWorker {
-    /// Hands the staged packets to the worker, returning how many it accepted.
-    fn submit(&mut self) -> usize {
-        let jobs = mem::replace(&mut self.staged, DECRYPT_JOBS.pull());
-        let len = jobs.len();
-
-        if self.batches.send(jobs).is_err() {
-            tracing::debug!(
-                num_packets = len,
-                "Decrypt worker stopped; dropping packets"
-            );
-            return 0;
+        match self.staged_encrypts.back_mut() {
+            Some(jobs) if jobs.len() < ENCRYPT_BATCH_SIZE => jobs.push(job),
+            Some(_) | None => {
+                let mut jobs = ENCRYPT_JOBS.pull();
+                jobs.push(job);
+                self.staged_encrypts.push_back(jobs);
+            }
         }
-
-        len
     }
 }
 
-/// The fields identifying the flow of `packet`.
-fn flow(packet: &IpPacket) -> impl std::hash::Hash {
-    (
-        packet.source(),
-        packet.destination(),
-        packet.source_protocol().ok(),
-        packet.destination_protocol().ok(),
-    )
+fn poll_send_ready(
+    sockets: &mut Sockets,
+    v4: bool,
+    v6: bool,
+    cx: &mut Context<'_>,
+) -> Poll<Result<()>> {
+    if v4 {
+        ready!(sockets.poll_send_ready_for(IpVersion::V4, cx))?;
+    }
+
+    if v6 {
+        ready!(sockets.poll_send_ready_for(IpVersion::V6, cx))?;
+    }
+
+    Poll::Ready(Ok(()))
 }
 
-fn worker_index<T>(workers: &[T], hash: u64) -> Option<usize> {
-    (hash as usize).checked_rem(workers.len())
+fn send_encrypting(
+    sockets: &mut Sockets,
+    version: IpVersion,
+) -> Result<oneshot::Sender<Encrypted>> {
+    let (tx, rx) = oneshot::channel();
+    sockets.send_encrypting(version, rx)?;
+
+    Ok(tx)
+}
+
+/// Returns the worker after the one picked last.
+fn next<'a, T>(workers: &'a [T], next: &mut usize) -> Option<&'a T> {
+    let worker = workers.get(*next % workers.len().max(1))?;
+    *next = next.wrapping_add(1);
+
+    Some(worker)
 }
 
 fn spawn(name: String, work: impl FnOnce() + Send + 'static) -> Option<()> {
@@ -276,14 +308,16 @@ fn spawn(name: String, work: impl FnOnce() + Send + 'static) -> Option<()> {
     Some(())
 }
 
-fn encrypt(mut batches: mpsc::Receiver<EncryptBatch>, packet_counter: Counter<u64>) {
+fn encrypt(batches: mpsc::Receiver<EncryptBatch>, packet_counter: Counter<u64>) {
     let mut gso_queue = UdpGsoQueue::new();
 
-    while let Some(EncryptBatch { mut jobs, sockets }) = batches.blocking_recv() {
+    for EncryptBatch { mut jobs, v4, v6 } in batches {
         for job in jobs.drain(..) {
             gso_queue.encrypt(job);
         }
 
+        let mut encrypted_v4 = ENCRYPTED.pull();
+        let mut encrypted_v6 = ENCRYPTED.pull();
         let mut transmitted = UdpPacketCounts::transmit(&packet_counter);
 
         for datagram in gso_queue.datagrams() {
@@ -291,18 +325,28 @@ fn encrypt(mut batches: mpsc::Receiver<EncryptBatch>, packet_counter: Counter<u6
                 transmitted.record(segment);
             }
 
-            if let Err(e) = sockets.blocking_send(datagram) {
-                tracing::debug!("{e:#}");
+            match datagram.dst {
+                SocketAddr::V4(_) => encrypted_v4.push(datagram),
+                SocketAddr::V6(_) => encrypted_v6.push(datagram),
             }
+        }
+
+        // The socket thread stopped if the receiver is gone.
+        if let Some(v4) = v4 {
+            let _ = v4.send(encrypted_v4);
+        }
+        if let Some(v6) = v6 {
+            let _ = v6.send(encrypted_v6);
         }
     }
 }
 
-fn decrypt(
-    mut batches: mpsc::UnboundedReceiver<Buffer<VecBuf<Received<DecryptJob>>>>,
-    decrypted: mpsc::UnboundedSender<Buffer<VecBuf<Received<DecryptedPacket>>>>,
-) {
-    while let Some(mut jobs) = batches.blocking_recv() {
+fn decrypt(batches: mpsc::Receiver<DecryptBatch>) {
+    for DecryptBatch {
+        mut jobs,
+        decrypted,
+    } in batches
+    {
         let mut packets = DECRYPTED.pull();
         packets.extend(jobs.drain(..).map(|job| Received {
             local: job.local,
@@ -311,8 +355,7 @@ fn decrypt(
             packet: job.packet.decrypt(),
         }));
 
-        if decrypted.send(packets).is_err() {
-            return;
-        }
+        // We stopped if the receiver is gone; the channel for the next batch is closed too.
+        let _ = decrypted.send(packets);
     }
 }
