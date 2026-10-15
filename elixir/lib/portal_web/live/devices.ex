@@ -31,7 +31,9 @@ defmodule PortalWeb.Devices do
         device_posture: [],
         device_certificate: nil,
         posture_providers_connected?: false,
-        serials_by_device: %{}
+        serials_by_device: %{},
+        devices: [],
+        devices_metadata: %Portal.Repo.OffsetPaginator.Metadata{}
       )
       |> assign(base_device_assigns())
       |> LiveTable.assign_live_table("devices",
@@ -43,7 +45,7 @@ defmodule PortalWeb.Devices do
           {:devices, :inserted_at},
           {:devices, :last_seen_user_agent}
         ],
-        callback: &handle_devices_update!/2
+        loader: &load_devices/2
       )
 
     {:ok, socket}
@@ -112,16 +114,16 @@ defmodule PortalWeb.Devices do
      |> assign(base_device_assigns())}
   end
 
-  def handle_devices_update!(socket, list_opts) do
+  defp load_devices(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
-    with {:ok, devices, metadata} <- Database.list_devices(socket.assigns.subject, list_opts) do
+    with {:ok, devices, metadata} <- Database.list_devices(subject, list_opts) do
       {:ok,
-       assign(socket,
+       %{
          devices: devices,
          devices_metadata: metadata,
-         serials_by_device: Database.serial_index(devices, socket.assigns.subject)
-       )}
+         serials_by_device: Database.serial_index(devices, subject)
+       }}
     end
   end
 
@@ -154,6 +156,8 @@ defmodule PortalWeb.Devices do
         <LiveTable.live_table
           stale={@stale}
           id="devices"
+          loading={@loading_by_table_id["devices"]}
+          query_error={@query_error_by_table_id["devices"]}
           rows={@devices}
           row_id={&"device-#{&1.id}"}
           row_click={fn device -> ~p"/#{@account}/devices/#{device.id}?#{@query_params}" end}
@@ -537,11 +541,7 @@ defmodule PortalWeb.Devices do
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.devices, change) do
-      socket
-    else
-      assign(socket, stale: true)
-    end
+    LiveTable.mark_stale_unless_reflected(socket, "devices", socket.assigns.devices, change)
   end
 
   defmodule Database do

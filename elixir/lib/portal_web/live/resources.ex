@@ -43,7 +43,11 @@ defmodule PortalWeb.Resources do
         policy_authorizations_page: 1,
         policy_authorizations_has_next: false,
         policy_authorizations_expanded_id: nil,
-        internet_resource: nil
+        internet_resource: nil,
+        resources: [],
+        resources_metadata: %Portal.Repo.OffsetPaginator.Metadata{},
+        resource_policy_counts: %{},
+        device_pool_members: %{}
       )
       |> assign(resource_state_assigns(socket))
       |> LiveTable.assign_live_table("resources",
@@ -52,7 +56,7 @@ defmodule PortalWeb.Resources do
           {:resources, :name},
           {:resources, :address}
         ],
-        callback: &handle_resources_update!/2
+        loader: &load_resources/2
       )
 
     {:ok, socket}
@@ -142,7 +146,8 @@ defmodule PortalWeb.Resources do
   def handle_params(params, uri, socket) do
     socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
-    filter_site = filter_site_from_params(params, socket.assigns.subject)
+    # The site only labels the filter notice, so the static render goes without it.
+    filter_site = if connected?(socket), do: filter_site_from_params(params, socket.assigns.subject)
 
     {:noreply,
      socket
@@ -343,36 +348,33 @@ defmodule PortalWeb.Resources do
     end
   end
 
-  def handle_resources_update!(socket, list_opts) do
+  defp load_resources(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:site])
 
-    with {:ok, resources, metadata} <-
-           Database.list_resources(socket.assigns.subject, list_opts) do
+    with {:ok, resources, metadata} <- Database.list_resources(subject, list_opts) do
       internet_resource =
-        if Portal.Account.internet_resource_enabled?(socket.assigns.account) do
-          Database.get_internet_resource(socket.assigns.subject)
+        if Portal.Account.internet_resource_enabled?(subject.account) do
+          Database.get_internet_resource(subject)
         end
 
       all_resources =
         if internet_resource, do: [internet_resource | resources], else: resources
 
-      resource_policy_counts =
-        Database.count_policies_for_resources(all_resources, socket.assigns.subject)
-
+      resource_policy_counts = Database.count_policies_for_resources(all_resources, subject)
       device_pool_members = Database.pool_member_ids_for_resources(all_resources)
-      pool_group_ids = Database.existing_pool_group_ids(all_resources, socket.assigns.subject)
+      pool_group_ids = Database.existing_pool_group_ids(all_resources, subject)
 
       {:ok,
-       assign(socket,
+       %{
          resources: resources,
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
          pool_group_ids: pool_group_ids,
-         online_ids: online_ids(socket.assigns.account.id),
-         online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id),
+         online_ids: online_ids(subject.account.id),
+         online_site_ids: Presence.Devices.online_site_ids(subject.account.id),
          resources_metadata: metadata
-       )}
+       }}
     end
   end
 
@@ -408,6 +410,8 @@ defmodule PortalWeb.Resources do
         <LiveTable.live_table
           stale={@stale}
           id="resources"
+          loading={@loading_by_table_id["resources"]}
+          query_error={@query_error_by_table_id["resources"]}
           rows={@resources}
           row_id={&"resource-#{&1.id}"}
           row_click={fn r -> ~p"/#{@account}/resources/#{r.id}?#{@query_params}" end}
@@ -1504,9 +1508,7 @@ defmodule PortalWeb.Resources do
   end
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.resources, change),
-      do: socket,
-      else: assign(socket, stale: true)
+    LiveTable.mark_stale_unless_reflected(socket, "resources", socket.assigns.resources, change)
   end
 
   defp apply_group_state_change(socket, {:error, _}) do
