@@ -459,22 +459,28 @@ impl ClientState {
         let mut buffered_packets_by_gateway_domain_and_resource = buffered_packets
             .map(|packet| {
                 let proto = packet.destination_protocol();
-                let (gateway_id, resource, domain) = self
+                let (resource, domain) = self
                     .routing_tables
                     .dns_resources(packet.destination(), proto)
                     .into_iter()
-                    .find_map(|(resource, domain)| {
-                        let gateway_id =
-                            self.outbound_authorizations.gateway_by_resource(resource)?;
-                        Some((gateway_id, resource, domain))
-                    })
-                    .context("IP is not associated with an authorized DNS resource")?;
+                    .next()
+                    .context("IP is not associated with a DNS resource")?;
+                let Some(gateway_id) = self.outbound_authorizations.gateway_by_resource(resource)
+                else {
+                    self.pending_authorizations.on_not_authorized(
+                        AuthorizationRequest::resources([resource]),
+                        packet,
+                        now,
+                    );
+                    return anyhow::Ok(None);
+                };
 
-                anyhow::Ok((gateway_id, resource, domain, packet))
+                anyhow::Ok(Some((gateway_id, resource, domain, packet)))
             })
             .filter_map(|res| {
                 res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
                     .ok()
+                    .flatten()
             })
             .fold(
                 BTreeMap::<_, VecDeque<IpPacket>>::new(),
@@ -677,15 +683,13 @@ impl ClientState {
                 (packet, cid.into())
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
-                let Some((route, authorization)) = routes.iter().find_map(|route| {
-                    self.outbound_authorizations
-                        .gateway(route.resource_id)
-                        .map(|authorization| (route, authorization))
-                }) else {
+                // Authorization must not change route preference: an already-authorized
+                // wildcard may lead to a different site than the preferred DNS resource.
+                let route = routes.first().context("No matching gateway route")?;
+                let Some(authorization) = self.outbound_authorizations.gateway(route.resource_id)
+                else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::resources(
-                            routes.iter().map(|route| route.resource_id),
-                        ),
+                        AuthorizationRequest::resources([route.resource_id]),
                         packet,
                         now,
                     );
@@ -2085,15 +2089,15 @@ impl ClientState {
                 });
             }
             resource_stub_resolver::ResolveStrategy::RecurseSite(resources) => {
-                let gateway_id = resources.iter().find_map(|resource| {
-                    self.outbound_authorizations
-                        .gateway_by_resource(*resource)
-                        .copied()
-                });
+                let resource = *resources.first()?;
+                let gateway_id = self
+                    .outbound_authorizations
+                    .gateway_by_resource(resource)
+                    .copied();
                 let Some(gateway) = gateway_id.and_then(|id| self.gateways.peer_by_id_mut(&id))
                 else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Resources(resources),
+                        AuthorizationRequest::resources([resource]),
                         DnsQueryForSite {
                             local,
                             remote,
@@ -3136,6 +3140,168 @@ mod tests {
             )),
             "expected a new device access request"
         );
+    }
+
+    #[test_case::test_case(false; "initial_authorization")]
+    #[test_case::test_case(true; "expired_authorization")]
+    fn authorizes_preferred_dns_resource_before_using_an_authorized_wildcard(
+        previously_authorized: bool,
+    ) {
+        let now = Instant::now();
+        let (mut state, destination) = overlapping_dns_resources(now);
+        let exact = ResourceId::from_u128(1);
+        let exact_gateway = GatewayId::from_u128(10);
+        let wildcard_gateway = GatewayId::from_u128(20);
+        if previously_authorized {
+            state.outbound_authorizations.authorize_gateway(
+                exact,
+                exact_gateway,
+                test_ingest_token(),
+            );
+            state.outbound_authorizations.forget_gateway(exact_gateway);
+        }
+        let packet = || {
+            ip_packet::make::tcp_packet(
+                IpAddr::V4(own_tun_ipv4()),
+                destination,
+                1234,
+                27017,
+                ip_packet::make::TcpFlags {
+                    syn: true,
+                    ..Default::default()
+                },
+                &[],
+            )
+            .unwrap()
+        };
+
+        state
+            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
+            .unwrap();
+
+        assert_eq!(
+            state.pending_authorizations.poll_authorization_requests(),
+            Some(AuthorizationRequest::resources([exact]))
+        );
+        assert_eq!(
+            state.pending_routed_packets[&wildcard_gateway.into()].len(),
+            0,
+            "must not send through the wildcard's gateway"
+        );
+
+        state
+            .outbound_authorizations
+            .authorize_gateway(exact, exact_gateway, test_ingest_token());
+        state
+            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
+            .unwrap();
+        assert_eq!(state.pending_routed_packets[&exact_gateway.into()].len(), 1);
+        assert_eq!(
+            state.pending_routed_packets[&wildcard_gateway.into()].len(),
+            0
+        );
+    }
+
+    #[test_case::test_case(dns_types::RecordType::SRV; "srv")]
+    #[test_case::test_case(dns_types::RecordType::TXT; "txt")]
+    fn recursive_dns_authorizes_preferred_resource_before_using_an_authorized_wildcard(
+        qtype: dns_types::RecordType,
+    ) {
+        let now = Instant::now();
+        let (mut state, _) = overlapping_dns_resources(now);
+
+        assert!(
+            state
+                .handle_dns_query(
+                    dns_types::Query::new("db.example.com".parse().unwrap(), qtype),
+                    "100.100.111.1:53".parse().unwrap(),
+                    SocketAddr::new(own_tun_ipv4().into(), 1234),
+                    dns::Upstream::Do53 {
+                        server: "1.1.1.1:53".parse().unwrap()
+                    },
+                    dns::Transport::Udp,
+                    now,
+                )
+                .is_none()
+        );
+
+        assert_eq!(
+            state.pending_authorizations.poll_authorization_requests(),
+            Some(AuthorizationRequest::resources([ResourceId::from_u128(1)]))
+        );
+    }
+
+    #[test]
+    fn buffered_dns_packets_do_not_use_an_authorized_wildcard() {
+        let now = Instant::now();
+        let (mut state, destination) = overlapping_dns_resources(now);
+        let packet =
+            ip_packet::make::udp_packet(own_tun_ipv4(), destination, 1234, 27017, &[1]).unwrap();
+
+        state.update_dns_resource_nat(now, iter::once(packet));
+
+        assert_eq!(
+            state.pending_authorizations.poll_authorization_requests(),
+            Some(AuthorizationRequest::resources([ResourceId::from_u128(1)]))
+        );
+        let (_, domain, _, _) = state.dns_resource_nat.poll_packet().unwrap();
+        let packets = state.dns_resource_nat.on_domain_status(
+            GatewayId::from_u128(20),
+            domain,
+            p2p_control::dns_resource_nat::DomainStatus {
+                status: p2p_control::dns_resource_nat::NatStatus::Active,
+                resource: ResourceId::from_u128(2),
+                domain: "db.example.com".parse::<DomainName>().unwrap(),
+            },
+        );
+        assert_eq!(
+            packets.into_iter().count(),
+            0,
+            "must not flush packets through the wildcard's gateway"
+        );
+    }
+
+    fn overlapping_dns_resources(now: Instant) -> (ClientState, IpAddr) {
+        let mut state = ClientState::for_test();
+        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        for (id, address) in [(1, "db.example.com"), (2, "**.example.com")] {
+            state.upsert_resource(
+                Resource::Dns(resource::DnsResource {
+                    id: ResourceId::from_u128(id),
+                    address: address.to_owned(),
+                    name: address.to_owned(),
+                    address_description: None,
+                    sites: vec![],
+                    ip_stack: connlib_model::IpStack::Dual,
+                    filters: vec![],
+                }),
+                now,
+            );
+        }
+        let resource_stub_resolver::ResolveStrategy::LocalResponse { routes, .. } = state
+            .resource_stub_resolver
+            .handle_query(&dns_types::Query::new(
+                "db.example.com".parse().unwrap(),
+                dns_types::RecordType::A,
+            ))
+        else {
+            panic!("expected a local DNS resource response");
+        };
+        let destination = routes[0].proxy_ips[0];
+        state.update_dns_resource_routes(routes);
+        state.outbound_authorizations.authorize_gateway(
+            ResourceId::from_u128(2),
+            GatewayId::from_u128(20),
+            test_ingest_token(),
+        );
+        state.gateways.upsert(GatewayId::from_u128(20), peer);
+        for gateway in [10, 20] {
+            state.pending_routed_packets.insert(
+                GatewayId::from_u128(gateway).into(),
+                UniquePacketBuffer::with_capacity_power_of_2(2, "test"),
+            );
+        }
+        (state, destination)
     }
 
     #[test]
