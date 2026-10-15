@@ -133,22 +133,27 @@ pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -
 
 /// Returns the names of a small domain tree, all of at least two labels.
 ///
-/// Labels come from a tiny pool, so names in different branches share labels and wildcard
-/// patterns derived from one node also match nodes elsewhere in the tree.
+/// Labels come from small per-level pools and all levels below the second share one pool, so
+/// names in different branches share labels and wildcard patterns derived from one node also
+/// match nodes elsewhere in the tree.
 pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
     let depth = g.count(2, 4);
-    let roots = arb_distinct_labels(g, 1, 3)
+    let roots = arb_distinct_labels(g, &TOP_LEVEL_LABELS, 1, 3)
         .into_iter()
         .map(str::to_owned)
         .collect::<Vec<_>>();
 
     (2..=depth)
         .scan(roots, |parents, level| {
-            let min_children = if level == 2 { 1 } else { 0 };
+            let (pool, min_children) = if level == 2 {
+                (&SECOND_LEVEL_LABELS[..], 1)
+            } else {
+                (&SUBDOMAIN_LABELS[..], 0)
+            };
             *parents = parents
                 .iter()
                 .flat_map(|parent| {
-                    arb_distinct_labels(g, min_children, 3)
+                    arb_distinct_labels(g, pool, min_children, 3)
                         .into_iter()
                         .map(move |label| format!("{label}.{parent}"))
                 })
@@ -233,15 +238,19 @@ pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
 
     let labels = name.split('.').collect::<Vec<_>>();
     let base = labels[g.count(0, labels.len() - 2)..].join(".");
+    let label = arb_subdomain_label(g);
     match g.choose_index(8) {
         0 => format!("*.{base}"),
         1 => format!("**.{base}"),
-        2 => format!("?.{base}"),
-        3 => format!("{}?.{base}", arb_label_char(g)),
-        4 => format!("{}*.{base}", arb_label_char(g)),
-        5 => format!("{}?*.{base}", arb_label_char(g)),
-        6 => format!("{}.**.{base}", arb_label(g)),
-        _ => format!("**.{}.**.{base}", arb_label(g)),
+        2 => format!("{}.{base}", "?".repeat(label.len())),
+        3 => {
+            let i = g.choose_index(label.len());
+            format!("{}?{}.{base}", &label[..i], &label[i + 1..])
+        }
+        4 => format!("{}*.{base}", &label[..g.count(1, label.len())]),
+        5 => format!("{}?*.{base}", &label[..g.count(1, label.len() - 1)]),
+        6 => format!("{label}.**.{base}"),
+        _ => format!("**.{label}.**.{base}"),
     }
 }
 
@@ -260,19 +269,9 @@ pub(super) fn arb_domain_matching_dns_resource(g: &mut Generator, address: &str)
         .split('.')
         .flat_map(|label| match label {
             "**" => (0..g.count(1, 2))
-                .map(|_| arb_label(g).to_owned())
+                .map(|_| arb_subdomain_label(g).to_owned())
                 .collect::<Vec<_>>(),
-            _ => vec![
-                label
-                    .chars()
-                    .map(|character| match character {
-                        '*' => arb_label(g).to_owned(),
-                        '?' => arb_label_char(g).to_owned(),
-                        literal => literal.to_string(),
-                    })
-                    .collect::<Vec<_>>()
-                    .concat(),
-            ],
+            _ => vec![arb_label_matching(g, label)],
         })
         .collect::<Vec<_>>()
         .join(".")
@@ -329,23 +328,39 @@ pub(super) fn arb_more_specific_subnet(
     }
 }
 
-const LABELS: [&str; 6] = ["a", "b", "aa", "ab", "ba", "bb"];
+const TOP_LEVEL_LABELS: [&str; 3] = ["com", "net", "io"];
+const SECOND_LEVEL_LABELS: [&str; 3] = ["example", "corp", "internal"];
+const SUBDOMAIN_LABELS: [&str; 7] = ["db", "db1", "db2", "api", "app", "eu", "us"];
 
-fn arb_label(g: &mut Generator) -> &'static str {
-    LABELS[g.choose_index(LABELS.len())]
+fn arb_subdomain_label(g: &mut Generator) -> &'static str {
+    SUBDOMAIN_LABELS[g.choose_index(SUBDOMAIN_LABELS.len())]
 }
 
-fn arb_label_char(g: &mut Generator) -> &'static str {
-    ["a", "b"][g.choose_index(2)]
+fn arb_label_matching(g: &mut Generator, pattern: &str) -> String {
+    if !pattern.contains(['*', '?']) {
+        return pattern.to_owned();
+    }
+
+    let candidates = SUBDOMAIN_LABELS
+        .into_iter()
+        .filter(|label| dns::is_subdomain(&label.parse::<DomainName>().unwrap(), pattern))
+        .collect::<Vec<_>>();
+
+    candidates[g.choose_index(candidates.len())].to_owned()
 }
 
-fn arb_distinct_labels(g: &mut Generator, lo: usize, hi: usize) -> Vec<&'static str> {
-    let mut pool = LABELS;
+fn arb_distinct_labels(
+    g: &mut Generator,
+    pool: &[&'static str],
+    lo: usize,
+    hi: usize,
+) -> Vec<&'static str> {
+    let mut pool = pool.to_vec();
     let n = g.count(lo, hi);
 
     (0..n)
         .map(|i| {
-            let j = i + g.choose_index(LABELS.len() - i);
+            let j = i + g.choose_index(pool.len() - i);
             pool.swap(i, j);
             pool[i]
         })
