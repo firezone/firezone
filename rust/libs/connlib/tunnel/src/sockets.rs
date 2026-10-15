@@ -130,6 +130,14 @@ impl Sockets {
         Ok(())
     }
 
+    /// Returns handles for sending datagrams from other threads.
+    pub fn senders(&self) -> UdpSenders {
+        UdpSenders {
+            v4: self.socket_v4.as_ref().and_then(ThreadedUdpSocket::sender),
+            v6: self.socket_v6.as_ref().and_then(ThreadedUdpSocket::sender),
+        }
+    }
+
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
     pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
         let mut batches = DATAGRAM_BATCHES.pull();
@@ -167,6 +175,29 @@ impl Sockets {
         }
 
         Poll::Pending
+    }
+}
+
+/// Sends datagrams to the UDP socket threads from a thread outside of any async runtime.
+pub(crate) struct UdpSenders {
+    v4: Option<mpsc::Sender<DatagramOut>>,
+    v6: Option<mpsc::Sender<DatagramOut>>,
+}
+
+impl UdpSenders {
+    /// Sends `datagram`, blocking while the socket thread's queue is full.
+    pub fn blocking_send(&self, datagram: DatagramOut) -> Result<()> {
+        let sender = match datagram.dst {
+            SocketAddr::V4(_) => self.v4.as_ref(),
+            SocketAddr::V6(_) => self.v6.as_ref(),
+        }
+        .with_context(|| format!("Failed to send packet to {}: no socket", datagram.dst))?;
+
+        sender
+            .blocking_send(datagram)
+            .map_err(|_| UdpSocketThreadStopped)?;
+
+        Ok(())
     }
 }
 
@@ -458,6 +489,10 @@ impl ThreadedUdpSocket {
         };
 
         Poll::Ready(error)
+    }
+
+    fn sender(&self) -> Option<mpsc::Sender<DatagramOut>> {
+        self.channels.as_ref()?.outbound_tx.get_ref().cloned()
     }
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {

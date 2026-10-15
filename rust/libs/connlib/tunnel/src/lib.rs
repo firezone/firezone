@@ -275,6 +275,7 @@ impl ClientTunnel {
                 udp_dns_queries: _,
                 device,
                 network,
+                decrypted,
                 mut error,
             }) = self.io.poll(cx)
             {
@@ -289,7 +290,7 @@ impl ClientTunnel {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(packet, now, self.io.encryptor())
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(()) => {}
@@ -300,7 +301,7 @@ impl ClientTunnel {
                     self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
                         error.push(e);
                     }
 
@@ -321,18 +322,34 @@ impl ClientTunnel {
                                 received.packet,
                                 now,
                             )
-                            .and_then(|job| {
-                                let Some(job) = job else {
-                                    return Ok(None);
-                                };
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(job)) => self.io.decrypt(io::Received {
+                                local: received.local,
+                                from: received.from,
+                                ecn: received.ecn,
+                                packet: job,
+                            }),
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
+                    }
 
-                                self.role_state.handle_decrypted_network_input(
-                                    received.local,
-                                    received.from,
-                                    job.decrypt(),
-                                    now,
-                                )
-                            })
+                    tick.want_continue();
+                }
+
+                if let Some(mut decrypted) = decrypted {
+                    for received in decrypted.drain(..) {
+                        match self
+                            .role_state
+                            .handle_decrypted_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
@@ -456,6 +473,7 @@ impl GatewayTunnel {
                 udp_dns_queries,
                 device,
                 network,
+                decrypted,
                 mut error,
             }) = self.io.poll(cx)
             {
@@ -494,7 +512,7 @@ impl GatewayTunnel {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(packet, now, self.io.encryptor())
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(()) => {}
@@ -518,7 +536,7 @@ impl GatewayTunnel {
                     self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
+                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
                         error.push(e);
                     }
 
@@ -539,18 +557,34 @@ impl GatewayTunnel {
                                 received.packet,
                                 now,
                             )
-                            .and_then(|job| {
-                                let Some(job) = job else {
-                                    return Ok(None);
-                                };
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(job)) => self.io.decrypt(io::Received {
+                                local: received.local,
+                                from: received.from,
+                                ecn: received.ecn,
+                                packet: job,
+                            }),
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
+                    }
 
-                                self.role_state.handle_decrypted_network_input(
-                                    received.local,
-                                    received.from,
-                                    job.decrypt(),
-                                    now,
-                                )
-                            })
+                    tick.want_continue();
+                }
+
+                if let Some(mut decrypted) = decrypted {
+                    for received in decrypted.drain(..) {
+                        match self
+                            .role_state
+                            .handle_decrypted_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,

@@ -1,3 +1,4 @@
+mod crypto;
 mod device;
 mod doh;
 mod nameserver_set;
@@ -5,6 +6,7 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_queue;
 
+pub use crypto::Received;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
@@ -12,6 +14,7 @@ use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
+use crypto::CryptoWorkers;
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
@@ -37,7 +40,9 @@ use tun::Tun;
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    /// Control messages and packets encrypted on the main thread, e.g. handshakes and keepalives.
     gso_queue: UdpGsoQueue,
+    crypto: CryptoWorkers,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -84,6 +89,8 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    /// Packets decrypted from the jobs passed to [`Io::decrypt`].
+    pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
@@ -95,6 +102,7 @@ impl Input {
         Self {
             device: None,
             network: None,
+            decrypted: None,
             tcp_dns_queries: Vec::new(),
             udp_dns_queries: Vec::new(),
             dns_response: None,
@@ -139,6 +147,7 @@ impl Io {
     ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
+        let packet_counter = otel_instruments::network_packets();
 
         Self {
             sockets,
@@ -166,10 +175,11 @@ impl Io {
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
             gso_queue: UdpGsoQueue::new(),
+            crypto: CryptoWorkers::new(packet_counter.clone()),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: otel_instruments::network_packets(),
+            packet_counter,
             dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
@@ -255,7 +265,12 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let decrypted = self.crypto.poll_decrypted(cx);
+        let network = if self.crypto.can_decrypt() {
+            self.sockets.poll_recv_from(cx)
+        } else {
+            Poll::Pending
+        };
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
@@ -333,6 +348,7 @@ impl Io {
 
         if device.is_pending()
             && network.is_pending()
+            && decrypted.is_pending()
             && tcp_dns_queries.is_empty()
             && udp_dns_queries.is_empty()
             && dns_response.is_pending()
@@ -344,6 +360,7 @@ impl Io {
         Poll::Ready(Input {
             device: poll_result_to_option(device, &mut error),
             network: poll_to_option(network),
+            decrypted: poll_to_option(decrypted),
             tcp_dns_queries,
             udp_dns_queries,
             dns_response: poll_to_option(dns_response),
@@ -354,7 +371,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx)?.is_pending() {
+        if self.flush_network(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -369,7 +386,8 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
-    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    /// Sends the queued datagrams and hands the staged packets to the crypto workers.
+    pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
         let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
@@ -386,6 +404,8 @@ impl Io {
 
             self.sockets.send(datagram)?;
         }
+
+        ready!(self.crypto.poll_flush(&self.sockets, cx));
 
         Poll::Ready(Ok(()))
     }
@@ -408,6 +428,7 @@ impl Io {
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
+        self.crypto.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
@@ -419,9 +440,14 @@ impl Io {
         }
     }
 
-    /// The GSO queue, which encrypts encapsulated packets inline.
-    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
-        &mut self.gso_queue
+    /// The crypto workers, which encrypt encapsulated packets off the main thread.
+    pub fn encryptor(&mut self) -> &mut impl snownet::Encryptor {
+        &mut self.crypto
+    }
+
+    /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].
+    pub fn decrypt(&mut self, job: Received<snownet::DecryptJob>) {
+        self.crypto.decrypt(job);
     }
 
     pub fn send_network(
