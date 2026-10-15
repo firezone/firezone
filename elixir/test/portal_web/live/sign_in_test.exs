@@ -77,6 +77,14 @@ defmodule PortalWeb.SignInTest do
       refute html =~ "Send code"
     end
 
+    test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#auth-brand-mobile", "Firezone")
+      assert has_element?(lv, "#auth-card", "Sign in to #{account.name}")
+      assert has_element?(lv, "#auth-trust-mobile", "WireGuard encrypted")
+    end
+
     test "shows the client sign-in hint for browser sign-in", %{conn: conn, account: account} do
       {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
 

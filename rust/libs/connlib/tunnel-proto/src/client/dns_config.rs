@@ -108,8 +108,8 @@ impl DnsConfig {
         !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
     }
 
-    pub(crate) fn mapping(&mut self) -> DnsMapping {
-        self.mapping.clone()
+    pub(crate) fn mapping(&self) -> &DnsMapping {
+        &self.mapping
     }
 
     pub(crate) fn system_dns_resolvers(&self) -> Vec<IpAddr> {

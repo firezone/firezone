@@ -275,7 +275,7 @@ dependencies {
 
     // AndroidX
     implementation("androidx.core:core-ktx:1.19.1")
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
 
     // Material
@@ -374,8 +374,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.74.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.74.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 

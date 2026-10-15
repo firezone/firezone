@@ -18,7 +18,8 @@ defmodule PortalWeb.Sites do
       |> assign(resources_counts: %{})
       |> assign(policies_counts: %{})
       |> assign(gateway_counts: %{})
-      |> assign(online_gateway_counts: %{})
+      |> assign(online_gateway_ids: %{})
+      |> assign(provisioned_gateway_ids: %{})
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
       |> assign(site_state_reset_assigns())
@@ -60,37 +61,15 @@ defmodule PortalWeb.Sites do
   end
 
   def handle_params(%{"id" => id} = params, _uri, %{assigns: %{live_action: :edit}} = socket) do
-    if selected_site_matches?(socket, id) do
-      changeset = Database.change_site(socket.assigns.selected_site)
+    cond do
+      match?(%{id: ^id, managed_by: :system}, socket.assigns.selected_site) ->
+        patch_to_site(socket, id)
 
-      {:noreply,
-       socket
-       |> merge_state(:site_panel, %{
-         tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
-         view: :edit_site,
-         confirm_delete_site: false
-       })
-       |> put_state(:site_deploy, base_site_deploy_state())
-       |> put_state(:site_resource_form, base_site_resource_form_state())
-       |> put_state(:site_edit, %{form: to_form(changeset)})}
-    else
-      case Database.get_site(id, socket.assigns.subject) do
-        nil ->
-          redirect_to_sites_index(socket, "Site does not exist.")
+      selected_site_matches?(socket, id) ->
+        edit_selected_site(socket, params)
 
-        site ->
-          changeset = Database.change_site(site)
-          site_assigns = site_panel_assigns(site, params, socket)
-
-          {:noreply,
-           socket
-           |> assign(
-             Keyword.merge(site_assigns,
-               site_panel: Map.put(Keyword.fetch!(site_assigns, :site_panel), :view, :edit_site),
-               site_edit: %{form: to_form(changeset)}
-             )
-           )}
-      end
+      true ->
+        load_site_for_edit(socket, id, params)
     end
   end
 
@@ -105,6 +84,50 @@ defmodule PortalWeb.Sites do
 
   def handle_params(_params, _uri, socket) do
     {:noreply, assign(socket, site_state_reset_assigns())}
+  end
+
+  # System-managed sites have nothing to edit
+  defp patch_to_site(socket, id) do
+    {:noreply,
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites/#{id}"))}
+  end
+
+  defp edit_selected_site(socket, params) do
+    changeset = Database.change_site(socket.assigns.selected_site)
+
+    {:noreply,
+     socket
+     |> merge_state(:site_panel, %{
+       tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
+       view: :edit_site,
+       confirm_delete_site: false
+     })
+     |> put_state(:site_deploy, base_site_deploy_state())
+     |> put_state(:site_resource_form, base_site_resource_form_state())
+     |> put_state(:site_edit, %{form: to_form(changeset)})}
+  end
+
+  defp load_site_for_edit(socket, id, params) do
+    case Database.get_site(id, socket.assigns.subject) do
+      nil ->
+        redirect_to_sites_index(socket, "Site does not exist.")
+
+      %{managed_by: :system} ->
+        patch_to_site(socket, id)
+
+      site ->
+        changeset = Database.change_site(site)
+        site_assigns = site_panel_assigns(site, params, socket)
+
+        {:noreply,
+         assign(
+           socket,
+           Keyword.merge(site_assigns,
+             site_panel: Map.put(Keyword.fetch!(site_assigns, :site_panel), :view, :edit_site),
+             site_edit: %{form: to_form(changeset)}
+           )
+         )}
+    end
   end
 
   defp redirect_to_sites_index(socket, message) do
@@ -337,10 +360,8 @@ defmodule PortalWeb.Sites do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <% online = Map.get(@online_gateway_counts, @internet_site.id, 0) %>
-                <span class="text-sm text-body tabular-nums">
-                  {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
-                </span>
+                <% health = site_health(@internet_site.id, @online_gateway_ids, @provisioned_gateway_ids) %>
+                <.gateway_counts health={health} />
               </td>
               <td class="px-4 py-3">
                 <span class="tabular-nums text-body">
@@ -348,9 +369,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <SiteComponents.site_status_badge status={
-                  compute_site_status(online, @internet_site.health_threshold)
-                } />
+                <SiteComponents.site_status_badge status={health.status} />
               </td>
             </tr>
             <tr
@@ -380,10 +399,8 @@ defmodule PortalWeb.Sites do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <% online = Map.get(@online_gateway_counts, site.id, 0) %>
-                <span class="text-sm text-body tabular-nums">
-                  {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
-                </span>
+                <% health = site_health(site.id, @online_gateway_ids, @provisioned_gateway_ids) %>
+                <.gateway_counts health={health} />
               </td>
               <td class="px-4 py-3">
                 <span class="tabular-nums text-body">
@@ -391,7 +408,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <SiteComponents.site_status_badge status={compute_site_status(online, site.health_threshold)} />
+                <SiteComponents.site_status_badge status={health.status} />
               </td>
             </tr>
           </tbody>
@@ -522,12 +539,32 @@ defmodule PortalWeb.Sites do
 
   # ---- Helpers ----
 
-  defp compute_site_status(online, threshold) do
-    cond do
-      online == 0 -> :offline
-      online < threshold -> :degraded
-      true -> :healthy
-    end
+  defp site_health(site_id, online_gateway_ids, provisioned_gateway_ids) do
+    online = Map.get(online_gateway_ids, site_id, MapSet.new())
+    provisioned = Map.get(provisioned_gateway_ids, site_id, MapSet.new())
+    {status, offline_count} = SiteComponents.site_health(online, provisioned)
+
+    %{status: status, online_count: MapSet.size(online), offline_count: offline_count}
+  end
+
+  attr :health, :map, required: true
+
+  defp gateway_counts(assigns) do
+    ~H"""
+    <span class="text-sm text-body tabular-nums">
+      {@health.online_count}<span class="ml-1.5 text-[10px] text-subtle">online</span>
+    </span>
+    <span :if={@health.status == :degraded} class="text-[10px] text-subtle tabular-nums">
+      · {@health.offline_count} offline
+    </span>
+    """
+  end
+
+  # Gateways holding a single-owner token are the ones the site expects online
+  defp put_provisioned_gateway_ids(socket, site_id, device_tokens) do
+    update(socket, :provisioned_gateway_ids, fn ids ->
+      Map.put(ids, site_id, device_tokens |> Map.keys() |> MapSet.new())
+    end)
   end
 
   # ---- Events ----
@@ -798,6 +835,7 @@ defmodule PortalWeb.Sites do
         {:noreply,
          socket
          |> put_flash(:success, "Gateway deleted.")
+         |> put_provisioned_gateway_ids(site_id, device_tokens)
          |> merge_state(:site_panel, %{
            gateways: gateways,
            total_gateway_count: total_gateway_count,
@@ -856,17 +894,11 @@ defmodule PortalWeb.Sites do
             subject
           )
 
-        env = [
-          {"FIREZONE_ID", Ecto.UUID.generate()},
-          {"FIREZONE_TOKEN", encoded_token}
-          | if(url = Portal.Config.get_env(:portal, :api_url_override),
-              do: [{"FIREZONE_API_URL", url}],
-              else: []
-            )
-        ]
+        env = SiteComponents.gateway_env(encoded_token)
 
         {:noreply,
          socket
+         |> put_provisioned_gateway_ids(site.id, device_tokens)
          |> merge_state(:site_panel, %{
            view: :deploy,
            gateways: gateways,
@@ -1254,13 +1286,17 @@ defmodule PortalWeb.Sites do
     policies_counts = Database.count_policies_by_site(all_site_ids, socket.assigns.subject)
     gateway_counts = Database.count_gateways_by_site(all_site_ids, socket.assigns.subject)
 
+    provisioned_gateway_ids =
+      Database.list_provisioned_gateway_ids_by_site(all_site_ids, socket.assigns.subject)
+
     socket
     |> assign(sites_loading?: false)
     |> assign(sites: sites)
     |> assign(resources_counts: resources_counts)
     |> assign(policies_counts: policies_counts)
     |> assign(gateway_counts: gateway_counts)
-    |> assign(online_gateway_counts: Presence.Devices.online_gateway_counts(socket.assigns.account.id))
+    |> assign(online_gateway_ids: Presence.Devices.online_gateway_ids_by_site(socket.assigns.account.id))
+    |> assign(provisioned_gateway_ids: provisioned_gateway_ids)
     |> assign(internet_resource: internet_resource)
     |> assign(internet_site: internet_site)
   end
@@ -1430,6 +1466,25 @@ defmodule PortalWeb.Sites do
       |> Safe.all()
     end
 
+    @spec list_provisioned_gateway_ids_by_site(
+            [Ecto.UUID.t()],
+            Portal.Authentication.Subject.t()
+          ) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
+    def list_provisioned_gateway_ids_by_site(site_ids, subject) do
+      from(t in GatewayToken, as: :gateway_tokens)
+      |> join(:inner, [gateway_tokens: t], d in Device,
+        on: d.account_id == t.account_id and d.id == t.device_id,
+        as: :devices
+      )
+      |> where([devices: d], d.site_id in ^site_ids)
+      |> distinct(true)
+      |> select([devices: d], {d.site_id, d.id})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Map.new(fn {site_id, ids} -> {site_id, MapSet.new(ids)} end)
+    end
+
     @spec delete_gateway(Device.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Device.t()} | {:error, Ecto.Changeset.t()}
     def delete_gateway(gateway, subject) do
@@ -1478,15 +1533,16 @@ defmodule PortalWeb.Sites do
     @spec change_site(%Site{}, term()) :: Ecto.Changeset.t()
     def change_site(site, attrs \\ %{})
 
-    def change_site(%Site{managed_by: :system} = site, attrs) do
+    # System-managed sites have no editable fields
+    def change_site(%Site{managed_by: :system} = site, _attrs) do
       site
-      |> cast(attrs, [:health_threshold])
+      |> change()
       |> Site.changeset()
     end
 
     def change_site(site, attrs) do
       site
-      |> cast(attrs, [:name, :health_threshold])
+      |> cast(attrs, [:name])
       |> validate_required([:name])
       |> Site.changeset()
     end
@@ -1494,7 +1550,7 @@ defmodule PortalWeb.Sites do
     @spec new_site_changeset(Portal.Account.t(), map()) :: Ecto.Changeset.t()
     def new_site_changeset(account, attrs) do
       %Site{account_id: account.id}
-      |> cast(attrs, [:name, :health_threshold])
+      |> cast(attrs, [:name])
       |> validate_required([:name])
       |> Site.changeset()
     end

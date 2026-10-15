@@ -183,18 +183,14 @@ defmodule PortalWeb.Settings.Account do
               <.form
                 id="deletion-feedback-form"
                 for={@deletion_feedback_form}
-                phx-change="validate_deletion_feedback"
                 phx-submit="submit_deletion_feedback"
               >
-                <.inputs_for :let={metadata} field={@deletion_feedback_form[:metadata]}>
-                  <Form.input
-                    field={metadata[:deletion_feedback]}
-                    type="textarea"
-                    placeholder="Your feedback (optional)"
-                    maxlength={Portal.Account.Metadata.deletion_feedback_max_length()}
-                    phx-debounce="300"
-                  />
-                </.inputs_for>
+                <Form.input
+                  field={@deletion_feedback_form[:feedback]}
+                  type="textarea"
+                  placeholder="Your feedback (optional)"
+                  maxlength={Deletion.feedback_max_length()}
+                />
               </.form>
             </:body>
             <:cancel_button>Skip</:cancel_button>
@@ -621,7 +617,7 @@ defmodule PortalWeb.Settings.Account do
                account: updated_account,
                confirm_delete_account: false,
                slug_confirmation: "",
-               deletion_feedback_form: deletion_feedback_form(updated_account),
+               deletion_feedback_form: deletion_feedback_form(),
                error: nil
              )}
 
@@ -636,49 +632,28 @@ defmodule PortalWeb.Settings.Account do
     end
   end
 
-  def handle_event("validate_deletion_feedback", params, socket) do
-    form =
-      socket.assigns.account
-      |> Deletion.change_deletion_feedback(deletion_feedback_param(params))
-      |> Map.put(:action, :validate)
-      |> to_form(as: :account)
-
-    {:noreply, assign(socket, deletion_feedback_form: form)}
-  end
-
   def handle_event("submit_deletion_feedback", params, socket) do
-    account = socket.assigns.account
-
     case params |> deletion_feedback_param() |> String.trim() do
       "" ->
-        {:noreply, assign(socket, deletion_feedback_form: nil)}
+        :ok
 
       feedback ->
-        case Deletion.save_deletion_feedback(account, feedback, socket.assigns.subject) do
-          {:ok, updated_account} ->
-            {:noreply, assign(socket, account: updated_account, deletion_feedback_form: nil)}
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            {:noreply, assign(socket, deletion_feedback_form: to_form(changeset, as: :account))}
-
-          {:error, _reason} ->
-            {:noreply, assign(socket, deletion_feedback_form: nil)}
-        end
+        Deletion.send_deletion_feedback(socket.assigns.account, feedback, socket.assigns.subject)
     end
+
+    {:noreply, assign(socket, deletion_feedback_form: nil)}
   end
 
   def handle_event("skip_deletion_feedback", _params, socket) do
     {:noreply, assign(socket, deletion_feedback_form: nil)}
   end
 
-  defp deletion_feedback_form(account) do
-    account
-    |> Deletion.change_deletion_feedback()
-    |> to_form(as: :account)
+  defp deletion_feedback_form do
+    to_form(%{"feedback" => ""}, as: :deletion_feedback)
   end
 
   defp deletion_feedback_param(params) do
-    case get_in(params, ["account", "metadata", "deletion_feedback"]) do
+    case get_in(params, ["deletion_feedback", "feedback"]) do
       feedback when is_binary(feedback) -> feedback
       _ -> ""
     end

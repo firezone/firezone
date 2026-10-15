@@ -10,6 +10,7 @@
   --color-brand-light: var(--brand-secondary);
   --color-brand-subtle: var(--brand-tertiary);
   --color-brand-muted: var(--brand-muted);
+  --color-brand-strong: var(--brand-strong);
 
   /* ACCENT */
   --color-accent: var(--accent);
@@ -17,6 +18,8 @@
   --color-accent-light: var(--accent-secondary);
   --color-accent-subtle: var(--accent-tertiary);
   --color-accent-muted: var(--accent-muted);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-wash: var(--accent-wash);
 
   /* TEXT */
   --color-heading: var(--text-primary);
@@ -89,6 +92,10 @@
   --color-showcase: var(--showcase-bg);
   --color-showcase-text: var(--showcase-text);
   --color-showcase-icon: var(--showcase-icon);
+  --color-showcase-highlight: var(--showcase-highlight);
+  --color-showcase-glow: var(--showcase-glow);
+  --color-showcase-glow-warm: var(--showcase-glow-warm);
+  --color-showcase-card-border: var(--showcase-card-border);
 }
 
 /* Start: This may not be needed after UI refactor */
@@ -129,6 +136,37 @@ html {
     transparent 1px
   );
   background-size: 24px 24px;
+}
+
+.auth-showcase {
+  background:
+    radial-gradient(
+      520px 420px at 110% -10%,
+      color-mix(in oklch, var(--showcase-glow) 55%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      420px 320px at -20% 115%,
+      color-mix(in oklch, var(--showcase-glow-warm) 22%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(165deg, var(--showcase-bg) 0%, var(--showcase-bg-deep) 70%);
+}
+
+.auth-showcase-dots {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--showcase-icon) 14%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  mask-image: linear-gradient(
+    180deg,
+    transparent,
+    #000 40%,
+    #000 70%,
+    transparent
+  );
 }
 
 .error-radial-fade {
@@ -251,14 +289,25 @@ html {
   /* Side Navbar */
   --brand-wash: oklch(71.74% 0.192 48.75 / 20%);
 
+  /* Tinted icon chips: a wash background with a strong foreground that reads in both themes */
+  --brand-strong: oklch(58.23% 0.1574 48.48);
+  --accent-strong: oklch(48.06% 0.2976 276);
+  --accent-wash: oklch(97.9% 0.193 276);
+
   /* Filters */
   --filter-active-bg: oklch(54.02% 0.02 260);
   --filter-active-text: oklch(98.42% 0.0034 247.86);
 
-  /* Showcase — stays dark in both themes, so its content stays light */
-  --showcase-bg: oklch(48.8% 0.243 264.376);
+  /* Showcase — stays dark in both themes, so its content stays light.
+     electric-violet-800 → 900 with an electric-violet-500 and heat-wave-500 glow */
+  --showcase-bg: oklch(24.93% 0.1391 292.32);
+  --showcase-bg-deep: oklch(17.29% 0.0943 296.22);
   --showcase-text: oklch(100% 0 0);
-  --showcase-icon: oklch(88.2% 0.059 254.128);
+  --showcase-icon: oklch(84.78% 0.0855 296.56);
+  --showcase-highlight: oklch(77.69% 0.154 56.87);
+  --showcase-glow: oklch(48.06% 0.2976 276);
+  --showcase-glow-warm: oklch(71.74% 0.192 48.75);
+  --showcase-card-border: transparent;
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -367,12 +416,17 @@ html[data-theme="system"] .theme-check-system {
   /* Side Navbar */
   --brand-wash: oklch(77.69% 0.154 56.87 / 25%);
 
+  /* Tinted icon chips */
+  --brand-strong: oklch(77.69% 0.154 56.87);
+  --accent-strong: oklch(66.2% 0.16 276);
+  --accent-wash: oklch(48.06% 0.2976 276 / 20%);
+
   /* Filters */
   --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
   --filter-active-text: oklch(98.42% 0.0034 247.86);
 
-  /* Showcase */
-  --showcase-bg: oklch(28.2% 0.091 267.935);
+  /* Showcase — the surface card needs an edge against the violet in dark mode */
+  --showcase-card-border: oklch(69.97% 0.1744 293.46 / 22%);
 }
 
 /* ----------------------------------------------------------------------------

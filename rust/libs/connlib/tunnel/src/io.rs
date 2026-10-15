@@ -19,7 +19,7 @@ use futures::{
     future::{BoxFuture, Shared},
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
-use http_client::HttpClient;
+use http_client::{HttpClient, TlsConfig};
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
@@ -53,6 +53,7 @@ pub struct Io {
     bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, DohClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
+    doh_tls_config: TlsConfig,
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
@@ -163,6 +164,7 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
+            doh_tls_config: TlsConfig::webpki_roots(),
             gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -502,6 +504,7 @@ impl Io {
             let (ready, client) = oneshot::channel();
             let addresses = self.bootstrap_dns_client.resolve(server.host());
             let socket_factory = self.tcp_socket_factory.clone();
+            let tls_config = self.doh_tls_config.clone();
 
             let bootstrap = {
                 let server = server.clone();
@@ -510,9 +513,14 @@ impl Io {
                     tracing::debug!(%server, "Bootstrapping DoH client");
 
                     let addresses = addresses.await?;
-                    let http_client =
-                        HttpClient::new(server.host().to_string(), addresses, socket_factory)
-                            .await?;
+                    let http_client = HttpClient::new(
+                        server.host().into_owned(),
+                        server.port(),
+                        addresses,
+                        tls_config,
+                        socket_factory,
+                    )
+                    .await?;
 
                     tracing::debug!(%server, "Bootstrapped DoH client");
 
@@ -580,29 +588,30 @@ impl Io {
 mod tests {
     use std::{future::poll_fn, net::Ipv4Addr};
 
+    use doh_test_server::DohTestServer;
+
     use super::*;
 
     #[tokio::test]
     async fn bootstrap_doh() {
         let _guard = logging::test("debug");
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
 
+        let answer = Ipv4Addr::new(192, 0, 2, 1);
+        let server = DohTestServer::spawn(answer).await.unwrap();
         let mut io = Io::for_test();
-        // The bootstrap DNS client doesn't retransmit; production relies on outer
-        // retries. Listing the resolver several times makes `resolve` fan out that
-        // many concurrent queries, standing in for those retries so a single
-        // dropped UDP packet to the real server doesn't flake the test.
-        io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1]); 5]);
+        io.doh_tls_config = TlsConfig::new(server.root_cert_store());
 
-        io.send_dns_query(example_com_recursive_query(), Instant::now());
+        io.send_dns_query(example_com_recursive_query(server.url()), Instant::now());
 
-        let input = io.next().await;
+        let response = io.next_dns_response().await.message.unwrap();
 
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
         assert_eq!(
-            input.dns_response.unwrap().message.unwrap().response_code(),
-            dns_types::ResponseCode::NOERROR
+            response
+                .records()
+                .filter_map(dns_types::records::extract_ip)
+                .collect::<Vec<_>>(),
+            vec![IpAddr::V4(answer)]
         );
     }
 
@@ -612,13 +621,19 @@ mod tests {
 
         let mut io = Io::for_test();
 
-        io.send_dns_query(example_com_recursive_query(), Instant::now());
-        let input = io.next().await;
+        io.send_dns_query(
+            example_com_recursive_query(DoHUrl::cloudflare()),
+            Instant::now(),
+        );
+        let response = io.next_dns_response().await;
 
-        assert!(input.dns_response.unwrap().message.is_err());
+        assert!(response.message.is_err());
         assert!(io.doh_clients.is_empty());
 
-        io.send_dns_query(example_com_recursive_query(), Instant::now());
+        io.send_dns_query(
+            example_com_recursive_query(DoHUrl::cloudflare()),
+            Instant::now(),
+        );
 
         assert!(matches!(
             io.doh_clients.get(&DoHUrl::cloudflare()),
@@ -652,11 +667,9 @@ mod tests {
         assert!(io.tcp_dns_server.is_empty());
     }
 
-    fn example_com_recursive_query() -> dns::RecursiveQuery {
+    fn example_com_recursive_query(server: DoHUrl) -> dns::RecursiveQuery {
         dns::RecursiveQuery {
-            server: dns::Upstream::DoH {
-                server: DoHUrl::cloudflare(),
-            },
+            server: dns::Upstream::DoH { server },
             local: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11111),
             remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 22222),
             message: dns_types::Query::new(
@@ -680,8 +693,18 @@ mod tests {
             io
         }
 
-        async fn next(&mut self) -> Input {
-            poll_fn(|cx| self.poll(cx)).await
+        async fn next_dns_response(&mut self) -> dns::RecursiveResponse {
+            loop {
+                let mut input = poll_fn(|cx| self.poll(cx)).await;
+
+                for e in input.error.drain() {
+                    tracing::debug!("Ignoring error unrelated to DNS: {e:#}");
+                }
+
+                if let Some(response) = input.dns_response {
+                    return response;
+                }
+            }
         }
     }
 

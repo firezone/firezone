@@ -12,7 +12,6 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
@@ -35,6 +34,8 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
+bufferpool::buffer_pool!(static PAYLOADS: Vec<u8> = (1024, "test"), batch: 64);
+
 /// The actual system-under-test.
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
@@ -44,8 +45,6 @@ pub struct TunnelTest {
     pub(crate) clients: BTreeMap<ClientId, Host<SimClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
-
-    buffer_pool: BufferPool<Vec<u8>>,
 
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
@@ -174,7 +173,6 @@ impl TunnelTest {
             clients,
             gateways,
             relays,
-            buffer_pool: BufferPool::new(1024, "test"),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
             tcp_flows: Default::default(),
@@ -1095,7 +1093,7 @@ impl TunnelTest {
                             Transmit {
                                 src: Some(src),
                                 dst,
-                                payload: self.buffer_pool.pull_initialised(&payload),
+                                payload: PAYLOADS.pull_initialised(&payload),
                                 ecn: Ecn::NonEct,
                             },
                             relay,

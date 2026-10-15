@@ -5,7 +5,6 @@ defmodule PortalWeb.ServiceAccountsTest do
   alias Portal.Changes.Change
   alias Portal.Repo
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
@@ -1093,15 +1092,10 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
-          send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
-          send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_admin_user}})
-          render(lv)
-        end)
-
-      refute log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_admin_user}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "0"

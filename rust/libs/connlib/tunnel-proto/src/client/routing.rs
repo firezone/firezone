@@ -1,14 +1,14 @@
 use std::{cmp::Ordering, net::IpAddr};
 
 use connlib_model::ResourceId;
-use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
 
 use crate::{
-    dns,
+    cache::Cache,
+    dns::{self, resource_stub_resolver::DnsResourceDomain},
     filter_engine::FilterEngine,
-    routing_table::{FilterMode, RouteEntry, RoutingTable},
+    routing_table::{FilterMode, MAX_CACHE_ENTRIES, RouteEntry, RoutingTable},
 };
 
 /// The matching outbound routes for one kind of destination.
@@ -28,18 +28,30 @@ impl MatchedRoutes {
 
 pub(super) struct GatewayRoute {
     pub(super) resource_id: ResourceId,
-    pub(super) domain: Option<DomainName>,
+    pub(super) domain: Option<DnsResourceDomain>,
 }
 
 #[derive(Debug)]
 pub(super) struct Denied;
 
 /// The client's routing tables, one for each kind of destination.
-#[derive(Default)]
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     device_pool: RoutingTable<DevicePoolEntry>,
+    resolved:
+        Cache<(IpAddr, Protocol, Option<ResourceId>, FilterMode), Result<MatchedRoutes, Denied>>,
+}
+
+impl Default for RoutingTables {
+    fn default() -> Self {
+        Self {
+            cidr: RoutingTable::default(),
+            dns: RoutingTable::default(),
+            device_pool: RoutingTable::default(),
+            resolved: Cache::new(MAX_CACHE_ENTRIES),
+        }
+    }
 }
 
 impl RoutingTables {
@@ -49,40 +61,39 @@ impl RoutingTables {
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-    ) -> Result<MatchedRoutes, Denied> {
+    ) -> Result<&MatchedRoutes, Denied> {
         let mode = outbound_filter_mode();
-        if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
-            let resources = routes(pools, |entry| entry.resource_id)?;
-            return Ok(MatchedRoutes::DevicePools(resources));
-        }
 
-        let routes =
-            self.resolve_filtered_resource(destination, protocol, internet_resource, mode)?;
-        Ok(MatchedRoutes::Gateways(routes))
-    }
+        self.resolved
+            .get_or_insert_with((destination, protocol, internet_resource, mode), || {
+                if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
+                    let resources = routes(pools, |entry| entry.resource_id)?;
+                    return Ok(MatchedRoutes::DevicePools(resources));
+                }
 
-    fn resolve_filtered_resource(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-        internet_resource: Option<ResourceId>,
-        mode: FilterMode,
-    ) -> Result<Vec<GatewayRoute>, Denied> {
-        if let Some(dns) = self.dns.matches(destination, Ok(protocol), mode) {
-            return routes(dns, |entry| GatewayRoute {
-                resource_id: entry.resource_id,
-                domain: Some(entry.domain.clone()),
-            });
-        }
+                if let Some(dns) = self.dns.matches(destination, Ok(protocol), mode) {
+                    let routes = routes(dns, |entry| GatewayRoute {
+                        resource_id: entry.resource_id,
+                        domain: Some(entry.domain.clone()),
+                    })?;
+                    return Ok(MatchedRoutes::Gateways(routes));
+                }
 
-        if let Some(cidr) = self.cidr.matches(destination, Ok(protocol), mode) {
-            return routes(cidr, |entry| GatewayRoute {
-                resource_id: entry.resource_id,
-                domain: None,
-            });
-        }
+                if let Some(cidr) = self.cidr.matches(destination, Ok(protocol), mode) {
+                    let routes = routes(cidr, |entry| GatewayRoute {
+                        resource_id: entry.resource_id,
+                        domain: None,
+                    })?;
+                    return Ok(MatchedRoutes::Gateways(routes));
+                }
 
-        Ok(internet_route(destination, internet_resource))
+                Ok(MatchedRoutes::Gateways(internet_route(
+                    destination,
+                    internet_resource,
+                )))
+            })
+            .as_ref()
+            .map_err(|Denied| Denied)
     }
 
     pub(super) fn cidr_networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -93,7 +104,7 @@ impl RoutingTables {
         &mut self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> Vec<(ResourceId, DomainName)> {
+    ) -> Vec<(ResourceId, DnsResourceDomain)> {
         self.dns
             .matches(destination, protocol, outbound_filter_mode())
             .into_iter()
@@ -114,6 +125,7 @@ impl RoutingTables {
         resource_id: ResourceId,
         filter: FilterEngine,
     ) -> bool {
+        self.resolved.clear();
         self.cidr.upsert(
             network,
             CidrEntry {
@@ -127,10 +139,11 @@ impl RoutingTables {
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
-        domain: DomainName,
+        domain: DnsResourceDomain,
         pattern: dns::Pattern,
         filter: FilterEngine,
     ) -> bool {
+        self.resolved.clear();
         self.dns.upsert(
             network,
             DnsEntry {
@@ -143,6 +156,7 @@ impl RoutingTables {
     }
 
     pub(super) fn upsert_pool(&mut self, resource_id: ResourceId, filter: FilterEngine) {
+        self.resolved.clear();
         self.device_pool.remove_by_id(resource_id);
         for network in [crate::IPV4_TUNNEL.into(), crate::IPV6_TUNNEL.into()] {
             self.device_pool.upsert(
@@ -156,6 +170,7 @@ impl RoutingTables {
     }
 
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
+        self.resolved.clear();
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
         self.device_pool.remove_by_id(resource_id);
@@ -231,7 +246,7 @@ impl RouteEntry for DevicePoolEntry {
 struct DnsEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
-    domain: DomainName,
+    domain: DnsResourceDomain,
     pattern: dns::Pattern,
 }
 
@@ -307,7 +322,7 @@ mod tests {
         tables.upsert_dns(
             destination.into(),
             dns_id,
-            "example.com".parse().unwrap(),
+            DnsResourceDomain::for_test(0, "example.com".parse().unwrap()),
             dns::Pattern::new("example.com").unwrap(),
             FilterEngine::DenyAll,
         );
@@ -352,7 +367,7 @@ mod tests {
                     tables.upsert_dns(
                         destination.into(),
                         resource_id,
-                        "example.com".parse().unwrap(),
+                        DnsResourceDomain::for_test(0, "example.com".parse().unwrap()),
                         dns::Pattern::new("example.com").unwrap(),
                         filter,
                     );
@@ -421,7 +436,7 @@ mod tests {
     fn dns_resources_return_ordered_filter_candidates() {
         let mut tables = RoutingTables::default();
         let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
-        let domain = "example.com".parse::<DomainName>().unwrap();
+        let domain = DnsResourceDomain::for_test(0, "example.com".parse().unwrap());
         let a = ResourceId::from_u128(2);
         let b = ResourceId::from_u128(1);
         for resource in [a, b] {

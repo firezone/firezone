@@ -63,6 +63,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/proto",
     "relay/server",
+    "tests/doh-test-server",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
@@ -110,7 +111,6 @@ client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"
-crossbeam-queue = "0.3.12"
 cryptoki = "0.12.0"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
@@ -120,6 +120,7 @@ dirs = "7.0.0"
 divan = "0.1.21"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
+doh-test-server = { path = "tests/doh-test-server" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }

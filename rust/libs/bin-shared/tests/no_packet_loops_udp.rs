@@ -1,7 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
 use bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
-use bufferpool::BufferPool;
 use ip_network::Ipv4Network;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
@@ -11,6 +10,8 @@ use std::{
     time::Duration,
 };
 
+bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (0, "test"), batch: 64);
+
 // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`), and checks if we can still send packets to IPs outside of our tunnel.
 #[tokio::test]
 #[ignore = "Needs admin / sudo and Internet"]
@@ -19,8 +20,6 @@ async fn no_packet_loops_udp() {
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
-
-    let bufferpool = BufferPool::<Vec<u8>>::new(0, "test");
 
     let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();
@@ -44,7 +43,7 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     // Send a STUN request.
-    let packet = bufferpool
+    let packet = PACKETS
         .pull_initialised(hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref());
 
     socket

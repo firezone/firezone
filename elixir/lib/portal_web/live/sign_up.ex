@@ -29,7 +29,7 @@ defmodule PortalWeb.SignUp do
       field(:phone, :string)
       embeds_one(:account, Portal.Account)
       embeds_one(:actor, Actor)
-      embeds_one(:sign_up_survey, Portal.Account.Metadata.SignUpSurvey)
+      embeds_one(:sign_up_survey, Portal.SignUpSurvey)
     end
 
     @spec changeset(map()) :: Ecto.Changeset.t()
@@ -460,6 +460,7 @@ defmodule PortalWeb.SignUp do
 
   @referral_source_options [
     {"Google / web search", "search"},
+    {"AI / LLM (ChatGPT, Claude, etc.)", "ai_llm"},
     {"GitHub", "github"},
     {"Reddit", "reddit"},
     {"Hacker News", "hacker_news"},
@@ -522,7 +523,7 @@ defmodule PortalWeb.SignUp do
         use_case_options: @use_case_options,
         role_options: @role_options,
         previous_solution_options: @previous_solution_options,
-        other_max_length: Portal.Account.Metadata.SignUpSurvey.other_max_length()
+        other_max_length: Portal.SignUpSurvey.other_max_length()
       )
 
     ~H"""
@@ -641,7 +642,7 @@ defmodule PortalWeb.SignUp do
     <.footer>
       <p class="text-xs text-subtle leading-relaxed">
         Want a separate organization?
-        <Navigation.link patch={~p"/sign_up/email"}>Sign up with a different email.</Navigation.link>
+        <Navigation.link patch={~p"/sign_up"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
     """
@@ -999,7 +1000,8 @@ defmodule PortalWeb.SignUp do
         handle_registration_result(
           socket,
           register_account(registration, socket.assigns.user_agent, socket.assigns.real_ip),
-          socket.assigns.website_attribution
+          socket.assigns.website_attribution,
+          registration.sign_up_survey
         )
 
       accounts ->
@@ -1119,7 +1121,7 @@ defmodule PortalWeb.SignUp do
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
 
-  defp survey_attrs(%Portal.Account.Metadata.SignUpSurvey{} = survey), do: Map.from_struct(survey)
+  defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
@@ -1323,7 +1325,8 @@ defmodule PortalWeb.SignUp do
         handle_registration_result(
           socket,
           register_account(registration, user_agent, real_ip),
-          Map.get(registration_claims, :website_attribution)
+          Map.get(registration_claims, :website_attribution),
+          registration.sign_up_survey
         )
     end
   end
@@ -1331,11 +1334,13 @@ defmodule PortalWeb.SignUp do
   defp handle_registration_result(
          socket,
          {:ok, %{account: account, provider: provider, actor: actor} = result},
-         website_attribution
+         website_attribution,
+         sign_up_survey
        ) do
     Portal.Analytics.PostHog.identify_actor(actor, account, website_attribution)
     Portal.Analytics.registration_completed(account, actor)
     Portal.Workers.SignUpFollowUp.schedule(account, actor)
+    send_sign_up_survey(account, actor, sign_up_survey)
 
     assign(socket,
       step: :account_created,
@@ -1346,12 +1351,42 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  defp handle_registration_result(socket, {:error, :stripe_provision}, _website_attribution) do
+  defp handle_registration_result(
+         socket,
+         {:error, :stripe_provision},
+         _website_attribution,
+         _sign_up_survey
+       ) do
     sign_up_error(socket, "We encountered a temporary error. Please try again.")
   end
 
-  defp handle_registration_result(socket, {:error, _, _, _}, _website_attribution) do
+  defp handle_registration_result(
+         socket,
+         {:error, _, _, _},
+         _website_attribution,
+         _sign_up_survey
+       ) do
     sign_up_error(socket, "We encountered an error creating your account. Please try again.")
+  end
+
+  defp send_sign_up_survey(_account, _actor, nil), do: :ok
+
+  defp send_sign_up_survey(account, actor, sign_up_survey) do
+    if Portal.Mailer.FeedbackEmail.enabled?() do
+      account
+      |> Portal.Mailer.FeedbackEmail.sign_up_survey_email(actor, sign_up_survey)
+      |> Portal.Mailer.enqueue()
+      |> case do
+        {:ok, _result} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Failed to enqueue sign-up questionnaire",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
+      end
+    end
   end
 
   defp sign_up_error(socket, message) do
@@ -1509,8 +1544,7 @@ defmodule PortalWeb.SignUp do
           name: registration.account.name,
           metadata: %{
             stripe: stripe_metadata,
-            marketing_attribution: registration[:marketing_attribution],
-            sign_up_survey: registration[:sign_up_survey]
+            marketing_attribution: registration[:marketing_attribution]
           }
         }
 
@@ -1685,6 +1719,7 @@ defmodule PortalWeb.SignUp do
       }
 
       cast(%Portal.Actor{}, attrs, ~w[account_id email name type allow_email_otp_sign_in]a)
+      |> put_embed(:preferences, %Portal.Actor.Preferences{getting_started: :pending})
       |> Portal.Actor.changeset()
       |> Safe.unscoped()
       |> Safe.insert()

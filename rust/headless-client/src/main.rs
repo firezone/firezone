@@ -765,11 +765,19 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
         tracing::info!(?path, "Token file existed but now is unreadable");
         return Ok(None);
     };
-    let token = String::from_utf8(bytes)?.trim().to_string();
-    let token = SecretString::from(token);
+    let token = SecretString::from(parse_token(&bytes));
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+/// Tokens are ASCII, so dropping everything else also handles BOMs and UTF-16
+/// files, as written by Notepad or PowerShell on Windows.
+fn parse_token(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .chars()
+        .filter(char::is_ascii_graphic)
+        .collect()
 }
 
 fn tonic_otlp_exporter(
@@ -1040,6 +1048,23 @@ mod tests {
 
         let removed = super::remove_token_file(&token_path).unwrap();
         assert!(!removed);
+    }
+
+    #[test]
+    fn parse_token_handles_windows_encodings() {
+        let token = "abc.DEF-123_xyz";
+        let utf16le = token.encode_utf16().flat_map(u16::to_le_bytes);
+        let utf16be = token.encode_utf16().flat_map(u16::to_be_bytes);
+
+        for bytes in [
+            format!("{token}\r\n").into_bytes(),
+            [&[0xEF, 0xBB, 0xBF][..], token.as_bytes()].concat(),
+            utf16le.clone().collect(),
+            [0xFF, 0xFE].into_iter().chain(utf16le).collect(),
+            [0xFE, 0xFF].into_iter().chain(utf16be).collect(),
+        ] {
+            assert_eq!(super::parse_token(&bytes), token);
+        }
     }
 
     #[test]

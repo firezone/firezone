@@ -20,6 +20,9 @@ use ip_packet::checksum;
 /// are 16 bits wide), and so neither can our super packets.
 const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 
+bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"), batch: 4);
+bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer", batch: 2);
+
 /// The kernel rejects `VIRTIO_NET_HDR_GSO_UDP_L4` writes with more segments than this
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).
 const MAX_UDP_SEGMENTS: usize = 128;
@@ -55,8 +58,7 @@ pub struct PacketCoalescer {
     /// entry: a segment may only merge into the most recent item of its connection, so
     /// per-flow ordering is preserved by construction.
     open: Vec<OpenBatch>,
-    items_pool: BufferPool<VecBuf<CoalescedPacket>>,
-    buffer_pool: BufferPool<Vec<u8>>,
+    buffer_pool: &'static BufferPool<Vec<u8>>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
     checksum_mode: ChecksumMode,
@@ -76,13 +78,10 @@ impl PacketCoalescer {
             }
         }
 
-        let items_pool = BufferPool::new(tun::MAX_BATCH_SIZE, "coalesced-packets");
-
         Self {
-            items: items_pool.pull(),
+            items: COALESCED_ITEMS.pull(),
             open: Vec::new(),
-            items_pool,
-            buffer_pool: BufferPool::new(MAX_COALESCED_PACKET, "packet-coalescer"),
+            buffer_pool: COALESCED_PACKETS.with_capacity(MAX_COALESCED_PACKET),
             coalesce_tcp,
             coalesce_udp,
             checksum_mode,
@@ -97,7 +96,7 @@ impl PacketCoalescer {
         let max_packet_len = max_packet_len.min(MAX_COALESCED_PACKET);
 
         Self {
-            buffer_pool: BufferPool::new(max_packet_len, "packet-coalescer"),
+            buffer_pool: COALESCED_PACKETS.with_capacity(max_packet_len),
             max_packet_len,
             ..self
         }
@@ -123,7 +122,7 @@ impl PacketCoalescer {
             if batch.key == candidate.key
                 && batch.can_append(candidate, &packet, item.packet(), self.max_packet_len)
             {
-                batch.append(candidate, &packet, item, &self.buffer_pool);
+                batch.append(candidate, &packet, item, self.buffer_pool);
 
                 if !batch.is_ongoing() {
                     self.open
@@ -158,7 +157,7 @@ impl PacketCoalescer {
             batch.finish(&mut self.items, self.checksum_mode);
         }
 
-        mem::replace(&mut self.items, self.items_pool.pull())
+        mem::replace(&mut self.items, COALESCED_ITEMS.pull())
     }
 }
 
@@ -215,7 +214,7 @@ impl CoalescedPacket {
     }
 
     /// The coalescing buffer, copying the first packet into one on first use.
-    fn coalesced(&mut self, pool: &BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
+    fn coalesced(&mut self, pool: &'static BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
         if let Inner::Packet(first) = &self.0 {
             let mut buf = pool.pull();
             buf.clear();
@@ -435,7 +434,7 @@ impl OpenBatch {
         candidate: &Candidate,
         packet: &IpPacket,
         item: &mut CoalescedPacket,
-        pool: &BufferPool<Vec<u8>>,
+        pool: &'static BufferPool<Vec<u8>>,
     ) {
         let bytes = packet.packet();
         let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];

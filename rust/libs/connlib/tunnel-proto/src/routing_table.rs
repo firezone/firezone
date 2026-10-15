@@ -6,14 +6,12 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
 use itertools::Itertools as _;
-use lru::LruCache;
 
-use crate::filter_engine::FilterEngine;
+use crate::{cache::Cache, filter_engine::FilterEngine};
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
@@ -23,7 +21,7 @@ use crate::filter_engine::FilterEngine;
 /// in parallel which ought to be enough for most people. Very likely, other packet processing will
 /// be the culprit for low throughput if we have more than 1024 connections, plus the cache uses an LRU
 /// eviction pattern, thus prioritizing the most recently used connections.
-const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+pub(crate) const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
@@ -37,9 +35,11 @@ pub(crate) trait RouteEntry: Ord + Clone {
     }
 }
 
+type MatchKey = (IpAddr, FilterProtocol, FilterMode);
+
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>, FastRandomState>,
+    match_cache: Cache<MatchKey, Option<Vec<T>>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,7 +86,7 @@ impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            match_cache: LruCache::with_hasher(MAX_CACHE_ENTRIES, FastRandomState::default()),
+            match_cache: Cache::new(MAX_CACHE_ENTRIES),
         }
     }
 }
@@ -156,33 +156,11 @@ where
         protocol: Result<Protocol, UnsupportedProtocol>,
         filter_mode: FilterMode,
     ) -> Option<&[T]> {
-        self.match_cache
-            .get_or_insert((ip, FilterProtocol::from(&protocol), filter_mode), || {
-                let mut entries = self
-                    .inner
-                    .matches(ip)
-                    .flat_map(|(network, entries)| {
-                        entries.iter().map(move |entry| (network, entry))
-                    })
-                    .peekable();
-                entries.peek()?;
+        let key = (ip, FilterProtocol::from(&protocol), filter_mode);
 
-                Some(
-                    entries
-                        .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
-                        .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
-                            r_entry
-                                .filter()
-                                .breadth()
-                                .cmp(&l_entry.filter().breadth())
-                                .then(l_entry.specificity(r_entry))
-                                .then(by_netmask(l_net, r_net))
-                                .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
-                                .reverse()
-                        })
-                        .map(|(_, entry)| entry.clone())
-                        .collect(),
-                )
+        self.match_cache
+            .get_or_insert_with(key, || {
+                sorted_matches(&self.inner, ip, protocol, filter_mode)
             })
             .as_deref()
     }
@@ -190,6 +168,39 @@ where
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
         self.inner.iter().map(|(n, _)| n)
     }
+}
+
+fn sorted_matches<T>(
+    table: &IpNetworkTable<BTreeSet<T>>,
+    ip: IpAddr,
+    protocol: Result<Protocol, UnsupportedProtocol>,
+    filter_mode: FilterMode,
+) -> Option<Vec<T>>
+where
+    T: RouteEntry,
+{
+    let mut entries = table
+        .matches(ip)
+        .flat_map(|(network, entries)| entries.iter().map(move |entry| (network, entry)))
+        .peekable();
+    entries.peek()?;
+
+    Some(
+        entries
+            .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
+            .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
+                r_entry
+                    .filter()
+                    .breadth()
+                    .cmp(&l_entry.filter().breadth())
+                    .then(l_entry.specificity(r_entry))
+                    .then(by_netmask(l_net, r_net))
+                    .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
+                    .reverse()
+            })
+            .map(|(_, entry)| entry.clone())
+            .collect(),
+    )
 }
 
 /// Compares two networks by their prefix length (netmask).
