@@ -1488,7 +1488,10 @@ where
     {
         match self.poll_timeout_cache.check(now) {
             ControlFlow::Continue(()) => {}
-            ControlFlow::Break(()) => return,
+            ControlFlow::Break(()) => {
+                self.handle_tunnel_events(&cid, now, allocations, transmits);
+                return;
+            }
         };
 
         let _guard = tracing::info_span!("handle_timeout", %cid).entered();
@@ -1723,7 +1726,19 @@ where
         // bootstrap eventually surfaces `ConnectionExpired` instead of
         // hanging.
         self.tunnel.handle_timeout(now);
+        self.handle_tunnel_events(cid, now, allocations, transmits);
+    }
 
+    fn handle_tunnel_events<TId>(
+        &mut self,
+        cid: &TId,
+        now: Instant,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut TransmitBuffer,
+    ) where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
         let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) else {
             return;
         };
