@@ -1,0 +1,13 @@
+Account Scheduled for Deletion
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) had no activity in the two weeks after our inactivity reminder. We disabled the account and scheduled it for permanent deletion.
+
+Scheduled deletion date: <%= Calendar.strftime(@account.scheduled_deletion_at, "%B %-d, %Y") %>
+
+Admins can still sign in. To keep this account, cancel the deletion in your account settings before the deadline:
+<%= @settings_url %>
+
+If you no longer need this account, no action is needed.
+
+Thanks,
+The Firezone Team

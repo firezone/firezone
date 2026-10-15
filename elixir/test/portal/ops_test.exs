@@ -206,6 +206,39 @@ defmodule Portal.OpsTest do
     end
   end
 
+  describe "default_accounts_query/0" do
+    test "lists Starter accounts with no activity or setup" do
+      account = starter_account_fixture()
+      admin_actor_fixture(account: account)
+      configured = starter_account_fixture()
+      admin_actor_fixture(account: configured)
+      resource_fixture(account: configured)
+
+      ids = default_accounts_query() |> Repo.all() |> Enum.map(& &1.id)
+
+      assert account.id in ids
+      refute configured.id in ids
+    end
+  end
+
+  describe "remind_default_accounts/0" do
+    test "queues an inactivity reminder for each default account" do
+      account = starter_account_fixture()
+      admin_actor_fixture(account: account)
+
+      assert {:ok, 1} = remind_default_accounts()
+
+      assert [job] =
+               jobs_for_worker_and_arg(
+                 "Portal.Workers.AccountInactivityReminder",
+                 "account_id",
+                 account.id
+               )
+
+      assert job.args["reason"] == "default"
+    end
+  end
+
   describe "set_banner/1" do
     test "creates a banner with a message" do
       assert {:ok, banner} = set_banner("System maintenance scheduled")

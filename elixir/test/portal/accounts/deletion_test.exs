@@ -53,6 +53,31 @@ defmodule Portal.Accounts.DeletionTest do
     end
   end
 
+  describe "cancel_account_deletion/2" do
+    test "restarts the inactivity period of an account scheduled for deletion" do
+      now = DateTime.utc_now()
+
+      account =
+        update_account(starter_account_fixture(),
+          is_disabled: true,
+          disabled_reason: "Account inactivity",
+          scheduled_deletion_at: DateTime.add(now, 7, :day),
+          last_active_at: DateTime.add(now, -400, :day),
+          inactivity_reminded_at: DateTime.add(now, -15, :day)
+        )
+
+      actor = admin_actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor)
+
+      assert {:ok, account} = Deletion.cancel_account_deletion(account, subject)
+
+      refute account.is_disabled
+      assert is_nil(account.disabled_reason)
+      assert is_nil(account.inactivity_reminded_at)
+      assert DateTime.diff(DateTime.utc_now(), account.last_active_at) < 5
+    end
+  end
+
   describe "send_deletion_feedback/3" do
     setup do
       Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")

@@ -1,6 +1,7 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, Billing, EmailSuppression, Mailer}
+  alias Portal.Workers.AccountInactivityReminder
   alias Portal.Workers.DeleteAccount
 
   @max_bcc_per_message 50
@@ -120,21 +121,29 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Previews Starter accounts with no surviving activity or non-default setup.
-  This is a review query, not proof an account has never signed in.
+  Lists Starter accounts with no surviving activity and no setup beyond what
+  sign-up creates. Review the list before sending reminders. An account in the
+  list may still have signed in before its logs were pruned.
 
-      Portal.Ops.default_accounts_query() |> Portal.Safe.unscoped() |> Portal.Safe.all()
+  ## Examples
+
+      iex> default_accounts_query() |> Portal.Safe.unscoped() |> Portal.Safe.all()
+      [%Portal.Account{}, ...]
+
   """
-  def default_accounts_query, do: Portal.Accounts.Inactivity.default_accounts_query()
+  def default_accounts_query, do: AccountInactivityReminder.default_accounts_query()
 
   @doc """
-  Queues at most 100 default-account inactivity reminders per invocation.
-  Run again after the batch drains to process the next accounts. Pending jobs
-  and previously reminded accounts are excluded. Delivery rechecks eligibility.
+  Queues inactivity reminders for up to 100 accounts of `default_accounts_query/0`.
+  Run it again when the batch is sent to queue the next accounts.
 
-      Portal.Ops.remind_default_accounts()
+  ## Examples
+
+      iex> remind_default_accounts()
+      {:ok, 100}
+
   """
-  def remind_default_accounts, do: Portal.Accounts.Inactivity.queue_default_reminders()
+  def remind_default_accounts, do: AccountInactivityReminder.enqueue_default()
 
   def sync_pricing_plans do
     {:ok, subscriptions} = Portal.Billing.list_all_subscriptions()

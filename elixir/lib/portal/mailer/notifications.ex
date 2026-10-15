@@ -125,6 +125,33 @@ defmodule Portal.Mailer.Notifications do
     |> render_body(__MODULE__, :account_deletion_completed, account: account)
   end
 
+  def account_inactivity_reminder_email(account, recipients, reason) do
+    sign_in_url = url(~p"/#{account}/sign_in")
+
+    default_email()
+    |> subject("Your Firezone Account Is Inactive")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_inactivity_reminder,
+      account: account,
+      reason: reason,
+      sign_in_url: sign_in_url
+    )
+  end
+
+  def account_scheduled_for_inactivity_deletion_email(account, recipients) do
+    settings_url = url(~p"/#{account}/settings/account")
+
+    default_email()
+    |> subject("Firezone Account Scheduled for Deletion")
+    |> put_recipients(recipients)
+    |> with_account_id(account.id)
+    |> render_body(__MODULE__, :account_scheduled_for_inactivity_deletion,
+      account: account,
+      settings_url: settings_url
+    )
+  end
+
   defp put_recipients(email, recipients) when is_list(recipients),
     do: bcc_recipients(email, recipients)
 

@@ -395,8 +395,10 @@ if config_env() == :prod do
     # Delete expired portal sessions every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
 
+    # Record when each account was last active once a day
     {"0 0 * * *", Portal.Workers.RollupAccountActivity},
 
+    # Move inactive Starter accounts toward deletion every 5 minutes
     {"*/5 * * * *", Portal.Workers.SweepInactiveAccounts},
 
     # Maintain daily log partitions (pre-create upcoming, drop expired)

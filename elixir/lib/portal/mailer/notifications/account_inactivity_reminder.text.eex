@@ -1,0 +1,11 @@
+Your Account Is Inactive
+
+<%= if @reason == "default" do %>Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has no recorded activity and no setup beyond what was created at sign-up.<% else %>Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) has had no recorded activity for at least 12 months.<% end %>
+
+To keep this account, sign in within two weeks. If there is no activity by then, we will disable the account and schedule it for deletion:
+<%= @sign_in_url %>
+
+If you no longer need this account, no action is needed.
+
+Thanks,
+The Firezone Team

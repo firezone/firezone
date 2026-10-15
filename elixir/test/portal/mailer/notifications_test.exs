@@ -97,6 +97,48 @@ defmodule Portal.Mailer.NotificationsTest do
     end
   end
 
+  describe "account_inactivity_reminder_email/3" do
+    test "asks admins of an inactive account to sign in", %{account: account} do
+      email = account_inactivity_reminder_email(account, ["admin@example.com"], "inactive")
+
+      assert email.subject == "Your Firezone Account Is Inactive"
+      assert email.text_body =~ account.slug
+      assert email.text_body =~ account.id
+      assert email.text_body =~ "at least 12 months"
+      assert email.text_body =~ "sign in within two weeks"
+      assert email.text_body =~ "/#{account.slug}/sign_in"
+      assert email.html_body =~ "at least 12 months"
+      assert email.html_body =~ "/#{account.slug}/sign_in"
+    end
+
+    test "explains a reminder for an account with only sign-up defaults", %{account: account} do
+      email = account_inactivity_reminder_email(account, ["admin@example.com"], "default")
+
+      assert email.text_body =~ "no setup beyond what was created at sign-up"
+      assert email.html_body =~ "no setup beyond what was created at sign-up"
+    end
+  end
+
+  describe "account_scheduled_for_inactivity_deletion_email/2" do
+    test "includes the scheduled deletion date and settings link", %{account: account} do
+      scheduled_deletion_at =
+        DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+      account = update_account(account, scheduled_deletion_at: scheduled_deletion_at)
+      formatted_date = Calendar.strftime(scheduled_deletion_at, "%B %-d, %Y")
+
+      email = account_scheduled_for_inactivity_deletion_email(account, ["admin@example.com"])
+
+      assert email.subject == "Firezone Account Scheduled for Deletion"
+      assert email.text_body =~ account.slug
+      assert email.text_body =~ formatted_date
+      assert email.text_body =~ "Admins can still sign in"
+      assert email.text_body =~ "/#{account.slug}/settings/account"
+      assert email.html_body =~ formatted_date
+      assert email.html_body =~ "/#{account.slug}/settings/account"
+    end
+  end
+
   describe "outdated_gateway_email/4" do
     test "should contain current gateway version and list of outdated gateways", %{
       account: account

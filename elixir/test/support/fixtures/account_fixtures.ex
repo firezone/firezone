@@ -127,6 +127,8 @@ defmodule Portal.AccountFixtures do
       :is_disabled,
       :scheduled_deletion_at,
       :disabled_reason,
+      :last_active_at,
+      :inactivity_reminded_at,
       :users_limit_exceeded,
       :seats_limit_exceeded,
       :service_accounts_limit_exceeded,
