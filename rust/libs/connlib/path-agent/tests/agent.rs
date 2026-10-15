@@ -14,7 +14,7 @@ use path_agent::{
     Candidate, Event, HandshakeKind, Outbound, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST,
     PROBE_SRC, PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
-use sanstun::{Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
+use sanstun::{Datagram, Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -23,12 +23,13 @@ use zeroize::Zeroizing;
 fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    a.handle_outbound(handshake_init(), now);
+    let init = handshake_init_bytes();
+    a.handle_outbound(Outbound::HandshakeInitiation(init.clone()), now);
     a.handle_timeout(now);
 
     let transmits = a.transmits();
     assert_eq!(transmits.len(), 3, "one per relay-involving pair");
-    let payload = Payload::Ciphertext(handshake_init_bytes());
+    let payload = Payload::Ciphertext(init);
     for t in &transmits {
         assert_eq!(t.payload, payload);
     }
@@ -97,8 +98,7 @@ fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
 
     // A WireGuard re-init (fresh bytes, still no session) re-fans to every relay
     // pair once but does not restart the fast ladder.
-    let mut reinit = handshake_init_bytes();
-    reinit[4] = 7;
+    let reinit = Handshake::new_seeded(t, 1).init;
     a.handle_outbound(Outbound::HandshakeInitiation(reinit.clone()), t + secs(2));
     a.handle_timeout(t + secs(2));
 
@@ -153,7 +153,8 @@ fn inbound_handshake_response_stops_the_fanout() {
 fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    a.handle_outbound(handshake_init(), now);
+    let init = handshake_init_bytes();
+    a.handle_outbound(Outbound::HandshakeInitiation(init.clone()), now);
 
     // The peer's init lands before ours went out, e.g. a stale re-key from a
     // connection the peer has since replaced and no longer knows the session of.
@@ -169,7 +170,7 @@ fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     let _ = a.transmits();
 
     let fanout = a.tick(now);
-    let init = Payload::Ciphertext(handshake_init_bytes());
+    let init = Payload::Ciphertext(init);
     assert_eq!(
         fanout.iter().filter(|t| t.payload == init).count(),
         3,
@@ -891,12 +892,10 @@ impl AgentExt for PathAgent {
 
         while let Some(event) = tunnel.poll_event() {
             let outbound = match event {
-                sanstun::Event::SendHandshakeInitiation(m) => {
-                    Outbound::HandshakeInitiation(m.to_vec())
-                }
-                sanstun::Event::SendHandshakeResponse(m) => Outbound::HandshakeResponse(m.to_vec()),
+                sanstun::Event::SendHandshakeInitiation(m) => Outbound::HandshakeInitiation(m),
+                sanstun::Event::SendHandshakeResponse(m) => Outbound::HandshakeResponse(m),
                 sanstun::Event::KeepaliveDue(k) => {
-                    Outbound::Data(tunnel.encapsulate_keepalive(k, now).unwrap().to_vec())
+                    Outbound::Data(tunnel.encapsulate_keepalive(k, now).unwrap())
                 }
                 sanstun::Event::ConnectionExpired => continue,
             };
@@ -993,11 +992,8 @@ fn handshake_init() -> Outbound {
     Outbound::HandshakeInitiation(handshake_init_bytes())
 }
 
-/// Synthetic: the agent treats the bytes as opaque.
-fn handshake_init_bytes() -> Vec<u8> {
-    let mut bytes = vec![0u8; 148];
-    bytes[0] = 1;
-    bytes
+fn handshake_init_bytes() -> Datagram {
+    Handshake::new(Instant::now()).init
 }
 
 /// Synthetic data packet: only the type byte and a length past the data
@@ -1030,7 +1026,7 @@ struct Handshake {
     initiator_interface: Interface,
     responder: Tunnel,
     responder_interface: Interface,
-    init: Vec<u8>,
+    init: Datagram,
     response: Vec<u8>,
 }
 
@@ -1060,10 +1056,7 @@ impl Handshake {
             )
             .unwrap();
 
-        let init = initiator
-            .restart_handshake(now)
-            .expect("expected init")
-            .to_vec();
+        let init = initiator.restart_handshake(now).expect("expected init");
 
         Self {
             initiator,
