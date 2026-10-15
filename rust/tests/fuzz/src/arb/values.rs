@@ -131,13 +131,40 @@ pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -
     }
 }
 
-pub(super) fn arb_domain_name_string(g: &mut Generator, lo: usize, hi: usize) -> String {
-    let n = g.count(lo, hi);
+/// Returns the names of a small domain tree, all of at least two labels.
+///
+/// Labels come from a tiny pool, so names in different branches share labels and wildcard
+/// patterns derived from one node also match nodes elsewhere in the tree.
+pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
+    let depth = g.count(2, 4);
+    let roots = arb_distinct_labels(g, 1, 3)
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
 
-    (0..n)
-        .map(|_| g.lower_ascii(3, 6))
-        .collect::<Vec<_>>()
-        .join(".")
+    (2..=depth)
+        .scan(roots, |parents, level| {
+            let min_children = if level == 2 { 1 } else { 0 };
+            *parents = parents
+                .iter()
+                .flat_map(|parent| {
+                    arb_distinct_labels(g, min_children, 3)
+                        .into_iter()
+                        .map(move |label| format!("{label}.{parent}"))
+                })
+                .collect::<Vec<_>>();
+
+            Some(parents.clone())
+        })
+        .flatten()
+        .map(|name| name.parse::<DomainName>().unwrap())
+        .collect()
+}
+
+pub(super) fn arb_tree_name(g: &mut Generator) -> DomainName {
+    let index = g.choose_index(g.domain_tree.len());
+
+    g.domain_tree[index].clone()
 }
 
 pub(super) fn arb_cidr_resource_address(g: &mut Generator) -> IpNetwork {
@@ -199,33 +226,45 @@ pub(super) fn arb_different_cidr_resource_address(
 }
 
 pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
-    let base = arb_domain_name_string(g, 2, 3);
+    let name = arb_tree_name(g).to_string();
+    let labels = name.split('.').collect::<Vec<_>>();
+    let base = labels[g.count(0, labels.len() - 2)..].join(".");
     match g.choose_index(9) {
-        0 => base,
+        0 => name,
         1 => format!("*.{base}"),
         2 => format!("**.{base}"),
         3 => format!("?.{base}"),
-        4 => format!("{}?.{base}", g.lower_ascii(2, 4)),
-        5 => format!("{}*.{base}", g.lower_ascii(2, 4)),
-        6 => format!("{}?*.{base}", g.lower_ascii(2, 4)),
-        7 => format!("{}.**.{base}", g.lower_ascii(2, 4)),
-        _ => format!("**.{}.**.{base}", g.lower_ascii(2, 4)),
+        4 => format!("{}?.{base}", arb_label_char(g)),
+        5 => format!("{}*.{base}", arb_label_char(g)),
+        6 => format!("{}?*.{base}", arb_label_char(g)),
+        7 => format!("{}.**.{base}", arb_label(g)),
+        _ => format!("**.{}.**.{base}", arb_label(g)),
     }
 }
 
 pub(super) fn arb_domain_matching_dns_resource(g: &mut Generator, address: &str) -> DomainName {
+    let in_tree = g
+        .domain_tree
+        .iter()
+        .filter(|name| dns::is_subdomain(name, address))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !in_tree.is_empty() && g.flip(75) {
+        return in_tree[g.choose_index(in_tree.len())].clone();
+    }
+
     let domain = address
         .split('.')
         .flat_map(|label| match label {
             "**" => (0..g.count(1, 2))
-                .map(|_| g.lower_ascii(2, 4))
+                .map(|_| arb_label(g).to_owned())
                 .collect::<Vec<_>>(),
             _ => vec![
                 label
                     .chars()
                     .map(|character| match character {
-                        '*' => g.lower_ascii(1, 3),
-                        '?' => g.lower_ascii(1, 1),
+                        '*' => arb_label(g).to_owned(),
+                        '?' => arb_label_char(g).to_owned(),
                         literal => literal.to_string(),
                     })
                     .collect::<Vec<_>>()
@@ -285,6 +324,29 @@ pub(super) fn arb_more_specific_subnet(
             IpNetwork::new_truncate(IpAddr::V6(ip), netmask).unwrap()
         }
     }
+}
+
+const LABELS: [&str; 6] = ["a", "b", "aa", "ab", "ba", "bb"];
+
+fn arb_label(g: &mut Generator) -> &'static str {
+    LABELS[g.choose_index(LABELS.len())]
+}
+
+fn arb_label_char(g: &mut Generator) -> &'static str {
+    ["a", "b"][g.choose_index(2)]
+}
+
+fn arb_distinct_labels(g: &mut Generator, lo: usize, hi: usize) -> Vec<&'static str> {
+    let mut pool = LABELS;
+    let n = g.count(lo, hi);
+
+    (0..n)
+        .map(|i| {
+            let j = i + g.choose_index(LABELS.len() - i);
+            pool.swap(i, j);
+            pool[i]
+        })
+        .collect()
 }
 
 fn arb_do53_pool(g: &mut Generator) -> Vec<IpAddr> {

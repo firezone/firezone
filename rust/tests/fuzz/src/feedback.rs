@@ -504,6 +504,16 @@ impl Recorder {
                 matches!(query.r_type, dns_types::RecordType::AAAA),
                 matches!(query.r_type, dns_types::RecordType::PTR),
             );
+
+            let matching =
+                reference_client.dns_resources_by_domain(&query.domain, |_| true, |_| true);
+            let sites = matching
+                .iter()
+                .flat_map(|resource| &resource.sites)
+                .map(|site| site.id)
+                .unique()
+                .count();
+            record_value!(((matching.len().min(4) as u16) << 1) | u16::from(sites >= 2));
         }
     }
 }

@@ -6,6 +6,7 @@ use std::{
 
 use arbitrary::Unstructured;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
+use dns_types::DomainName;
 use ip_network::{
     Ipv4Network, Ipv6Network,
     iterator::{Ipv4RangeIterator, Ipv6NetworkIterator},
@@ -74,6 +75,9 @@ pub struct Generator<'a> {
     icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
     udp_packets: SmallVec<[(SPort, DPort); 20]>,
     tcp_connections: SmallVec<[(SPort, DPort); 20]>,
+
+    /// The names that DNS resource addresses and queried domains are derived from.
+    pub(super) domain_tree: Vec<DomainName>,
 }
 
 impl<'a> Generator<'a> {
@@ -110,6 +114,7 @@ impl<'a> Generator<'a> {
             icmp_packets: SmallVec::new(),
             udp_packets: SmallVec::new(),
             tcp_connections: SmallVec::new(),
+            domain_tree: Vec::new(),
         }
     }
 

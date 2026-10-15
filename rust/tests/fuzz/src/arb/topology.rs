@@ -14,8 +14,8 @@ use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 use super::context::Generator;
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_dns_resource_address,
-    arb_domain_matching_dns_resource, arb_domain_name_string, arb_filters, arb_ip_stack_kind,
-    arb_more_specific_subnet, arb_system_dns_servers, arb_upstream_do53_servers,
+    arb_domain_matching_dns_resource, arb_domain_tree, arb_filters, arb_ip_stack_kind,
+    arb_more_specific_subnet, arb_system_dns_servers, arb_tree_name, arb_upstream_do53_servers,
     arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
@@ -144,6 +144,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator) -> StubPortal {
     let upstream_doh = arb_upstream_doh_servers(g);
 
     let cidr_resources = arb_cidr_resources(g, &regular_sites, &upstream_do53);
+    g.domain_tree = arb_domain_tree(g);
     let dns_resources = arb_dns_resources(g, &regular_sites);
     let device_pool_resources = (0..g.count(0, 3))
         .map(|_| arb_device_pool_resource(g, &clients))
@@ -299,29 +300,10 @@ fn arb_cidr_resources(
 }
 
 fn arb_dns_resources(g: &mut Generator, sites: &[Site]) -> SmallVec<[DnsResource; 8]> {
-    (0..g.count(1, 4))
-        .flat_map(|_| {
+    (0..g.count(1, 6))
+        .map(|_| {
             let site = pick_site(g, sites);
-            let resource = arb_dns_resource(g, site);
-            let sibling = g.flip(50).then(|| {
-                let address = if g.bool() {
-                    resource.address.clone()
-                } else {
-                    arb_domain_matching_dns_resource(g, &resource.address).to_string()
-                };
-
-                DnsResource {
-                    id: g.fresh_resource_id(),
-                    address,
-                    name: g.lower_ascii(4, 10),
-                    address_description: None,
-                    sites: resource.sites.clone(),
-                    ip_stack: resource.ip_stack,
-                    filters: arb_filters(g),
-                }
-            });
-
-            [Some(resource), sibling].into_iter().flatten()
+            arb_dns_resource(g, site)
         })
         .collect()
 }
@@ -532,9 +514,7 @@ fn arb_global_dns_records(g: &mut Generator) -> DnsRecords {
     let n = g.count(0, 4);
     (0..n)
         .map(|_| {
-            let domain = arb_domain_name_string(g, 2, 3)
-                .parse::<DomainName>()
-                .unwrap();
+            let domain = arb_tree_name(g);
             (domain, arb_dns_record_set(g))
         })
         .collect::<DnsRecords>()

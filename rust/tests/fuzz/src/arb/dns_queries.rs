@@ -8,7 +8,7 @@ use tunnel_proto::dns;
 
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
-use super::values::arb_domain_matching_dns_resource;
+use super::values::{arb_domain_matching_dns_resource, arb_tree_name};
 use crate::reference::ReferenceState;
 use crate::stub_portal::StubPortal;
 use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
@@ -35,6 +35,7 @@ enum DnsNameSpec {
     Resource {
         address: String,
     },
+    TreeName,
     KnownLabel {
         base: String,
         labels: Vec<String>,
@@ -98,6 +99,11 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQue
                     client_id,
                     dns_server: dns_server.clone(),
                     name: DnsNameSpec::UnknownDevice { base: base.clone() },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::TreeName,
                 }),
                 Some(DnsQueryTarget {
                     client_id,
@@ -172,6 +178,7 @@ fn generate_query(g: &mut Generator, target: DnsQueryTarget) -> (ClientId, DnsQu
             };
             (domain, rtypes)
         }
+        DnsNameSpec::TreeName => (arb_tree_name(g), vec![RecordType::A]),
         DnsNameSpec::KnownLabel { base, labels } => {
             let label = &labels[g.choose_index(labels.len())];
             (
