@@ -27,6 +27,7 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
+use path_agent::{HandshakeKind, Outbound};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -997,6 +998,15 @@ where
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+        // WireGuard rejects a retransmitted init as a replay, so answer it from the cache first.
+        if let Ok(init) = <&[u8; 148]>::try_from(packet)
+            && self
+                .connections
+                .replay_handshake_response(init, (destination, from), now)
+        {
+            return ControlFlow::Break(Ok(()));
+        }
+
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(Received::Message(parsed_packet)) => parsed_packet,
             Ok(Received::SendCookieReply(reply)) => {
@@ -1004,15 +1014,6 @@ where
 
                 self.reply_on_arrival_path(destination, from, &reply, now);
 
-                return ControlFlow::Break(Ok(()));
-            }
-            Err(sanstun::Error::WrongTai64nTimestamp)
-                if self.connections.replay_cached_handshake_response(
-                    packet,
-                    (destination, from),
-                    now,
-                ) =>
-            {
                 return ControlFlow::Break(Ok(()));
             }
             // If the packet is not a WireGuard packet, bail early.
@@ -1026,6 +1027,13 @@ where
                     anyhow::Error::new(e).context("Failed to verify WireGuard packet")
                 ));
             }
+        };
+
+        let init = match &parsed_packet {
+            ReceivedMessage::HandshakeInitiation(_) => <[u8; 148]>::try_from(packet).ok(),
+            ReceivedMessage::HandshakeResponse(_)
+            | ReceivedMessage::TransportData(_)
+            | ReceivedMessage::CookieReply(_) => None,
         };
 
         // A responder completes the handshake on the initiator's first transport data (key
@@ -1079,6 +1087,13 @@ where
             // socket. On the controlled side the handshake can complete before nomination, in
             // which case the event is emitted from the `NominatedSend` handler instead.
             established = conn.state.has_nominated_socket();
+        }
+
+        if let Some(init) = init
+            && conn.agent.is_iceless()
+            && matches!(control_flow, ControlFlow::Break(Ok(())))
+        {
+            self.connections.insert_answered_init(init, cid);
         }
 
         let is_closing = self.connections.is_closing(&cid);
@@ -1726,7 +1741,7 @@ where
                 transmits.extend(make_owned_transmit(
                     self.relay,
                     peer_socket,
-                    &message,
+                    &message.into_bytes(),
                     allocations,
                     now,
                 ));
@@ -1874,23 +1889,26 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        let packet = match self.agent.handle_inbound_network(
-            &mut self.tunnel,
-            packet,
-            datagram,
-            (destination, from),
-            now,
-        ) {
-            ControlFlow::Break(()) => return ControlFlow::Break(Ok(())),
-            ControlFlow::Continue(packet) => packet,
+        let path = (destination, from);
+        let handshake = match &packet {
+            ReceivedMessage::HandshakeInitiation(_) => Some(HandshakeKind::Initiation),
+            ReceivedMessage::HandshakeResponse(_) => Some(HandshakeKind::Response),
+            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => None,
         };
 
-        let is_handshake = matches!(
-            packet,
-            ReceivedMessage::HandshakeInitiation(_) | ReceivedMessage::HandshakeResponse(_)
-        );
+        if let Some(kind) = handshake
+            && self.agent.is_duplicate_handshake(kind, datagram, path)
+        {
+            return ControlFlow::Break(Ok(()));
+        }
 
         let result = self.tunnel.begin_decapsulate(packet, now);
+
+        if let Some(kind) = handshake
+            && result.is_ok()
+        {
+            self.agent.handshake_accepted(kind, datagram, path, now);
+        }
 
         // Handshakes make the tunnel reply, i.e. with a handshake response or a keepalive.
         // This should be fairly rare which is why we just allocate these and return them from `poll_transmit` instead.
@@ -1905,7 +1923,7 @@ where
         let pending = match result {
             Ok(Some(pending)) => pending,
             Ok(None) => return ControlFlow::Break(Ok(())),
-            Err(e) if is_handshake => {
+            Err(e) if handshake.is_some() => {
                 return ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")));
             }
             Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
@@ -1930,7 +1948,7 @@ where
                     .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
                 self.agent
-                    .handle_inbound_tun(packet, (destination, from), now)
+                    .handle_inbound_tun(packet, path, now)
                     .map_break(Ok)
             }
             ControlFlow::Break(b) => ControlFlow::Break(b),
@@ -1940,7 +1958,7 @@ where
     fn buffer_or_send<TId>(
         &mut self,
         cid: &TId,
-        messages: SmallVec<[Vec<u8>; 2]>,
+        messages: SmallVec<[Outbound; 2]>,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
@@ -1952,12 +1970,20 @@ where
             return;
         }
 
+        if self.agent.is_iceless() {
+            for message in messages {
+                self.agent.handle_outbound(message, now);
+            }
+
+            return;
+        }
+
         match &mut self.state {
             ConnectionState::Connecting { wg_buffer, .. } => {
                 tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
                 for message in messages {
-                    wg_buffer.enqueue(message);
+                    wg_buffer.enqueue(message.into_bytes());
                 }
             }
             ConnectionState::Connected { peer_socket, .. }
@@ -1966,7 +1992,7 @@ where
                     transmits.extend(make_owned_transmit(
                         self.relay,
                         *peer_socket,
-                        &message,
+                        &message.into_bytes(),
                         allocations,
                         now,
                     ));
@@ -2006,7 +2032,13 @@ where
     where
         RId: Ord + fmt::Display + Copy,
     {
-        self.agent.initiate_handshake(&mut self.tunnel, now);
+        let Some(init) = self.tunnel.initiate_handshake(now) else {
+            tracing::debug!("WireGuard declined to emit a HandshakeInit");
+            return;
+        };
+
+        self.agent
+            .handle_outbound(Outbound::HandshakeInitiation(init.to_vec()), now);
     }
 
     fn reset_for_roam(&mut self, now: Instant)
@@ -2205,18 +2237,22 @@ where
 fn drain_tunnel_events(
     tunnel: &mut Tunnel,
     now: Instant,
-) -> Option<(SmallVec<[Vec<u8>; 2]>, bool)> {
+) -> Option<(SmallVec<[Outbound; 2]>, bool)> {
     let mut next = Some(tunnel.poll_event()?);
     let mut messages = SmallVec::new();
     let mut expired = false;
 
     while let Some(event) = next {
         match event {
-            sanstun::Event::SendHandshakeInitiation(message) => messages.push(message.to_vec()),
-            sanstun::Event::SendHandshakeResponse(message) => messages.push(message.to_vec()),
+            sanstun::Event::SendHandshakeInitiation(message) => {
+                messages.push(Outbound::HandshakeInitiation(message.to_vec()))
+            }
+            sanstun::Event::SendHandshakeResponse(message) => {
+                messages.push(Outbound::HandshakeResponse(message.to_vec()))
+            }
             sanstun::Event::KeepaliveDue(keepalive) => {
                 match tunnel.encapsulate_keepalive(keepalive, now) {
-                    Ok(message) => messages.push(message.to_vec()),
+                    Ok(message) => messages.push(Outbound::Data(message.to_vec())),
                     Err(e) => tracing::debug!("Failed to encapsulate keepalive: {e}"),
                 }
             }

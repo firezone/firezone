@@ -31,6 +31,8 @@ pub struct Connections<TId, RId> {
 
     established_by_wireguard_session_index: HashMap<TunnelId, TId>,
     established_by_local_ufrag: BTreeMap<String, TId>,
+    /// The last handshake initiation each iceless connection answered, so a retransmit is replayed before it reaches WireGuard.
+    answered_inits: HashMap<[u8; 148], TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
@@ -45,6 +47,7 @@ impl<TId, RId> Default for Connections<TId, RId> {
             closing: Default::default(),
             established_by_wireguard_session_index: Default::default(),
             established_by_local_ufrag: Default::default(),
+            answered_inits: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
@@ -71,6 +74,7 @@ where
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
+        for _ in self.answered_inits.extract_if(|_, c| c == id) {}
 
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
@@ -268,17 +272,24 @@ where
         Ok((id, connection))
     }
 
-    /// Answers a retransmitted handshake initiation from the connection that cached the response to it.
-    pub(crate) fn replay_cached_handshake_response(
+    pub(crate) fn insert_answered_init(&mut self, init: [u8; 148], id: TId) {
+        for _ in self.answered_inits.extract_if(|_, c| *c == id) {}
+        self.answered_inits.insert(init, id);
+    }
+
+    /// Answers a retransmitted handshake initiation with the response cached for it, returning whether there was one.
+    pub(crate) fn replay_handshake_response(
         &mut self,
-        init: &[u8],
+        init: &[u8; 148],
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
-        self.established
-            .values_mut()
-            .chain(self.closing.values_mut().map(|(c, _)| c))
-            .any(|c| c.agent.replay_cached_response(init, path, now))
+        let Some(id) = self.answered_inits.get(init).copied() else {
+            return false;
+        };
+
+        self.get_mut_including_closing(&id, now)
+            .is_ok_and(|c| c.agent.replay_cached_response(init, path, now))
     }
 
     pub(crate) fn get_established_mut_by_public_key(
@@ -373,6 +384,7 @@ where
     pub(crate) fn clear(&mut self) {
         self.established.clear();
         self.established_by_wireguard_session_index.clear();
+        self.answered_inits.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -451,6 +463,7 @@ where
             {
                 self.disconnected_session_indices.insert(index, now);
             }
+            for _ in self.answered_inits.extract_if(|_, c| *c == id) {}
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);

@@ -6,8 +6,8 @@ license = { workspace = true }
 
 [dependencies]
 ip-packet = { workspace = true }
-sanstun = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+sanstun = { workspace = true }
 zeroize = { workspace = true }

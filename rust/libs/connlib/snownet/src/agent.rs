@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use sanstun::{ReceivedMessage, Tunnel};
+use path_agent::{HandshakeKind, Outbound};
 
 use crate::{IceConfig, IceRole};
 
@@ -180,17 +180,27 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_network(
+    pub(crate) fn is_duplicate_handshake(
+        &self,
+        kind: HandshakeKind,
+        bytes: &[u8],
+        path: (std::net::SocketAddr, std::net::SocketAddr),
+    ) -> bool {
+        match self {
+            Self::Ice(_) => false,
+            Self::Path(agent) => agent.is_duplicate_handshake(kind, bytes, path),
+        }
+    }
+
+    pub(crate) fn handshake_accepted(
         &mut self,
-        tunnel: &mut Tunnel,
-        packet: ReceivedMessage,
+        kind: HandshakeKind,
         bytes: &[u8],
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) -> ControlFlow<(), ReceivedMessage> {
-        match self {
-            Self::Ice(_) => ControlFlow::Continue(packet),
-            Self::Path(agent) => agent.handle_inbound_network(tunnel, packet, bytes, path, now),
+    ) {
+        if let Self::Path(agent) = self {
+            agent.handshake_accepted(kind, bytes, path, now);
         }
     }
 
@@ -253,21 +263,15 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+    pub(crate) fn handle_outbound(&mut self, outbound: Outbound, now: Instant) {
         if let Self::Path(path) = self {
-            path.handle_outbound(bytes, now);
+            path.handle_outbound(outbound, now);
         }
     }
 
     pub(crate) fn confirm_session(&mut self, now: Instant) {
         if let Self::Path(path) = self {
             path.confirm_session(now);
-        }
-    }
-
-    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, now);
         }
     }
 

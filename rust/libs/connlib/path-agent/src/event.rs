@@ -20,3 +20,27 @@ pub enum Event {
         remote: SocketAddr,
     },
 }
+
+/// A message WireGuard wants to send to the peer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Outbound {
+    HandshakeInitiation(Vec<u8>),
+    HandshakeResponse(Vec<u8>),
+    Data(Vec<u8>),
+}
+
+impl Outbound {
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self {
+            Outbound::HandshakeInitiation(bytes)
+            | Outbound::HandshakeResponse(bytes)
+            | Outbound::Data(bytes) => bytes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandshakeKind {
+    Initiation,
+    Response,
+}

@@ -11,10 +11,10 @@ use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent, Payload,
-    REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, HandshakeKind, Outbound, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST,
+    PROBE_SRC, PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
-use sanstun::{Interface, Received, StaticSecret, Tunnel, TunnelConfig};
+use sanstun::{Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -23,7 +23,7 @@ use zeroize::Zeroizing;
 fn outbound_handshake_init_fans_out_on_every_relay_pair() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
     a.handle_timeout(now);
 
     let transmits = a.transmits();
@@ -38,7 +38,7 @@ fn outbound_handshake_init_fans_out_on_every_relay_pair() {
 fn outbound_handshake_init_arms_retransmits_with_initial_50ms_deadline() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
     a.handle_timeout(now);
     let _ = a.transmits();
     let next = a.poll_timeout().expect("retransmit deadline");
@@ -50,7 +50,7 @@ fn retransmit_ladder_runs_once_then_stops() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
     a.handle_timeout(now);
     let _ = a.transmits();
 
@@ -83,7 +83,7 @@ fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
     let now = Instant::now();
 
     // First init arms the one-time fast ladder on each relay pair.
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
     a.handle_timeout(now);
     let _ = a.transmits();
 
@@ -99,7 +99,7 @@ fn a_wireguard_reinit_refans_once_without_re_arming_the_ladder() {
     // pair once but does not restart the fast ladder.
     let mut reinit = handshake_init_bytes();
     reinit[4] = 7;
-    a.handle_outbound(reinit.clone(), t + secs(2));
+    a.handle_outbound(Outbound::HandshakeInitiation(reinit.clone()), t + secs(2));
     a.handle_timeout(t + secs(2));
 
     let transmits = a.transmits();
@@ -123,7 +123,7 @@ fn inbound_handshake_response_stops_the_fanout() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
 
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
     a.handle_timeout(now);
     let _ = a.transmits();
 
@@ -153,7 +153,7 @@ fn inbound_handshake_response_stops_the_fanout() {
 fn an_inbound_init_keeps_the_fanout_until_the_session_is_confirmed() {
     let mut a = agent_with_relay_pairs();
     let now = Instant::now();
-    a.handle_outbound(handshake_init_bytes(), now);
+    a.handle_outbound(handshake_init(), now);
 
     // The peer's init lands before ours went out, e.g. a stale re-key from a
     // connection the peer has since replaced and no longer knows the session of.
@@ -395,7 +395,7 @@ fn a_reply_with_a_stale_pair_id_is_ignored() {
 #[test]
 fn a_single_unanswered_rekey_is_not_distress() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
-    a.handle_outbound(handshake_init_bytes(), t0 + secs(1));
+    a.handle_outbound(handshake_init(), t0 + secs(1));
     assert_eq!(
         a.primary(),
         Some((addr(1), addr(3))),
@@ -410,7 +410,7 @@ fn a_second_unanswered_rekey_clears_the_primary_and_reprobes() {
     let mut t = t0;
     for _ in 0..REKEY_DISTRESS_ATTEMPTS {
         t += secs(1);
-        a.handle_outbound(handshake_init_bytes(), t);
+        a.handle_outbound(handshake_init(), t);
         let _ = a.transmits();
     }
     assert_eq!(a.primary(), None, "the distress re-key cleared the primary");
@@ -424,7 +424,7 @@ fn a_second_unanswered_rekey_clears_the_primary_and_reprobes() {
 fn an_answered_rekey_resets_the_distress_count() {
     let (mut a, t0) = direct_primary_with_relay_fallback();
 
-    a.handle_outbound(handshake_init_bytes(), t0 + secs(1));
+    a.handle_outbound(handshake_init(), t0 + secs(1));
     let _ = a.transmits();
 
     // A response answers it, resetting the count. It must differ from the
@@ -441,7 +441,7 @@ fn an_answered_rekey_resets_the_distress_count() {
     let _ = a.transmits();
 
     // The next unanswered re-key is only the first again: no distress.
-    a.handle_outbound(handshake_init_bytes(), t0 + secs(2));
+    a.handle_outbound(handshake_init(), t0 + secs(2));
     assert_eq!(
         a.primary(),
         Some((addr(1), addr(3))),
@@ -459,7 +459,7 @@ fn a_primary_change_resets_the_distress_count() {
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
 
     // One unanswered re-key on the relay primary: the count is now 1.
-    a.handle_outbound(handshake_init_bytes(), t0);
+    a.handle_outbound(handshake_init(), t0);
     let _ = a.transmits();
 
     // A host probe reply promotes the primary, which resets the count.
@@ -469,7 +469,7 @@ fn a_primary_change_resets_the_distress_count() {
 
     // The first unanswered re-key on the new primary is only the first again;
     // without the reset the carried-over count would clear it here.
-    a.handle_outbound(handshake_init_bytes(), t0 + secs(1));
+    a.handle_outbound(handshake_init(), t0 + secs(1));
     assert_eq!(
         a.primary(),
         Some((addr(1), addr(3))),
@@ -874,9 +874,36 @@ impl AgentExt for PathAgent {
         let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
             panic!("expected a verified packet");
         };
+        let kind = match packet {
+            ReceivedMessage::HandshakeInitiation(_) => HandshakeKind::Initiation,
+            ReceivedMessage::HandshakeResponse(_) => HandshakeKind::Response,
+            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => {
+                return ControlFlow::Continue(());
+            }
+        };
 
-        self.handle_inbound_network(tunnel, packet, bytes, path, now)
-            .map_continue(|_| ())
+        if self.is_duplicate_handshake(kind, bytes, path) {
+            return ControlFlow::Break(());
+        }
+        if tunnel.begin_decapsulate(packet, now).is_ok() {
+            self.handshake_accepted(kind, bytes, path, now);
+        }
+
+        while let Some(event) = tunnel.poll_event() {
+            let outbound = match event {
+                sanstun::Event::SendHandshakeInitiation(m) => {
+                    Outbound::HandshakeInitiation(m.to_vec())
+                }
+                sanstun::Event::SendHandshakeResponse(m) => Outbound::HandshakeResponse(m.to_vec()),
+                sanstun::Event::KeepaliveDue(k) => {
+                    Outbound::Data(tunnel.encapsulate_keepalive(k, now).unwrap().to_vec())
+                }
+                sanstun::Event::ConnectionExpired => continue,
+            };
+            self.handle_outbound(outbound, now);
+        }
+
+        ControlFlow::Break(())
     }
 
     fn transmits(&mut self) -> Vec<Transmit> {
@@ -962,7 +989,11 @@ fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
     let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }
 
-/// Synthetic — only the type byte matters to `handle_outbound`.
+fn handshake_init() -> Outbound {
+    Outbound::HandshakeInitiation(handshake_init_bytes())
+}
+
+/// Synthetic: the agent treats the bytes as opaque.
 fn handshake_init_bytes() -> Vec<u8> {
     let mut bytes = vec![0u8; 148];
     bytes[0] = 1;
