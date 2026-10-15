@@ -353,7 +353,7 @@ fn arb_dns_resources(g: &mut Generator, sites: &[Site]) -> SmallVec<[DnsResource
                     address,
                     name: g.lower_ascii(4, 10),
                     address_description: None,
-                    sites: resource.sites.clone(),
+                    sites: vec![pick_site(g, sites).clone()],
                     ip_stack: resource.ip_stack,
                     filters: arb_filters(g),
                 }
