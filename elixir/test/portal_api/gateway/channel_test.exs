@@ -376,7 +376,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       put_meters(account, ["custom.meter", "other.meter"])
 
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
@@ -402,7 +402,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
@@ -418,7 +418,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       Portal.Config.put_env_override(:portal, :metrics_token_private_key, "")
 
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)
@@ -434,7 +434,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
@@ -449,7 +449,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)
@@ -468,7 +468,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)
@@ -1643,7 +1643,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.4")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)
