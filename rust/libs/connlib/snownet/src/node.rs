@@ -28,7 +28,7 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
-use path_agent::{HandshakeKind, Outbound};
+use path_agent::Outbound;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -405,7 +405,9 @@ where
         // bandwidth and TURN channel bindings on a duplicate from
         // each side.
         if connection.agent.is_iceless() && matches!(ice_role, IceRole::Controlling) {
-            connection.initiate_wg_session_for_path(now);
+            connection
+                .agent
+                .initiate_handshake(&mut connection.tunnel, now);
         }
 
         self.connections.insert_established(cid, index, connection);
@@ -1950,33 +1952,22 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         let path = (destination, from);
-        let handshake = match &packet {
-            ReceivedMessage::HandshakeInitiation(_) => Some(HandshakeKind::Initiation),
-            ReceivedMessage::HandshakeResponse(_) => Some(HandshakeKind::Response),
-            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => None,
-        };
+        let is_handshake = matches!(
+            packet,
+            ReceivedMessage::HandshakeInitiation(_) | ReceivedMessage::HandshakeResponse(_)
+        );
 
-        if let Some(kind) = handshake
-            && self.agent.is_duplicate_handshake(kind, datagram, path)
-        {
-            return ControlFlow::Break(Ok(()));
-        }
-
-        let result = self.tunnel.begin_decapsulate(packet, now);
-
-        if let Some(kind) = handshake
-            && result.is_ok()
-        {
-            self.agent.handshake_accepted(kind, datagram, path, now);
-        }
+        let result =
+            self.agent
+                .handle_inbound_network(&mut self.tunnel, packet, datagram, path, now);
 
         let pending = match result {
-            Ok(Some(pending)) => pending,
-            Ok(None) => return ControlFlow::Break(Ok(())),
-            Err(e) if handshake.is_some() => {
+            ControlFlow::Continue(pending) => pending,
+            ControlFlow::Break(Ok(())) => return ControlFlow::Break(Ok(())),
+            ControlFlow::Break(Err(e)) if is_handshake => {
                 return ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")));
             }
-            Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+            ControlFlow::Break(Err(e)) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
         };
 
         ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
@@ -2104,19 +2095,6 @@ where
             (Some(_), false) => PeerSocket::RelayToPeer { dest: from },
             (Some(_), true) => PeerSocket::RelayToRelay { dest: from },
         }
-    }
-
-    fn initiate_wg_session_for_path(&mut self, now: Instant)
-    where
-        RId: Ord + fmt::Display + Copy,
-    {
-        let Some(init) = self.tunnel.initiate_handshake(now) else {
-            tracing::debug!("WireGuard declined to emit a HandshakeInit");
-            return;
-        };
-
-        self.agent
-            .handle_outbound(Outbound::HandshakeInitiation(init), now);
     }
 
     fn reset_for_roam(&mut self, now: Instant)

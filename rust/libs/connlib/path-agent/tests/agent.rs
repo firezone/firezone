@@ -11,10 +11,10 @@ use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, HandshakeKind, Outbound, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST,
-    PROBE_SRC, PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, Event, Outbound, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent,
+    Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
-use sanstun::{Datagram, Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
+use sanstun::{Datagram, Interface, Received, StaticSecret, Tunnel, TunnelConfig};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -875,19 +875,11 @@ impl AgentExt for PathAgent {
         let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
             panic!("expected a verified packet");
         };
-        let kind = match packet {
-            ReceivedMessage::HandshakeInitiation(_) => HandshakeKind::Initiation,
-            ReceivedMessage::HandshakeResponse(_) => HandshakeKind::Response,
-            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => {
-                return ControlFlow::Continue(());
-            }
-        };
-
-        if self.is_duplicate_handshake(kind, bytes, path) {
-            return ControlFlow::Break(());
-        }
-        if tunnel.begin_decapsulate(packet, now).is_ok() {
-            self.handshake_accepted(kind, bytes, path, now);
+        if self
+            .handle_inbound_network(tunnel, packet, bytes, path, now)
+            .is_continue()
+        {
+            return ControlFlow::Continue(());
         }
 
         while let Some(event) = tunnel.poll_event() {

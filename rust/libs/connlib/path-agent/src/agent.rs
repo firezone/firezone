@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use sanstun::Datagram;
+use sanstun::{Datagram, PendingDecapsulate, ReceivedMessage, Tunnel};
 
 use crate::candidate::Candidate;
 use crate::event::{Event, HandshakeKind, Outbound, Payload, Transmit};
@@ -439,6 +439,15 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
+    pub fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
+        let Some(init) = tunnel.initiate_handshake(now) else {
+            tracing::debug!("WireGuard declined to emit a HandshakeInit");
+            return;
+        };
+
+        self.handle_outbound(Outbound::HandshakeInitiation(init), now);
+    }
+
     pub fn handle_outbound(&mut self, outbound: Outbound, now: Instant) {
         self.last_now = Some(now);
 
@@ -523,9 +532,50 @@ impl PathAgent {
         }
     }
 
+    /// Runs `message`, received on `path` as `datagram`, through `tunnel`.
+    ///
+    /// Handshakes are handled here: duplicates are dropped before they reach
+    /// `tunnel`, and accepted ones are recorded. The response to an accepted
+    /// init is sent on `path` once it is passed to [`Self::handle_outbound`].
+    /// Data messages continue as the pending decapsulation.
+    pub fn handle_inbound_network(
+        &mut self,
+        tunnel: &mut Tunnel,
+        message: ReceivedMessage,
+        datagram: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate> {
+        let handshake = match &message {
+            ReceivedMessage::HandshakeInitiation(_) => Some(HandshakeKind::Initiation),
+            ReceivedMessage::HandshakeResponse(_) => Some(HandshakeKind::Response),
+            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => None,
+        };
+
+        if let Some(kind) = handshake
+            && self.is_duplicate_handshake(kind, datagram, path)
+        {
+            return ControlFlow::Break(Ok(()));
+        }
+
+        let result = tunnel.begin_decapsulate(message, now);
+
+        if let Some(kind) = handshake
+            && result.is_ok()
+        {
+            self.handshake_accepted(kind, datagram, path, now);
+        }
+
+        match result {
+            Ok(Some(pending)) => ControlFlow::Continue(pending),
+            Ok(None) => ControlFlow::Break(Ok(())),
+            Err(e) => ControlFlow::Break(Err(e)),
+        }
+    }
+
     /// Returns whether the handshake message `bytes` received on `path` is a
     /// duplicate that must not reach WireGuard.
-    pub fn is_duplicate_handshake(
+    fn is_duplicate_handshake(
         &self,
         kind: HandshakeKind,
         bytes: &[u8],
@@ -550,10 +600,7 @@ impl PathAgent {
 
     /// Records that WireGuard accepted the handshake message `bytes` received
     /// on `path`.
-    ///
-    /// The response to an accepted init is sent on `path` once it is passed to
-    /// [`Self::handle_outbound`].
-    pub fn handshake_accepted(
+    fn handshake_accepted(
         &mut self,
         kind: HandshakeKind,
         bytes: &[u8],
@@ -736,7 +783,7 @@ impl PathAgent {
     /// Records that the session is confirmed, which starts probing and ends the
     /// bootstrap fan-out.
     ///
-    /// [`Self::handshake_accepted`] detects an answered init itself; the
+    /// [`Self::handle_inbound_network`] detects an answered init itself; the
     /// caller reports the other case: the peer's transport data decrypting
     /// under a session we answered.
     pub fn confirm_session(&mut self, now: Instant) {
