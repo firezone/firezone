@@ -465,10 +465,14 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
-  def handle_event("request_confirm", %{"id" => id, "action" => action}, socket)
-      when action in ["delete"] do
+  def handle_event("request_confirm", %{"id" => id, "action" => "delete"}, socket) do
+    policy_count = referencing_policy_count(id, socket)
+
     {:noreply,
-     assign(socket, pending_confirm: %{id: id, action: action}, open_provider_actions_id: nil)}
+     assign(socket,
+       pending_confirm: %{id: id, action: "delete", policy_count: policy_count},
+       open_provider_actions_id: nil
+     )}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
@@ -1116,7 +1120,8 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_row(assigns) do
     assigns =
       assign(assigns,
-        is_pending_delete: assigns.pending_confirm == %{id: assigns.provider.id, action: "delete"}
+        is_pending_delete: pending_delete?(assigns.provider, assigns.pending_confirm),
+        referencing_policy_count: pending_policy_count(assigns.pending_confirm)
       )
 
     ~H"""
@@ -1144,9 +1149,13 @@ defmodule PortalWeb.Settings.DevicePosture do
       </td>
       <td :if={@is_pending_delete} colspan="5" class="px-6 py-3">
         <div class="flex items-center gap-4">
-          <span class="text-xs text-danger">
-            Delete this provider and all devices synced from it? This cannot be undone.
-          </span>
+          <div class="text-xs text-danger space-y-1">
+            <p>Delete this provider and all devices synced from it? This cannot be undone.</p>
+            <p :if={@referencing_policy_count > 0} id={"provider-#{@provider.id}-policy-warning"}>
+              {@referencing_policy_count} {ngettext("policy uses", "policies use", @referencing_policy_count)}
+              {provider_title(@provider.type)} posture rules and will need to be updated.
+            </p>
+          </div>
           <div class="flex items-center gap-2 ml-auto shrink-0">
             <Form.button phx-click="cancel_confirm" size="xs">
               Cancel
@@ -1604,6 +1613,12 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
   defp typed_client_secret(form), do: get_change(form.source, :client_secret) || ""
 
+  defp pending_delete?(%{id: id}, %{id: id, action: "delete"}), do: true
+  defp pending_delete?(_provider, _pending_confirm), do: false
+
+  defp pending_policy_count(%{policy_count: count}), do: count
+  defp pending_policy_count(_pending_confirm), do: 0
+
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
   defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
@@ -1931,6 +1946,19 @@ defmodule PortalWeb.Settings.DevicePosture do
       })
     else
       changeset
+    end
+  end
+
+  # Rules name a provider type, not a provider, so they only lose their data once
+  # no enabled provider of that type is left.
+  defp referencing_policy_count(id, socket) do
+    providers = socket.assigns.providers
+
+    with %{type: type} <- Enum.find(providers, &(&1.id == id)),
+         false <- Enum.any?(providers, &(&1.type == type and &1.id != id and not &1.is_disabled)) do
+      Database.count_policies_using_provider_type(type, socket.assigns.subject)
+    else
+      _other -> 0
     end
   end
 
@@ -2283,6 +2311,19 @@ defmodule PortalWeb.Settings.DevicePosture do
       with :ok <- ensure_enabled(subject) do
         changeset |> Safe.scoped(subject) |> Safe.update()
       end
+    end
+
+    def count_policies_using_provider_type(type, subject) do
+      from(p in Portal.Policy,
+        where:
+          fragment(
+            "jsonb_path_exists(?, '$.** \\? (@.field starts with $prefix)', jsonb_build_object('prefix', ?::text))",
+            p.postures,
+            ^"#{type}."
+          )
+      )
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
     end
 
     def delete_provider(provider, subject) do
