@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "anyhow-ext",
  "clap",
@@ -2630,7 +2630,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
