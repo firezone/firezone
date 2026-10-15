@@ -207,25 +207,17 @@ jobs:
       - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
       - name: Build bench
         run: |
-          set -euo pipefail
-
-          exe=$(cargo bench -p tunnel --bench per_packet --no-run --message-format=json |
-            jq -r 'select(.reason == "compiler-artifact" and .target.name == "per_packet" and .executable != null) | .executable')
-          cp "$exe" ../scripts/bencher/per_packet
+          cargo build --release -p tunnel-bench
+          cp target/release/tunnel-bench tests/tunnel-bench/
       - name: Push image to the Bencher registry
-        working-directory: ./
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
         run: |
           set -euo pipefail
 
           image="registry.bencher.dev/$BENCHER_PROJECT:$GITHUB_SHA"
-          # The registry takes the subject of the API key, a JWT, as username.
-          payload=$(cut -d. -f2 <<<"$BENCHER_API_KEY" | tr '_-' '/+')
-          while ((${#payload} % 4)); do payload+="="; done
-          user=$(base64 -d <<<"$payload" | jq -r .sub)
-          docker login registry.bencher.dev -u "$user" --password-stdin <<<"$BENCHER_API_KEY"
-          docker build --platform linux/amd64 -t "$image" scripts/bencher
+          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
+          docker build --platform linux/amd64 -t "$image" tests/tunnel-bench
           docker push "$image"
           echo "IMAGE=$image" >>"$GITHUB_ENV"
       - name: Run on Bencher Bare Metal
@@ -262,12 +254,10 @@ jobs:
             --image "$IMAGE" \
             --job-timeout 300 \
             "${branch[@]}" \
-            --adapter json \
-            --file /tmp/bmf.json \
+            --adapter rust_criterion \
             --github-actions "$GITHUB_TOKEN" \
             --ci-id per-packet \
-            --error-on-alert \
-            --exec /usr/local/bin/per-packet.sh
+            --error-on-alert
 
   fuzz-targets:
     name: fuzz-targets

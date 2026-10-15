@@ -2,7 +2,9 @@
 //!
 //! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
 //! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
-//! event loop.
+//! event loop. One iteration is one packet.
+
+#![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
 use std::collections::BTreeSet;
 use std::future::poll_fn;
@@ -16,8 +18,8 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::ErrorExt as _;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
-use divan::Bencher;
-use divan::counter::ItemsCount;
+use criterion::measurement::WallTime;
+use criterion::{BenchmarkGroup, Criterion};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::{Ecn, IpPacket};
 use snownet::{RelaySocket, Transmit, TransmitBuffer};
@@ -39,8 +41,8 @@ enum Resource {
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 
-/// How many packets each iteration sends through the tunnel.
-const PACKETS: usize = 10_000;
+/// The most packets sent through the tunnel in one go, bounding the memory their inputs take.
+const BURST: usize = 10_000;
 
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
@@ -49,42 +51,51 @@ const IN_FLIGHT: usize = 2_048;
 
 /// How often the event loop may park per 1000 packets.
 ///
-/// The event loop idles between iterations. Within one, it would park about once per batch of
-/// packets if a stand-in thread could not keep up.
+/// The event loop idles between bursts. Within one, it would park about once per batch of packets
+/// if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
-fn client_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let (client, gateway, now) = connect(resource, SIZE);
-
-    outbound(bencher, client, gateway, now);
+criterion::criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(3))
+        .without_plots();
+    targets = per_packet
 }
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
-fn gateway_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let (client, gateway, now) = connect(resource, SIZE);
+fn per_packet(c: &mut Criterion) {
+    let mut group = c.benchmark_group("per_packet");
 
-    inbound(bencher, gateway, client, now);
-}
+    for size in SIZES {
+        for resource in RESOURCES {
+            let id = |name| format!("{name}/{size}/{resource}");
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
-fn gateway_outbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let (client, gateway, now) = connect(resource, SIZE);
+            let (client, gateway, now) = connect(resource, size);
+            outbound(&mut group, id("client_outbound"), client, gateway, now);
 
-    outbound(bencher, gateway, client, now);
-}
+            let (client, gateway, now) = connect(resource, size);
+            inbound(&mut group, id("gateway_inbound"), gateway, client, now);
 
-#[divan::bench(args = RESOURCES, consts = SIZES)]
-fn client_inbound<const SIZE: usize>(bencher: Bencher, resource: Resource) {
-    let (client, gateway, now) = connect(resource, SIZE);
+            let (client, gateway, now) = connect(resource, size);
+            outbound(&mut group, id("gateway_outbound"), gateway, client, now);
 
-    inbound(bencher, client, gateway, now);
+            let (client, gateway, now) = connect(resource, size);
+            inbound(&mut group, id("client_inbound"), client, gateway, now);
+        }
+    }
 }
 
 /// Feeds packets into the tunnel's TUN channel and counts the datagrams arriving at the peer.
-fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
+fn outbound(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    id: String,
+    local: Side,
+    peer: Side,
+    now: Instant,
+) {
     let (event_loop, _) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
     let (peer, socket) = bind_peer(peer.socket);
@@ -98,8 +109,8 @@ fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
         }
     });
 
-    let inputs = || batches(&local.reads);
-    measure(bencher, &event_loop, &arrivals, inputs, |batch| {
+    let inputs = |packets| batches(&local.reads, packets);
+    measure(group, id, &event_loop, &arrivals, inputs, |batch| {
         let packets = batch.len();
         event_loop.tun_reads.blocking_send(batch).unwrap();
 
@@ -110,7 +121,13 @@ fn outbound(bencher: Bencher, local: Side, peer: Side, now: Instant) {
 }
 
 /// Sends encrypted datagrams to the tunnel's UDP socket and counts the packets it writes to TUN.
-fn inbound(bencher: Bencher, local: Side, mut peer: Side, now: Instant) {
+fn inbound(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    id: String,
+    local: Side,
+    mut peer: Side,
+    now: Instant,
+) {
     let (event_loop, mut tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
     let tun_write = std::thread::Builder::new()
@@ -127,8 +144,11 @@ fn inbound(bencher: Bencher, local: Side, mut peer: Side, now: Instant) {
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
 
-    let inputs = || peer.state.encapsulate(&peer.reads, now, local.socket);
-    measure(bencher, &event_loop, &arrivals, inputs, |datagram| {
+    let inputs = |packets| {
+        peer.state
+            .encapsulate(&peer.reads, packets, now, local.socket)
+    };
+    measure(group, id, &event_loop, &arrivals, inputs, |datagram| {
         let packets = datagram.packet.len() / datagram.segment_size;
         runtime.block_on(socket.send(datagram)).unwrap();
 
@@ -172,15 +192,16 @@ fn connect(resource: Resource, size: usize) -> (Side, Side, Instant) {
 }
 
 impl State {
-    /// Returns [`PACKETS`] copies of `packet` encrypted for `dst`, in as few GSO batches as fit.
+    /// Returns `count` copies of `packet` encrypted for `dst`, in as few GSO batches as fit.
     fn encapsulate(
         &mut self,
         packet: &IpPacket,
+        count: usize,
         now: Instant,
         dst: SocketAddr,
     ) -> Vec<DatagramOut> {
         let mut transmits = TransmitBuffer::default();
-        let segments = (0..PACKETS)
+        let segments = (0..count)
             .map(|_| {
                 match self {
                     State::Client(client) => client
@@ -371,30 +392,43 @@ impl Arrivals {
     }
 }
 
-/// Sends the inputs, at most [`IN_FLIGHT`] packets ahead of those that arrived, and asserts that
-/// the event loop did not park while packets were in flight.
+/// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
+/// those that arrived, and asserts that the event loop did not park while packets were in flight.
 ///
-/// `send` returns how many packets an input holds.
+/// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
+/// input holds.
 fn measure<T>(
-    bencher: Bencher,
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    id: String,
     event_loop: &EventLoop,
     arrivals: &Arrivals,
-    inputs: impl FnMut() -> Vec<T>,
+    mut inputs: impl FnMut(usize) -> Vec<T>,
     mut send: impl FnMut(T) -> usize,
 ) {
     let before = (event_loop.parks(), arrivals.count());
-    bencher
-        .counter(ItemsCount::new(PACKETS))
-        .with_inputs(inputs)
-        .bench_local_values(|inputs| {
-            let start = arrivals.count();
-            let mut sent = 0_usize;
-            for input in inputs {
-                arrivals.wait_for(start + sent.saturating_sub(IN_FLIGHT));
-                sent += send(input);
+    group.bench_function(id, |b| {
+        b.iter_custom(|iters| {
+            let mut elapsed = Duration::ZERO;
+            let mut remaining = usize::try_from(iters).unwrap();
+            while remaining > 0 {
+                let packets = remaining.min(BURST);
+                remaining -= packets;
+                let inputs = inputs(packets);
+
+                let start = Instant::now();
+                let arrived = arrivals.count();
+                let mut sent = 0_usize;
+                for input in inputs {
+                    arrivals.wait_for(arrived + sent.saturating_sub(IN_FLIGHT));
+                    sent += send(input);
+                }
+                arrivals.wait_for(arrived + packets);
+                elapsed += start.elapsed();
             }
-            arrivals.wait_for(start + PACKETS);
-        });
+
+            elapsed
+        })
+    });
     let parks =
         (event_loop.parks() - before.0) as f64 * 1000.0 / (arrivals.count() - before.1) as f64;
 
@@ -404,18 +438,21 @@ fn measure<T>(
     );
 }
 
-/// Returns [`PACKETS`] copies of `packet` in full batches.
-fn batches(packet: &IpPacket) -> Vec<PacketBatch> {
-    (0..PACKETS / MAX_BATCH_SIZE)
-        .map(|_| {
-            let mut batch = PacketBatch::default();
-            for _ in 0..MAX_BATCH_SIZE {
-                batch.try_push(packet.clone()).unwrap();
-            }
+/// Returns `count` copies of `packet` in batches.
+fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
+    let mut batches = Vec::<PacketBatch>::new();
+    for i in 0..count {
+        if i % MAX_BATCH_SIZE == 0 {
+            batches.push(PacketBatch::default());
+        }
+        batches
+            .last_mut()
+            .unwrap()
+            .try_push(packet.clone())
+            .unwrap();
+    }
 
-            batch
-        })
-        .collect()
+    batches
 }
 
 /// Binds the peer's socket, on a runtime with a single worker thread.
@@ -458,6 +495,15 @@ const DNS_RESOURCE: ResourceId = ResourceId::from_u128(5);
 const CIDR_RESOURCE_IP: Ipv4Addr = Ipv4Addr::new(172, 16, 0, 1);
 const DNS_RESOURCE_DOMAIN: &str = "app.example.com";
 const DNS_RESOURCE_IP: Ipv4Addr = Ipv4Addr::new(172, 16, 1, 1);
+
+impl std::fmt::Display for Resource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Resource::Cidr => f.write_str("cidr"),
+            Resource::Dns => f.write_str("dns"),
+        }
+    }
+}
 
 impl Resource {
     fn id(self) -> ResourceId {
