@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
 use http::header;
-use http_client::HttpClient;
+use http_client::{HttpClient, TlsConfig};
 use secrecy::{ExposeSecret as _, SecretString};
 use socket_factory::{SocketFactory, TcpSocket};
 use url::Url;
@@ -69,9 +69,15 @@ async fn connect(
 
     let addresses = tunnel_bypass_resolver::resolve(&host).await?;
 
-    let client = HttpClient::new(host, addresses, socket_factory)
-        .await
-        .context("Failed to connect to metrics host")?;
+    let client = HttpClient::new(
+        host,
+        443,
+        addresses,
+        TlsConfig::webpki_roots(),
+        socket_factory,
+    )
+    .await
+    .context("Failed to connect to metrics host")?;
 
     Ok(client)
 }
