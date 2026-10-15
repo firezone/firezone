@@ -27,22 +27,13 @@ pub enum Event {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
     HandshakeInitiation(Datagram),
-    HandshakeResponse(Datagram),
     Data(Datagram),
 }
 
 impl Outbound {
     pub fn into_datagram(self) -> Datagram {
         match self {
-            Outbound::HandshakeInitiation(bytes)
-            | Outbound::HandshakeResponse(bytes)
-            | Outbound::Data(bytes) => bytes,
+            Outbound::HandshakeInitiation(bytes) | Outbound::Data(bytes) => bytes,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HandshakeKind {
-    Initiation,
-    Response,
 }

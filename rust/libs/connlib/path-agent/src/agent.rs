@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use sanstun::{Datagram, PendingDecapsulate, ReceivedMessage, Tunnel};
 
 use crate::candidate::Candidate;
-use crate::event::{Event, HandshakeKind, Outbound, Payload, Transmit};
+use crate::event::{Event, Outbound, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
@@ -53,8 +53,6 @@ pub struct PathAgent {
 #[derive(Default)]
 struct Responder {
     last_init: Option<Vec<u8>>,
-    /// Where the response to `last_init` goes: the path it arrived on.
-    response_path: Option<(SocketAddr, SocketAddr)>,
     dedup: Option<ResponderDedup>,
 }
 
@@ -492,32 +490,6 @@ impl PathAgent {
                     self.clear_and_reprobe(now);
                 }
             }
-            // The response MUST go back on the path the init arrived on, never
-            // the primary: otherwise bootstrap (and re-keys) can't complete.
-            // Cache it so a retransmitted init is answered from memory without
-            // re-decapsulating.
-            Outbound::HandshakeResponse(response) => {
-                let (Some(path), Some(init)) = (
-                    self.responder.response_path.take(),
-                    &self.responder.last_init,
-                ) else {
-                    tracing::debug!("No accepted HandshakeInit to send HandshakeResponse for");
-                    return;
-                };
-
-                tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
-
-                self.responder.dedup = Some(ResponderDedup {
-                    init_bytes: init.clone(),
-                    response_bytes: response.clone(),
-                    cached_at: now,
-                });
-                self.pending_transmits.push_back(Transmit {
-                    local: path.0,
-                    remote: path.1,
-                    payload: Payload::Ciphertext(response),
-                });
-            }
             // Data rides the primary; without one there is nothing to send
             // (WireGuard buffers it and re-sends once a path exists).
             Outbound::Data(bytes) => {
@@ -535,8 +507,7 @@ impl PathAgent {
     /// Runs `message`, received on `path` as `datagram`, through `tunnel`.
     ///
     /// Handshakes are handled here: duplicates are dropped before they reach
-    /// `tunnel`, and accepted ones are recorded. The response to an accepted
-    /// init is sent on `path` once it is passed to [`Self::handle_outbound`].
+    /// `tunnel`, accepted ones are recorded and their replies are queued.
     /// Data messages continue as the pending decapsulation.
     pub fn handle_inbound_network(
         &mut self,
@@ -546,90 +517,48 @@ impl PathAgent {
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<Result<(), sanstun::Error>, PendingDecapsulate> {
-        let handshake = match &message {
-            ReceivedMessage::HandshakeInitiation(_) => Some(HandshakeKind::Initiation),
-            ReceivedMessage::HandshakeResponse(_) => Some(HandshakeKind::Response),
-            ReceivedMessage::TransportData(_) | ReceivedMessage::CookieReply(_) => None,
-        };
-
-        if let Some(kind) = handshake
-            && self.is_duplicate_handshake(kind, datagram, path)
-        {
-            return ControlFlow::Break(Ok(()));
-        }
-
-        let result = tunnel.begin_decapsulate(message, now);
-
-        if let Some(kind) = handshake
-            && result.is_ok()
-        {
-            self.handshake_accepted(kind, datagram, path, now);
-        }
-
-        match result {
-            Ok(Some(pending)) => ControlFlow::Continue(pending),
-            Ok(None) => ControlFlow::Break(Ok(())),
-            Err(e) => ControlFlow::Break(Err(e)),
-        }
-    }
-
-    /// Returns whether the handshake message `bytes` received on `path` is a
-    /// duplicate that must not reach WireGuard.
-    fn is_duplicate_handshake(
-        &self,
-        kind: HandshakeKind,
-        bytes: &[u8],
-        path: (SocketAddr, SocketAddr),
-    ) -> bool {
-        match kind {
+        match message {
             // Drop dups arriving on multiple pairs in one tick so WireGuard
             // doesn't reject them as replays.
-            HandshakeKind::Initiation if self.responder.last_init.as_deref() == Some(bytes) => {
+            ReceivedMessage::HandshakeInitiation(_)
+                if self.responder.last_init.as_deref() == Some(datagram) =>
+            {
                 tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
-                true
+                ControlFlow::Break(Ok(()))
             }
-            HandshakeKind::Response if self.forwarded_response.as_deref() == Some(bytes) => {
+            ReceivedMessage::HandshakeResponse(_)
+                if self.forwarded_response.as_deref() == Some(datagram) =>
+            {
                 tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
 
-                true
+                ControlFlow::Break(Ok(()))
             }
-            HandshakeKind::Initiation | HandshakeKind::Response => false,
-        }
-    }
+            ReceivedMessage::HandshakeInitiation(init) => {
+                let response = match tunnel.handle_handshake_initiation(init, now) {
+                    Ok(response) => response,
+                    Err(e) => return ControlFlow::Break(Err(e)),
+                };
+                self.last_now = Some(now);
 
-    /// Records that WireGuard accepted the handshake message `bytes` received
-    /// on `path`.
-    fn handshake_accepted(
-        &mut self,
-        kind: HandshakeKind,
-        bytes: &[u8],
-        path: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) {
-        self.last_now = Some(now);
-
-        match kind {
-            HandshakeKind::Initiation => {
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
                 // Remembered so fanned-out duplicates arriving on other pairs in
-                // this tick are dropped (see `is_duplicate_handshake`).
-                self.responder.last_init = Some(bytes.to_vec());
-                self.responder.response_path = Some(path);
+                // this tick are dropped (see the duplicate-init arm above).
+                self.responder.last_init = Some(datagram.to_vec());
 
                 self.register_peer_reflexive(path, now);
 
                 // The init that *establishes* the session hands us a working
                 // path for free: it arrived over the relay fan-out (the worst
-                // tier), so adopting it as the preliminary primary is sound —
+                // tier), so adopting it as the preliminary primary is sound:
                 // probing can only promote away from a relay, never get trapped.
                 // Without this the responder stays pathless until its first
                 // probe reply and its connection drops inbound data until then.
                 //
                 // A *mid-session* init (a re-key) is different: it rides the
                 // peer's primary, which may be a better tier we haven't validated
-                // for our own sending, so it must not move our primary — probing
+                // for our own sending, so it must not move our primary; probing
                 // decides. Hence we only adopt on the establishing init.
                 if !self.session_confirmed
                     && self.primary.is_none()
@@ -645,20 +574,56 @@ impl PathAgent {
                     tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
                     self.clear_and_reprobe(now);
                 }
+
+                // The response MUST go back on the path the init arrived on,
+                // never the primary: otherwise bootstrap (and re-keys) can't
+                // complete. Cache it so a retransmitted init is answered from
+                // memory without re-decapsulating.
+                tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
+
+                self.responder.dedup = Some(ResponderDedup {
+                    init_bytes: datagram.to_vec(),
+                    response_bytes: response.clone(),
+                    cached_at: now,
+                });
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::Ciphertext(response),
+                });
+
+                ControlFlow::Break(Ok(()))
             }
-            HandshakeKind::Response => {
+            ReceivedMessage::HandshakeResponse(response) => {
+                let keepalive = match tunnel.handle_handshake_response(response, now) {
+                    Ok(keepalive) => keepalive,
+                    Err(e) => return ControlFlow::Break(Err(e)),
+                };
+                self.last_now = Some(now);
+
                 tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
 
                 // Our re-key was answered: the path works both ways.
                 self.outbound_init = None;
                 self.unanswered_rekeys = 0;
-                self.forwarded_response = Some(bytes.to_vec());
+                self.forwarded_response = Some(datagram.to_vec());
                 self.confirm_session(now);
 
                 // A response is bidirectionally validated, so it is safe to
                 // adopt as a (tier-ranked) preliminary primary before probing.
                 self.promote_from_handshake(path);
+
+                self.handle_outbound(Outbound::Data(keepalive), now);
+
+                ControlFlow::Break(Ok(()))
             }
+            ReceivedMessage::CookieReply(reply) => {
+                ControlFlow::Break(tunnel.handle_cookie_reply(reply, now))
+            }
+            ReceivedMessage::TransportData(data) => match tunnel.begin_decapsulate(data, now) {
+                Ok(pending) => ControlFlow::Continue(pending),
+                Err(e) => ControlFlow::Break(Err(e)),
+            },
         }
     }
 

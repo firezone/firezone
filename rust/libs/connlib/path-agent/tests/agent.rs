@@ -14,7 +14,7 @@ use path_agent::{
     Candidate, Event, Outbound, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent,
     Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
-use sanstun::{Datagram, Interface, Received, StaticSecret, Tunnel, TunnelConfig};
+use sanstun::{Datagram, Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -875,26 +875,9 @@ impl AgentExt for PathAgent {
         let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
             panic!("expected a verified packet");
         };
-        if self
-            .handle_inbound_network(tunnel, packet, bytes, path, now)
-            .is_continue()
-        {
-            return ControlFlow::Continue(());
-        }
-
-        while let Some(event) = tunnel.poll_event() {
-            let outbound = match event {
-                sanstun::Event::SendHandshakeInitiation(m) => Outbound::HandshakeInitiation(m),
-                sanstun::Event::SendHandshakeResponse(m) => Outbound::HandshakeResponse(m),
-                sanstun::Event::KeepaliveDue(k) => {
-                    Outbound::Data(tunnel.encapsulate_keepalive(k, now).unwrap())
-                }
-                sanstun::Event::ConnectionExpired => continue,
-            };
-            self.handle_outbound(outbound, now);
-        }
-
-        ControlFlow::Break(())
+        self.handle_inbound_network(tunnel, packet, bytes, path, now)
+            .map_break(|_| ())
+            .map_continue(|_| ())
     }
 
     fn transmits(&mut self) -> Vec<Transmit> {
@@ -1061,17 +1044,16 @@ impl Handshake {
     }
 
     fn with_response(mut self, now: Instant) -> Self {
-        let Ok(Received::Message(init)) =
-            self.responder_interface
-                .receive("127.0.0.1:1".parse().unwrap(), &self.init, now)
+        let Ok(Received::Message(ReceivedMessage::HandshakeInitiation(init))) = self
+            .responder_interface
+            .receive("127.0.0.1:1".parse().unwrap(), &self.init, now)
         else {
             panic!("expected init");
         };
-        self.responder.begin_decapsulate(init, now).unwrap();
-        let Some(sanstun::Event::SendHandshakeResponse(response)) = self.responder.poll_event()
-        else {
-            panic!("expected response");
-        };
+        let response = self
+            .responder
+            .handle_handshake_initiation(init, now)
+            .unwrap();
         self.response = response.to_vec();
         self
     }
@@ -1082,7 +1064,7 @@ fn interface(now: Instant, seed: u8, static_private: u8) -> Interface {
         .with_static_private(StaticSecret::from(Zeroizing::new([static_private; 32])))
 }
 
-/// Mismatched keypair: every `begin_decapsulate` call rejects.
+/// Mismatched keypair: every message is rejected.
 fn reject_all() -> Tunnel {
     let now = Instant::now();
     let peer = interface(now, 98, 4).static_public();
