@@ -242,6 +242,7 @@ jobs:
               --threshold-measure latency
               --threshold-test t_test
               --threshold-max-sample-size 64
+              --threshold-min-sample-size 10
               --threshold-upper-boundary 0.99
               --thresholds-reset
             )
