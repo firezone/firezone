@@ -117,7 +117,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
-      pull-requests: write # post perf result comments
       checks: write # Bencher check annotations
 
   # To have proper test coverage, we need to run `rust` and `elixir` on `main`.
@@ -126,8 +125,10 @@ jobs:
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
     permissions:
+      checks: write # Bencher check annotations
       contents: read
       id-token: write # OIDC auth
+      pull-requests: write # post Bencher PR comments
       security-events: write # trivy SARIF upload from setup-mise
 
   elixir:
