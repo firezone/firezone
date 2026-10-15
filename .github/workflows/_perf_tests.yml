@@ -137,7 +137,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
-      pull-requests: write # post Bencher PR comments
       checks: write # Bencher check annotations
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,8 +157,7 @@ jobs:
             --file bmf.json \
             --adapter json \
             --branch "${{ env.BRANCH }}" \
-            --github-actions ${{ secrets.GITHUB_TOKEN }} \
-            --ci-only-on-alert
+            --github-actions ${{ secrets.GITHUB_TOKEN }}
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           BRANCH: "${{ github.ref_name }}"
