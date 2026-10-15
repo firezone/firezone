@@ -133,12 +133,12 @@ pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -
 
 /// Returns the names of a small domain tree, all of at least two labels.
 ///
-/// Labels come from small per-level pools and all levels below the second share one pool, so
-/// names in different branches share labels and wildcard patterns derived from one node also
-/// match nodes elsewhere in the tree.
+/// The tree grows below public suffixes from labels of small per-level pools. All levels below
+/// the second share one pool, so names in different branches share labels and wildcard patterns
+/// derived from one node also match nodes elsewhere in the tree.
 pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
     let depth = g.count(2, 4);
-    let roots = arb_distinct_labels(g, &TOP_LEVEL_LABELS, 1, 3)
+    let roots = arb_distinct_labels(g, &PUBLIC_SUFFIXES, 1, 3)
         .into_iter()
         .map(str::to_owned)
         .collect::<Vec<_>>();
@@ -235,9 +235,9 @@ pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainN
     }
 
     let labels = name.split('.').collect::<Vec<_>>();
-    let base = labels[g.count(0, labels.len() - 2)..].join(".");
+    let base = labels[g.count(0, labels.len() - 1)..].join(".");
     let label = arb_subdomain_label(g);
-    match g.choose_index(8) {
+    match g.choose_index(9) {
         0 => format!("*.{base}"),
         1 => format!("**.{base}"),
         2 => format!("{}.{base}", "?".repeat(label.len())),
@@ -246,8 +246,9 @@ pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainN
             format!("{}?{}.{base}", &label[..i], &label[i + 1..])
         }
         4 => format!("{}*.{base}", &label[..g.count(1, label.len())]),
-        5 => format!("{}?*.{base}", &label[..g.count(1, label.len() - 1)]),
-        6 => format!("{label}.**.{base}"),
+        5 => format!("*{}.{base}", &label[g.count(0, label.len() - 1)..]),
+        6 => format!("{label}.*.{base}"),
+        7 => format!("{label}.**.{base}"),
         _ => format!("**.{label}.**.{base}"),
     }
 }
@@ -329,9 +330,9 @@ pub(super) fn arb_more_specific_subnet(
     }
 }
 
-const TOP_LEVEL_LABELS: [&str; 3] = ["com", "net", "io"];
-const SECOND_LEVEL_LABELS: [&str; 3] = ["example", "corp", "internal"];
-const SUBDOMAIN_LABELS: [&str; 7] = ["db", "db1", "db2", "api", "app", "eu", "us"];
+const PUBLIC_SUFFIXES: [&str; 3] = ["com", "internal", "us-east-1.rds.amazonaws.com"];
+const SECOND_LEVEL_LABELS: [&str; 3] = ["example", "corp", "cluster-a1"];
+const SUBDOMAIN_LABELS: [&str; 7] = ["db", "db-1", "db-2", "api", "app", "eu-west-1", "us-east-1"];
 
 fn arb_subdomain_label(g: &mut Generator) -> &'static str {
     SUBDOMAIN_LABELS[g.choose_index(SUBDOMAIN_LABELS.len())]
