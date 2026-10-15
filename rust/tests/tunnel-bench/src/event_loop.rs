@@ -248,6 +248,7 @@ impl State {
                 DatagramOut {
                     src: None,
                     dst,
+                    len: packet.len(),
                     packet,
                     segment_size,
                     ecn: Ecn::NonEct,
