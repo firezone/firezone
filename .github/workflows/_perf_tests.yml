@@ -27,7 +27,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
-      pull-requests: write # post perf result comments
     env:
       PORTAL_IMAGE: "ghcr.io/firezone/portal"
       PORTAL_TAG: ${{ github.sha }}
