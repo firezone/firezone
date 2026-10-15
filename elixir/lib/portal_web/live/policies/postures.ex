@@ -13,6 +13,7 @@ defmodule PortalWeb.Policies.Postures do
 
   alias __MODULE__.{Checks, Database, JSONSpan}
   alias Portal.Policies.Postures
+  alias Portal.Policies.Postures.Fields
 
   @type t :: %{
           availability: :enabled | :locked,
@@ -146,6 +147,35 @@ defmodule PortalWeb.Policies.Postures do
   def check_available?(state, check) do
     :firezone in check.providers or Enum.any?(check.providers, &(&1 in state.connected))
   end
+
+  @doc """
+  The provider types custom rules read that no enabled provider of the account
+  answers, in catalog order. Checks are judged one by one with
+  `check_available?/2` instead, since one connected provider is enough for them.
+  """
+  @spec unconnected_providers(t()) :: [atom()]
+  def unconnected_providers(state) do
+    if checks(state) == :custom do
+      referenced = provider_types(state.wire)
+      Enum.filter(Fields.providers(), &(&1 != :firezone and &1 in referenced and &1 not in state.connected))
+    else
+      []
+    end
+  end
+
+  defp provider_types(%{"field" => field}) when is_binary(field) do
+    [name | _rest] = String.split(field, ".", parts: 2)
+
+    case Fields.fetch_provider(name) do
+      {:ok, provider} -> [provider]
+      :error -> []
+    end
+  end
+
+  defp provider_types(%{"not" => node}), do: provider_types(node)
+  defp provider_types(%{"and" => nodes}) when is_list(nodes), do: Enum.flat_map(nodes, &provider_types/1)
+  defp provider_types(%{"or" => nodes}) when is_list(nodes), do: Enum.flat_map(nodes, &provider_types/1)
+  defp provider_types(_node), do: []
 
   @doc "Pretty JSON for a wire map, with leaf keys in reading order."
   @spec pretty(map() | nil) :: String.t()

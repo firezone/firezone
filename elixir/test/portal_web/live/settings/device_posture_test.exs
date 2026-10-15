@@ -761,6 +761,29 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "deleting a provider" do
+    defp policy_with_postures(account, wire) do
+      {:ok, postures} = Portal.Policies.Postures.cast(wire)
+
+      Portal.PolicyFixtures.policy_fixture(account: account)
+      |> Ecto.Changeset.change(postures: postures)
+      |> Portal.Repo.update!()
+    end
+
+    defp request_delete(conn, actor, account, provider) do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+    end
+
     test "deletes a provider from the row actions after confirming", %{
       conn: conn,
       account: account,
@@ -790,6 +813,70 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert html =~ "Posture provider deleted."
       refute Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "warns how many policies use the type when deleting its last enabled provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_posture_provider_fixture(account: account, is_disabled: true)
+
+      policy_with_postures(account, %{
+        "not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+      })
+
+      policy_with_postures(account, %{
+        "or" => [
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
+          %{"field" => "iru.agent_installed", "op" => "is", "value" => true}
+        ]
+      })
+
+      policy_with_postures(account, %{"field" => "iru.agent_installed", "op" => "is", "value" => true})
+      Portal.PolicyFixtures.policy_fixture(account: account)
+
+      lv = request_delete(conn, actor, account, provider)
+
+      assert has_element?(
+               lv,
+               "#provider-#{provider.id}-policy-warning",
+               "2 policies use Microsoft Intune posture rules and will need to be updated."
+             )
+    end
+
+    test "does not warn while another enabled provider of the type remains", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_posture_provider_fixture(account: account)
+
+      policy_with_postures(account, %{
+        "field" => "intune.compliance_state",
+        "op" => "is",
+        "value" => "compliant"
+      })
+
+      lv = request_delete(conn, actor, account, provider)
+
+      assert render(lv) =~ "Delete this provider and all devices synced from it?"
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
+    end
+
+    test "does not warn when no policy uses the type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      policy_with_postures(account, %{"field" => "iru.agent_installed", "op" => "is", "value" => true})
+
+      lv = request_delete(conn, actor, account, provider)
+
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
     end
 
     test "cancelling the confirmation keeps the provider", %{

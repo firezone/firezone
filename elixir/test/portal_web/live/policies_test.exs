@@ -1774,6 +1774,70 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
     end
+    test "flags checks no connected provider can answer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"and" => [expansion(:compliant), expansion(:client_up_to_date)]})
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert has_element?(lv, "li:has([data-posture-check-unavailable])", "Compliant")
+      refute has_element?(lv, "li:has([data-posture-check-unavailable])", "Firezone Client up to date")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      assert has_element?(lv, "tr:has(#policy-postures-checks-compliant) [data-posture-check-unavailable]")
+      refute has_element?(lv, "tr:has(#policy-postures-checks-client_up_to_date) [data-posture-check-unavailable]")
+
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      refute has_element?(lv, "[data-posture-check-unavailable]")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      refute has_element?(lv, "[data-posture-check-unavailable]")
+    end
+
+    test "warns when custom rules use providers that are not connected", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account, is_disabled: true)
+
+      custom = %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+      {:ok, postures} = Portal.Policies.Postures.cast(custom)
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert has_element?(lv, "[data-postures-unconnected]", "These rules use Intune")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      assert has_element?(lv, "[data-postures-unconnected]", "These rules use Intune")
+
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      refute has_element?(lv, "[data-postures-unconnected]")
+    end
+
     test "the JSON tab edits the rules, the Simplified tab follows, and a broken document blocks saving", %{
       conn: conn,
       account: account,
