@@ -310,7 +310,11 @@ pub(super) fn generate(
         }
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
-            let mut records = arb_dns_record_set(g);
+            let subnet = state
+                .site_networks
+                .local_site(&domain)
+                .and_then(|site| state.site_networks.subnet(site));
+            let mut records = arb_dns_record_set(g, subnet);
             // Like at the start, a TCP-serving domain never resolves to an ICMP-error host.
             if state.tcp_resources.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {

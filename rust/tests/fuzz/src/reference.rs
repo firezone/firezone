@@ -4,6 +4,7 @@ use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
+use super::site_networks::SiteNetworks;
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -55,6 +56,8 @@ pub struct ReferenceState {
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
 
+    pub(crate) site_networks: SiteNetworks,
+
     pub(crate) network: RoutingTable,
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
@@ -80,6 +83,7 @@ impl ReferenceState {
         global_dns_records: DnsRecords,
         tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         icmp_error_hosts: IcmpErrorHosts,
+        site_networks: SiteNetworks,
         network: RoutingTable,
     ) -> Self {
         Self {
@@ -92,6 +96,7 @@ impl ReferenceState {
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
+            site_networks,
             network,
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
@@ -201,6 +206,16 @@ impl ReferenceState {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
                 let icmp_error_hosts = &self.icmp_error_hosts;
+                let site_networks = &self.site_networks;
+                let gateways = &self.gateways;
+                let resolve = |gateway: Option<GatewayId>, domain: &DomainName| match gateway {
+                    Some(gateway) => site_networks.resolved_rtypes(
+                        gateways[&gateway].inner().site,
+                        domain,
+                        global_dns_records,
+                    ),
+                    None => global_dns_records.domain_rtypes(domain),
+                };
 
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
@@ -213,13 +228,7 @@ impl ReferenceState {
                     });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(
-                            query,
-                            gateway,
-                            upstream_do53,
-                            global_dns_records,
-                            icmp_error_hosts,
-                        );
+                        c.on_dns_query(query, gateway, upstream_do53, resolve, icmp_error_hosts);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);
@@ -919,9 +928,14 @@ impl ReferenceState {
         let Some(gateway) = self.select_gateway(portal, origin, resource) else {
             return ExpectedOutcome::Dropped;
         };
+        let site = self.gateways[&gateway].inner().site;
         if let Destination::DomainName { .. } = dst {
+            let site_networks = &self.site_networks;
+            let records = &self.global_dns_records;
             self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-                client.prepare_dns_resource_connection(resource, &self.global_dns_records)
+                client.prepare_dns_resource_connection(resource, |domain| {
+                    site_networks.resolved_rtypes(site, domain, records)
+                })
             });
         }
         let rejection = self.gateway_verdict(portal, origin, gateway, resource, src, dst, protocol);
@@ -931,12 +945,27 @@ impl ReferenceState {
             .unwrap()
             .exec_mut(|client| client.connect_to_resource(resource, gateway, dst.clone()));
 
-        match rejection {
-            Some(response) => ExpectedOutcome::Rejected {
+        if let Some(response) = rejection {
+            return ExpectedOutcome::Rejected {
                 by: RejectionRemote::Gateway(gateway),
                 response,
+            };
+        }
+
+        let reachable = match dst {
+            Destination::DomainName { name, .. } => self.site_networks.reaches_name(site, name),
+            Destination::IpAddr(ip) => self.site_networks.reaches(site, *ip),
+        };
+        if reachable {
+            return ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway });
+        }
+
+        match self.site_networks.unreachable_response(site) {
+            Some(error) => ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                response: RejectionResponse::NetworkError(error),
             },
-            None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
+            None => ExpectedOutcome::Dropped,
         }
     }
 

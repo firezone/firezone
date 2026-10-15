@@ -6,8 +6,9 @@ use super::{
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    site_networks::SiteNetworks,
 };
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use snownet::Transmit;
@@ -22,6 +23,7 @@ use tunnel_proto::GatewayState;
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
     id: GatewayId,
+    site: SiteId,
     pub(crate) sut: GatewayState,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
@@ -59,6 +61,7 @@ pub(crate) struct DnsResolution {
 impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
+        site: SiteId,
         mut sut: GatewayState,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         site_specific_dns_records: DnsRecords,
@@ -81,6 +84,7 @@ impl SimGateway {
 
         Self {
             id,
+            site,
             sut,
             site_specific_dns_records,
             probe_observations: Default::default(),
@@ -102,6 +106,7 @@ impl SimGateway {
         &mut self,
         transmit: Transmit,
         icmp_error_hosts: &IcmpErrorHosts,
+        site_networks: &SiteNetworks,
         now: Instant,
     ) -> Option<Transmit> {
         let Some(packet) = self
@@ -115,7 +120,28 @@ impl SimGateway {
             return None;
         };
 
+        if !site_networks.reaches(self.site, packet.destination()) {
+            let error = site_networks.unreachable_response(self.site)?;
+            let reply = icmp_error_reply(&packet, error).unwrap();
+
+            return self.handle_tun_input(reply, now).unwrap();
+        }
+
         self.on_received_packet(packet, icmp_error_hosts, now)
+    }
+
+    /// Resolves `domain` like the Gateway's upstream resolver does.
+    pub(crate) fn resolve(
+        &self,
+        domain: &DomainName,
+        records: &DnsRecords,
+        site_networks: &SiteNetworks,
+    ) -> Vec<IpAddr> {
+        if !site_networks.resolves(self.site, domain) {
+            return Vec::new();
+        }
+
+        records.domain_ips_iter(domain).collect()
     }
 
     pub(crate) fn advance_resources(

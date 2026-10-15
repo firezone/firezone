@@ -21,6 +21,7 @@ mod sim_client;
 mod sim_gateway;
 mod sim_net;
 mod sim_relay;
+mod site_networks;
 mod stub_portal;
 mod sut;
 mod tcp;

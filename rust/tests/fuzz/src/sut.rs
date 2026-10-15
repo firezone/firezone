@@ -6,6 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
+use super::site_networks::SiteNetworks;
 use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
@@ -1003,6 +1004,7 @@ impl TunnelTest {
             self.drive_network(
                 &ref_state.global_dns_records,
                 &ref_state.icmp_error_hosts,
+                &ref_state.site_networks,
                 buffered_transmits,
                 now,
             );
@@ -1019,7 +1021,7 @@ impl TunnelTest {
                     gateway,
                     &self.relays,
                     portal,
-                    &ref_state.global_dns_records,
+                    ref_state,
                     now,
                 );
                 continue 'outer;
@@ -1180,6 +1182,7 @@ impl TunnelTest {
         &mut self,
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
+        site_networks: &SiteNetworks,
         buffered_transmits: &mut BufferedTransmits,
         now: Instant,
     ) {
@@ -1234,7 +1237,8 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
+                let Some(reply) =
+                    gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, site_networks, now))
                 else {
                     continue;
                 };
@@ -1472,7 +1476,7 @@ impl TunnelTest {
                         gateway,
                         &self.relays,
                         portal,
-                        &ref_state.global_dns_records,
+                        ref_state,
                         now,
                     );
                 }
@@ -1848,7 +1852,7 @@ fn on_gateway_event(
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
     portal: &mut StubPortal,
-    global_dns_records: &DnsRecords,
+    ref_state: &ReferenceState,
     now: Instant,
 ) {
     match event {
@@ -1878,9 +1882,11 @@ fn on_gateway_event(
             let client = r.client();
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().to_vec();
-            let resolved_ips = global_dns_records
-                .domain_ips_iter(&domain)
-                .collect::<Vec<_>>();
+            let resolved_ips = gateway.inner().resolve(
+                &domain,
+                &ref_state.global_dns_records,
+                &ref_state.site_networks,
+            );
 
             gateway.exec_mut(|g| {
                 g.sut

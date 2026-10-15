@@ -2,7 +2,7 @@ use super::{
     dns_records::DnsRecords, reference::PrivateKey, sim_gateway::SimGateway, sim_net::ExecMutScope,
 };
 use chrono::{DateTime, Utc};
-use connlib_model::GatewayId;
+use connlib_model::{GatewayId, SiteId};
 use dns_types::DomainName;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -17,6 +17,7 @@ pub struct RefGateway {
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+    pub(crate) site: SiteId,
 
     site_specific_dns_records: DnsRecords,
 }
@@ -27,12 +28,14 @@ impl RefGateway {
         key: PrivateKey,
         tunnel_ip4: Ipv4Addr,
         tunnel_ip6: Ipv6Addr,
+        site: SiteId,
         site_specific_dns_records: DnsRecords,
     ) -> Self {
         Self {
             key,
             tunnel_ip4,
             tunnel_ip6,
+            site,
             site_specific_dns_records,
         }
     }
@@ -60,7 +63,14 @@ impl RefGateway {
             v6: self.tunnel_ip6,
         });
 
-        SimGateway::new(id, sut, tcp_services, self.site_specific_dns_records, now)
+        SimGateway::new(
+            id,
+            self.site,
+            sut,
+            tcp_services,
+            self.site_specific_dns_records,
+            now,
+        )
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

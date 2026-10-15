@@ -1,5 +1,5 @@
 use super::{
-    icmp_error_hosts::IcmpErrorHosts,
+    icmp_error_hosts::{IcmpError, IcmpErrorHosts, icmp_error_reply},
     probe::{
         DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
         ProbeId, ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse,
@@ -205,6 +205,12 @@ fn assert_probes(
                     RejectionResponse::Reset => {
                         assert_reset_response(expected, submitted_request, received_response)
                     }
+                    RejectionResponse::NetworkError(error) => assert_network_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        error,
+                    ),
                 }
             }
         }
@@ -593,6 +599,31 @@ fn assert_icmp_error_response(
 
     if !protocol_matches {
         tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong transport tuple");
+    }
+}
+
+/// Checks that the Client received the ICMP error the network behind the Gateway answered with.
+fn assert_network_error_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+    error: IcmpError,
+) {
+    assert_icmp_error_response(expected, submitted_request, received_response, None);
+
+    let expected_error = icmp_error_reply(&submitted_request.packet, error)
+        .ok()
+        .and_then(|reply| reply.icmp_error().ok().flatten())
+        .map(|(_, error)| error);
+    let actual_error = received_response
+        .packet
+        .icmp_error()
+        .ok()
+        .flatten()
+        .map(|(_, error)| error);
+
+    if actual_error != expected_error {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_error, ?actual_error, "Received probe response contains the wrong ICMP error");
     }
 }
 

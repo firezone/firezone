@@ -7,7 +7,7 @@ use std::{
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::icmp_error_hosts::IcmpErrorHosts;
+use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
 use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
@@ -217,6 +217,8 @@ pub(crate) enum RejectionResponse {
     Unreachable,
     /// A TCP reset.
     Reset,
+    /// An ICMP error from the network behind the Gateway.
+    NetworkError(IcmpError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
