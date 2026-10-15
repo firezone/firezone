@@ -1,12 +1,12 @@
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buf, Buffer, BufferPool, VecBuf};
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -900,6 +900,7 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 /// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
     bytes: &'static BufferPool<Vec<u8>>,
+    recv_buf_size: usize,
 }
 
 bufferpool::buffer_pool!(
@@ -910,12 +911,43 @@ bufferpool::buffer_pool!(
         _ => { 2 }
     }
 );
-bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4);
+bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: RecvBufs<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 1);
 bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"), batch: 4);
+
+/// The datagram buffers of one receive batch.
+///
+/// Unlike a [`VecBuf`], it keeps its buffers when it returns to the pool, so a batch is
+/// recycled whole instead of one buffer at a time.
+#[derive(Debug)]
+pub struct RecvBufs<B>(Vec<B>);
+
+impl<B> Deref for RecvBufs<B> {
+    type Target = Vec<B>;
+
+    fn deref(&self) -> &Vec<B> {
+        &self.0
+    }
+}
+
+impl<B> DerefMut for RecvBufs<B> {
+    fn deref_mut(&mut self) -> &mut Vec<B> {
+        &mut self.0
+    }
+}
+
+impl<B> Buf for RecvBufs<B> {
+    fn with_capacity(capacity: usize) -> Self {
+        Self(Vec::with_capacity(capacity))
+    }
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+}
 
 /// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
 pub(crate) struct RecvBatch {
-    buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
+    buffers: Buffer<RecvBufs<Buffer<Vec<u8>>>>,
     metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
 }
 
@@ -944,6 +976,7 @@ impl RecvBuffers {
     fn new(recv_buf_size: usize) -> Self {
         Self {
             bytes: UDP_RECV_BYTES.with_capacity(recv_buf_size),
+            recv_buf_size,
         }
     }
 
@@ -952,7 +985,10 @@ impl RecvBuffers {
         let mut buffers = UDP_RECV_BUFFERS.pull();
         let mut metas = UDP_RECV_METAS.pull();
 
-        buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(quinn_udp::BATCH_SIZE));
+        // Buffers sized for a previous socket configuration are discarded.
+        for _ in buffers.extract_if(.., |b| b.len() != self.recv_buf_size) {}
+        let missing = quinn_udp::BATCH_SIZE - buffers.len();
+        buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(missing));
         metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
 
         RecvBatch { buffers, metas }
@@ -968,10 +1004,10 @@ impl RecvBuffers {
 /// which segments buffers holding several GRO / URO-coalesced datagrams apart again.
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
-#[derive(Clone, derive_more::Debug)]
+#[derive(derive_more::Debug)]
 pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
     #[debug(skip)]
-    buffers: Buffer<VecBuf<B>>,
+    buffers: Buffer<RecvBufs<B>>,
     #[debug(skip)]
     metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
 
@@ -984,13 +1020,12 @@ pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
 
 impl<B> DatagramBatch<B> {
     pub(crate) fn new(
-        mut buffers: Buffer<VecBuf<B>>,
+        buffers: Buffer<RecvBufs<B>>,
         mut metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
         port: u16,
         len: usize,
     ) -> Self {
-        // Drop the unused buffers / metas.
-        buffers.truncate(len);
+        // The unused buffers stay in the batch for its next receive.
         metas.truncate(len);
 
         let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
@@ -1033,7 +1068,7 @@ impl<B> DatagramBatch<B> {
     where
         B: Deref<Target = Vec<u8>>,
     {
-        let buf_index = if self.drained { self.buffers.len() } else { 0 };
+        let buf_index = if self.drained { self.metas.len() } else { 0 };
         self.drained = true;
 
         Drain {
@@ -1070,7 +1105,7 @@ where
         let batch = self.batch;
 
         loop {
-            if self.buf_index >= batch.buffers.len() {
+            if self.buf_index >= batch.metas.len() {
                 return None;
             }
 
@@ -1187,7 +1222,7 @@ mod tests {
         }
     }
 
-    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4);
+    bufferpool::buffer_pool!(static DUMMY_BUFFERS: RecvBufs<DummyBuffer> = (3, "test"), batch: 4);
     bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"), batch: 4);
 
     /// The batch is the item of the channel to the main thread; keeping it small is
@@ -1203,6 +1238,7 @@ mod tests {
     #[test]
     fn drain_segments_buffers_correctly() {
         let mut buffers = DUMMY_BUFFERS.pull();
+        buffers.clear();
         buffers.extend([
             DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
             DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
@@ -1247,6 +1283,7 @@ mod tests {
     #[test]
     fn drained_batch_yields_nothing() {
         let mut buffers = DUMMY_BUFFERS.pull();
+        buffers.clear();
         buffers.extend([DummyBuffer(b"foo".to_vec())]);
 
         let mut metas = DUMMY_METAS.pull();
@@ -1270,6 +1307,7 @@ mod tests {
     #[test]
     fn zero_stride_buffer_is_skipped() {
         let mut buffers = DUMMY_BUFFERS.pull();
+        buffers.clear();
         buffers.extend([
             DummyBuffer(b"garbage    ".to_vec()),
             DummyBuffer(b"foo        ".to_vec()),
@@ -1318,6 +1356,7 @@ mod tests {
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
         let mut buffers = DUMMY_BUFFERS.pull();
+        buffers.clear();
         buffers.extend([
             DummyBuffer(vec![0; oversized]),
             DummyBuffer(b"foobar1".to_vec()),
