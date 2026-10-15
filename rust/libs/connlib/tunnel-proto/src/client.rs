@@ -55,7 +55,7 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use sanstun::StaticSecret;
 use secrecy::ExposeSecret as _;
-use snownet::{Node, RelaySocket};
+use snownet::{EncapsulateError, Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -550,7 +550,7 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-        provider: &mut impl snownet::BufferProvider,
+        encryptor: &mut impl snownet::Encryptor,
     ) -> Result<()> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -610,7 +610,7 @@ impl ClientState {
                     cid.into(),
                     now,
                     &mut self.node,
-                    provider,
+                    encryptor,
                     &mut self.pending_routed_packets,
                 )?;
 
@@ -723,7 +723,7 @@ impl ClientState {
             peer,
             now,
             &mut self.node,
-            provider,
+            encryptor,
             &mut self.pending_routed_packets,
         )?;
 
@@ -2860,14 +2860,14 @@ fn encapsulate_and_queue(
     }
 }
 
-/// Encapsulate `packet` for `pid` directly into `provider`, or buffer it if the connection is
+/// Encapsulate `packet` for `pid` and hand it to `encryptor`, or buffer it if the connection is
 /// still being established.
 fn encapsulate_or_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    provider: &mut impl snownet::BufferProvider,
+    encryptor: &mut impl snownet::Encryptor,
     pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) -> Result<()> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
@@ -2877,12 +2877,12 @@ fn encapsulate_or_buffer(
         return Ok(());
     }
 
-    match node.encapsulate(pid, &packet, now, provider) {
+    match node.encapsulate(pid, packet, now, encryptor) {
         Ok(Some(info)) => {
             flow_tracker::record_transmit(info.src, info.dst);
         }
         Ok(None) => {}
-        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::StillConnecting>() => {
             pending_packets
                 .entry(pid)
                 .or_insert_with(|| {
@@ -2893,10 +2893,10 @@ fn encapsulate_or_buffer(
                 })
                 .push(packet);
         }
-        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            return Err(e.context(UnroutablePacket::not_connected(&packet)));
+        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::UnknownConnection>() => {
+            return Err(error.context(UnroutablePacket::not_connected(&packet)));
         }
-        Err(e) => return Err(e),
+        Err(EncapsulateError { error, .. }) => return Err(error),
     };
 
     Ok(())

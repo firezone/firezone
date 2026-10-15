@@ -419,7 +419,7 @@ impl Io {
         }
     }
 
-    /// The GSO queue used as the destination buffer when encapsulating packets in place.
+    /// The GSO queue, which encrypts encapsulated packets inline.
     pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
         &mut self.gso_queue
     }

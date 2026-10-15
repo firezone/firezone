@@ -18,7 +18,7 @@ use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use sanstun::{PublicKey, StaticSecret};
 use secrecy::ExposeSecret as _;
-use snownet::{IceConfig, IceRole, Node, RelaySocket};
+use snownet::{EncapsulateError, IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -116,7 +116,7 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-        provider: &mut impl snownet::BufferProvider,
+        encryptor: &mut impl snownet::Encryptor,
     ) -> Result<()> {
         let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
 
@@ -139,7 +139,7 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?;
 
-        let Some(info) = encrypt_packet(packet, cid, &mut self.node, provider, now)? else {
+        let Some(info) = encrypt_packet(packet, cid, &mut self.node, encryptor, now)? else {
             return Ok(());
         };
 
@@ -682,20 +682,20 @@ fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
-    provider: &mut impl snownet::BufferProvider,
+    encryptor: &mut impl snownet::Encryptor,
     now: Instant,
 ) -> Result<Option<snownet::EncapsulateInfo>> {
-    match node.encapsulate(cid, &packet, now, provider) {
+    match node.encapsulate(cid, packet, now, encryptor) {
         Ok(info) => Ok(info),
         // The Gateway does not buffer: it only sends in response to Client traffic.
-        Err(e) if e.any_is::<snownet::StillConnecting>() => {
+        Err(EncapsulateError { error, .. }) if error.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
             Ok(None)
         }
-        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            Err(e.context(UnroutablePacket::not_connected(&packet)))
+        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::UnknownConnection>() => {
+            Err(error.context(UnroutablePacket::not_connected(&packet)))
         }
-        Err(e) => Err(e).context("Failed to encapsulate"),
+        Err(EncapsulateError { error, .. }) => Err(error).context("Failed to encapsulate"),
     }
 }
 

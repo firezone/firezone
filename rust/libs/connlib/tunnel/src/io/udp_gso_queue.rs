@@ -2,7 +2,7 @@ use std::{collections::VecDeque, net::SocketAddr};
 
 use bufferpool::Buffer;
 use ip_packet::Ecn;
-use snownet::{BufferProvider, Reservation};
+use snownet::{EncryptJob, Encryptor};
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
@@ -45,7 +45,7 @@ impl UdpGsoQueue {
     ///
     /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
     /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
-    /// directly into the queue via the [`BufferProvider`] implementation.
+    /// directly into the queue via the [`Encryptor`] implementation.
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
         let mut reservation = self.reserve(src, dst, ecn, payload.len());
         reservation.buffer().copy_from_slice(payload);
@@ -61,9 +61,20 @@ impl UdpGsoQueue {
     }
 }
 
-impl BufferProvider for UdpGsoQueue {
-    type Reservation<'a> = GsoReservation<'a>;
+impl Encryptor for UdpGsoQueue {
+    fn encrypt(&mut self, job: EncryptJob) {
+        let mut reservation = self.reserve(job.src(), job.dst(), job.ecn(), job.datagram_len());
 
+        if let Err(e) = job.encrypt_into(reservation.buffer()) {
+            tracing::debug!("Failed to encrypt packet: {e}");
+            return;
+        }
+
+        reservation.commit();
+    }
+}
+
+impl UdpGsoQueue {
     fn reserve(
         &mut self,
         src: Option<SocketAddr>,
@@ -155,14 +166,14 @@ impl Batch {
     }
 }
 
-/// A [`Reservation`] into a [`UdpGsoQueue`], pointing at the tail of one of its batches.
-pub struct GsoReservation<'a> {
+/// A reservation in a [`UdpGsoQueue`], pointing at the tail of one of its batches.
+struct GsoReservation<'a> {
     batch: &'a mut Batch,
     len: usize,
     committed: bool,
 }
 
-impl Reservation for GsoReservation<'_> {
+impl GsoReservation<'_> {
     fn buffer(&mut self) -> &mut [u8] {
         let offset = self.batch.buffer.len() - self.len;
 
