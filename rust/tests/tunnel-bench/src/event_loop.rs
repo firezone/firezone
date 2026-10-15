@@ -19,8 +19,9 @@ use anyhow::ErrorExt as _;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
+use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
 use snownet::{RelaySocket, Transmit, TransmitBuffer};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
@@ -31,7 +32,8 @@ use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelC
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 
-const SIZES: [usize; 2] = [64, 1280];
+/// The size of the IP packets sent through the tunnel.
+const SIZE: usize = 1280;
 
 #[derive(Debug, Clone, Copy)]
 enum Resource {
@@ -40,6 +42,14 @@ enum Resource {
 }
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
+
+#[derive(Debug, Clone, Copy)]
+enum Protocol {
+    Udp,
+    Tcp,
+}
+
+const PROTOCOLS: [Protocol; 2] = [Protocol::Udp, Protocol::Tcp];
 
 /// The most packets sent through the tunnel in one go, bounding the memory their inputs take.
 const BURST: usize = 10_000;
@@ -60,30 +70,39 @@ bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-
 criterion::criterion_group! {
     name = benches;
     config = Criterion::default()
-        .warm_up_time(Duration::from_secs(1))
-        .measurement_time(Duration::from_secs(3))
+        .warm_up_time(Duration::from_millis(500))
+        .measurement_time(Duration::from_millis(1500))
         .without_plots();
-    targets = per_packet
+    targets = bench
 }
 
-fn per_packet(c: &mut Criterion) {
-    let mut group = c.benchmark_group("per_packet");
+fn bench(c: &mut Criterion) {
+    let mut group = c.benchmark_group("event_loop");
+    group.throughput(Throughput::Bits(SIZE as u64 * 8));
 
-    for size in SIZES {
-        for resource in RESOURCES {
-            let id = |name| format!("{name}/{size}/{resource}");
+    for resource in RESOURCES {
+        for protocol in PROTOCOLS {
+            for flow_logs in [false, true] {
+                let flow_logs_id = if flow_logs {
+                    "flow_logs"
+                } else {
+                    "no_flow_logs"
+                };
+                let id = |name| format!("{name}/{resource}/{protocol}/{flow_logs_id}");
+                let connect = || connect(resource, protocol, flow_logs);
 
-            let (client, gateway, now) = connect(resource, size);
-            outbound(&mut group, id("client_outbound"), client, gateway, now);
+                let (client, gateway, now) = connect();
+                outbound(&mut group, id("client_outbound"), client, gateway, now);
 
-            let (client, gateway, now) = connect(resource, size);
-            inbound(&mut group, id("gateway_inbound"), gateway, client, now);
+                let (client, gateway, now) = connect();
+                inbound(&mut group, id("gateway_inbound"), gateway, client, now);
 
-            let (client, gateway, now) = connect(resource, size);
-            outbound(&mut group, id("gateway_outbound"), gateway, client, now);
+                let (client, gateway, now) = connect();
+                outbound(&mut group, id("gateway_outbound"), gateway, client, now);
 
-            let (client, gateway, now) = connect(resource, size);
-            inbound(&mut group, id("client_inbound"), client, gateway, now);
+                let (client, gateway, now) = connect();
+                inbound(&mut group, id("client_inbound"), client, gateway, now);
+            }
         }
     }
 }
@@ -172,10 +191,10 @@ enum State {
     Gateway(GatewayState),
 }
 
-fn connect(resource: Resource, size: usize) -> (Side, Side, Instant) {
-    let mut tunnel = Tunnel::established(resource);
-    let request = tunnel.request(size);
-    let reply = tunnel.reply(size);
+fn connect(resource: Resource, protocol: Protocol, flow_logs: bool) -> (Side, Side, Instant) {
+    let mut tunnel = Tunnel::established(resource, flow_logs);
+    let request = tunnel.request(protocol);
+    let reply = tunnel.reply(protocol);
 
     let client = Side {
         state: State::Client(tunnel.client),
@@ -429,11 +448,12 @@ fn measure<T>(
             elapsed
         })
     });
-    let parks =
-        (event_loop.parks() - before.0) as f64 * 1000.0 / (arrivals.count() - before.1) as f64;
+    let packets = arrivals.count() - before.1;
+    let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
 
+    // Skipped or test runs send too few packets to tell.
     assert!(
-        parks <= MAX_PARKS_PER_1K_PACKETS,
+        packets < BURST || parks <= MAX_PARKS_PER_1K_PACKETS,
         "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
     );
 }
@@ -505,6 +525,15 @@ impl std::fmt::Display for Resource {
     }
 }
 
+impl std::fmt::Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Protocol::Udp => f.write_str("udp"),
+            Protocol::Tcp => f.write_str("tcp"),
+        }
+    }
+}
+
 impl Resource {
     fn id(self) -> ResourceId {
         match self {
@@ -542,13 +571,14 @@ struct Tunnel {
 }
 
 impl Tunnel {
-    fn established(resource: Resource) -> Self {
+    fn established(resource: Resource, flow_logs: bool) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
 
         let mut client = ClientState::new([1; 32], BTreeSet::new(), false, now, unix_ts);
+        client.set_flow_logs_enabled(flow_logs);
         client.update_interface_config(Interface {
             ipv4: CLIENT_TUN_V4,
             ipv6: CLIENT_TUN_V6,
@@ -574,6 +604,7 @@ impl Tunnel {
         client.update_relays(BTreeSet::new(), relays(), now);
 
         let mut gateway = GatewayState::new([2; 32], now, unix_ts);
+        gateway.set_flow_logs_enabled(flow_logs);
         gateway.update_tun_device(GATEWAY_TUN);
         gateway.update_relays(BTreeSet::new(), relays(), now);
 
@@ -591,7 +622,11 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(tunnel.request(64), now, &mut TransmitBuffer::default())
+            .handle_tun_input(
+                tunnel.request(Protocol::Udp),
+                now,
+                &mut TransmitBuffer::default(),
+            )
             .unwrap();
 
         for _ in 0..200 {
@@ -601,15 +636,15 @@ impl Tunnel {
         tunnel
     }
 
-    fn request(&self, size: usize) -> IpPacket {
-        udp_packet(CLIENT_TUN_V4.into(), self.dst, size)
+    fn request(&self, protocol: Protocol) -> IpPacket {
+        packet(protocol, CLIENT_TUN_V4.into(), self.dst, 50000, 443)
     }
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
-    fn reply(&mut self, size: usize) -> IpPacket {
+    fn reply(&mut self, protocol: Protocol) -> IpPacket {
         let mut transmits = TransmitBuffer::default();
         self.client
-            .handle_tun_input(self.request(size), self.now, &mut transmits)
+            .handle_tun_input(self.request(protocol), self.now, &mut transmits)
             .unwrap();
         let datagram = transmits.poll_transmit().unwrap();
         let request = self
@@ -617,16 +652,24 @@ impl Tunnel {
             .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
-        let udp = request.as_udp().unwrap();
+        let (sport, dport) = match protocol {
+            Protocol::Udp => {
+                let udp = request.as_udp().unwrap();
+                (udp.source_port(), udp.destination_port())
+            }
+            Protocol::Tcp => {
+                let tcp = request.as_tcp().unwrap();
+                (tcp.source_port(), tcp.destination_port())
+            }
+        };
 
-        ip_packet::make::udp_packet(
+        packet(
+            protocol,
             request.destination(),
             request.source(),
-            udp.destination_port(),
-            udp.source_port(),
-            &vec![0; size - 28],
+            dport,
+            sport,
         )
-        .unwrap()
     }
 
     fn step(&mut self, resource: Resource) {
@@ -768,8 +811,22 @@ fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
         .unwrap()
 }
 
-fn udp_packet(src: IpAddr, dst: IpAddr, size: usize) -> IpPacket {
-    ip_packet::make::udp_packet(src, dst, 50000, 443, &vec![0; size - 28]).unwrap()
+/// Returns a packet of [`SIZE`] bytes, a data segment of an established connection for TCP.
+fn packet(protocol: Protocol, src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
+    match protocol {
+        Protocol::Udp => {
+            ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
+        }
+        Protocol::Tcp => {
+            let ack = TcpFlags {
+                syn: false,
+                ack: true,
+                rst: false,
+            };
+
+            ip_packet::make::tcp_packet(src, dst, sport, dport, ack, &[0; SIZE - 40]).unwrap()
+        }
+    }
 }
 
 fn binding_response(request: &[u8], from: SocketAddr) -> Option<Vec<u8>> {

@@ -1,8 +1,8 @@
 #[cfg(target_os = "linux")]
-mod per_packet;
+mod event_loop;
 
 #[cfg(target_os = "linux")]
-criterion::criterion_main!(per_packet::benches);
+criterion::criterion_main!(event_loop::benches);
 
 #[cfg(not(target_os = "linux"))]
 fn main() {}

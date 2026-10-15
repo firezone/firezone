@@ -184,8 +184,8 @@ jobs:
       - name: Run tests
         run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
 
-  per-packet-bench:
-    name: per-packet-bench
+  event-loop-bench:
+    name: event-loop-bench
     # Dependabot's PRs have no access to the Bencher API key.
     if: (github.event_name == 'pull_request' && github.actor != 'dependabot[bot]') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
@@ -256,7 +256,7 @@ jobs:
             "${branch[@]}" \
             --adapter rust_criterion \
             --github-actions "$GITHUB_TOKEN" \
-            --ci-id per-packet \
+            --ci-id event-loop \
             --error-on-alert
 
   fuzz-targets:
