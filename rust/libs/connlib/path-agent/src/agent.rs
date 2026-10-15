@@ -481,10 +481,10 @@ impl PathAgent {
 
                 // The second unanswered re-key is WireGuard telling us the path
                 // is dead: drop the primary and re-probe. Fire once on the
-                // crossing — once the primary is cleared, probing recovers it
+                // crossing: once the primary is cleared, probing recovers it
                 // and the re-key rides the new path; re-firing would flap. The
                 // count resets when a response finally lands (see
-                // `handshake_accepted`).
+                // `handle_handshake_response`).
                 if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
                     tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
                     self.clear_and_reprobe(now);
@@ -737,7 +737,7 @@ impl PathAgent {
     /// Records that the session is confirmed, which starts probing and ends the
     /// bootstrap fan-out.
     ///
-    /// [`Self::handle_inbound_network`] detects an answered init itself; the
+    /// [`Self::handle_handshake_response`] detects an answered init itself; the
     /// caller reports the other case: the peer's transport data decrypting
     /// under a session we answered.
     pub fn confirm_session(&mut self, now: Instant) {
