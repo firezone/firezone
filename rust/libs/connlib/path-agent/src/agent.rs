@@ -4,6 +4,8 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
+use sanstun::Datagram;
+
 use crate::candidate::Candidate;
 use crate::event::{Event, HandshakeKind, Outbound, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
@@ -162,7 +164,7 @@ struct InflightProbe {
 }
 
 struct OutboundInit {
-    bytes: Vec<u8>,
+    bytes: Datagram,
     /// Relay pairs the current `bytes` have been fanned out to. Cleared when a
     /// WireGuard re-init replaces `bytes`, so the fresh init reaches every pair.
     fanned: BTreeSet<(SocketAddr, SocketAddr)>,
@@ -176,7 +178,7 @@ struct OutboundInit {
 }
 
 impl OutboundInit {
-    fn new(bytes: Vec<u8>, started_at: Instant) -> Self {
+    fn new(bytes: Datagram, started_at: Instant) -> Self {
         Self {
             bytes,
             fanned: BTreeSet::new(),
@@ -188,7 +190,7 @@ impl OutboundInit {
 
 struct ResponderDedup {
     init_bytes: Vec<u8>,
-    response_bytes: Vec<u8>,
+    response_bytes: Datagram,
     cached_at: Instant,
 }
 
@@ -629,7 +631,6 @@ impl PathAgent {
 
         tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-        let response = response.to_vec();
         self.pending_transmits.push_back(Transmit {
             local: path.0,
             remote: path.1,
@@ -639,7 +640,7 @@ impl PathAgent {
         true
     }
 
-    fn cached_response(&self, init: &[u8], now: Instant) -> Option<&[u8]> {
+    fn cached_response(&self, init: &[u8], now: Instant) -> Option<Datagram> {
         let d = self.responder.dedup.as_ref()?;
 
         if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {
@@ -650,7 +651,7 @@ impl PathAgent {
             return None;
         }
 
-        Some(d.response_bytes.as_slice())
+        Some(d.response_bytes.clone())
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit> {

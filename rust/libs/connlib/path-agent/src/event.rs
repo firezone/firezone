@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
 
+use sanstun::Datagram;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transmit {
     pub local: SocketAddr,
@@ -9,7 +11,7 @@ pub struct Transmit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
-    Ciphertext(Vec<u8>),
+    Ciphertext(Datagram),
     Plaintext(Box<ip_packet::IpPacket>),
 }
 
@@ -24,13 +26,13 @@ pub enum Event {
 /// A message WireGuard wants to send to the peer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
-    HandshakeInitiation(Vec<u8>),
-    HandshakeResponse(Vec<u8>),
-    Data(Vec<u8>),
+    HandshakeInitiation(Datagram),
+    HandshakeResponse(Datagram),
+    Data(Datagram),
 }
 
 impl Outbound {
-    pub fn into_bytes(self) -> Vec<u8> {
+    pub fn into_datagram(self) -> Datagram {
         match self {
             Outbound::HandshakeInitiation(bytes)
             | Outbound::HandshakeResponse(bytes)

@@ -2061,7 +2061,7 @@ where
                 tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
                 for message in messages {
-                    wg_buffer.enqueue(message.into_bytes());
+                    wg_buffer.enqueue(message.into_datagram());
                 }
             }
             ConnectionState::Connected { peer_socket, .. }
@@ -2070,7 +2070,7 @@ where
                     transmits.extend(make_owned_transmit(
                         self.relay,
                         *peer_socket,
-                        &message.into_bytes(),
+                        &message.into_datagram(),
                         allocations,
                         now,
                     ));
@@ -2116,7 +2116,7 @@ where
         };
 
         self.agent
-            .handle_outbound(Outbound::HandshakeInitiation(init.to_vec()), now);
+            .handle_outbound(Outbound::HandshakeInitiation(init), now);
     }
 
     fn reset_for_roam(&mut self, now: Instant)
@@ -2323,14 +2323,14 @@ fn drain_tunnel_events(
     while let Some(event) = next {
         match event {
             sanstun::Event::SendHandshakeInitiation(message) => {
-                messages.push(Outbound::HandshakeInitiation(message.to_vec()))
+                messages.push(Outbound::HandshakeInitiation(message))
             }
             sanstun::Event::SendHandshakeResponse(message) => {
-                messages.push(Outbound::HandshakeResponse(message.to_vec()))
+                messages.push(Outbound::HandshakeResponse(message))
             }
             sanstun::Event::KeepaliveDue(keepalive) => {
                 match tunnel.encapsulate_keepalive(keepalive, now) {
-                    Ok(message) => messages.push(Outbound::Data(message.to_vec())),
+                    Ok(message) => messages.push(Outbound::Data(message)),
                     Err(e) => tracing::debug!("Failed to encapsulate keepalive: {e}"),
                 }
             }
