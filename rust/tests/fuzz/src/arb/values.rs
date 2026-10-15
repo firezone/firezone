@@ -227,17 +227,20 @@ pub(super) fn arb_different_cidr_resource_address(
 
 pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
     let name = arb_tree_name(g).to_string();
+    if g.bool() {
+        return name;
+    }
+
     let labels = name.split('.').collect::<Vec<_>>();
     let base = labels[g.count(0, labels.len() - 2)..].join(".");
-    match g.choose_index(9) {
-        0 => name,
-        1 => format!("*.{base}"),
-        2 => format!("**.{base}"),
-        3 => format!("?.{base}"),
-        4 => format!("{}?.{base}", arb_label_char(g)),
-        5 => format!("{}*.{base}", arb_label_char(g)),
-        6 => format!("{}?*.{base}", arb_label_char(g)),
-        7 => format!("{}.**.{base}", arb_label(g)),
+    match g.choose_index(8) {
+        0 => format!("*.{base}"),
+        1 => format!("**.{base}"),
+        2 => format!("?.{base}"),
+        3 => format!("{}?.{base}", arb_label_char(g)),
+        4 => format!("{}*.{base}", arb_label_char(g)),
+        5 => format!("{}?*.{base}", arb_label_char(g)),
+        6 => format!("{}.**.{base}", arb_label(g)),
         _ => format!("**.{}.**.{base}", arb_label(g)),
     }
 }
