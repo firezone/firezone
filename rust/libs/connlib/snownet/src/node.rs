@@ -538,6 +538,7 @@ where
     /// # Returns
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
+    ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
     ///   Decrypt it and pass the result to [`Node::handle_decrypted`].
     pub fn decapsulate(
@@ -908,7 +909,6 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
-            tunnel_events_queued_at: None,
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1472,8 +1472,6 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
-    /// When an accepted handshake queued a reply in [`Tunnel`], drained in `handle_timeout`.
-    tunnel_events_queued_at: Option<Instant>,
 }
 
 impl<RId> Connection<RId>
@@ -1536,10 +1534,6 @@ where
                     .map(|instant| (instant, "disconnect timeout")),
             )
             .chain(self.state.poll_timeout(&self.agent))
-            .chain(
-                self.tunnel_events_queued_at
-                    .map(|instant| (instant, "WireGuard events")),
-            )
             .min_by_key(|(instant, _)| *instant);
 
         self.poll_timeout_cache.update(timeout)
@@ -1804,7 +1798,6 @@ where
         // bootstrap eventually surfaces `ConnectionExpired` instead of
         // hanging.
         self.tunnel.handle_timeout(now);
-        self.tunnel_events_queued_at = None;
 
         let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel, now) else {
             return;
@@ -1960,7 +1953,6 @@ where
             && result.is_ok()
         {
             self.agent.handshake_accepted(kind, datagram, path, now);
-            self.tunnel_events_queued_at = Some(now);
         }
 
         let pending = match result {
