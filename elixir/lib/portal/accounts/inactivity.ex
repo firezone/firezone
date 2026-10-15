@@ -4,6 +4,9 @@ defmodule Portal.Accounts.Inactivity do
   live on the account; a periodic sweep advances them, never a future Oban job.
   """
   alias __MODULE__.Database
+  alias Portal.Mailer
+  alias Portal.Mailer.AccountInactivity
+  alias Portal.Presence
   alias Portal.Workers.AccountInactivityReminder
 
   @batch_size 100
@@ -14,8 +17,6 @@ defmodule Portal.Accounts.Inactivity do
 
   def default_accounts_query, do: Database.default_accounts_query()
 
-  def deliver_reminder(job), do: Database.deliver_reminder(job)
-
   def queue_default_reminders do
     Database.default_accounts_query()
     |> Database.account_ids(@batch_size)
@@ -24,20 +25,40 @@ defmodule Portal.Accounts.Inactivity do
 
   def sweep(now \\ DateTime.utc_now()) do
     with :ok <- Database.ensure_rollup_current(now),
-         {:ok, _} <- advance_warnings(now, MapSet.new(online_account_ids())) do
+         {:ok, _} <- advance_expired_warnings(now) do
       Database.inactive_account_ids(now, @batch_size)
       |> queue_reminders("inactive")
     end
   end
 
-  defp advance_warnings(now, online) do
-    Enum.reduce_while(Database.warned_account_ids(), {:ok, 0}, fn id, {:ok, count} ->
-      advance_result(Database.advance_warning(id, now, MapSet.member?(online, id)), count)
-    end)
+  # The provider call happens after the eligibility check commits, so a slow
+  # provider never holds the account row lock.
+  def deliver_reminder(%Oban.Job{id: job_id, args: %{"account_id" => id, "reason" => reason}}) do
+    now = DateTime.utc_now()
+
+    case Database.reminder_recipients(id, reason, now, online?(id)) do
+      {:ok, {account, [_ | _] = recipients}} ->
+        send_reminder(account, reason, recipients, job_id, now)
+
+      {:ok, {_account, []}} ->
+        {:ok, :no_recipients}
+
+      {:ok, :skipped} ->
+        {:ok, :skipped}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
-  defp advance_result({:ok, _}, count), do: {:cont, {:ok, count + 1}}
-  defp advance_result({:error, _} = error, _count), do: {:halt, error}
+  defp advance_expired_warnings(now) do
+    Enum.reduce_while(Database.expired_warning_account_ids(now), {:ok, 0}, fn id, {:ok, count} ->
+      case Database.advance_warning(id, now, online?(id)) do
+        {:ok, _} -> {:cont, {:ok, count + 1}}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
 
   defp queue_reminders(ids, reason) do
     Enum.reduce_while(ids, {:ok, 0}, fn id, {:ok, count} ->
@@ -51,15 +72,50 @@ defmodule Portal.Accounts.Inactivity do
     end)
   end
 
+  defp send_reminder(account, reason, recipients, job_id, checked_at) do
+    {:ok, operation_id} = Ecto.UUID.load(<<0::64, job_id::64>>)
+
+    account
+    |> AccountInactivity.reminder_email(recipients, reason)
+    |> Swoosh.Email.put_provider_option(:operation_id, operation_id)
+    |> Mailer.deliver_secondary_with_email()
+    |> record_reminder_delivery(account, checked_at)
+  end
+
+  defp record_reminder_delivery({{:ok, response}, _email}, _account, _checked_at)
+       when map_size(response) == 0,
+       do: {:ok, :not_sent}
+
+  defp record_reminder_delivery({{:error, reason}, _email}, _account, _checked_at),
+    do: {:error, reason}
+
+  defp record_reminder_delivery({{:ok, response}, email}, account, checked_at) do
+    case response[:id] || response["id"] do
+      message_id when is_binary(message_id) ->
+        recipients = for {_name, address} <- email.to ++ email.cc ++ email.bcc, do: address
+        Database.record_reminder(account, message_id, email.subject, recipients, checked_at)
+
+      _ ->
+        {:error, :missing_message_id}
+    end
+  end
+
+  defp online?(account_id) do
+    Presence.Devices.online_ids(account_id) != [] or
+      account_id
+      |> Database.actor_ids()
+      |> Enum.any?(&(Presence.PortalSessions.online_session_ids(&1) != []))
+  end
+
   # A continuously connected gateway must not become inactive just because its
   # last connection event is old. Read the existing cluster presence, once/day.
-  def online_account_ids do
+  defp online_account_ids do
     topics =
       Portal.Presence_shard0
       |> :ets.tab2list()
       |> Enum.map(fn {{topic, _pid, _id}, _meta, _clock} -> topic end)
       |> Enum.uniq()
-      |> Enum.filter(&(map_size(Portal.Presence.list(&1)) > 0))
+      |> Enum.filter(&(map_size(Presence.list(&1)) > 0))
 
     device_accounts =
       for "presences:account_devices:" <> id <- topics, do: id
@@ -75,14 +131,7 @@ defmodule Portal.Accounts.Inactivity do
     alias Portal.Mailer.AccountInactivity
     alias Portal.Workers.AccountInactivityReminder
 
-    defp eligible_query do
-      from(a in Account,
-        as: :account,
-        where: fragment("?->'stripe'->>'product_name' = 'Starter'", a.metadata),
-        where: not a.is_disabled and is_nil(a.scheduled_deletion_at),
-        where: is_nil(a.lock_enabled_at)
-      )
-    end
+    @warning_period_days 14
 
     def default_accounts_query(include_pending \\ true) do
       eligible_query()
@@ -107,6 +156,145 @@ defmodule Portal.Accounts.Inactivity do
       |> order_by([a], asc: a.inserted_at, asc: a.id)
     end
 
+    def account_ids(query, limit) do
+      query |> select([a], a.id) |> limit(^limit) |> Safe.unscoped() |> Safe.all()
+    end
+
+    def inactive_account_ids(now, limit) do
+      eligible_query()
+      |> where([a], is_nil(a.inactivity_reminded_at))
+      |> where(
+        [a],
+        fragment("? <= ?::timestamptz - interval '12 months'", a.last_active_at, ^now)
+      )
+      |> with_contactable_admin()
+      |> without_pending_reminder()
+      |> order_by([a], asc: a.last_active_at, asc: a.id)
+      |> account_ids(limit)
+    end
+
+    def expired_warning_account_ids(now) do
+      deadline = DateTime.add(now, -@warning_period_days, :day)
+
+      from(a in Account,
+        where: is_nil(a.scheduled_deletion_at) and a.inactivity_reminded_at <= ^deadline,
+        select: a.id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def actor_ids(account_id) do
+      from(a in Actor, where: a.account_id == ^account_id, select: a.id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def actor_account_ids([]), do: []
+
+    def actor_account_ids(ids) do
+      from(a in Actor, where: a.id in ^ids, select: a.account_id, distinct: true)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def rollup(now, online_ids) do
+      Safe.transact(fn ->
+        with {:ok, %{rows: [[since]]}} <-
+               query(
+                 "SELECT processed_until FROM account_activity_rollups WHERE id FOR UPDATE",
+                 []
+               ),
+             {:ok, _} <- recover_expired_history(since, now),
+             {:ok, result} <-
+               query(
+                 """
+                 WITH activity AS (
+                   SELECT account_id, max(timestamp) AS active_at FROM session_logs
+                   WHERE timestamp >= $1 AND timestamp <= $2 GROUP BY account_id
+                   UNION ALL
+                   SELECT account_id, max(inserted_at) FROM api_request_logs WHERE inserted_at >= $1 AND inserted_at <= $2 GROUP BY account_id
+                   UNION ALL
+                   SELECT account_id, max(last_seen_at) FROM devices WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
+                   UNION ALL
+                   SELECT account_id, max(last_seen_at) FROM api_tokens WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
+                   UNION ALL
+                   SELECT account_id, max(last_seen_at) FROM oauth_tokens WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
+                   UNION ALL
+                   SELECT unnest($3::uuid[]), $2::timestamptz
+                 ), latest AS (SELECT account_id, max(active_at) AS active_at FROM activity GROUP BY account_id)
+                 UPDATE accounts a SET last_active_at = l.active_at,
+                   inactivity_reminded_at = CASE WHEN l.active_at > a.inactivity_reminded_at THEN NULL ELSE a.inactivity_reminded_at END
+                 FROM latest l WHERE a.id = l.account_id AND l.active_at > a.last_active_at
+                 """,
+                 [DateTime.add(since, -1, :day), now, Enum.map(online_ids, &Ecto.UUID.dump!/1)]
+               ),
+             {:ok, _} <-
+               query(
+                 "UPDATE account_activity_rollups SET processed_until = GREATEST(processed_until, $1) WHERE id",
+                 [now]
+               ) do
+          {:ok, result.num_rows}
+        end
+      end)
+    end
+
+    def ensure_rollup_current(now) do
+      case query(
+             "SELECT processed_until >= $1::timestamptz - interval '2 days' FROM account_activity_rollups WHERE id",
+             [now]
+           ) do
+        {:ok, %{rows: [[true]]}} -> :ok
+        {:ok, _} -> {:error, :activity_rollup_stale}
+        {:error, _} = error -> error
+      end
+    end
+
+    def advance_warning(id, now, online?) do
+      Safe.transact(fn ->
+        account =
+          from(a in Account,
+            where: a.id == ^id and is_nil(a.scheduled_deletion_at),
+            lock: "FOR UPDATE"
+          )
+          |> Safe.unscoped()
+          |> Safe.one()
+
+        advance_locked_warning(account, now, online?)
+      end)
+    end
+
+    def reminder_recipients(id, reason, now, online?) do
+      Safe.transact(fn ->
+        id |> locked_account() |> locked_reminder_recipients(reason, now, online?)
+      end)
+    end
+
+    # Activity after the eligibility check clears the warning on the next rollup.
+    def record_reminder(account, message_id, subject, recipients, checked_at) do
+      Safe.transact(fn ->
+        with {:ok, _} <-
+               Mailer.insert_tracked_delivery(account.id, message_id, subject, recipients),
+             {:ok, _} <-
+               account
+               |> Ecto.Changeset.change(inactivity_reminded_at: checked_at)
+               |> Account.changeset()
+               |> Safe.unscoped()
+               |> Safe.update() do
+          {:ok, :sent}
+        end
+      end)
+    end
+
+    defp eligible_query do
+      from(a in Account,
+        as: :account,
+        where: fragment("?->'stripe'->>'product_name' = 'Starter'", a.metadata),
+        where: not a.is_disabled and is_nil(a.scheduled_deletion_at),
+        where: is_nil(a.lock_enabled_at)
+      )
+    end
+
     defp with_contactable_admin(query) do
       admins =
         from(x in Actor,
@@ -117,7 +305,7 @@ defmodule Portal.Accounts.Inactivity do
           where:
             not exists(
               from(s in Portal.EmailSuppression,
-                where: fragment("lower(?) = lower(?)", s.email, parent_as(:admin).email)
+                where: s.email == fragment("lower(?)", parent_as(:admin).email)
               )
             )
         )
@@ -238,80 +426,6 @@ defmodule Portal.Accounts.Inactivity do
       )
     end
 
-    def account_ids(query, limit) do
-      query |> select([a], a.id) |> limit(^limit) |> Safe.unscoped() |> Safe.all()
-    end
-
-    def inactive_account_ids(now, limit) do
-      eligible_query()
-      |> where([a], is_nil(a.inactivity_reminded_at))
-      |> where(
-        [a],
-        fragment("? <= ?::timestamptz - interval '12 months'", a.last_active_at, ^now)
-      )
-      |> with_contactable_admin()
-      |> without_pending_reminder()
-      |> order_by([a], asc: a.last_active_at, asc: a.id)
-      |> account_ids(limit)
-    end
-
-    def warned_account_ids do
-      from(a in Account, where: is_nil(a.scheduled_deletion_at))
-      |> where([a], not is_nil(a.inactivity_reminded_at))
-      |> select([a], a.id)
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def actor_account_ids([]), do: []
-
-    def actor_account_ids(ids) do
-      from(a in Actor, where: a.id in ^ids, select: a.account_id, distinct: true)
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def rollup(now, online_ids) do
-      Safe.transact(fn ->
-        with {:ok, %{rows: [[since]]}} <-
-               query(
-                 "SELECT processed_until FROM account_activity_rollups WHERE id FOR UPDATE",
-                 []
-               ),
-             {:ok, _} <- recover_expired_history(since, now),
-             {:ok, result} <-
-               query(
-                 """
-                 WITH activity AS (
-                   SELECT account_id, max(timestamp) AS active_at FROM session_logs
-                   WHERE timestamp >= $1 AND timestamp <= $2 GROUP BY account_id
-                   UNION ALL
-                   SELECT account_id, max(inserted_at) FROM api_request_logs WHERE inserted_at >= $1 AND inserted_at <= $2 GROUP BY account_id
-                   UNION ALL
-                   SELECT account_id, max(last_seen_at) FROM devices WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
-                   UNION ALL
-                   SELECT account_id, max(last_seen_at) FROM api_tokens WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
-                   UNION ALL
-                   SELECT account_id, max(last_seen_at) FROM oauth_tokens WHERE last_seen_at >= $1 AND last_seen_at <= $2 GROUP BY account_id
-                   UNION ALL
-                   SELECT unnest($3::uuid[]), $2::timestamptz
-                 ), latest AS (SELECT account_id, max(active_at) AS active_at FROM activity GROUP BY account_id)
-                 UPDATE accounts a SET last_active_at = l.active_at,
-                   inactivity_reminded_at = CASE WHEN l.active_at > a.inactivity_reminded_at THEN NULL ELSE a.inactivity_reminded_at END
-                 FROM latest l WHERE a.id = l.account_id AND l.active_at > a.last_active_at
-                 """,
-                 [DateTime.add(since, -1, :day), now, Enum.map(online_ids, &Ecto.UUID.dump!/1)]
-               ),
-             {:ok, _} <-
-               query(
-                 "UPDATE account_activity_rollups SET processed_until = GREATEST(processed_until, $1) WHERE id",
-                 [now]
-               ) do
-          {:ok, result.num_rows}
-        end
-      end)
-    end
-
     # If downtime outlasts log retention, absence of logs is no longer evidence
     # of inactivity. Restart the observation period rather than delete users
     # whose activity may have been pruned while the rollup was unavailable.
@@ -330,18 +444,7 @@ defmodule Portal.Accounts.Inactivity do
       end
     end
 
-    def ensure_rollup_current(now) do
-      case query(
-             "SELECT processed_until >= $1::timestamptz - interval '2 days' FROM account_activity_rollups WHERE id",
-             [now]
-           ) do
-        {:ok, %{rows: [[true]]}} -> :ok
-        {:ok, _} -> {:error, :activity_rollup_stale}
-        {:error, _} = error -> error
-      end
-    end
-
-    def locked_account(id) do
+    defp locked_account(id) do
       eligible_query()
       |> where([a], a.id == ^id)
       |> lock("FOR UPDATE")
@@ -349,7 +452,7 @@ defmodule Portal.Accounts.Inactivity do
       |> Safe.one()
     end
 
-    def refresh_activity(account, now, online?) do
+    defp refresh_activity(account, now, online?) do
       {:ok, %{rows: [[latest]]}} =
         query(
           """
@@ -371,6 +474,7 @@ defmodule Portal.Accounts.Inactivity do
         {:ok, account} =
           account
           |> Ecto.Changeset.change(last_active_at: latest, inactivity_reminded_at: nil)
+          |> Account.changeset()
           |> Safe.unscoped()
           |> Safe.update()
 
@@ -380,27 +484,13 @@ defmodule Portal.Accounts.Inactivity do
       end
     end
 
-    def advance_warning(id, now, online?) do
-      Safe.transact(fn ->
-        account =
-          from(a in Account,
-            where: a.id == ^id and is_nil(a.scheduled_deletion_at),
-            lock: "FOR UPDATE"
-          )
-          |> Safe.unscoped()
-          |> Safe.one()
-
-        advance_locked_warning(account, now, online?)
-      end)
-    end
-
     defp advance_locked_warning(nil, _now, _online?), do: {:ok, :skipped}
 
     defp advance_locked_warning(account, now, online?) do
       account = account |> refresh_activity(now, online?) |> clear_ineligible_warning()
 
       if account.inactivity_reminded_at &&
-           DateTime.diff(now, account.inactivity_reminded_at) >= 14 * 86_400 do
+           DateTime.diff(now, account.inactivity_reminded_at, :day) >= @warning_period_days do
         schedule_deletion(account, now)
       else
         {:ok, :skipped}
@@ -413,6 +503,7 @@ defmodule Portal.Accounts.Inactivity do
         {:ok, account} =
           account
           |> Ecto.Changeset.change(inactivity_reminded_at: nil)
+          |> Account.changeset()
           |> Safe.unscoped()
           |> Safe.update()
 
@@ -432,14 +523,18 @@ defmodule Portal.Accounts.Inactivity do
       ]
 
       with {:ok, account} <-
-             account |> Ecto.Changeset.change(changes) |> Safe.unscoped() |> Safe.update(),
+             account
+             |> Ecto.Changeset.change(changes)
+             |> Account.changeset()
+             |> Safe.unscoped()
+             |> Safe.update(),
            {:ok, _} <-
              account |> AccountInactivity.scheduled_email(recipients) |> Mailer.enqueue() do
         {:ok, account}
       end
     end
 
-    def reminder_eligible?(account, "default", _now) do
+    defp reminder_eligible?(account, "default", _now) do
       # The executing reminder must not exclude itself from the preview query.
       default_accounts_query(false)
       |> exclude(:order_by)
@@ -448,7 +543,7 @@ defmodule Portal.Accounts.Inactivity do
       |> Safe.exists?()
     end
 
-    def reminder_eligible?(account, "inactive", now) do
+    defp reminder_eligible?(account, "inactive", now) do
       eligible_query()
       |> where([a], a.id == ^account.id and is_nil(a.inactivity_reminded_at))
       |> where(
@@ -459,7 +554,7 @@ defmodule Portal.Accounts.Inactivity do
       |> Safe.exists?()
     end
 
-    def admin_emails(id) do
+    defp admin_emails(id) do
       from(a in Actor,
         where: a.account_id == ^id and a.type == :account_admin_user,
         where: not a.is_disabled and not is_nil(a.email),
@@ -470,67 +565,17 @@ defmodule Portal.Accounts.Inactivity do
       |> Safe.all()
     end
 
-    defp mark_reminded(account) do
-      account
-      |> Ecto.Changeset.change(inactivity_reminded_at: DateTime.utc_now())
-      |> Safe.unscoped()
-      |> Safe.update()
-    end
+    defp locked_reminder_recipients(nil, _reason, _now, _online?), do: {:ok, :skipped}
 
-    def deliver_reminder(%Oban.Job{id: job_id, args: %{"account_id" => id, "reason" => reason}}) do
-      now = DateTime.utc_now()
-      online? = Portal.Presence.Devices.online_ids(id) != []
-
-      Safe.transact(fn ->
-        send_locked_reminder(locked_account(id), reason, now, online?, job_id)
-      end)
-    end
-
-    defp send_locked_reminder(nil, _reason, _now, _online?, _job_id), do: {:ok, :skipped}
-
-    defp send_locked_reminder(account, reason, now, online?, job_id) do
+    defp locked_reminder_recipients(account, reason, now, online?) do
       account = refresh_activity(account, now, online?)
 
       if is_nil(account.inactivity_reminded_at) and reminder_eligible?(account, reason, now) do
-        deliver_warning(account, reason, job_id, admin_emails(account.id))
+        {:ok, {account, admin_emails(account.id)}}
       else
         {:ok, :skipped}
       end
     end
-
-    defp deliver_warning(_account, _reason, _job_id, []), do: {:ok, :no_recipients}
-
-    defp deliver_warning(account, reason, job_id, recipients) do
-      {:ok, operation_id} = Ecto.UUID.load(<<0::64, job_id::64>>)
-
-      email =
-        account
-        |> AccountInactivity.reminder_email(recipients, reason)
-        |> Swoosh.Email.put_provider_option(:operation_id, operation_id)
-
-      Mailer.deliver_secondary_with_email(email) |> record_reminder_delivery(account)
-    end
-
-    defp record_reminder_delivery({{:ok, response}, _email}, _account)
-         when map_size(response) == 0,
-         do: {:ok, :not_sent}
-
-    defp record_reminder_delivery({{:error, reason}, _email}, _account), do: {:error, reason}
-
-    defp record_reminder_delivery({{:ok, response}, email}, account) do
-      persist_reminder(response[:id] || response["id"], email, account)
-    end
-
-    defp persist_reminder(id, email, account) when is_binary(id) do
-      recipients = for {_name, address} <- email.to ++ email.cc ++ email.bcc, do: address
-
-      with {:ok, _} <- Mailer.insert_tracked_delivery(account.id, id, email.subject, recipients),
-           {:ok, _} <- mark_reminded(account) do
-        {:ok, :sent}
-      end
-    end
-
-    defp persist_reminder(_id, _email, _account), do: {:error, :missing_message_id}
 
     defp query(sql, params), do: Safe.unscoped() |> Safe.query(sql, params)
   end

@@ -312,6 +312,20 @@ defmodule Portal.Accounts.InactivityTest do
     assert Repo.reload!(account).scheduled_deletion_at
   end
 
+  test "an open portal session at the deadline keeps the account" do
+    account =
+      starter_account_fixture()
+      |> age(inactivity_reminded_at: DateTime.add(DateTime.utc_now(), -15, :day))
+
+    admin = admin_actor_fixture(account: account)
+    Portal.Presence.PortalSessions.track(admin.id, Ecto.UUID.generate())
+
+    assert {:ok, 0} = Inactivity.sweep()
+    updated = Repo.reload!(account)
+    refute updated.inactivity_reminded_at
+    refute updated.scheduled_deletion_at
+  end
+
   test "upgrading a warned account prevents deletion and clears its warning" do
     account =
       team_account_fixture()
@@ -330,13 +344,15 @@ defmodule Portal.Accounts.InactivityTest do
       |> age(
         inactivity_reminded_at: DateTime.add(now, -15, :day),
         scheduled_deletion_at: DateTime.add(now, 7, :day),
-        is_disabled: true
+        is_disabled: true,
+        disabled_reason: "Account inactivity"
       )
 
     actor = admin_actor_fixture(account: account)
     subject = Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
     assert {:ok, updated} = Portal.Accounts.Deletion.cancel_account_deletion(account, subject)
     refute updated.inactivity_reminded_at
+    refute updated.disabled_reason
     assert DateTime.diff(now, updated.last_active_at) < 5
     assert {:ok, 0} = Inactivity.sweep()
     refute Repo.reload!(account).scheduled_deletion_at

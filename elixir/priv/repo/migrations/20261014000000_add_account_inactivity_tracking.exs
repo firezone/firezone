@@ -8,12 +8,6 @@ defmodule Portal.Repo.Migrations.AddAccountInactivityTracking do
       add(:inactivity_reminded_at, :timestamptz)
     end
 
-    create(index(:accounts, [:last_active_at], where: "scheduled_deletion_at IS NULL"))
-
-    create(
-      index(:accounts, [:inactivity_reminded_at], where: "inactivity_reminded_at IS NOT NULL")
-    )
-
     # A durable watermark survives Oban job pruning and worker downtime.
     create table(:account_activity_rollups, primary_key: false) do
       add(:id, :boolean, primary_key: true, default: true)

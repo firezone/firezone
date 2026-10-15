@@ -198,7 +198,7 @@ defmodule Portal.Accounts.Deletion do
     defp transition_account_deletion(_account, _attrs, _action, _subject), do: {:error, :unauthorized}
 
     defp reset_inactivity_on_cancellation(updates, :cancel, now) do
-      Map.merge(updates, %{last_active_at: now, inactivity_reminded_at: nil})
+      Map.merge(updates, %{last_active_at: now, inactivity_reminded_at: nil, disabled_reason: nil})
     end
 
     defp reset_inactivity_on_cancellation(updates, _action, _now), do: updates
