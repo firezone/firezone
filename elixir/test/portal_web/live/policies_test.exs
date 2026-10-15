@@ -1211,6 +1211,81 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ auth_provider.name
     end
 
+    test "flags disabled and deleted providers referenced by a saved condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      active = google_provider_fixture(account: account, name: "Active Google")
+      disabled = github_provider_fixture(account: account, name: "Old GitHub", is_disabled: true)
+      deleted_id = Ecto.UUID.generate()
+
+      policy =
+        policy_fixture(
+          account: account,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [active.id, disabled.id, deleted_id]
+            }
+          ]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      assert render(lv) =~ "Active Google"
+      assert has_element?(lv, "[data-auth-provider-status='disabled']", "Old GitHub (disabled)")
+      assert has_element?(lv, "[data-auth-provider-status='deleted']", "Deleted provider")
+    end
+
+    test "keeps stale provider values on the edit form until they are removed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      disabled = github_provider_fixture(account: account, name: "Old GitHub", is_disabled: true)
+      deleted_id = Ecto.UUID.generate()
+
+      policy =
+        policy_fixture(
+          account: account,
+          conditions: [
+            %{
+              property: :auth_provider_id,
+              operator: :is_in,
+              values: [disabled.id, deleted_id]
+            }
+          ]
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      value_input = "input[name='policy[conditions][auth_provider_id][values][]']"
+
+      assert has_element?(lv, "[data-auth-provider-status='disabled']", "Old GitHub (disabled)")
+      assert has_element?(lv, "[data-auth-provider-status='deleted']", "Deleted provider")
+      assert has_element?(lv, "#{value_input}[value='#{disabled.id}']")
+      assert has_element?(lv, "#{value_input}[value='#{deleted_id}']")
+
+      # Disabled providers stay out of the selection list
+      refute has_element?(lv, "label[phx-click='toggle_auth_provider_value'][phx-value-id='#{disabled.id}']")
+
+      lv
+      |> element("button[phx-click='toggle_auth_provider_value'][phx-value-id='#{deleted_id}']")
+      |> render_click()
+
+      refute has_element?(lv, "[data-auth-provider-status='deleted']")
+      refute has_element?(lv, "#{value_input}[value='#{deleted_id}']")
+      assert has_element?(lv, "#{value_input}[value='#{disabled.id}']")
+    end
+
     test "warns when a saved policy condition uses X.509 without a trust anchor", %{
       conn: conn,
       account: account,
@@ -1699,6 +1774,70 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
     end
+    test "flags checks no connected provider can answer", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"and" => [expansion(:compliant), expansion(:client_up_to_date)]})
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert has_element?(lv, "li:has([data-posture-check-unavailable])", "Compliant")
+      refute has_element?(lv, "li:has([data-posture-check-unavailable])", "Firezone Client up to date")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      assert has_element?(lv, "tr:has(#policy-postures-checks-compliant) [data-posture-check-unavailable]")
+      refute has_element?(lv, "tr:has(#policy-postures-checks-client_up_to_date) [data-posture-check-unavailable]")
+
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      refute has_element?(lv, "[data-posture-check-unavailable]")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      refute has_element?(lv, "[data-posture-check-unavailable]")
+    end
+
+    test "warns when custom rules use providers that are not connected", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account, is_disabled: true)
+
+      custom = %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+      {:ok, postures} = Portal.Policies.Postures.cast(custom)
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert has_element?(lv, "[data-postures-unconnected]", "These rules use Intune")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      assert has_element?(lv, "[data-postures-unconnected]", "These rules use Intune")
+
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      refute has_element?(lv, "[data-postures-unconnected]")
+    end
+
     test "the JSON tab edits the rules, the Simplified tab follows, and a broken document blocks saving", %{
       conn: conn,
       account: account,
