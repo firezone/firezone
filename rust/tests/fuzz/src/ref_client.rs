@@ -126,8 +126,6 @@ pub struct RefClient {
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     #[debug(skip)]
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
-
-    resource_selector: u32,
 }
 
 impl RefClient {
@@ -144,7 +142,6 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
-        resource_selector: u32,
     ) -> Self {
         Self {
             id,
@@ -155,7 +152,6 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
-            resource_selector,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -1074,9 +1070,8 @@ impl RefClient {
             .filter(|resource| self.filter_allows(&resource.filters, proto))
             .map(|resource| resource.id)
             .collect_vec();
-        let selected = self
-            .select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))?;
+        let selected =
+            Self::select_gateway_resource(&ids).or_else(|| candidates.first().map(|r| r.id))?;
         candidates.into_iter().find(|r| r.id == selected)
     }
 
@@ -1121,21 +1116,9 @@ impl RefClient {
             .collect()
     }
 
-    /// Prefers existing connections, then applies the portal's sampled candidate index.
-    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
-        if candidates.is_empty() {
-            return None;
-        }
-
-        candidates
-            .iter()
-            .copied()
-            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
-            .or_else(|| {
-                candidates
-                    .get(self.resource_selector as usize % candidates.len())
-                    .copied()
-            })
+    /// Route preference is independent of which resources are already authorized.
+    fn select_gateway_resource(candidates: &[ResourceId]) -> Option<ResourceId> {
+        candidates.first().copied()
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1264,8 +1247,7 @@ impl RefClient {
             .filter(|resource| self.filter_allows(&resource.filters, proto))
             .map(|resource| resource.id)
             .collect_vec();
-        self.select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))
+        Self::select_gateway_resource(&ids).or_else(|| candidates.first().map(|r| r.id))
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1506,7 +1488,7 @@ impl RefClient {
             .into_iter()
             .map(|r| r.id)
             .collect_vec();
-        self.select_gateway_resource(&candidates)
+        Self::select_gateway_resource(&candidates)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
