@@ -3,9 +3,14 @@
 mod workers;
 pub use workers::Workers;
 
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering, fence};
+
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpPacket;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::{Notify, mpsc};
 
 /// How many packets a single item on the TUN channels may at most hold.
 ///
@@ -131,8 +136,15 @@ pub fn outbound_channel() -> (OutboundTx, OutboundRx) {
 /// Creates the channel connecting the thread reading from the TUN device to the main thread.
 pub fn inbound_channel() -> (InboundTx, InboundRx) {
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+    let backpressure = Arc::new(Backpressure::default());
 
-    (InboundTx(tx), InboundRx(rx))
+    (
+        InboundTx {
+            tx,
+            backpressure: backpressure.clone(),
+        },
+        InboundRx { rx, backpressure },
+    )
 }
 
 /// Creates an outbound channel with an explicit capacity.
@@ -184,58 +196,126 @@ impl OutboundRx {
     }
 }
 
+/// Wakes a reader blocked on a full inbound channel only once the main thread has drained
+/// it to [`LOW_WATER_MARK`], instead of on every batch it takes out.
+#[derive(Default)]
+struct Backpressure {
+    blocked: AtomicBool,
+    unblocked: Notify,
+}
+
+const LOW_WATER_MARK: usize = CHANNEL_CAPACITY / 2;
+
 /// The sending half of the channel of packet batches read from the TUN device.
 #[derive(Clone)]
-pub struct InboundTx(mpsc::Sender<PacketBatch>);
+pub struct InboundTx {
+    tx: mpsc::Sender<PacketBatch>,
+    backpressure: Arc<Backpressure>,
+}
 
 impl InboundTx {
     pub async fn send(
         &self,
-        batch: PacketBatch,
+        mut batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.send(batch).await
+        loop {
+            batch = match self.try_send(batch) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Closed(batch)) => return Err(mpsc::error::SendError(batch)),
+                Err(TrySendError::Full(batch)) => batch,
+            };
+
+            // Registered before announcing that we are blocked, so the receiver's wake cannot slip
+            // in between the announcement and the wait.
+            let unblocked = pin!(self.backpressure.unblocked.notified());
+            self.backpressure.blocked.store(true, Ordering::Relaxed);
+            fence(Ordering::SeqCst);
+
+            batch = match self.try_send(batch) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Closed(batch)) => return Err(mpsc::error::SendError(batch)),
+                Err(TrySendError::Full(batch)) => batch,
+            };
+
+            unblocked.await;
+        }
     }
 
     pub fn blocking_send(
         &self,
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.blocking_send(batch)
+        futures::executor::block_on(self.send(batch))
+    }
+
+    fn try_send(&self, batch: PacketBatch) -> Result<(), TrySendError<PacketBatch>> {
+        self.tx.try_send(batch)
     }
 
     pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
-        self.0.downgrade()
+        self.tx.downgrade()
     }
 
     /// Completes when the receiving half of the channel is gone.
     pub async fn closed(&self) {
-        self.0.closed().await
+        self.tx.closed().await
     }
 }
 
 /// The receiving half of the channel of packet batches read from the TUN device.
-pub struct InboundRx(mpsc::Receiver<PacketBatch>);
+pub struct InboundRx {
+    rx: mpsc::Receiver<PacketBatch>,
+    backpressure: Arc<Backpressure>,
+}
 
 impl InboundRx {
     pub fn poll_recv(
         &mut self,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<PacketBatch>> {
-        self.0.poll_recv(cx)
+        let batch = std::task::ready!(self.rx.poll_recv(cx));
+        self.release_backpressure();
+
+        std::task::Poll::Ready(batch)
     }
 
     pub async fn recv(&mut self) -> Option<PacketBatch> {
-        self.0.recv().await
+        std::future::poll_fn(|cx| self.poll_recv(cx)).await
     }
 
     pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
-        self.0.try_recv()
+        let batch = self.rx.try_recv()?;
+        self.release_backpressure();
+
+        Ok(batch)
+    }
+
+    fn release_backpressure(&self) {
+        fence(Ordering::SeqCst);
+
+        if self.backpressure.blocked.load(Ordering::Relaxed) && self.rx.len() <= LOW_WATER_MARK {
+            self.unblock();
+        }
+    }
+
+    fn unblock(&self) {
+        self.backpressure.blocked.store(false, Ordering::Relaxed);
+        self.backpressure.unblocked.notify_waiters();
+    }
+}
+
+impl Drop for InboundRx {
+    fn drop(&mut self) {
+        // Closes the channel before the wake, so woken senders see it closed.
+        self.rx.close();
+        self.unblock();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future as _;
 
     #[test]
     fn batches_return_to_the_pool_empty() {
@@ -253,5 +333,24 @@ mod tests {
         // The dropped batch's storage is recycled; it must come back empty.
         let batch = PacketBatch::default();
         assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn blocked_sender_resumes_only_at_low_water_mark() {
+        let (tx, mut rx) = inbound_channel();
+        for _ in 0..CHANNEL_CAPACITY {
+            tx.try_send(PacketBatch::default()).unwrap();
+        }
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        let mut send = pin!(tx.send(PacketBatch::default()));
+        assert!(send.as_mut().poll(&mut cx).is_pending());
+
+        for _ in 0..CHANNEL_CAPACITY - LOW_WATER_MARK - 1 {
+            rx.try_recv().unwrap();
+            assert!(send.as_mut().poll(&mut cx).is_pending());
+        }
+        rx.try_recv().unwrap();
+
+        assert!(send.as_mut().poll(&mut cx).is_ready());
     }
 }
