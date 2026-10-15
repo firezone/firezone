@@ -248,7 +248,7 @@ jobs:
             )
           fi
 
-          bencher run \
+          job=$(bencher run \
             --project "$BENCHER_PROJECT" \
             --testbed "bare-metal-$BENCHER_SPEC" \
             --spec "$BENCHER_SPEC" \
@@ -256,6 +256,16 @@ jobs:
             --job-timeout 300 \
             "${branch[@]}" \
             --adapter rust_criterion \
+            --detach \
+            --quiet \
+            --format json | jq -r .job)
+
+          # Waiting as part of the submission gives up after twice `--job-timeout`, which
+          # the queue alone can exceed. Attaching lets us wait longer than the job may run.
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --job "$job" \
+            --job-timeout 3000 \
             --github-actions "$GITHUB_TOKEN" \
             --ci-id event-loop \
             --error-on-alert
