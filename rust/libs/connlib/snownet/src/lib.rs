@@ -15,7 +15,7 @@ mod utils;
 
 pub use allocation::RelaySocket;
 pub use buffer::TransmitBuffer;
-pub use crypto::{EncryptJob, Encryptor};
+pub use crypto::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
 pub use node::{
     ConnectionPath, Credentials, EncapsulateError, EncapsulateInfo, Event, IceConfig, IceRole,
     Node, StillConnecting, Transmit, UnknownConnection,

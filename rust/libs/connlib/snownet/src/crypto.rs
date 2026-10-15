@@ -1,7 +1,8 @@
 use std::net::SocketAddr;
 
-use ip_packet::{Ecn, IpPacket};
-use sanstun::PendingEncapsulate;
+use bufferpool::Buffer;
+use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use sanstun::{Decrypted, PendingDecapsulate, PendingEncapsulate, TunnelId};
 
 use crate::node::Transmit;
 
@@ -103,4 +104,51 @@ impl EncryptJob {
             ecn,
         })
     }
+}
+
+/// A WireGuard data message that passed the replay check and awaits decryption.
+///
+/// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
+pub struct DecryptJob {
+    tunnel: TunnelId,
+    path: (SocketAddr, SocketAddr),
+    pending: PendingDecapsulate,
+    message: Buffer<Vec<u8>>,
+}
+
+impl DecryptJob {
+    pub(crate) fn new(
+        tunnel: TunnelId,
+        path: (SocketAddr, SocketAddr),
+        pending: PendingDecapsulate,
+        message: &[u8],
+    ) -> Self {
+        Self {
+            tunnel,
+            path,
+            pending,
+            message: crate::DATAGRAMS.pull_initialised(message),
+        }
+    }
+
+    /// Returns the WireGuard tunnel the message was sent on.
+    pub fn tunnel_id(&self) -> TunnelId {
+        self.tunnel
+    }
+
+    /// Decrypts the message, to be accepted with [`Node::handle_decrypted`](crate::Node::handle_decrypted).
+    pub fn decrypt(self) -> DecryptedPacket {
+        DecryptedPacket {
+            tunnel: self.tunnel,
+            path: self.path,
+            decrypted: self.pending.decrypt(&self.message, IpPacketBuf::new()),
+        }
+    }
+}
+
+/// The outcome of a [`DecryptJob`].
+pub struct DecryptedPacket {
+    pub(crate) tunnel: TunnelId,
+    pub(crate) path: (SocketAddr, SocketAddr),
+    pub(crate) decrypted: Decrypted<IpPacketBuf>,
 }

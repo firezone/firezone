@@ -744,7 +744,8 @@ impl ClientState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecryptJob`].
+    /// Decrypt it and pass the result to [`ClientState::handle_decrypted_network_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
@@ -754,13 +755,33 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
+    ) -> Result<Option<snownet::DecryptJob>> {
+        let job = self
+            .node
+            .decapsulate(local, from, packet, now)
+            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?;
+
+        Ok(job)
+    }
+
+    /// Handles a WireGuard data message decrypted from a [`snownet::DecryptJob`].
+    ///
+    /// `local` and `from` are the addresses the message was received on and from.
+    ///
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub fn handle_decrypted_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: snownet::DecryptedPacket,
+        now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
         let Some((pid, packet)) = self
             .node
-            .decapsulate(local, from, packet.as_ref(), now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
+            .handle_decrypted(packet, now)
+            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?
         else {
             return Ok(None);
         };

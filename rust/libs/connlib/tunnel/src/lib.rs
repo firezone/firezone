@@ -321,6 +321,18 @@ impl ClientTunnel {
                                 received.packet,
                                 now,
                             )
+                            .and_then(|job| {
+                                let Some(job) = job else {
+                                    return Ok(None);
+                                };
+
+                                self.role_state.handle_decrypted_network_input(
+                                    received.local,
+                                    received.from,
+                                    job.decrypt(),
+                                    now,
+                                )
+                            })
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
@@ -527,6 +539,18 @@ impl GatewayTunnel {
                                 received.packet,
                                 now,
                             )
+                            .and_then(|job| {
+                                let Some(job) = job else {
+                                    return Ok(None);
+                                };
+
+                                self.role_state.handle_decrypted_network_input(
+                                    received.local,
+                                    received.from,
+                                    job.decrypt(),
+                                    now,
+                                )
+                            })
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,

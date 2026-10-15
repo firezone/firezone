@@ -647,9 +647,14 @@ impl Tunnel {
             .handle_tun_input(self.request(protocol), self.now, &mut transmits)
             .unwrap();
         let datagram = transmits.poll_transmit().unwrap();
-        let request = self
+        let job = self
             .gateway
             .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
+            .unwrap()
+            .unwrap();
+        let request = self
+            .gateway
+            .handle_decrypted_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, job.decrypt(), self.now)
             .unwrap()
             .unwrap();
         let (sport, dport) = match protocol {
@@ -781,15 +786,23 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == CLIENT_SOCKET {
+        if to == CLIENT_SOCKET
+            && let Ok(Some(job)) = self
+                .client
+                .handle_network_input(to, from, payload, self.now)
+        {
             let _ = self
                 .client
-                .handle_network_input(to, from, payload, self.now);
+                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
         }
-        if to == GATEWAY_SOCKET {
+        if to == GATEWAY_SOCKET
+            && let Ok(Some(job)) = self
+                .gateway
+                .handle_network_input(to, from, payload, self.now)
+        {
             let _ = self
                 .gateway
-                .handle_network_input(to, from, payload, self.now);
+                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
         }
     }
 }

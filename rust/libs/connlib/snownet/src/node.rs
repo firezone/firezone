@@ -11,7 +11,7 @@ pub use connections::UnknownConnection;
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::buffer::TransmitBuffer;
-use crate::crypto::{EncryptJob, Encryptor};
+use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -33,8 +33,8 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sanstun::{
-    Committed, Interface, PendingEncapsulate, PresharedKey, PublicKey, Received, ReceivedMessage,
-    StaticSecret, Tunnel, TunnelConfig, TunnelId,
+    Committed, Decrypted, Interface, PendingEncapsulate, PresharedKey, PublicKey, Received,
+    ReceivedMessage, StaticSecret, Tunnel, TunnelConfig, TunnelId,
 };
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -538,15 +538,15 @@ where
     /// # Returns
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
-    /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted.
+    /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
+    ///   Decrypt it and pass the result to [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<Option<DecryptJob>> {
         self.last_now = now;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -563,13 +563,59 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
-            ControlFlow::Continue(c) => c,
+        let job = match self.connections_try_handle(from, destination, packet, now) {
+            ControlFlow::Continue(job) => job,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some((id, packet)))
+        Ok(Some(job))
+    }
+
+    /// Accepts a packet decrypted from a [`DecryptJob`].
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
+    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    pub fn handle_decrypted(
+        &mut self,
+        packet: DecryptedPacket,
+        now: Instant,
+    ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
+        let DecryptedPacket {
+            tunnel,
+            path,
+            decrypted,
+        } = packet;
+
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_session_index(tunnel, now)?;
+
+        let control_flow = conn.commit_decrypted(cid, path, decrypted, now);
+
+        // A responder completes the handshake on the initiator's first transport data (key
+        // confirmation).
+        let established =
+            !matches!(control_flow, ControlFlow::Break(Err(_))) && conn.confirm_session(cid, now);
+        let is_closing = self.connections.is_closing(&cid);
+
+        if established && !is_closing {
+            self.pending_events
+                .push_back(Event::ConnectionEstablished(cid))
+        }
+
+        let packet = match control_flow {
+            ControlFlow::Continue(_) if is_closing => return Ok(None),
+            ControlFlow::Continue(packet) => packet,
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e.context(format!("cid={cid}"))),
+        };
+
+        Ok(Some((cid, packet)))
     }
 
     /// Encapsulate an outgoing IP packet and hand it to `encryptor`.
@@ -1021,7 +1067,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, DecryptJob> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(Received::Message(parsed_packet)) => parsed_packet,
             Ok(Received::SendCookieReply(reply)) => {
@@ -1054,14 +1100,7 @@ where
             }
         };
 
-        // A responder completes the handshake on the initiator's first transport data (key
-        // confirmation), not on the init.
-        let confirms_session = match &parsed_packet {
-            ReceivedMessage::HandshakeResponse(_) => true,
-            ReceivedMessage::TransportData(_) => true,
-            ReceivedMessage::HandshakeInitiation(_) => false,
-            ReceivedMessage::CookieReply(_) => false,
-        };
+        let is_handshake_response = matches!(parsed_packet, ReceivedMessage::HandshakeResponse(_));
 
         let connection = match (&parsed_packet, parsed_packet.tunnel_id()) {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
@@ -1079,39 +1118,20 @@ where
             Err(e) => return ControlFlow::Break(Err(e)),
         };
 
-        let control_flow = conn.decapsulate(cid, from, destination, parsed_packet, packet, now);
+        let control_flow = conn.decapsulate(from, destination, parsed_packet, packet, now);
 
-        let mut established = false;
-
-        if confirms_session
+        // A responder completes the handshake on the initiator's first transport data (key
+        // confirmation), not on the init; see `handle_decrypted`.
+        let established = is_handshake_response
             && !matches!(control_flow, ControlFlow::Break(Err(_)))
-            && conn.first_handshake_completed_at.is_none()
-        {
-            conn.first_handshake_completed_at = Some(now);
-            conn.agent.confirm_session(now);
+            && conn.confirm_session(cid, now);
 
-            tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
-
-            // Only signal establishment once we can actually send, i.e. ICE has nominated a
-            // socket. On the controlled side the handshake can complete before nomination, in
-            // which case the event is emitted from the `NominatedSend` handler instead.
-            established = conn.state.has_nominated_socket();
-        }
-
-        let is_closing = self.connections.is_closing(&cid);
-
-        if established && !is_closing {
+        if established && !self.connections.is_closing(&cid) {
             self.pending_events
                 .push_back(Event::ConnectionEstablished(cid))
         }
 
-        if is_closing && control_flow.is_continue() {
-            return ControlFlow::Break(Ok(()));
-        }
-
-        control_flow
-            .map_continue(|c| (cid, c))
-            .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        control_flow.map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
     /// Lets the connection to `peer` answer a replayed handshake initiation from its cache,
@@ -1910,17 +1930,15 @@ where
         }))
     }
 
-    fn decapsulate<TId>(
+    fn decapsulate(
         &mut self,
-        cid: TId,
         from: SocketAddr,
         destination: SocketAddr,
         packet: ReceivedMessage,
         datagram: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> ControlFlow<Result<()>, DecryptJob>
     where
-        TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
         let path = (destination, from);
@@ -1954,30 +1972,58 @@ where
             Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
         };
 
-        let decrypted = pending.decrypt(datagram, IpPacketBuf::new());
+        ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
+    }
 
-        let control_flow = match self.tunnel.commit_decapsulate(decrypted, now) {
+    fn commit_decrypted<TId>(
+        &mut self,
+        cid: TId,
+        path: (SocketAddr, SocketAddr),
+        decrypted: Decrypted<IpPacketBuf>,
+        now: Instant,
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
+        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
             Ok(Committed::Data { buffer, len }) => {
                 match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
-                    Ok(p) => ControlFlow::Continue(p),
-                    Err(e) => ControlFlow::Break(Err(e)),
+                    Ok(p) => p,
+                    Err(e) => return ControlFlow::Break(Err(e)),
                 }
             }
-            Ok(Committed::Keepalive) => ControlFlow::Break(Ok(())),
-            Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+            Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
+            Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
         };
 
-        match control_flow {
-            ControlFlow::Continue(packet) => {
-                self.state
-                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+        self.state
+            .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
-                self.agent
-                    .handle_inbound_tun(packet, path, now)
-                    .map_break(Ok)
-            }
-            ControlFlow::Break(b) => ControlFlow::Break(b),
+        self.agent
+            .handle_inbound_tun(packet, path, now)
+            .map_break(Ok)
+    }
+
+    /// Records the first completed WireGuard handshake, returning whether the connection is now
+    /// established.
+    fn confirm_session<TId>(&mut self, cid: TId, now: Instant) -> bool
+    where
+        TId: fmt::Display,
+    {
+        if self.first_handshake_completed_at.is_some() {
+            return false;
         }
+
+        self.first_handshake_completed_at = Some(now);
+        self.agent.confirm_session(now);
+
+        tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(now), "Completed wireguard handshake");
+
+        // Only signal establishment once we can actually send, i.e. ICE has nominated a
+        // socket. On the controlled side the handshake can complete before nomination, in
+        // which case the event is emitted from the `NominatedSend` handler instead.
+        self.state.has_nominated_socket()
     }
 
     fn buffer_or_send<TId>(

@@ -350,9 +350,18 @@ impl SimClient {
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<Transmit> {
+        let (local, from) = (transmit.dst, transmit.src.unwrap());
         let Some(packet) = self
             .sut
-            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .handle_network_input(local, from, &transmit.payload, now)
+            .and_then(|job| {
+                let Some(job) = job else {
+                    return Ok(None);
+                };
+
+                self.sut
+                    .handle_decrypted_network_input(local, from, job.decrypt(), now)
+            })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
             .flatten()
