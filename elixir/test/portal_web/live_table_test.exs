@@ -254,6 +254,35 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.find(document, "#table-id-empty") == []
     end
 
+    test "shows skeleton rows while the first load is running", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert [_] = Floki.find(document, "#table-id-skeleton[aria-hidden='true']")
+      assert length(Floki.find(document, "#table-id-skeleton tr")) == 5
+      assert length(Floki.find(document, "#table-id-skeleton tr:first-child td")) == length(assigns.col)
+      assert Floki.find(document, "table.opacity-50") == []
+    end
+
+    test "dims loaded rows instead of showing skeleton rows on reload", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert Floki.find(document, "#table-id-skeleton") == []
+      assert [_] = Floki.find(document, "table.opacity-50")
+      assert html =~ "foo"
+    end
+
+    test "shows no skeleton rows when the query timed out", %{assigns: assigns} do
+      html =
+        render_component(
+          &live_table/1,
+          Map.merge(assigns, %{loading: true, query_error: :query_timeout})
+        )
+
+      assert Floki.find(Floki.parse_fragment!(html), "#table-id-skeleton") == []
+    end
+
     test "explains a timed out query and hides stale rows", %{assigns: assigns} do
       html =
         render_component(&live_table/1, Map.merge(assigns, %{query_error: :query_timeout}))
@@ -691,6 +720,55 @@ defmodule PortalWeb.LiveTableTest do
       assert %{
                redirected: {:live, :redirect, %{kind: :push, to: "/current_uri"}}
              } = reload_live_table!(socket, "table-id")
+    end
+  end
+
+  describe "mark_stale_unless_reflected/4" do
+    setup do
+      subject = subject_fixture()
+
+      socket =
+        %Phoenix.LiveView.Socket{assigns: %{subject: subject, __changed__: %{}}}
+        |> put_uri_assigns("/current_uri")
+        |> Phoenix.Component.assign(stale: false)
+        |> assign_live_table("table-id",
+          query_module: Actor.Query,
+          sortable_fields: [{:actors, :name}],
+          callback: fn socket, list_opts -> {:ok, %{socket | private: %{list_opts: list_opts}}} end
+        )
+
+      actor = %Portal.Actor{id: Ecto.UUID.generate(), name: "Inserted"}
+
+      %{socket: socket, actor: actor}
+    end
+
+    test "leaves the table alone when the rows reflect the change", %{socket: socket, actor: actor} do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [actor], change)
+
+      refute socket.assigns.stale
+    end
+
+    test "flags the table stale when the rows miss the change", %{socket: socket, actor: actor} do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [], change)
+
+      assert socket.assigns.stale
+    end
+
+    test "restarts a running load instead of flagging the table stale", %{
+      socket: socket,
+      actor: actor
+    } do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+      socket = Phoenix.Component.assign(socket, loading_by_table_id: %{"table-id" => true})
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [], change)
+
+      refute socket.assigns.stale
+      assert %{list_opts: []} = socket.private
     end
   end
 

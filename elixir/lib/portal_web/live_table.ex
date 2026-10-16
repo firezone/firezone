@@ -80,6 +80,12 @@ defmodule PortalWeb.LiveTable do
     assigns =
       assign(assigns, rows: if(assigns.query_error, do: [], else: assigns.rows))
 
+    # Rows haven't loaded yet, e.g. on the static render before the loader runs.
+    assigns =
+      assign(assigns,
+        show_skeleton: assigns.loading and is_nil(assigns.query_error) and Enum.empty?(assigns.rows)
+      )
+
     ~H"""
     <div class={["flex flex-col", @class]}>
       <.resource_filter
@@ -94,7 +100,7 @@ defmodule PortalWeb.LiveTable do
         <table
           class={[
             "w-full text-sm text-left text-body table-fixed shrink-0 transition-opacity",
-            @loading && "opacity-50"
+            @loading and not @show_skeleton && "opacity-50"
           ]}
           id={@id}
         >
@@ -118,6 +124,17 @@ defmodule PortalWeb.LiveTable do
               class={@row_class && @row_class.(row)}
               mapper={@row_item}
             />
+          </tbody>
+          <tbody :if={@show_skeleton} id={"#{@id}-skeleton"} aria-hidden="true">
+            <tr
+              :for={width <- ~w[w-40 w-28 w-36 w-24 w-32]}
+              class="border-b border-border animate-pulse"
+            >
+              <td :for={_col <- @col} class="px-4 py-3">
+                <div class={["h-2.5 rounded bg-border-strong max-w-full", width]}></div>
+              </td>
+              <td :if={@action != []} class="px-3 py-3"></td>
+            </tr>
           </tbody>
         </table>
         <div
@@ -904,6 +921,7 @@ defmodule PortalWeb.LiveTable do
 
     # Note: we don't support nesting, :and or :where on the UI yet
     hidden_filters = Enum.map(enforce_filters, &elem(&1, 0)) ++ hide_filters
+    render = if connected?(socket), do: :connected, else: :static
 
     socket
     |> attach_async_hook(loader)
@@ -940,7 +958,7 @@ defmodule PortalWeb.LiveTable do
           socket,
           id,
           :filters_by_table_id,
-          preload_filters(query_module, hidden_filters, socket.assigns.subject)
+          preload_filters(query_module, hidden_filters, socket.assigns.subject, render)
         ),
       enforced_filters_by_table_id:
         put_table_state(
@@ -960,11 +978,11 @@ defmodule PortalWeb.LiveTable do
     )
   end
 
-  defp preload_filters(query_module, hidden_filters, subject) do
+  defp preload_filters(query_module, hidden_filters, subject, render) do
     query_module
     |> Portal.Repo.Query.get_filters()
     |> Enum.reject(fn filter -> is_nil(filter.title) or filter.name in hidden_filters end)
-    |> Enum.map(&preload_values(&1, query_module, subject))
+    |> Enum.map(&preload_values(&1, subject, render))
   end
 
   def presence_updates_any_id?(
@@ -990,6 +1008,21 @@ defmodule PortalWeb.LiveTable do
       {:ok, socket} ->
         :ok = maybe_notify_test_pid(id)
         socket
+    end
+  end
+
+  @doc """
+  Flags the table as stale unless the rendered `rows` already reflect the change.
+
+  A change that arrives while the table is loading restarts the load instead,
+  since the rows are about to be replaced and the running query may have missed
+  the change.
+  """
+  def mark_stale_unless_reflected(socket, id, rows, %Portal.Changes.Change{} = change) do
+    cond do
+      Map.get(socket.assigns.loading_by_table_id, id, false) -> reload_live_table!(socket, id)
+      view_reflects_change?(rows, change) -> socket
+      true -> assign(socket, stale: true)
     end
   end
 
@@ -1234,12 +1267,18 @@ defmodule PortalWeb.LiveTable do
     Map.put(socket.assigns[key] || %{}, id, value)
   end
 
-  defp preload_values(%{values: fun} = filter, _query_module, subject) when is_function(fun, 1) do
+  # A select renders the same without its options, so the static render skips
+  # the query and leaves it to the connected mount.
+  defp preload_values(%{type: {:string, :select}, values: fun} = filter, _subject, :static)
+       when is_function(fun, 1),
+       do: %{filter | values: []}
+
+  defp preload_values(%{values: fun} = filter, subject, _render) when is_function(fun, 1) do
     options = fun.(subject) |> Enum.map(&{&1.name, &1.id})
     %{filter | values: options}
   end
 
-  defp preload_values(filter, _query_module, _subject),
+  defp preload_values(filter, _subject, _render),
     do: filter
 
   defp default_page_size(socket, default) do

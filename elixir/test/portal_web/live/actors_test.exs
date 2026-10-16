@@ -1,6 +1,16 @@
 defmodule PortalWeb.ActorsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.Actor
   alias Portal.Changes.Change
 
@@ -36,6 +46,18 @@ defmodule PortalWeb.ActorsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/actors") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#actors-skeleton")
+      assert Floki.find(static, "#actors-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors")
+      assert has_element?(lv, "#actors-rows tr")
+      refute has_element?(lv, "#actors-skeleton")
+    end
+
     test "renders actor list page", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -44,6 +66,22 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Actors"
       assert html =~ actor.name
+    end
+
+    test "loads the directory filter options only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account, name: "Acme Entra")
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/actors") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "select#actors-directory_id")
+      assert Floki.find(static, "select#actors-directory_id option[value='#{directory.id}']") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors")
+      assert has_element?(lv, "select#actors-directory_id option[value='#{directory.id}']", "Acme Entra")
     end
 
     test "opens and closes new actor side panel", %{conn: conn, account: account, actor: actor} do
@@ -591,7 +629,8 @@ defmodule PortalWeb.ActorsTest do
       assert lv |> element("[data-testid=directory-disabled-notice]") |> render() =~
                "Acme Entra disabled this actor"
 
-      html = render_click(lv, "enable", %{"id" => other_actor.id})
+      render_click(lv, "enable", %{"id" => other_actor.id})
+      html = render_async(lv)
 
       refute html =~ "directory-disabled-notice"
       refute html =~ "Disabled by directory sync"
@@ -1531,7 +1570,7 @@ defmodule PortalWeb.ActorsTest do
 
       render_click(lv, "delete", %{"id" => other_actor.id})
 
-      html = render(lv)
+      html = render_async(lv)
       refute html =~ other_actor.name
     end
 
@@ -1560,7 +1599,7 @@ defmodule PortalWeb.ActorsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors")
 
       assert html =~ "Loading..."
 
