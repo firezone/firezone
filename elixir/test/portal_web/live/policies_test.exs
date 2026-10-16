@@ -226,7 +226,6 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/new")
 
       assert html =~ "Flow log reporting"
-      assert has_element?(lv, "[data-flow-logs-new-badge]", "NEW")
 
       html =
         lv
@@ -1457,13 +1456,10 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       html = render_click(lv, "toggle_conditions_dropdown")
-      assert has_element?(lv, "button[phx-value-type='device_attested'] [data-condition-new-badge]", "NEW")
-      refute has_element?(lv, "button[phx-value-type='client_verified'] [data-condition-new-badge]")
       refute html =~ "Require Attestation</span"
 
       html = render_click(lv, "add_condition", %{"type" => "device_attested"})
       assert html =~ "Require Attestation"
-      assert has_element?(lv, "[data-condition-new-badge]", "NEW")
     end
 
     test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
@@ -1585,7 +1581,6 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Disk encryption"
       assert html =~ "Connect Intune or Iru to use this check."
       assert html =~ "to configure over 300 posture fields"
-      assert has_element?(lv, "#policy-postures [data-postures-new-badge]", "NEW")
       assert html =~ "kb/device-posture/grammar?utm_source=product"
       assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
       assert html =~ "settings/trust_anchors"
