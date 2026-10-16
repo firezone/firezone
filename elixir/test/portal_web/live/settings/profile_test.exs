@@ -334,7 +334,7 @@ defmodule PortalWeb.Settings.ProfileTest do
     end
 
     test "disables seat limit warnings on plans that do not send them", %{conn: conn} do
-      for product_name <- ["Starter", "Team"] do
+      for product_name <- ["Starter", "Team", "Enterprise"] do
         account = account_fixture(%{metadata: %{stripe: %{product_name: product_name}}})
         actor = admin_actor_fixture(account: account)
 
@@ -342,23 +342,21 @@ defmodule PortalWeb.Settings.ProfileTest do
           conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
         assert html =~ "Seat Limit Warnings"
-        assert html =~ "Seat count warnings are sent on Business and Enterprise plans only."
+        assert html =~ "Seat count warnings are sent on Business plans only."
         assert has_element?(lv, "#notifications_seat_limit_warnings_email[disabled]")
         refute has_element?(lv, "#notifications_seat_limit_warnings_email[checked]")
       end
     end
 
-    test "enables seat limit warnings on Business and Enterprise", %{conn: conn} do
-      for product_name <- ["Business", "Enterprise"] do
-        account = account_fixture(%{metadata: %{stripe: %{product_name: product_name}}})
-        actor = admin_actor_fixture(account: account)
+    test "enables seat limit warnings on Business", %{conn: conn} do
+      account = business_account_fixture()
+      actor = admin_actor_fixture(account: account)
 
-        {:ok, lv, html} =
-          conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
+      {:ok, lv, html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
-        refute html =~ "Seat count warnings are sent on Business and Enterprise plans only."
-        refute has_element?(lv, "#notifications_seat_limit_warnings_email[disabled]")
-      end
+      refute html =~ "Seat count warnings are sent on Business plans only."
+      refute has_element?(lv, "#notifications_seat_limit_warnings_email[disabled]")
     end
 
     test "ignores a seat limit warning change on plans that do not send them", %{

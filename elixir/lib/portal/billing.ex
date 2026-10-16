@@ -397,11 +397,10 @@ defmodule Portal.Billing do
   @low_seats_threshold 0.1
 
   @doc """
-  Whether the account's plan sends seat limit warning emails.
+  Whether the account's plan sends seat limit warning emails to its admins.
   """
   @spec seats_warning_plan?(Portal.Account.t()) :: boolean()
-  def seats_warning_plan?(%Portal.Account{} = account),
-    do: plan_type(account) in [:business, :enterprise]
+  def seats_warning_plan?(%Portal.Account{} = account), do: plan_type(account) == :business
 
   @doc """
   Where a Business or Enterprise account stands against its monthly active seat limit.
@@ -419,7 +418,7 @@ defmodule Portal.Billing do
     limit = account.limits && account.limits.monthly_active_users_count
 
     cond do
-      not seats_warning_plan?(account) or not is_integer(limit) -> nil
+      plan_type(account) not in [:business, :enterprise] or not is_integer(limit) -> nil
       active_users_count > limit -> :over
       active_users_count == limit -> :at_limit
       (limit - active_users_count) / limit < @low_seats_threshold -> :approaching

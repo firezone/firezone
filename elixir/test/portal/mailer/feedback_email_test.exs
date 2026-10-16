@@ -20,6 +20,25 @@ defmodule Portal.Mailer.FeedbackEmailTest do
     assert email.subject == "In-portal feedback submission"
   end
 
+  test "reports an Enterprise seat overage" do
+    account =
+      account_fixture(%{
+        metadata: %{stripe: %{product_name: "Enterprise"}},
+        limits: %{monthly_active_users_count: 100}
+      })
+
+    Config.put_env_override(:portal, FeedbackEmail, recipient: "sales@example.com")
+
+    email = FeedbackEmail.seats_overage_email(account, 112)
+
+    assert email.to == [{"", "sales@example.com"}]
+    assert email.subject == "Enterprise seat overage: #{account.name}"
+    assert email.text_body =~ account.id
+    assert email.text_body =~ "Monthly active users: 112"
+    assert email.text_body =~ "Seats in subscription: 100"
+    assert email.text_body =~ "Seats over: 12"
+  end
+
   for key <- [:feedback_email_recipient, :posture_provider_interest_email_recipient] do
     test "#{key} is optional and validates configured addresses" do
       key = unquote(key)

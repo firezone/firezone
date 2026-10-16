@@ -17,6 +17,7 @@ defmodule Portal.Workers.CheckAccountLimits do
   alias Portal.Account
   alias Portal.Billing
   alias Portal.Mailer
+  alias Portal.Mailer.FeedbackEmail
   alias Portal.Mailer.Notifications
   alias __MODULE__.Database
   require Logger
@@ -24,11 +25,13 @@ defmodule Portal.Workers.CheckAccountLimits do
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
 
-  # Business blocks new users at its seat limit, so it is warned before and at
-  # the limit. Enterprise is not blocked, so it is warned only once it is over.
-  # Each level is emailed once, until the account has plenty of seats again.
-  @seats_warning_levels %{business: [:approaching, :at_limit], enterprise: [:over]}
-  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2, :over => 3}
+  # Business blocks new users at its seat limit, so its admins are warned before
+  # and at the limit, once per level until plenty of seats are free again.
+  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2}
+
+  # Enterprise is not blocked, so going over is reported to Firezone instead,
+  # again every 30 days while the account stays over.
+  @seats_overage_report_interval_days 30
 
   @batch_size 100
 
@@ -71,25 +74,46 @@ defmodule Portal.Workers.CheckAccountLimits do
   defp maybe_send_seats_warning_email(account, account_counts) do
     active_users = Map.get(account_counts, :active_users, 0)
 
-    case Billing.seats_warning_level(account, active_users) do
-      :clear ->
+    case {Billing.plan_type(account), Billing.seats_warning_level(account, active_users)} do
+      {_plan, :clear} ->
         clear_seats_warning(account)
 
-      nil ->
-        :ok
-
-      level ->
-        if seats_warning_due?(account, level) do
+      {:business, level} when level in [:approaching, :at_limit] ->
+        if @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level] do
           send_seats_warning_email(account, level, active_users)
         end
+
+      {:enterprise, :over} ->
+        if seats_overage_report_due?(account) and FeedbackEmail.enabled?() do
+          send_seats_overage_report(account, active_users)
+        end
+
+      _other ->
+        :ok
     end
   end
 
-  defp seats_warning_due?(account, level) do
-    emailed_levels = Map.get(@seats_warning_levels, Billing.plan_type(account), [])
+  defp seats_overage_report_due?(%{seats_warning_level: :over} = account) do
+    DateTime.diff(DateTime.utc_now(), account.seats_warning_last_sent_at, :day) >=
+      @seats_overage_report_interval_days
+  end
 
-    level in emailed_levels and
-      @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level]
+  defp seats_overage_report_due?(_account), do: true
+
+  defp send_seats_overage_report(account, active_users) do
+    account
+    |> FeedbackEmail.seats_overage_email(active_users)
+    |> Mailer.enqueue()
+    |> case do
+      {:ok, _result} ->
+        put_seats_warning(account, DateTime.utc_now(), :over)
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue seats overage report",
+          reason: inspect(reason),
+          account_id: account.id
+        )
+    end
   end
 
   defp clear_seats_warning(%{seats_warning_last_sent_at: nil, seats_warning_level: nil}), do: :ok
@@ -189,8 +213,8 @@ defmodule Portal.Workers.CheckAccountLimits do
     end
   end
 
-  # Enterprise seats are not enforced and going over them has its own seat
-  # warning email, so they are left out of this one.
+  # Enterprise seats are not enforced and going over them is reported to
+  # Firezone instead, so they are left out of this email to the admins.
   defp limits_exceeded_email_flags(account, flags) do
     if Billing.plan_type(account) == :enterprise do
       %{flags | seats_limit_exceeded: false}

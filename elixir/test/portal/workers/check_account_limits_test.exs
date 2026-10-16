@@ -724,26 +724,64 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert collect_queued_emails(account.id) == []
     end
 
-    test "warns Enterprise accounts once when they go over the limit" do
+    test "reports Enterprise overage to Firezone instead of the admins" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail,
+        recipient: "sales@example.com"
+      )
+
       account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
-      admin = admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
       account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
       make_seats_active(account, 4)
 
       assert :ok = perform_job(CheckAccountLimits, %{})
 
       assert [email] = collect_queued_emails(account.id)
-      assert email.to == [{"", admin.email}]
-      assert email.subject == "You are over your seat limit"
-      assert email.text_body =~ "Seats over your subscription: 1"
-      assert email.text_body =~ "Your users can still sign in and connect."
-      assert email.text_body =~ "contact your account manager"
-      refute email.text_body =~ "cannot sign in"
-      refute email.text_body =~ "Manage plan"
+      assert email.to == [{"", "sales@example.com"}]
+      assert email.subject == "Enterprise seat overage: #{account.name}"
+      assert email.text_body =~ "Monthly active users: 4"
+      assert email.text_body =~ "Seats in subscription: 3"
+      assert email.text_body =~ "Seats over: 1"
       assert fetch_account!(account.id).seats_warning_level == :over
+    end
+
+    test "repeats the Enterprise overage report every 30 days" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail,
+        recipient: "sales@example.com"
+      )
+
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      update_account(account, %{
+        seats_warning_level: :over,
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -29, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert collect_queued_emails(account.id) == []
+
+      update_account(account, %{
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -30, :day)
+      })
 
       assert :ok = perform_job(CheckAccountLimits, %{})
       assert [_email] = collect_queued_emails(account.id)
+    end
+
+    test "does not record an Enterprise overage report when no recipient is set" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: nil)
+
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == nil
     end
 
     test "still sends Enterprise the limits exceeded email for other limits" do

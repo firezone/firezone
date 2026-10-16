@@ -87,7 +87,7 @@ defmodule PortalWeb.Settings.Profile do
               label="Seat Limit Warnings"
               description="Receive an email when your monthly active users near or pass the seats in your subscription"
               disabled={not @seats_warning_plan?}
-              disabled_reason="Seat count warnings are sent on Business and Enterprise plans only."
+              disabled_reason="Seat count warnings are sent on Business plans only."
             />
             <.notification_row
               notification={:product_announcements}
