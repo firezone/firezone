@@ -492,20 +492,6 @@ impl PathAgent {
         }
     }
 
-    pub fn send_keepalive(&mut self, keepalive: Datagram, now: Instant) {
-        self.last_now = Some(now);
-
-        // Data rides the primary; without one there is nothing to send
-        // (WireGuard buffers it and re-sends once a path exists).
-        if let Some((local, remote)) = self.primary {
-            self.pending_transmits.push_back(Transmit {
-                local,
-                remote,
-                payload: Payload::Ciphertext(keepalive),
-            });
-        }
-    }
-
     /// Runs `init`, received on `path` as `datagram`, through `tunnel`.
     ///
     /// Duplicates are dropped before they reach `tunnel`; an accepted init is
@@ -583,7 +569,7 @@ impl PathAgent {
     /// Runs `response`, received on `path` as `datagram`, through `tunnel`.
     ///
     /// Duplicates are dropped before they reach `tunnel`; an accepted response
-    /// confirms the session and its keepalive is queued.
+    /// confirms the session and its keepalive is queued on `path`.
     pub fn handle_handshake_response(
         &mut self,
         tunnel: &mut Tunnel,
@@ -613,7 +599,11 @@ impl PathAgent {
         // adopt as a (tier-ranked) preliminary primary before probing.
         self.promote_from_handshake(path);
 
-        self.send_keepalive(keepalive, now);
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::Ciphertext(keepalive),
+        });
 
         Ok(())
     }
