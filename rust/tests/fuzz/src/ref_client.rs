@@ -24,7 +24,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, Reverse},
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -1044,6 +1044,7 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
@@ -1055,15 +1056,12 @@ impl RefClient {
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
         );
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| {
-                    dns::Pattern::new(&left.address)
-                        .unwrap()
-                        .cmp(&dns::Pattern::new(&right.address).unwrap())
-                })
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                dns::Pattern::new(&r.address).unwrap(),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
 
         candidates
@@ -1222,6 +1220,7 @@ impl RefClient {
             .collect()
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn cidr_resource_by_ip_and_proto(
         &self,
         ip: IpAddr,
@@ -1229,11 +1228,12 @@ impl RefClient {
     ) -> Option<ResourceId> {
         let mut candidates =
             self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| right.address.netmask().cmp(&left.address.netmask()))
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                Reverse(r.address.netmask()),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
 
         candidates
