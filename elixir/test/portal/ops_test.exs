@@ -157,6 +157,25 @@ defmodule Portal.OpsTest do
 
       refute Repo.one(Portal.Account)
     end
+
+    test "queues the cancellation of the account's Stripe subscriptions" do
+      account =
+        update_account(account_fixture(), %{
+          is_disabled: true,
+          metadata: %{stripe: %{customer_id: "cus_deleted"}}
+        })
+
+      assert delete_disabled_account(account.id) == :ok
+
+      assert [job] =
+               jobs_for_worker_and_arg(
+                 "Portal.Workers.DeleteSubscription",
+                 "customer_id",
+                 "cus_deleted"
+               )
+
+      assert job.args == %{"customer_id" => "cus_deleted"}
+    end
   end
 
   describe "schedule_missing_account_deletion_jobs/0" do
