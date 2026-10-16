@@ -29,12 +29,8 @@ jobs:
     # PRs from forks and Dependabot have no access to the Bencher API key.
     if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-24.04
-    # Bencher's Bare Metal runner is shared, so a job may queue for a long time.
-    timeout-minutes: 120
     permissions:
       contents: read
-      pull-requests: write # post Bencher PR comments
-      checks: write # Bencher check annotations
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       BENCHER_SPEC: intel-v1
@@ -64,7 +60,6 @@ jobs:
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -88,7 +83,9 @@ jobs:
             )
           fi
 
-          job=$(bencher run \
+          # Bare Metal jobs can queue for hours, so only submit the job. Its results and
+          # alerts show up on Bencher once it has run.
+          bencher run \
             --project "$BENCHER_PROJECT" \
             --testbed "bare-metal-$BENCHER_SPEC" \
             --spec "$BENCHER_SPEC" \
@@ -96,16 +93,4 @@ jobs:
             --job-timeout 300 \
             "${branch[@]}" \
             --adapter rust_criterion \
-            --detach \
-            --quiet \
-            --format json | jq -r .job)
-
-          # Waiting as part of the submission gives up after twice `--job-timeout`, which
-          # the queue alone can exceed. Attaching lets us wait longer than the job may run.
-          bencher run \
-            --project "$BENCHER_PROJECT" \
-            --job "$job" \
-            --job-timeout 6600 \
-            --github-actions "$GITHUB_TOKEN" \
-            --ci-id event-loop \
-            --error-on-alert
+            --detach
