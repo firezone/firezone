@@ -22,18 +22,3 @@ pub enum Event {
         remote: SocketAddr,
     },
 }
-
-/// A message WireGuard wants to send to the peer.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Outbound {
-    HandshakeInitiation(Datagram),
-    Data(Datagram),
-}
-
-impl Outbound {
-    pub fn into_datagram(self) -> Datagram {
-        match self {
-            Outbound::HandshakeInitiation(bytes) | Outbound::Data(bytes) => bytes,
-        }
-    }
-}

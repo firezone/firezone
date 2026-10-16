@@ -28,7 +28,6 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
-use path_agent::Outbound;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -1825,16 +1824,24 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        let Some((messages, expired)) = drain_tunnel_events(&mut self.tunnel) else {
-            return;
-        };
-
-        if expired {
-            tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
-            self.state = ConnectionState::Failed;
+        while let Some(event) = self.tunnel.poll_event() {
+            match event {
+                sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
+                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
+                    Agent::Ice(_) => self.buffer_or_send(cid, init, allocations, transmits, now),
+                },
+                sanstun::Event::SendKeepalive(keepalive) => match &mut self.agent {
+                    Agent::Path(agent) => agent.send_keepalive(keepalive, now),
+                    Agent::Ice(_) => {
+                        self.buffer_or_send(cid, keepalive, allocations, transmits, now)
+                    }
+                },
+                sanstun::Event::ConnectionExpired => {
+                    tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
+                    self.state = ConnectionState::Failed;
+                }
+            }
         }
-
-        self.buffer_or_send(cid, messages, allocations, transmits, now);
     }
 
     fn adopt_iceless_peer_socket<TId>(
@@ -1980,13 +1987,10 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(_) => {
-                        self.tunnel
-                            .handle_handshake_initiation(init, now)
-                            .map(|reply| {
-                                self.buffer_or_send_ice(&cid, [reply], allocations, transmits, now)
-                            })
-                    }
+                    Agent::Ice(_) => self
+                        .tunnel
+                        .handle_handshake_initiation(init, now)
+                        .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
                 ControlFlow::Break(result.context("handshake packet"))
@@ -2000,13 +2004,10 @@ where
                         path,
                         now,
                     ),
-                    Agent::Ice(_) => {
-                        self.tunnel
-                            .handle_handshake_response(response, now)
-                            .map(|reply| {
-                                self.buffer_or_send_ice(&cid, [reply], allocations, transmits, now)
-                            })
-                    }
+                    Agent::Ice(_) => self
+                        .tunnel
+                        .handle_handshake_response(response, now)
+                        .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
                 ControlFlow::Break(result.context("handshake packet"))
@@ -2081,39 +2082,7 @@ where
     fn buffer_or_send<TId>(
         &mut self,
         cid: &TId,
-        messages: SmallVec<[Outbound; 2]>,
-        allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
-        now: Instant,
-    ) where
-        TId: fmt::Display,
-        RId: Ord + fmt::Display + Copy,
-    {
-        if messages.is_empty() {
-            return;
-        }
-
-        if self.agent.is_iceless() {
-            for message in messages {
-                self.agent.handle_outbound(message, now);
-            }
-
-            return;
-        }
-
-        self.buffer_or_send_ice(
-            cid,
-            messages.into_iter().map(Outbound::into_datagram),
-            allocations,
-            transmits,
-            now,
-        );
-    }
-
-    fn buffer_or_send_ice<TId>(
-        &mut self,
-        cid: &TId,
-        messages: impl IntoIterator<Item = Datagram>,
+        message: Datagram,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
@@ -2125,21 +2094,17 @@ where
             ConnectionState::Connecting { wg_buffer, .. } => {
                 tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
-                for message in messages {
-                    wg_buffer.enqueue(message);
-                }
+                wg_buffer.enqueue(message);
             }
             ConnectionState::Connected { peer_socket, .. }
             | ConnectionState::Idle { peer_socket } => {
-                for message in messages {
-                    transmits.extend(make_owned_transmit(
-                        self.relay,
-                        *peer_socket,
-                        &message,
-                        allocations,
-                        now,
-                    ));
-                }
+                transmits.extend(make_owned_transmit(
+                    self.relay,
+                    *peer_socket,
+                    &message,
+                    allocations,
+                    now,
+                ));
             }
             ConnectionState::Failed => {}
         }
@@ -2360,28 +2325,6 @@ where
             self.add_local_candidate(cid, &candidate, pending_events, now);
         }
     }
-}
-
-/// Drains the events of `tunnel`, returning the messages it wants to send and whether the connection expired.
-/// Returns `None` without building anything if no event is queued, which is the case after every data message.
-fn drain_tunnel_events(tunnel: &mut Tunnel) -> Option<(SmallVec<[Outbound; 2]>, bool)> {
-    let mut next = Some(tunnel.poll_event()?);
-    let mut messages = SmallVec::new();
-    let mut expired = false;
-
-    while let Some(event) = next {
-        match event {
-            sanstun::Event::SendHandshakeInitiation(message) => {
-                messages.push(Outbound::HandshakeInitiation(message))
-            }
-            sanstun::Event::SendKeepalive(message) => messages.push(Outbound::Data(message)),
-            sanstun::Event::ConnectionExpired => expired = true,
-        }
-
-        next = tunnel.poll_event();
-    }
-
-    Some((messages, expired))
 }
 
 fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> Interface {

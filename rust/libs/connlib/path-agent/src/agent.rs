@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use sanstun::{Datagram, HandshakeInitiation, HandshakeResponse, Tunnel};
 
 use crate::candidate::Candidate;
-use crate::event::{Event, Outbound, Payload, Transmit};
+use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
@@ -443,64 +443,66 @@ impl PathAgent {
             return;
         };
 
-        self.handle_outbound(Outbound::HandshakeInitiation(init), now);
+        self.send_handshake_initiation(init, now);
     }
 
-    pub fn handle_outbound(&mut self, outbound: Outbound, now: Instant) {
+    pub fn send_handshake_initiation(&mut self, init: Datagram, now: Instant) {
         self.last_now = Some(now);
 
-        match outbound {
-            // Before the session is confirmed we cannot probe: fan the init out
-            // over the relay pairs to bootstrap one. This is the *only* use of
-            // the fan-out.
-            Outbound::HandshakeInitiation(bytes) if !self.session_confirmed => {
-                tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
-                self.forwarded_response = None;
-                match &mut self.outbound_init {
-                    // A WireGuard re-init: carry the fresh bytes and re-fan them
-                    // once to every relay pair. The fast ladder is a one-time
-                    // head armed on the first init, so it is not restarted here.
-                    Some(init) => {
-                        init.bytes = bytes;
-                        init.fanned.clear();
-                    }
-                    None => self.outbound_init = Some(OutboundInit::new(bytes, now)),
+        // Before the session is confirmed we cannot probe: fan the init out
+        // over the relay pairs to bootstrap one. This is the *only* use of
+        // the fan-out.
+        if !self.session_confirmed {
+            tracing::debug!(bytes = init.len(), "Buffered bootstrap HandshakeInit");
+            self.forwarded_response = None;
+            match &mut self.outbound_init {
+                // A WireGuard re-init: carry the fresh bytes and re-fan them
+                // once to every relay pair. The fast ladder is a one-time
+                // head armed on the first init, so it is not restarted here.
+                Some(outbound) => {
+                    outbound.bytes = init;
+                    outbound.fanned.clear();
                 }
+                None => self.outbound_init = Some(OutboundInit::new(init, now)),
             }
-            // Established: the re-key rides the primary and counts toward distress.
-            Outbound::HandshakeInitiation(bytes) => {
-                self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
 
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
+            return;
+        }
 
-                // The second unanswered re-key is WireGuard telling us the path
-                // is dead: drop the primary and re-probe. Fire once on the
-                // crossing: once the primary is cleared, probing recovers it
-                // and the re-key rides the new path; re-firing would flap. The
-                // count resets when a response finally lands (see
-                // `handle_handshake_response`).
-                if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
-                    self.clear_and_reprobe(now);
-                }
-            }
-            // Data rides the primary; without one there is nothing to send
-            // (WireGuard buffers it and re-sends once a path exists).
-            Outbound::Data(bytes) => {
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
-            }
+        // Established: the re-key rides the primary and counts toward distress.
+        self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
+
+        if let Some((local, remote)) = self.primary {
+            self.pending_transmits.push_back(Transmit {
+                local,
+                remote,
+                payload: Payload::Ciphertext(init),
+            });
+        }
+
+        // The second unanswered re-key is WireGuard telling us the path
+        // is dead: drop the primary and re-probe. Fire once on the
+        // crossing: once the primary is cleared, probing recovers it
+        // and the re-key rides the new path; re-firing would flap. The
+        // count resets when a response finally lands (see
+        // `handle_handshake_response`).
+        if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
+            tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
+            self.clear_and_reprobe(now);
+        }
+    }
+
+    pub fn send_keepalive(&mut self, keepalive: Datagram, now: Instant) {
+        self.last_now = Some(now);
+
+        // Data rides the primary; without one there is nothing to send
+        // (WireGuard buffers it and re-sends once a path exists).
+        if let Some((local, remote)) = self.primary {
+            self.pending_transmits.push_back(Transmit {
+                local,
+                remote,
+                payload: Payload::Ciphertext(keepalive),
+            });
         }
     }
 
@@ -611,7 +613,7 @@ impl PathAgent {
         // adopt as a (tier-ranked) preliminary primary before probing.
         self.promote_from_handshake(path);
 
-        self.handle_outbound(Outbound::Data(keepalive), now);
+        self.send_keepalive(keepalive, now);
 
         Ok(())
     }
