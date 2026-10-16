@@ -135,7 +135,7 @@ defmodule Portal.AccountFixtures do
       :warning_last_sent_at,
       :seats_warning_last_sent_at,
       :seats_warning_level,
-      :outdated_gateway_last_notified_at
+      :outdated_gateway_last_sent_at
     ])
     |> cast_embed(:config)
     |> cast_embed(:features)

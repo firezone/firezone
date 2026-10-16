@@ -34,8 +34,8 @@ defmodule Portal.Workers.OutdatedGateways do
     end)
   end
 
-  # Dropped before anything is sent so the last notified time stays unset and
-  # the account is notified the first time it comes back.
+  # Dropped before anything is sent so the last sent time stays unset and the
+  # account is notified the first time it comes back.
   defp dormant?(account) do
     not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
@@ -57,7 +57,7 @@ defmodule Portal.Workers.OutdatedGateways do
     |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
 
     account
-    |> Ecto.Changeset.change(outdated_gateway_last_notified_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(outdated_gateway_last_sent_at: DateTime.utc_now())
     |> Database.update_account()
   end
 
@@ -85,8 +85,8 @@ defmodule Portal.Workers.OutdatedGateways do
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
         where:
-          is_nil(a.outdated_gateway_last_notified_at) or
-            a.outdated_gateway_last_notified_at < ago(24, "hour")
+          is_nil(a.outdated_gateway_last_sent_at) or
+            a.outdated_gateway_last_sent_at < ago(24, "hour")
       )
       |> Safe.unscoped()
       |> Safe.all()

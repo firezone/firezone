@@ -238,13 +238,13 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       assert :ok = perform_job(OutdatedGateways, %{})
       assert [_email] = collect_queued_emails(account.id)
-      assert Portal.Repo.get!(Portal.Account, account.id).outdated_gateway_last_notified_at
+      assert Portal.Repo.get!(Portal.Account, account.id).outdated_gateway_last_sent_at
 
       assert :ok = perform_job(OutdatedGateways, %{})
       assert [_email] = collect_queued_emails(account.id)
 
       update_account(Portal.Repo.get!(Portal.Account, account.id), %{
-        outdated_gateway_last_notified_at: DateTime.add(DateTime.utc_now(), -25, :hour)
+        outdated_gateway_last_sent_at: DateTime.add(DateTime.utc_now(), -25, :hour)
       })
 
       assert :ok = perform_job(OutdatedGateways, %{})
@@ -272,7 +272,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # The account stays pending so it is notified as soon as it comes back.
       account = Portal.Repo.get!(Portal.Account, account.id)
-      assert is_nil(account.outdated_gateway_last_notified_at)
+      assert is_nil(account.outdated_gateway_last_sent_at)
     end
 
     test "notifies a paid account with no session logs" do
