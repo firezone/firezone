@@ -7,7 +7,6 @@ use std::time::Instant;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use path_agent::Outbound;
 use sanstun::Tunnel;
 
 use crate::{IceConfig, IceRole};
@@ -237,12 +236,6 @@ impl Agent {
         match self {
             Self::Ice(_) => None,
             Self::Path(path) => path.poll_event(),
-        }
-    }
-
-    pub(crate) fn handle_outbound(&mut self, outbound: Outbound, now: Instant) {
-        if let Self::Path(path) = self {
-            path.handle_outbound(outbound, now);
         }
     }
 
