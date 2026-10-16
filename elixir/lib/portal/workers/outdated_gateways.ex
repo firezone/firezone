@@ -34,8 +34,8 @@ defmodule Portal.Workers.OutdatedGateways do
     end)
   end
 
-  # Dropped before anything is sent so last_notified stays unset and the account
-  # is notified the first time it comes back.
+  # Dropped before anything is sent so the last notified time stays unset and
+  # the account is notified the first time it comes back.
   defp dormant?(account) do
     not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
@@ -56,18 +56,9 @@ defmodule Portal.Workers.OutdatedGateways do
     |> Database.all_admins_for_account!()
     |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
 
-    changeset =
-      account_changeset(account, %{
-        config: %{
-          notifications: %{
-            outdated_gateway: %{
-              last_notified: DateTime.utc_now()
-            }
-          }
-        }
-      })
-
-    Database.update_account(changeset)
+    account
+    |> Ecto.Changeset.change(outdated_gateway_last_notified_at: DateTime.utc_now())
+    |> Database.update_account()
   end
 
   defp send_email(account, gateways, incompatible_client_count, admin) do
@@ -86,31 +77,6 @@ defmodule Portal.Workers.OutdatedGateways do
     end
   end
 
-  defp account_changeset(account, attrs) do
-    import Ecto.Changeset
-
-    account
-    |> cast(attrs, [])
-    |> cast_embed(:config,
-      with: fn config, config_attrs ->
-        config
-        |> cast(config_attrs, [])
-        |> cast_embed(:notifications,
-          with: fn notifications, notif_attrs ->
-            notifications
-            |> cast(notif_attrs, [])
-            |> cast_embed(:outdated_gateway,
-              with: fn gateway, gateway_attrs ->
-                gateway
-                |> cast(gateway_attrs, [:last_notified])
-              end
-            )
-          end
-        )
-      end
-    )
-  end
-
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -119,14 +85,8 @@ defmodule Portal.Workers.OutdatedGateways do
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
         where:
-          fragment(
-            "?->'notifications'->'outdated_gateway'->>'last_notified' IS NULL",
-            a.config
-          ) or
-            fragment(
-              "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
-              a.config
-            )
+          is_nil(a.outdated_gateway_last_notified_at) or
+            a.outdated_gateway_last_notified_at < ago(24, "hour")
       )
       |> Safe.unscoped()
       |> Safe.all()

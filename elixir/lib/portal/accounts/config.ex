@@ -24,13 +24,6 @@ defmodule Portal.Accounts.Config do
         field :address, :string
       end
     end
-
-    embeds_one :notifications, Notifications,
-      primary_key: false,
-      on_replace: :update do
-      embeds_one :outdated_gateway, Portal.Accounts.Config.Notifications.Email,
-        on_replace: :update
-    end
   end
 
   @doc """
@@ -40,9 +33,6 @@ defmodule Portal.Accounts.Config do
     %__MODULE__{
       clients_upstream_dns: %__MODULE__.ClientsUpstreamDns{
         type: :system
-      },
-      notifications: %__MODULE__.Notifications{
-        outdated_gateway: %Portal.Accounts.Config.Notifications.Email{}
       }
     }
   end
@@ -50,14 +40,7 @@ defmodule Portal.Accounts.Config do
   @doc """
   Ensures a config has proper defaults
   """
-  def ensure_defaults(%__MODULE__{} = config) do
-    notifications = config.notifications || %__MODULE__.Notifications{}
-
-    outdated_gateway =
-      notifications.outdated_gateway || %Portal.Accounts.Config.Notifications.Email{}
-
-    %{config | notifications: %{notifications | outdated_gateway: outdated_gateway}}
-  end
+  def ensure_defaults(%__MODULE__{} = config), do: config
 
   def ensure_defaults(nil), do: default_config()
 

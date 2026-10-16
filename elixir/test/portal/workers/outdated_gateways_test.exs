@@ -227,6 +227,30 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       assert email.to == [{"", admin.email}]
     end
 
+    test "records when the account was notified and skips it for 24 hours" do
+      account = account_fixture()
+      admin_actor_fixture(account: account)
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
+
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+      assert [_email] = collect_queued_emails(account.id)
+      assert Portal.Repo.get!(Portal.Account, account.id).outdated_gateway_last_notified_at
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+      assert [_email] = collect_queued_emails(account.id)
+
+      update_account(Portal.Repo.get!(Portal.Account, account.id), %{
+        outdated_gateway_last_notified_at: DateTime.add(DateTime.utc_now(), -25, :hour)
+      })
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+      assert length(collect_queued_emails(account.id)) == 2
+    end
+
     test "skips accounts with no session logs" do
       account = account_fixture()
 
@@ -248,7 +272,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # The account stays pending so it is notified as soon as it comes back.
       account = Portal.Repo.get!(Portal.Account, account.id)
-      refute match?(%{notifications: %{outdated_gateway: %{last_notified: %DateTime{}}}}, account.config)
+      assert is_nil(account.outdated_gateway_last_notified_at)
     end
 
     test "notifies a paid account with no session logs" do
