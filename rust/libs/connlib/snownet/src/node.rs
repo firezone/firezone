@@ -1041,16 +1041,20 @@ where
             ReceivedMessage::CookieReply(_) => false,
         };
 
-        let connection = match (&parsed_packet, parsed_packet.tunnel_id()) {
+        let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
-            (ReceivedMessage::HandshakeInitiation(init), _) => self
+            ReceivedMessage::HandshakeInitiation(init) => self
                 .connections
                 .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
-            // For all other packets, grab the tunnel id and look up the corresponding connection.
-            (_, Some(tunnel_id)) => self
+            ReceivedMessage::HandshakeResponse(response) => self
                 .connections
-                .get_established_mut_session_index(tunnel_id, now),
-            (_, None) => unreachable!("only handshake initiations lack a tunnel id"),
+                .get_established_mut_session_index(response.tunnel_id(), now),
+            ReceivedMessage::CookieReply(reply) => self
+                .connections
+                .get_established_mut_session_index(reply.tunnel_id(), now),
+            ReceivedMessage::TransportData(data) => self
+                .connections
+                .get_established_mut_session_index(data.tunnel_id(), now),
         };
         let (cid, conn) = match connection {
             Ok(c) => c,
