@@ -390,6 +390,7 @@ defmodule PortalWeb.Settings.ProfileTest do
       assert has_element?(lv, "[data-sidebar-nav-item][href='#{~p"/#{account}/settings/account"}']", "Settings")
       refute has_element?(lv, "[data-sidebar-nav-item].bg-brand-wash", "Settings")
       refute html =~ "settings/notifications"
+      assert has_element?(lv, "#user-menu-button .ri-arrow-down-s-line")
     end
   end
 

@@ -725,7 +725,11 @@ defmodule PortalWeb.Components.Navigation do
     ~H"""
     <button
       type="button"
-      class="flex mx-3 text-sm bg-neutral-800 rounded-full md:mr-0"
+      class={[
+        "group flex items-center gap-1 mx-3 md:mr-0 p-0.5 pr-1 rounded-full text-sm",
+        "text-body hover:text-heading hover:bg-raised transition-colors",
+        "aria-expanded:bg-raised aria-expanded:text-heading"
+      ]}
       id={"#{@id}-button"}
       phx-hook="Popover"
       data-popover-target-id={"#{@id}-dropdown"}
@@ -733,6 +737,10 @@ defmodule PortalWeb.Components.Navigation do
       data-popover-placement="bottom"
     >
       {render_slot(@button)}
+      <Core.icon
+        name="ri-arrow-down-s-line"
+        class="w-4 h-4 shrink-0 transition-transform group-aria-expanded:rotate-180"
+      />
     </button>
     <div
       class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-elevated rounded-sm divide-y divide-border shadow-sm"
