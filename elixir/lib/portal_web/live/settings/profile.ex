@@ -64,9 +64,10 @@ defmodule PortalWeb.Settings.Profile do
           </div>
         </.form>
 
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mt-8 mb-4">
-          Notifications
-        </h3>
+        <div class="max-w-2xl flex items-baseline justify-between mt-8 pb-2 border-b border-border text-[10px] font-semibold tracking-widest uppercase text-subtle">
+          <h3>Notifications</h3>
+          <span>Email</span>
+        </div>
 
         <.form
           for={@notifications_form}
@@ -74,38 +75,30 @@ defmodule PortalWeb.Settings.Profile do
           id="notifications-form"
           class="max-w-2xl"
         >
-          <div class="rounded-lg border border-border overflow-hidden">
-            <table class="w-full text-sm text-body">
-              <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                <tr>
-                  <th class="px-3 py-2 text-left">Notification</th>
-                  <th class="px-3 py-2 w-14 text-right">Email</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-border bg-surface">
-                <.notification_row
-                  notification={:outdated_gateways}
-                  preferences={@actor.preferences}
-                  label="Gateway Upgrade Available"
-                  description="A new Gateway version is available"
-                />
-                <.notification_row
-                  notification={:seat_limit_warnings}
-                  preferences={@actor.preferences}
-                  label="Seat Limit Warnings"
-                  description="Your monthly active users near or reach the seats in your subscription"
-                  disabled={not @seats_warning_plan?}
-                  disabled_reason="Seat count warnings are sent on Business plans only."
-                />
-                <.notification_row
-                  notification={:product_announcements}
-                  preferences={@actor.preferences}
-                  label="Product Announcements"
-                  description="A monthly summary of new features and improvements in Firezone"
-                />
-              </tbody>
-            </table>
-          </div>
+          <table class="w-full text-sm text-body">
+            <tbody class="divide-y divide-border">
+              <.notification_row
+                notification={:outdated_gateways}
+                preferences={@actor.preferences}
+                label="Gateway Upgrade Available"
+                description="A new Gateway version is available"
+              />
+              <.notification_row
+                notification={:seat_limit_warnings}
+                preferences={@actor.preferences}
+                label="Seat Limit Warnings"
+                description="Your monthly active users near or reach the seats in your subscription"
+                disabled={not @seats_warning_plan?}
+                disabled_reason="Seat count warnings are sent on Business plans only."
+              />
+              <.notification_row
+                notification={:product_announcements}
+                preferences={@actor.preferences}
+                label="Product Announcements"
+                description="A monthly summary of new features and improvements in Firezone"
+              />
+            </tbody>
+          </table>
         </.form>
 
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mt-8 mb-4">
@@ -265,11 +258,11 @@ defmodule PortalWeb.Settings.Profile do
 
     ~H"""
     <tr>
-      <td class="px-3 py-2.5 align-middle">
+      <td class="pr-3 py-2.5 align-middle">
         <div class="text-xs font-semibold text-body">{@label}</div>
         <div class="text-xs text-subtle mt-0.5">{@description}</div>
       </td>
-      <td class="px-3 py-2.5 align-middle">
+      <td class="pl-3 py-2.5 align-middle">
         <span class="flex justify-end">
           <Core.popover :if={@disabled} placement="left" class="flex">
             <:target>
