@@ -755,9 +755,11 @@ if config_env() == :prod do
     bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
 
   posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
+  posthog_host = env_var_to_config(:posthog_host)
 
   config :portal, Portal.Analytics.PostHog,
-    enabled: not is_nil(posthog_project_api_key),
+    enabled: not is_nil(posthog_project_api_key) and not is_nil(posthog_host),
+    host: posthog_host,
     project_api_key: posthog_project_api_key
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
