@@ -18,7 +18,8 @@
 //! probe reply. A mid-session re-key never moves the primary; probing decides.
 //!
 //! Handshakes are always answered on the path they arrived on, never on the
-//! primary — routine re-keys included.
+//! primary: routine re-keys included, as is the keepalive confirming a
+//! response.
 //!
 //! ## Probing and selection
 //!

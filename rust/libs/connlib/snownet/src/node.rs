@@ -1759,12 +1759,9 @@ where
                     Agent::Path(agent) => agent.send_handshake_initiation(init, now),
                     Agent::Ice(_) => self.buffer_or_send(cid, init, allocations, transmits, now),
                 },
-                sanstun::Event::SendKeepalive(keepalive) => match &mut self.agent {
-                    Agent::Path(agent) => agent.send_keepalive(keepalive, now),
-                    Agent::Ice(_) => {
-                        self.buffer_or_send(cid, keepalive, allocations, transmits, now)
-                    }
-                },
+                sanstun::Event::SendKeepalive(keepalive) => {
+                    self.buffer_or_send(cid, keepalive, allocations, transmits, now)
+                }
                 sanstun::Event::ConnectionExpired => {
                     tracing::info!(state = %self.state, index = ?self.index, "Connection failed (wireguard tunnel expired)");
                     self.state = ConnectionState::Failed;

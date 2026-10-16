@@ -283,6 +283,30 @@ fn handshake_response_seeds_preliminary_primary_by_tier() {
     assert_eq!(a.primary(), Some((addr(2), addr(4))));
 }
 
+#[test]
+fn the_confirming_keepalive_goes_back_on_the_responses_path() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    let mut hs = Handshake::new_seeded(t0, 1).with_response(t0);
+    a.receive(
+        &mut hs.initiator,
+        &mut hs.initiator_interface,
+        &hs.response,
+        (addr(2), addr(4)),
+        t0 + secs(1),
+    )
+    .expect("response accepted");
+
+    let keepalives = a
+        .transmits()
+        .into_iter()
+        .filter(|t| matches!(t.payload, Payload::Ciphertext(_)))
+        .map(|t| (t.local, t.remote))
+        .collect::<Vec<_>>();
+    assert_eq!(keepalives, vec![(addr(2), addr(4))]);
+    assert_eq!(a.primary(), Some((addr(1), addr(3))));
+}
+
 // --- probing and promote-only selection ---
 
 #[test]
