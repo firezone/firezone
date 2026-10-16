@@ -65,7 +65,7 @@ defmodule PortalWeb.Settings.Profile do
         </.form>
 
         <div class="max-w-2xl flex items-baseline justify-between mt-8 pb-2 border-b border-border text-[10px] font-semibold tracking-widest uppercase text-subtle">
-          <h3>Notifications</h3>
+          <h3>Notification</h3>
           <span>Email</span>
         </div>
 
