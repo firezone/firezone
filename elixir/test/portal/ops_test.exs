@@ -527,4 +527,118 @@ defmodule Portal.OpsTest do
       refute output =~ "dormant"
     end
   end
+
+  describe "queue_product_announcement/4" do
+    import ExUnit.CaptureIO
+
+    test "queues one email per admin with a link to turn announcements off" do
+      account = active_account_fixture()
+      admin1 = admin_actor_fixture(account: account)
+      admin2 = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_product_announcement(
+                   [account.id],
+                   "What's new",
+                   "<p>New features</p>",
+                   "New features"
+                 )
+      end)
+
+      emails = collect_queued_emails(account.id)
+
+      assert emails |> Enum.flat_map(& &1.to) |> Enum.sort() ==
+               Enum.sort([{"", admin1.email}, {"", admin2.email}])
+
+      for email <- emails do
+        assert email.subject == "What's new"
+        assert email.html_body =~ "<p>New features</p>"
+        assert email.text_body =~ "New features"
+        assert email.text_body =~ "/#{account.id}/unsubscribe/"
+      end
+
+      tokens =
+        Enum.map(emails, fn email ->
+          [token] =
+            Regex.run(~r{/#{account.id}/unsubscribe/([A-Za-z0-9_.-]+)}, email.text_body,
+              capture: :all_but_first
+            )
+
+          {:ok, payload} = Portal.UnsubscribeToken.verify(token)
+          payload
+        end)
+
+      assert Enum.sort(tokens) ==
+               Enum.sort([
+                 {account.id, admin1.id, :product_announcements},
+                 {account.id, admin2.id, :product_announcements}
+               ])
+    end
+
+    test "skips admins who turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      opted_out = admin_actor_fixture(account: account)
+      actor_preferences_fixture(opted_out, notifications: %{product_announcements: []})
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "sends once to a person who is an admin of two accounts" do
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
+      email = "shared-#{System.unique_integer([:positive])}@example.com"
+      admin_actor_fixture(account: account1, email: email)
+      admin_actor_fixture(account: account2, email: email)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_product_announcement(
+                     [account1.id, account2.id],
+                     "What's new",
+                     "<p>Hi</p>",
+                     "Hi"
+                   )
+        end)
+
+      assert output =~ "to 1 unique admin(s)"
+
+      assert length(collect_queued_emails(account1.id) ++ collect_queued_emails(account2.id)) ==
+               1
+    end
+
+    test "aborts when user declines confirmation" do
+      account = active_account_fixture()
+      admin_actor_fixture(account: account)
+
+      capture_io("n\n", fn ->
+        assert :aborted =
+                 queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "errors when every admin turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_preferences_fixture(admin, notifications: %{product_announcements: []})
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+        end)
+
+      assert output =~ "No admin recipients found."
+    end
+  end
 end

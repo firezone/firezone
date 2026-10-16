@@ -561,10 +561,8 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert email.text_body =~ "Seats remaining: 1"
       assert email.text_body =~ "Settings -> Account"
 
-      assert admin.email in Enum.map(email.bcc, fn
-               {_name, address} -> address
-               address -> address
-             end)
+      assert email.to == [{"", admin.email}]
+      assert email.text_body =~ "Turn off these notifications: "
 
       account = fetch_account!(account.id)
       assert account.seats_warning_level == :approaching
@@ -654,13 +652,25 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert account.seats_warning_last_sent_at == nil
     end
 
-    test "does not send when seat warnings are turned off in notification settings", %{
-      account: account
+    test "does not send to admins who turned seat warnings off", %{
+      account: account,
+      admin: admin
     } do
-      update_account(account, %{
-        config: %{notifications: %{seats_warning: %{enabled: false}}}
-      })
+      actor_preferences_fixture(admin, notifications: %{seat_limit_warnings: []})
+      other_admin = admin_actor_fixture(account: account)
+      make_seats_active(account, 10)
 
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", other_admin.email}]
+    end
+
+    test "does not send when every admin turned seat warnings off", %{
+      account: account,
+      admin: admin
+    } do
+      actor_preferences_fixture(admin, notifications: %{seat_limit_warnings: []})
       make_seats_active(account, 10)
 
       assert :ok = perform_job(CheckAccountLimits, %{})
@@ -669,21 +679,33 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert fetch_account!(account.id).seats_warning_level == nil
     end
 
-    test "sends again once seat warnings are turned back on", %{account: account} do
-      update_account(account, %{
-        config: %{notifications: %{seats_warning: %{enabled: false}}}
-      })
-
+    test "sends one email per admin, each with its own unsubscribe link", %{account: account} do
+      admin_actor_fixture(account: account)
       make_seats_active(account, 10)
-      assert :ok = perform_job(CheckAccountLimits, %{})
-      assert collect_queued_emails(account.id) == []
-
-      update_account(account, %{
-        config: %{notifications: %{seats_warning: %{enabled: true}}}
-      })
 
       assert :ok = perform_job(CheckAccountLimits, %{})
-      assert [_email] = collect_queued_emails(account.id)
+
+      emails = collect_queued_emails(account.id)
+      assert length(emails) == 2
+
+      urls =
+        Enum.map(emails, fn email ->
+          [url] = Regex.run(~r{https?://\S+/unsubscribe/\S+}, email.text_body)
+          url
+        end)
+
+      assert length(Enum.uniq(urls)) == 2    end
+
+    test "sends to Enterprise accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin = admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 10}})
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
     end
 
     test "does not send when enough seats remain", %{account: account} do

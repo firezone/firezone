@@ -15,9 +15,12 @@ What happens next?
 <% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.
 <% end %>
 
-To add seats, go to Settings -> Account (<%= @billing_url %>) in the admin portal and click the "Manage plan" button.
+To add seats, go to Org Settings -> Account (<%= @billing_url %>) in the admin portal and click the "Manage plan" button.
 
 You will get this reminder at most once a week while your seats are nearly or fully used. If you have any questions, just reply to this email to reach our support team.
 
 Thanks,
 The Firezone Team
+
+--
+Turn off these notifications: <%= @unsubscribe_url %>

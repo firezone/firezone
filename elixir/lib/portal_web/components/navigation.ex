@@ -159,9 +159,9 @@ defmodule PortalWeb.Components.Navigation do
       <li>
         <.link
           navigate={~p"/#{@subject.account}/settings/profile"}
-          class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+          class="flex items-center gap-2 py-2 px-4 text-sm hover:bg-raised hover:text-heading"
         >
-          Your settings
+          <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Your settings
         </.link>
       </li>
       <li :if={PortalWeb.GettingStarted.offered?(@subject.actor)}>
@@ -346,7 +346,9 @@ defmodule PortalWeb.Components.Navigation do
 
       <%!-- Settings --%>
       <div class="border-t border-border py-2 px-2 shrink-0">
-        <% settings_active? = String.contains?(@current_path, "/settings") %>
+        <% settings_active? =
+          String.contains?(@current_path, "/settings") and
+            not String.contains?(@current_path, "/settings/profile") %>
         <.link
           navigate={~p"/#{@account}/settings/account"}
           data-sidebar-nav-item
@@ -368,7 +370,7 @@ defmodule PortalWeb.Components.Navigation do
             data-sidebar-label
             class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
           >
-            Settings
+            Org Settings
           </span>
         </.link>
       </div>
@@ -511,14 +513,6 @@ defmodule PortalWeb.Components.Navigation do
           icon="ri-building-fill"
         >
           Account
-        </.settings_tab>
-        <.settings_tab
-          current_path={@current_path}
-          navigate={~p"/#{@account}/settings/notifications"}
-          tab_path="settings/notifications"
-          icon="ri-notification-fill"
-        >
-          Notifications
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}

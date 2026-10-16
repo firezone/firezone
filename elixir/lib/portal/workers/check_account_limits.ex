@@ -24,8 +24,8 @@ defmodule Portal.Workers.CheckAccountLimits do
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
 
-  # Repeat the Business seat warning email at most once a week, unless the
-  # account's state gets worse (approaching -> at limit)
+  # Repeat the Business and Enterprise seat warning email at most once a week,
+  # unless the account's state gets worse (approaching -> at limit)
   @seats_warning_interval_days 7
   @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2}
 
@@ -72,7 +72,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
     case Billing.seats_warning_level(account, active_users) do
       level when level in [:approaching, :at_limit] ->
-        if seats_warning_enabled?(account) and seats_warning_due?(account, level) do
+        if seats_warning_due?(account, level) do
           send_seats_warning_email(account, level, active_users)
         end
 
@@ -81,14 +81,6 @@ defmodule Portal.Workers.CheckAccountLimits do
 
       _ ->
         :ok
-    end
-  end
-
-  # On unless an admin turned it off in Settings -> Notifications
-  defp seats_warning_enabled?(account) do
-    case account.config do
-      %{notifications: %{seats_warning: %{enabled: false}}} -> false
-      _ -> true
     end
   end
 
@@ -116,32 +108,42 @@ defmodule Portal.Workers.CheckAccountLimits do
   end
 
   defp send_seats_warning_email(account, level, active_users) do
-    case Database.get_account_admin_actors(account.id) do
+    case Database.get_seats_warning_recipients(account.id) do
       [] ->
-        Logger.warning("No admin actors found for account", account_id: account.id)
+        Logger.info("No admin actors receive seats warnings for account", account_id: account.id)
 
       admins ->
-        recipient_emails = Enum.map(admins, & &1.email)
+        sent_count =
+          Enum.count(admins, &(enqueue_seats_warning_email(account, level, active_users, &1) == :ok))
 
-        case Notifications.seats_warning_email(account, level, active_users, recipient_emails)
-             |> Mailer.enqueue() do
-          {:ok, _result} ->
-            Logger.info("Seats warning email enqueued",
-              level: level,
-              recipient_count: length(recipient_emails),
-              account_id: account.id
-            )
+        if sent_count > 0 do
+          Logger.info("Seats warning email enqueued",
+            level: level,
+            recipient_count: sent_count,
+            account_id: account.id
+          )
 
-            put_seats_warning(account, DateTime.utc_now(), level)
-
-          {:error, reason} ->
-            Logger.error("Failed to enqueue seats warning email",
-              level: level,
-              recipient_count: length(recipient_emails),
-              reason: inspect(reason),
-              account_id: account.id
-            )
+          put_seats_warning(account, DateTime.utc_now(), level)
         end
+    end
+  end
+
+  defp enqueue_seats_warning_email(account, level, active_users, admin) do
+    Notifications.seats_warning_email(account, level, active_users, admin)
+    |> Mailer.enqueue()
+    |> case do
+      {:ok, _result} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to enqueue seats warning email",
+          level: level,
+          actor_id: admin.id,
+          reason: inspect(reason),
+          account_id: account.id
+        )
+
+        :error
     end
   end
 
@@ -393,6 +395,21 @@ defmodule Portal.Workers.CheckAccountLimits do
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
         where: a.is_disabled == false
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def get_seats_warning_recipients(account_id) do
+      from(a in Actor,
+        where: a.account_id == ^account_id,
+        where: a.type == :account_admin_user,
+        where: a.is_disabled == false,
+        where:
+          fragment(
+            "COALESCE(NULLIF(?->'notifications'->'seat_limit_warnings', 'null') @> '[\"email\"]', true)",
+            a.preferences
+          )
       )
       |> Safe.unscoped()
       |> Safe.all()

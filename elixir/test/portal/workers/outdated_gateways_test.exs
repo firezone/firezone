@@ -135,14 +135,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
   describe "perform/1" do
     test "enqueues outdated gateway notifications instead of delivering inline" do
-      account =
-        account_fixture(
-          config: %{
-            notifications: %{
-              outdated_gateway: %{enabled: true}
-            }
-          }
-        )
+      account = account_fixture()
 
       admin = admin_actor_fixture(account: account)
       session_log_fixture(account: account)
@@ -167,21 +160,58 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       assert_email_queued(account.id, fn email ->
         assert email.subject == "Firezone Gateway Upgrade Available"
-        assert email.bcc == [{"", admin.email}]
+        assert email.to == [{"", admin.email}]
       end)
 
       refute_email_sent()
     end
 
-    test "skips accounts with no session logs" do
-      account =
-        account_fixture(
-          config: %{
-            notifications: %{
-              outdated_gateway: %{enabled: true}
-            }
-          }
+    test "skips admins who turned gateway upgrade emails off" do
+      account = account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_preferences_fixture(admin, notifications: %{outdated_gateways: []})
+      other_admin = admin_actor_fixture(account: account)
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
+
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", other_admin.email}]
+      assert email.text_body =~ "Turn off these notifications: "
+      assert email.html_body =~ "Turn off these notifications"
+
+      [token] =
+        Regex.run(~r{/#{account.id}/unsubscribe/([A-Za-z0-9_.-]+)}, email.text_body,
+          capture: :all_but_first
         )
+
+      assert Portal.UnsubscribeToken.verify(token) ==
+               {:ok, {account.id, other_admin.id, :outdated_gateways}}
+    end
+
+    test "sends to admins who only turned other notifications off" do
+      account = account_fixture()
+      admin = admin_actor_fixture(account: account)
+      admin = actor_preferences_fixture(admin, notifications: %{product_announcements: []})
+      assert admin.preferences.notifications.outdated_gateways == nil
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
+
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "skips accounts with no session logs" do
+      account = account_fixture()
 
       admin_actor_fixture(account: account)
       site = site_fixture(account: account)
@@ -201,18 +231,11 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
 
       # The account stays pending so it is notified as soon as it comes back.
       account = Portal.Repo.get!(Portal.Account, account.id)
-      assert is_nil(account.config.notifications.outdated_gateway.last_notified)
+      refute match?(%{notifications: %{outdated_gateway: %{last_notified: %DateTime{}}}}, account.config)
     end
 
     test "notifies a paid account with no session logs" do
-      account =
-        team_account_fixture(
-          config: %{
-            notifications: %{
-              outdated_gateway: %{enabled: true}
-            }
-          }
-        )
+      account = team_account_fixture()
 
       admin = admin_actor_fixture(account: account)
       site = site_fixture(account: account)
@@ -229,7 +252,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       assert :ok = perform_job(OutdatedGateways, %{})
 
       assert_email_queued(account.id, fn email ->
-        assert email.bcc == [{"", admin.email}]
+        assert email.to == [{"", admin.email}]
       end)
     end
   end

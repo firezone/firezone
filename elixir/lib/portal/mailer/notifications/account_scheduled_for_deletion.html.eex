@@ -103,7 +103,7 @@
                     The account is now disabled. All data will be <strong>permanently deleted</strong> on the scheduled date.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
-                    To prevent this, cancel the deletion in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a>.
+                    To prevent this, cancel the deletion in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Org Settings &rarr; Account</a>.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
                     If you did not expect this change, please contact another account admin or <a href="mailto:support@firezone.dev">support@firezone.dev</a> immediately.

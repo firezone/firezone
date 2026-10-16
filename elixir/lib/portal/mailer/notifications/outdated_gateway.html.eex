@@ -137,6 +137,9 @@
                     &bull;
                     <a href="https://x.com/firezonehq" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none;">X</a>
                   </p>
+                  <p style="margin: 0">
+                    <a href="<%= @unsubscribe_url %>" class="hover-important-text-decoration-underline" style="color: #575757; text-decoration: underline;">Turn off these notifications</a>
+                  </p>
                 </td>
               </tr>
             </table>
