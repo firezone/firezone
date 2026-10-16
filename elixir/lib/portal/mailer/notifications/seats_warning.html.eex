@@ -88,7 +88,7 @@
                   </p>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Org Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button.
+                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button.
                   </p>
                   <div role="separator" style="line-height: 24px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">

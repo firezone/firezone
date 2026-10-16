@@ -93,7 +93,7 @@
                     The account is no longer scheduled for deletion.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
-                    Review this account in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Org Settings &rarr; Account</a>.
+                    Review this account in <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none;">Settings &rarr; Account</a>.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
                     If you did not expect this change, please contact another account admin or Firezone support immediately.

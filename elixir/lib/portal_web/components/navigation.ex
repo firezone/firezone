@@ -370,7 +370,7 @@ defmodule PortalWeb.Components.Navigation do
             data-sidebar-label
             class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
           >
-            Org Settings
+            Settings
           </span>
         </.link>
       </div>

@@ -387,8 +387,8 @@ defmodule PortalWeb.Settings.ProfileTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/profile")
 
       assert has_element?(lv, "a[href='#{~p"/#{account}/settings/profile"}']", "Your settings")
-      assert has_element?(lv, "a[href='#{~p"/#{account}/settings/account"}']", "Org Settings")
-      refute has_element?(lv, "[data-sidebar-nav-item].bg-brand-wash", "Org Settings")
+      assert has_element?(lv, "[data-sidebar-nav-item][href='#{~p"/#{account}/settings/account"}']", "Settings")
+      refute has_element?(lv, "[data-sidebar-nav-item].bg-brand-wash", "Settings")
       refute html =~ "settings/notifications"
     end
   end

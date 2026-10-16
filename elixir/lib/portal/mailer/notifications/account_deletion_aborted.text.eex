@@ -9,7 +9,7 @@ User Agent: <%= @user_agent %>
 
 The account is no longer scheduled for deletion.
 
-Review this account in Org Settings -> Account:
+Review this account in Settings -> Account:
 <%= @settings_url %>
 
 If you did not expect this change, please contact another account admin or Firezone support immediately.

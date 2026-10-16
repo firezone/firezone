@@ -13,7 +13,7 @@ User Agent: <%= @user_agent %>
 
 <% end %>The account is now disabled. All data will be **permanently deleted** on the scheduled date.
 
-To prevent this, cancel the deletion in Org Settings -> Account:
+To prevent this, cancel the deletion in Settings -> Account:
 <%= @settings_url %>
 
 If you did not expect this change, please contact another account admin or support@firezone.dev immediately.
