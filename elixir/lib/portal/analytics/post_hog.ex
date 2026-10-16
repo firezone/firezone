@@ -1,11 +1,13 @@
 defmodule Portal.Analytics.PostHog do
   @moduledoc """
-  Sends consented website attribution events to PostHog without affecting auth flows.
+  Sends events to PostHog: consented website attribution events, sent without
+  affecting auth flows, and batched product analytics.
   """
 
   require Logger
 
   @single_event_path "/i/v0/e/"
+  @batch_path "/batch/"
 
   @type attribution :: map()
 
@@ -64,38 +66,61 @@ defmodule Portal.Analytics.PostHog do
   @doc false
   @spec capture(String.t(), String.t(), map()) :: :ok | {:error, term()}
   def capture(event, distinct_id, properties) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
-
-    if Keyword.fetch!(config, :enabled) do
-      body = %{
-        "api_key" => Keyword.fetch!(config, :project_api_key),
+    if enabled?() do
+      post(@single_event_path, %{
         "event" => event,
         "properties" => Map.put(properties, "distinct_id", distinct_id)
-      }
-
-      req_opts =
-        [base_url: Keyword.fetch!(config, :host), url: @single_event_path, json: body] ++
-          Keyword.get(config, :req_opts, [])
-
-      case Req.post(req_opts) do
-        {:ok, %Req.Response{status: status}} when status in 200..299 ->
-          :ok
-
-        {:ok, %Req.Response{status: status}} ->
-          {:error, {:http_status, status}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      })
     else
       :ok
     end
   end
 
-  defp dispatch(event, distinct_id, properties) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+  @doc """
+  Sends events through PostHog's batch endpoint. Each event is a map in PostHog's
+  wire format, with `"event"`, `"properties"` (including `"distinct_id"`) and
+  optionally `"timestamp"` and `"uuid"`.
+  """
+  @spec batch([map()]) :: :ok | {:error, term()}
+  def batch([]), do: :ok
 
-    if Keyword.fetch!(config, :enabled) do
+  def batch(events) do
+    if enabled?() do
+      post(@batch_path, %{"batch" => events})
+    else
+      :ok
+    end
+  end
+
+  @spec enabled?() :: boolean()
+  def enabled? do
+    :portal
+    |> Portal.Config.fetch_env!(__MODULE__)
+    |> Keyword.fetch!(:enabled)
+  end
+
+  defp post(path, body) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    body = Map.put(body, "api_key", Keyword.fetch!(config, :project_api_key))
+
+    req_opts =
+      [base_url: Keyword.fetch!(config, :host), url: path, json: body] ++
+        Keyword.get(config, :req_opts, [])
+
+    case Req.post(req_opts) do
+      {:ok, %Req.Response{status: status}} when status in 200..299 ->
+        :ok
+
+      {:ok, %Req.Response{status: status}} ->
+        {:error, {:http_status, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp dispatch(event, distinct_id, properties) do
+    if enabled?() do
       Task.Supervisor.start_child(
         Portal.Analytics.TaskSupervisor,
         fn -> capture_and_log(event, distinct_id, properties) end
