@@ -5,6 +5,8 @@ defmodule Portal.Analytics.PostHog do
 
   require Logger
 
+  @single_event_path "/i/v0/e/"
+
   @type attribution :: map()
 
   @spec capture_portal_landing(attribution(), String.t()) :: :ok
@@ -71,9 +73,11 @@ defmodule Portal.Analytics.PostHog do
         "properties" => Map.put(properties, "distinct_id", distinct_id)
       }
 
-      req_opts = [json: body] ++ Keyword.get(config, :req_opts, [])
+      req_opts =
+        [base_url: Keyword.fetch!(config, :host), url: @single_event_path, json: body] ++
+          Keyword.get(config, :req_opts, [])
 
-      case Req.post(Keyword.fetch!(config, :endpoint), req_opts) do
+      case Req.post(req_opts) do
         {:ok, %Req.Response{status: status}} when status in 200..299 ->
           :ok
 
