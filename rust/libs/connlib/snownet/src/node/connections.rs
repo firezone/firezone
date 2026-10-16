@@ -14,6 +14,7 @@ use sanstun::TunnelId;
 use crate::{
     Event,
     buffer::TransmitBuffer,
+    crypto::Encryptor as _,
     node::{
         Connection, ConnectionState, allocations::Allocations,
         inflight_stun_requests::InflightStunRequests,
@@ -160,9 +161,9 @@ where
                 continue;
             };
 
-            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits)
-            {
-                Ok(Some(_)) => {
+            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations) {
+                Ok(Some(encapsulation)) => {
+                    transmits.encrypt(encapsulation.into_job(goodbye.packet.clone()));
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
                 }
                 Ok(None) => {

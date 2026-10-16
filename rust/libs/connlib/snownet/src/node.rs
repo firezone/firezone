@@ -10,7 +10,8 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
+use crate::buffer::TransmitBuffer;
+use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -31,8 +32,8 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sanstun::{
-    Committed, Datagram, Interface, PresharedKey, PublicKey, Received, ReceivedMessage,
-    StaticSecret, Tunnel, TunnelConfig, TunnelId,
+    Committed, Datagram, Decrypted, Interface, PendingEncapsulate, PresharedKey, PublicKey,
+    Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig, TunnelId,
 };
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -539,15 +540,15 @@ where
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
-    /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted.
+    /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
+    ///   Decrypt it and pass the result to [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<Option<DecryptJob>> {
         self.last_now = now;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -564,37 +565,105 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
-            ControlFlow::Continue(c) => c,
+        let job = match self.connections_try_handle(from, destination, packet, now) {
+            ControlFlow::Continue(job) => job,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some((id, packet)))
+        Ok(Some(job))
     }
 
-    /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
+    /// Accepts a packet decrypted from a [`DecryptJob`].
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
+    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    pub fn handle_decrypted(
+        &mut self,
+        packet: DecryptedPacket,
+        now: Instant,
+    ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
+        let DecryptedPacket {
+            tunnel,
+            path,
+            decrypted,
+        } = packet;
+
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_session_index(tunnel, now)?;
+
+        let control_flow = conn.commit_decrypted(cid, path, decrypted, now);
+
+        // A responder completes the handshake on the initiator's first transport data (key
+        // confirmation).
+        let established =
+            !matches!(control_flow, ControlFlow::Break(Err(_))) && conn.confirm_session(cid, now);
+        let is_closing = self.connections.is_closing(&cid);
+
+        if established && !is_closing {
+            self.pending_events
+                .push_back(Event::ConnectionEstablished(cid))
+        }
+
+        let packet = match control_flow {
+            ControlFlow::Continue(_) if is_closing => return Ok(None),
+            ControlFlow::Continue(packet) => packet,
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e.context(format!("cid={cid}"))),
+        };
+
+        Ok(Some((cid, packet)))
+    }
+
+    /// Encapsulate an outgoing IP packet and hand it to `encryptor`.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
+    ///
+    /// # Errors
+    ///
+    /// Returns the packet alongside the error, e.g. to buffer it while the connection is [`StillConnecting`].
     pub fn encapsulate(
+        &mut self,
+        cid: TId,
+        packet: IpPacket,
+        now: Instant,
+        encryptor: &mut impl Encryptor,
+    ) -> Result<Option<EncapsulateInfo>, EncapsulateError> {
+        self.last_now = now;
+
+        let encapsulation = match self.try_encapsulate(cid, &packet, now) {
+            Ok(Some(encapsulation)) => encapsulation,
+            Ok(None) => return Ok(None),
+            Err(error) => return Err(EncapsulateError { packet, error }),
+        };
+        let info = encapsulation.info();
+
+        encryptor.encrypt(encapsulation.into_job(packet));
+
+        Ok(Some(info))
+    }
+
+    fn try_encapsulate(
         &mut self,
         cid: TId,
         packet: &IpPacket,
         now: Instant,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>> {
-        self.last_now = now;
-
+    ) -> Result<Option<Encapsulation>> {
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
-        let info = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
+        let encapsulation = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
-        Ok(info)
+        Ok(encapsulation)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -999,7 +1068,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, DecryptJob> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(Received::Message(parsed_packet)) => parsed_packet,
             Ok(Received::SendCookieReply(reply)) => {
@@ -1032,14 +1101,7 @@ where
             }
         };
 
-        // A responder completes the handshake on the initiator's first transport data (key
-        // confirmation), not on the init.
-        let confirms_session = match &parsed_packet {
-            ReceivedMessage::HandshakeResponse(_) => true,
-            ReceivedMessage::TransportData(_) => true,
-            ReceivedMessage::HandshakeInitiation(_) => false,
-            ReceivedMessage::CookieReply(_) => false,
-        };
+        let is_handshake_response = matches!(parsed_packet, ReceivedMessage::HandshakeResponse(_));
 
         let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
@@ -1072,37 +1134,18 @@ where
             now,
         );
 
-        let mut established = false;
-
-        if confirms_session
+        // A responder completes the handshake on the initiator's first transport data (key
+        // confirmation), not on the init; see `handle_decrypted`.
+        let established = is_handshake_response
             && !matches!(control_flow, ControlFlow::Break(Err(_)))
-            && conn.first_handshake_completed_at.is_none()
-        {
-            conn.first_handshake_completed_at = Some(now);
-            conn.agent.confirm_session(now);
+            && conn.confirm_session(cid, now);
 
-            tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
-
-            // Only signal establishment once we can actually send, i.e. ICE has nominated a
-            // socket. On the controlled side the handshake can complete before nomination, in
-            // which case the event is emitted from the `NominatedSend` handler instead.
-            established = conn.state.has_nominated_socket();
-        }
-
-        let is_closing = self.connections.is_closing(&cid);
-
-        if established && !is_closing {
+        if established && !self.connections.is_closing(&cid) {
             self.pending_events
                 .push_back(Event::ConnectionEstablished(cid))
         }
 
-        if is_closing && control_flow.is_continue() {
-            return ControlFlow::Break(Ok(()));
-        }
-
-        control_flow
-            .map_continue(|c| (cid, c))
-            .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        control_flow.map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
     /// Lets the connection to `peer` answer a replayed handshake initiation from its cache,
@@ -1383,6 +1426,34 @@ impl fmt::Debug for Transmit {
 pub struct EncapsulateInfo {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
+}
+
+/// An [`IpPacket`] that [`Node::encapsulate`] failed to encapsulate.
+#[derive(Debug)]
+pub struct EncapsulateError {
+    pub packet: IpPacket,
+    pub error: anyhow::Error,
+}
+
+/// Where to send an outgoing packet, with its WireGuard counter reserved.
+struct Encapsulation {
+    src: Option<SocketAddr>,
+    dst: SocketAddr,
+    channel: Option<u16>,
+    pending: PendingEncapsulate,
+}
+
+impl Encapsulation {
+    fn info(&self) -> EncapsulateInfo {
+        EncapsulateInfo {
+            src: self.src,
+            dst: self.dst,
+        }
+    }
+
+    fn into_job(self, packet: IpPacket) -> EncryptJob {
+        EncryptJob::new(self.src, self.dst, self.channel, self.pending, packet)
+    }
 }
 
 #[derive(derive_more::Debug)]
@@ -1674,8 +1745,12 @@ where
                         transmits.push(transmit);
                     }
                 }
-                path_agent::Payload::Plaintext(ref ip) => {
-                    let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
+                path_agent::Payload::Plaintext(ip) => {
+                    if let Ok(Some(encapsulation)) =
+                        self.encapsulate(cid, peer_socket, &ip, now, allocations)
+                    {
+                        transmits.encrypt(encapsulation.into_job(*ip));
+                    }
                 }
             }
         }
@@ -1827,7 +1902,7 @@ where
         }
     }
 
-    /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
+    /// Reserves the WireGuard counter for `packet` and decides where to send it.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
@@ -1835,19 +1910,16 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>>
+    ) -> Result<Option<Encapsulation>>
     where
         TId: fmt::Display,
     {
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
-        let ecn = packet.ecn();
-
-        let (src, dst, packet_start, relay) = match socket {
+        let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
-                (Some(source), dest, 0, None)
+                (Some(source), dest, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let relay_id = self.relay.context("No relay selected")?;
@@ -1858,41 +1930,31 @@ where
                     .active_socket()
                     .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                (
-                    None,
-                    dst,
-                    ip_packet::DATA_CHANNEL_OVERHEAD,
-                    Some((peer, allocation)),
-                )
+                (None, dst, Some((peer, allocation)))
             }
         };
 
-        let reserve_len =
-            packet_start + packet.packet().len().next_multiple_of(16) + ip_packet::WG_OVERHEAD;
-        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
+        let pending = self.tunnel.begin_encapsulate(now)?;
 
-        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
-        let len = self
-            .tunnel
-            .begin_encapsulate(now)?
-            .encrypt(packet.packet(), &mut reservation.buffer()[packet_start..])?
-            .len();
-        debug_assert_eq!(packet_start + len, reserve_len);
+        let channel = match relay {
+            Some((peer, allocation)) => {
+                // A missing channel is an expected part of channel setup (`channel_to_peer` logs
+                // it and queues a binding), so drop the packet instead of surfacing an error.
+                let Some((channel, _)) = allocation.channel_to_peer(peer, now) else {
+                    return Ok(None);
+                };
 
-        if let Some((peer, allocation)) = relay {
-            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
-            // logs it and queues a binding), so drop the packet instead of surfacing an error.
-            if allocation
-                .encode_channel_data_header(peer, reservation.buffer(), now)
-                .is_none()
-            {
-                return Ok(None);
+                Some(channel)
             }
-        }
+            None => None,
+        };
 
-        reservation.commit();
-
-        Ok(Some(EncapsulateInfo { src, dst }))
+        Ok(Some(Encapsulation {
+            src,
+            dst,
+            channel,
+            pending,
+        }))
     }
 
     #[expect(
@@ -1909,14 +1971,14 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> ControlFlow<Result<()>, DecryptJob>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
         let path = (destination, from);
 
-        let pending = match packet {
+        match packet {
             ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => agent.handle_handshake_initiation(
@@ -1932,7 +1994,7 @@ where
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
-                return ControlFlow::Break(result.context("handshake packet"));
+                ControlFlow::Break(result.context("handshake packet"))
             }
             ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
@@ -1949,47 +2011,73 @@ where
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
-                return ControlFlow::Break(result.context("handshake packet"));
+                ControlFlow::Break(result.context("handshake packet"))
             }
-            ReceivedMessage::CookieReply(reply) => {
-                return ControlFlow::Break(
-                    self.tunnel
-                        .handle_cookie_reply(reply, now)
-                        .map_err(anyhow::Error::new),
-                );
-            }
+            ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
+                self.tunnel
+                    .handle_cookie_reply(reply, now)
+                    .map_err(anyhow::Error::new),
+            ),
             ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => pending,
-                    Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+                    Ok(pending) => {
+                        ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
+                    }
+                    Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
                 }
             }
-        };
+        }
+    }
 
-        let decrypted = pending.decrypt(datagram, IpPacketBuf::new());
-
-        let control_flow = match self.tunnel.commit_decapsulate(decrypted, now) {
+    fn commit_decrypted<TId>(
+        &mut self,
+        cid: TId,
+        path: (SocketAddr, SocketAddr),
+        decrypted: Decrypted<IpPacketBuf>,
+        now: Instant,
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
+        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
             Ok(Committed::Data { buffer, len }) => {
                 match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
-                    Ok(p) => ControlFlow::Continue(p),
-                    Err(e) => ControlFlow::Break(Err(e)),
+                    Ok(p) => p,
+                    Err(e) => return ControlFlow::Break(Err(e)),
                 }
             }
-            Ok(Committed::Keepalive) => ControlFlow::Break(Ok(())),
-            Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+            Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
+            Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
         };
 
-        match control_flow {
-            ControlFlow::Continue(packet) => {
-                self.state
-                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+        self.state
+            .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
 
-                self.agent
-                    .handle_inbound_tun(packet, path, now)
-                    .map_break(Ok)
-            }
-            ControlFlow::Break(b) => ControlFlow::Break(b),
+        self.agent
+            .handle_inbound_tun(packet, path, now)
+            .map_break(Ok)
+    }
+
+    /// Records the first completed WireGuard handshake, returning whether the connection is now
+    /// established.
+    fn confirm_session<TId>(&mut self, cid: TId, now: Instant) -> bool
+    where
+        TId: fmt::Display,
+    {
+        if self.first_handshake_completed_at.is_some() {
+            return false;
         }
+
+        self.first_handshake_completed_at = Some(now);
+        self.agent.confirm_session(now);
+
+        tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(now), "Completed wireguard handshake");
+
+        // Only signal establishment once we can actually send, i.e. ICE has nominated a
+        // socket. On the controlled side the handshake can complete before nomination, in
+        // which case the event is emitted from the `NominatedSend` handler instead.
+        self.state.has_nominated_socket()
     }
 
     fn buffer_or_send<TId>(

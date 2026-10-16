@@ -1,12 +1,13 @@
 //! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets.
 //!
 //! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
-//! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
-//! event loop. One iteration is one packet.
+//! and the peer. It hands the WireGuard crypto to worker threads, so the wall time per packet is
+//! the cost of the slowest of these pipeline stages, which never parks. One iteration is one
+//! packet.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
@@ -59,10 +60,10 @@ const BURST: usize = 10_000;
 /// Bounded so no UDP receive buffer overflows.
 const IN_FLIGHT: usize = 2_048;
 
-/// How often the event loop may park per 1000 packets.
+/// How often the slowest pipeline stage may park per 1000 packets.
 ///
-/// The event loop idles between bursts. Within one, it would park about once per batch of packets
-/// if a stand-in thread could not keep up.
+/// The stages idle between bursts. Within one, every stage would park about once per batch of
+/// packets if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
@@ -260,8 +261,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status file of its thread.
-    status: PathBuf,
+    /// The `/proc` status files of its thread and of the tunnel's crypto workers.
+    statuses: Vec<PathBuf>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -284,6 +285,7 @@ impl EventLoop {
             .enable_all()
             .build()
             .unwrap();
+        let threads_before = threads();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
 
@@ -330,28 +332,39 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let status = status_rx.recv().unwrap();
+        let crypto_workers = threads()
+            .into_iter()
+            .filter(|(tid, comm)| !threads_before.contains_key(tid) && comm.starts_with("wg-"))
+            .map(|(tid, _)| Path::new("/proc/self/task").join(tid).join("status"));
+        let statuses = std::iter::once(status_rx.recv().unwrap())
+            .chain(crypto_workers)
+            .collect();
 
         (
             Self {
                 thread,
-                status,
+                statuses,
                 tun_reads,
             },
             tun_writes,
         )
     }
 
-    /// Returns how often the event loop's thread has parked.
-    fn parks(&self) -> u64 {
-        std::fs::read_to_string(&self.status)
-            .unwrap()
-            .lines()
-            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap()
+    /// Returns how often each pipeline stage has parked, the event loop first.
+    fn parks(&self) -> Vec<u64> {
+        self.statuses
+            .iter()
+            .map(|status| {
+                std::fs::read_to_string(status)
+                    .unwrap()
+                    .lines()
+                    .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
+                    .unwrap()
+                    .trim()
+                    .parse()
+                    .unwrap()
+            })
+            .collect()
     }
 
     fn stop(self) {
@@ -377,6 +390,22 @@ impl tun::Tun for FakeTun {
     fn name(&self) -> &str {
         "fake"
     }
+}
+
+/// Returns the name of each of this process's threads, by thread ID.
+fn threads() -> BTreeMap<String, String> {
+    std::fs::read_dir("/proc/self/task")
+        .unwrap()
+        .map(|entry| {
+            let entry = entry.unwrap();
+            let comm = std::fs::read_to_string(entry.path().join("comm")).unwrap();
+
+            (
+                entry.file_name().into_string().unwrap(),
+                comm.trim_end().to_owned(),
+            )
+        })
+        .collect()
 }
 
 /// Counts the packets arriving at the far end.
@@ -449,12 +478,24 @@ fn measure<T>(
         })
     });
     let packets = arrivals.count() - before.1;
-    let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
+    // A crypto worker that never woke up had no work, e.g. decrypting while sending.
+    let parks = event_loop
+        .parks()
+        .into_iter()
+        .zip(before.0)
+        .map(|(after, before)| after - before)
+        .enumerate()
+        .filter(|&(stage, parks)| stage == 0 || parks > 0)
+        .map(|(_, parks)| parks)
+        .min()
+        .unwrap() as f64
+        * 1000.0
+        / packets as f64;
 
     // Skipped or test runs send too few packets to tell.
     assert!(
         packets < BURST || parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
+        "Every pipeline stage parked at least {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
     );
 }
 
@@ -647,9 +688,14 @@ impl Tunnel {
             .handle_tun_input(self.request(protocol), self.now, &mut transmits)
             .unwrap();
         let datagram = transmits.poll_transmit().unwrap();
-        let request = self
+        let job = self
             .gateway
             .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
+            .unwrap()
+            .unwrap();
+        let request = self
+            .gateway
+            .handle_decrypted_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, job.decrypt(), self.now)
             .unwrap()
             .unwrap();
         let (sport, dport) = match protocol {
@@ -781,15 +827,23 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == CLIENT_SOCKET {
+        if to == CLIENT_SOCKET
+            && let Ok(Some(job)) = self
+                .client
+                .handle_network_input(to, from, payload, self.now)
+        {
             let _ = self
                 .client
-                .handle_network_input(to, from, payload, self.now);
+                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
         }
-        if to == GATEWAY_SOCKET {
+        if to == GATEWAY_SOCKET
+            && let Ok(Some(job)) = self
+                .gateway
+                .handle_network_input(to, from, payload, self.now)
+        {
             let _ = self
                 .gateway
-                .handle_network_input(to, from, payload, self.now);
+                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
         }
     }
 }
