@@ -57,8 +57,18 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :get, "products/#{product_id}")
   end
 
+  # Without a status filter, Stripe lists every subscription that is not canceled.
   def fetch_customer_subscriptions(api_token, customer_id) do
-    request(api_token, :get, "subscriptions?customer=#{customer_id}&status=active")
+    request(api_token, :get, "subscriptions?customer=#{customer_id}&limit=100")
+  end
+
+  def fetch_open_subscription_invoices(api_token, subscription_id) do
+    request(api_token, :get, "invoices?subscription=#{subscription_id}&status=open&limit=100")
+  end
+
+  def update_invoice_auto_advance(api_token, invoice_id, auto_advance) do
+    body = URI.encode_query(%{"auto_advance" => auto_advance}, :www_form)
+    request(api_token, :post, "invoices/#{invoice_id}", body)
   end
 
   def create_billing_portal_session(api_token, customer_id, return_url) do
