@@ -665,6 +665,16 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert account.seats_warning_last_sent_at == nil
     end
 
+    test "sends only to enabled admins", %{account: account, admin: admin} do
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
     test "does not send to admins who turned seat warnings off", %{
       account: account,
       admin: admin

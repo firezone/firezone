@@ -577,6 +577,20 @@ defmodule Portal.OpsTest do
                ])
     end
 
+    test "sends only to enabled admins" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
     test "skips admins who turned product announcements off" do
       account = active_account_fixture()
       admin = admin_actor_fixture(account: account)

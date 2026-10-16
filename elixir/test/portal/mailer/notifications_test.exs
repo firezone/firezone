@@ -183,6 +183,24 @@ defmodule Portal.Mailer.NotificationsTest do
     end
   end
 
+  describe "recipients" do
+    test "are only ever admins", %{account: account} do
+      user = actor_fixture(account: account, type: :account_user)
+
+      assert_raise FunctionClauseError, fn ->
+        outdated_gateway_email(account, [], 0, user)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        seats_warning_email(account, :approaching, 9, user)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        product_announcement_email("Subject", "<p>Hi</p>", "Hi", user)
+      end
+    end
+  end
+
   defp unsubscribe_setting(text_body, actor) do
     [token] =
       Regex.run(~r{/#{actor.account_id}/unsubscribe/([A-Za-z0-9_.-]+)}, text_body,

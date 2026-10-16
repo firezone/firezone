@@ -193,6 +193,23 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
                {:ok, {account.id, other_admin.id, :outdated_gateways}}
     end
 
+    test "sends only to enabled admins" do
+      account = account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
+
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
     test "sends to admins who only turned other notifications off" do
       account = account_fixture()
       admin = admin_actor_fixture(account: account)

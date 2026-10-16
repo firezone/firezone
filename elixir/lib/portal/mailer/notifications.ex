@@ -12,7 +12,12 @@ defmodule Portal.Mailer.Notifications do
   embed_templates "notifications/*.html", suffix: "_html"
   embed_templates "notifications/*.text", suffix: "_text"
 
-  def outdated_gateway_email(account, gateways, incompatible_client_count, %Actor{} = admin) do
+  def outdated_gateway_email(
+        account,
+        gateways,
+        incompatible_client_count,
+        %Actor{type: :account_admin_user} = admin
+      ) do
     params = %{devices_order_by: "devices:asc:last_seen_version"}
     outdated_clients_url = url(~p"/#{account}/devices?#{params}")
 
@@ -46,7 +51,12 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
-  def seats_warning_email(account, level, active_users_count, %Actor{} = admin) do
+  def seats_warning_email(
+        account,
+        level,
+        active_users_count,
+        %Actor{type: :account_admin_user} = admin
+      ) do
     billing_url = url(~p"/#{account}/settings/account")
     limit = account.limits.monthly_active_users_count
 
@@ -78,7 +88,12 @@ defmodule Portal.Mailer.Notifications do
   Firezone staff through `Portal.Ops` and placed inside the usual email layout
   as they are, so the HTML is not escaped.
   """
-  def product_announcement_email(subject, html_body, text_body, %Actor{} = admin) do
+  def product_announcement_email(
+        subject,
+        html_body,
+        text_body,
+        %Actor{type: :account_admin_user} = admin
+      ) do
     default_email()
     |> subject(subject)
     |> reply_to("support@firezone.dev")
