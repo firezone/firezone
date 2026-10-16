@@ -407,8 +407,8 @@ defmodule Portal.Billing do
   Where a Business or Enterprise account stands against its monthly active seat limit.
 
     * `:approaching` - fewer than 10% of seats remain, at least one is free
-    * `:at_limit` - every seat is used, new users are blocked
-    * `:over` - more active users than seats, covered by the limits exceeded email
+    * `:at_limit` - every seat is used; Business blocks new users from here
+    * `:over` - more active users than seats
     * `:clear` - plenty of seats remain
 
   Returns `nil` for other plans and for accounts without a seat limit.

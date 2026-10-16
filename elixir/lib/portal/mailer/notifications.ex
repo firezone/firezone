@@ -52,6 +52,7 @@ defmodule Portal.Mailer.Notifications do
 
     heading =
       case level do
+        :over -> "You are over your seat limit"
         :at_limit -> "You have reached your seat limit"
         :approaching -> "You are approaching your seat limit"
       end
@@ -68,6 +69,7 @@ defmodule Portal.Mailer.Notifications do
       active_users_count: active_users_count,
       seats_limit: limit,
       seats_remaining: max(limit - active_users_count, 0),
+      seats_over: max(active_users_count - limit, 0),
       billing_url: billing_url,
       unsubscribe_url: unsubscribe_url(admin, :seat_limit_warnings)
     )

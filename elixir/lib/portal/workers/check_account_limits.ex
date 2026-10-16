@@ -24,10 +24,11 @@ defmodule Portal.Workers.CheckAccountLimits do
   # Send email reminder every 3 days
   @email_reminder_interval_days 3
 
-  # Repeat the Business and Enterprise seat warning email at most once a week,
-  # unless the account's state gets worse (approaching -> at limit)
-  @seats_warning_interval_days 7
-  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2}
+  # Business blocks new users at its seat limit, so it is warned before and at
+  # the limit. Enterprise is not blocked, so it is warned only once it is over.
+  # Each level is emailed once, until the account has plenty of seats again.
+  @seats_warning_levels %{business: [:approaching, :at_limit], enterprise: [:over]}
+  @seats_warning_rank %{nil => 0, :approaching => 1, :at_limit => 2, :over => 3}
 
   @batch_size 100
 
@@ -71,27 +72,24 @@ defmodule Portal.Workers.CheckAccountLimits do
     active_users = Map.get(account_counts, :active_users, 0)
 
     case Billing.seats_warning_level(account, active_users) do
-      level when level in [:approaching, :at_limit] ->
-        if seats_warning_due?(account, level) do
-          send_seats_warning_email(account, level, active_users)
-        end
-
       :clear ->
         clear_seats_warning(account)
 
-      _ ->
+      nil ->
         :ok
+
+      level ->
+        if seats_warning_due?(account, level) do
+          send_seats_warning_email(account, level, active_users)
+        end
     end
   end
 
-  defp seats_warning_due?(%{seats_warning_last_sent_at: nil}, _level), do: true
-
   defp seats_warning_due?(account, level) do
-    worse? = @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level]
+    emailed_levels = Map.get(@seats_warning_levels, Billing.plan_type(account), [])
 
-    worse? or
-      DateTime.diff(DateTime.utc_now(), account.seats_warning_last_sent_at, :day) >=
-        @seats_warning_interval_days
+    level in emailed_levels and
+      @seats_warning_rank[level] > @seats_warning_rank[account.seats_warning_level]
   end
 
   defp clear_seats_warning(%{seats_warning_last_sent_at: nil, seats_warning_level: nil}), do: :ok
@@ -179,14 +177,25 @@ defmodule Portal.Workers.CheckAccountLimits do
       )
     end
 
-    send_email? = should_send_email?(account)
+    emailed_flags = limits_exceeded_email_flags(account, flags)
+    send_email? = any_exceeded?(emailed_flags) and should_send_email?(account)
     flags = maybe_put_sent_at(flags, send_email?)
 
     {:ok, updated_account} = update_account_limits(account, flags)
 
     if send_email? do
-      warning = Billing.build_limits_exceeded_message(updated_account, counts)
+      warning = Billing.build_limits_exceeded_message(struct(updated_account, emailed_flags), counts)
       send_limit_exceeded_emails(updated_account, warning)
+    end
+  end
+
+  # Enterprise seats are not enforced and going over them has its own seat
+  # warning email, so they are left out of this one.
+  defp limits_exceeded_email_flags(account, flags) do
+    if Billing.plan_type(account) == :enterprise do
+      %{flags | seats_limit_exceeded: false}
+    else
+      flags
     end
   end
 

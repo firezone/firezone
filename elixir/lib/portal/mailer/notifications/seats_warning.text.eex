@@ -1,23 +1,30 @@
 <%= @heading %>
 
 Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) <%= case @level do %>
+<% :over -> %>has more monthly active users than the seats included in your subscription.
 <% :at_limit -> %>has used every monthly active user seat included in your subscription.
 <% _ -> %>is close to the number of monthly active users included in your subscription.
 <% end %>
 
 Current monthly active users: <%= @active_users_count %>
 Seats in your subscription: <%= @seats_limit %>
-Seats remaining: <%= @seats_remaining %>
+<%= case @level do %>
+<% :over -> %>Seats over your subscription: <%= @seats_over %>
+<% _ -> %>Seats remaining: <%= @seats_remaining %>
+<% end %>
 
 What happens next?
 <%= case @level do %>
+<% :over -> %>Your users can still sign in and connect. To add seats to your subscription, contact your account manager.
 <% :at_limit -> %>New users cannot sign in or connect until you add seats. Users who are already active are not affected.
-<% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.
-<% end %>
 
 To add seats, go to Org Settings -> Account (<%= @billing_url %>) in the admin portal and click the "Manage plan" button.
+<% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.
 
-You will get this reminder at most once a week while your seats are nearly or fully used. If you have any questions, just reply to this email to reach our support team.
+To add seats, go to Org Settings -> Account (<%= @billing_url %>) in the admin portal and click the "Manage plan" button.
+<% end %>
+
+If you have any questions, just reply to this email to reach our support team.
 
 Thanks,
 The Firezone Team

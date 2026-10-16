@@ -147,7 +147,7 @@ defmodule Portal.Mailer.NotificationsTest do
     end
   end
 
-  describe "seats_warning_email/5" do
+  describe "seats_warning_email/4" do
     test "is sent to one admin with a link to turn it off", %{account: account} do
       admin = admin_actor_fixture(account: account)
       email = seats_warning_email(account, :at_limit, 100, admin)
@@ -158,9 +158,23 @@ defmodule Portal.Mailer.NotificationsTest do
       assert unsubscribe_setting(email.text_body, admin) == :seat_limit_warnings
       assert email.html_body =~ "/#{account.id}/unsubscribe/"
     end
+    test "tells an account over its limit that users can still connect", %{account: account} do
+      admin = admin_actor_fixture(account: account)
+      email = seats_warning_email(account, :over, 105, admin)
+
+      assert email.subject == "You are over your seat limit"
+
+      for body <- [email.text_body, email.html_body] do
+        assert body =~ "Seats over your subscription: 5"
+        assert body =~ "Your users can still sign in and connect."
+        assert body =~ "contact your account manager"
+        refute body =~ "cannot sign in"
+        refute body =~ "Manage plan"
+      end
+    end
   end
 
-  describe "product_announcement_email/6" do
+  describe "product_announcement_email/4" do
     test "places the announcement inside the email layout", %{account: account} do
       admin = admin_actor_fixture(account: account)
 

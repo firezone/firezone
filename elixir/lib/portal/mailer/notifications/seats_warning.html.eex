@@ -71,28 +71,28 @@
                     <%= @heading %>
                   </h1>
                   <p style="margin: 0; line-height: 24px">
-                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) <%= case @level do %><% :at_limit -> %>has used every monthly active user seat included in your subscription.<% _ -> %>is close to the number of monthly active users included in your subscription.<% end %>
+                    Your Firezone account <strong><%= @account.slug %></strong> (<code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @account.id %></code>) <%= case @level do %><% :over -> %>has more monthly active users than the seats included in your subscription.<% :at_limit -> %>has used every monthly active user seat included in your subscription.<% _ -> %>is close to the number of monthly active users included in your subscription.<% end %>
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <div style="margin: 0; padding: 16px; background-color: #fffbeb; border-radius: 4px; color: #92400e; font-weight: 500; line-height: 24px">
                     <div>Current monthly active users: <%= @active_users_count %></div>
                     <div>Seats in your subscription: <%= @seats_limit %></div>
-                    <div>Seats remaining: <%= @seats_remaining %></div>
+                    <%= case @level do %><% :over -> %><div>Seats over your subscription: <%= @seats_over %></div><% _ -> %><div>Seats remaining: <%= @seats_remaining %></div><% end %>
                   </div>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0 0 16px 0; line-height: 24px;">
                     <span style="font-weight: 600">What happens next?</span>
                   </p>
                   <p style="margin: 0; line-height: 24px">
-                    <%= case @level do %><% :at_limit -> %>New users cannot sign in or connect until you add seats. Users who are already active are not affected.<% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.<% end %>
+                    <%= case @level do %><% :over -> %>Your users can still sign in and connect.<% :at_limit -> %>New users cannot sign in or connect until you add seats. Users who are already active are not affected.<% _ -> %>When all seats are used, new users cannot sign in or connect until you add seats. Users who are already active are not affected.<% end %>
                   </p>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Org Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button.
+                    <%= case @level do %><% :over -> %>To add seats to your subscription, contact your account manager.<% _ -> %>You can add seats by going to <a href="<%= @billing_url %>" style="color: #5e00d6; text-decoration: none;">Org Settings &rarr; Account</a> in the admin portal and clicking the "Manage plan" button.<% end %>
                   </p>
                   <div role="separator" style="line-height: 24px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    You will get this reminder at most once a week while your seats are nearly or fully used. If you have any questions, just reply to this email to reach our support team.
+                    If you have any questions, just reply to this email to reach our support team.
                   </p>
                   <p style="margin: 0; margin-top: 16px; line-height: 24px">
                     Thanks, <br>The Firezone Team
