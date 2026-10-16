@@ -86,7 +86,7 @@ defmodule Portal.Mailer.Notifications do
     |> with_account_id(admin.account_id)
     |> render_body(__MODULE__, :product_announcement,
       subject: subject,
-      announcement_html: Phoenix.HTML.raw(html_body),
+      announcement_html: announcement_html(html_body),
       announcement_text: text_body,
       unsubscribe_url: unsubscribe_url(admin, :product_announcements)
     )
@@ -146,6 +146,10 @@ defmodule Portal.Mailer.Notifications do
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :account_deletion_completed, account: account)
   end
+
+  # Staff-authored HTML only, see Portal.Ops.queue_product_announcement/3.
+  # sobelow_skip ["XSS.Raw"]
+  defp announcement_html(html_body), do: Phoenix.HTML.raw(html_body)
 
   defp unsubscribe_url(actor, notification) do
     url(~p"/#{actor.account_id}/unsubscribe/#{UnsubscribeToken.sign(actor, notification)}")
