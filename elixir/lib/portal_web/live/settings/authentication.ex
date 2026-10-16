@@ -13,6 +13,7 @@ defmodule PortalWeb.Settings.Authentication do
     Okta
   }
 
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -62,7 +63,7 @@ defmodule PortalWeb.Settings.Authentication do
       :ok = Portal.PubSub.Changes.subscribe(socket.assigns.account.id, :portal_sessions)
     end
 
-    {:ok, init(socket)}
+    {:ok, init_if_connected(socket)}
   end
 
   # New Auth Provider
@@ -615,6 +616,21 @@ defmodule PortalWeb.Settings.Authentication do
     assign(socket, providers: providers)
   end
 
+  # The static render shows a skeleton instead, so the providers are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket),
+      do: init(socket),
+      else:
+        assign(socket,
+          providers: nil,
+          has_trust_anchors?: false,
+          verification_error: nil,
+          pending_confirm: nil,
+          open_provider_actions_id: nil
+        )
+  end
+
   defp init(socket) do
     providers =
       Database.list_all_providers(
@@ -644,7 +660,9 @@ defmodule PortalWeb.Settings.Authentication do
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Identity Providers</h2>
-            <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
+            <span :if={@providers} class="text-xs text-subtle tabular-nums">
+              {length(@providers)}
+            </span>
           </div>
           <div class="flex items-center gap-2">
             <Navigation.docs_action path="/authenticate" />
@@ -658,7 +676,8 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
 
         <div class="flex-1 overflow-auto">
-          <table class="w-full text-sm border-collapse">
+          <SettingsComponents.skeleton :if={is_nil(@providers)} id="providers-skeleton" />
+          <table :if={@providers} class="w-full text-sm border-collapse">
             <thead class="sticky top-0 z-10 bg-raised">
               <tr class="border-b border-border-strong">
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
