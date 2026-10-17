@@ -1372,9 +1372,9 @@ defmodule PortalWeb.SignUp do
   defp send_sign_up_survey(_account, _actor, nil), do: :ok
 
   defp send_sign_up_survey(account, actor, sign_up_survey) do
-    if Portal.Mailer.FeedbackEmail.enabled?() do
+    if Portal.Mailer.InternalEmail.enabled?() do
       account
-      |> Portal.Mailer.FeedbackEmail.sign_up_survey_email(actor, sign_up_survey)
+      |> Portal.Mailer.InternalEmail.sign_up_survey_email(actor, sign_up_survey)
       |> Portal.Mailer.enqueue()
       |> case do
         {:ok, _result} ->

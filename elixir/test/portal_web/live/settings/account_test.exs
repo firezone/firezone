@@ -317,7 +317,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
   describe "delete account" do
     setup do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
       :ok
     end
 
