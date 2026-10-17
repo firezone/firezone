@@ -5,9 +5,9 @@
 use std::ops::ControlFlow;
 use std::time::Instant;
 
-use boringtun::noise::Tunn;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
+use sanstun::Tunnel;
 
 use crate::{IceConfig, IceRole};
 
@@ -180,16 +180,15 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_network<'b>(
+    pub(crate) fn replay_cached_response(
         &mut self,
-        tunnel: &mut Tunn,
-        bytes: &'b [u8],
+        init: &[u8],
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) -> ControlFlow<(), &'b [u8]> {
+    ) -> bool {
         match self {
-            Self::Ice(_) => ControlFlow::Continue(bytes),
-            Self::Path(agent) => agent.handle_inbound_network(tunnel, bytes, path, now),
+            Self::Ice(_) => false,
+            Self::Path(agent) => agent.replay_cached_response(init, path, now),
         }
     }
 
@@ -240,21 +239,15 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
         if let Self::Path(path) = self {
-            path.handle_outbound(bytes, now);
+            path.initiate_handshake(tunnel, now);
         }
     }
 
     pub(crate) fn confirm_session(&mut self, now: Instant) {
         if let Self::Path(path) = self {
             path.confirm_session(now);
-        }
-    }
-
-    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, now);
         }
     }
 

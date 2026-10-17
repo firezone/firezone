@@ -9,7 +9,6 @@ mod backoff;
 mod buffer;
 mod candidate;
 mod channel_data;
-mod index;
 mod node;
 mod utils;
 
@@ -22,13 +21,16 @@ pub use node::{
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64);
 
+/// Returns whether `payload` has the type and length of a WireGuard message.
+///
+/// This does not authenticate the message.
 pub fn is_wireguard(payload: &[u8]) -> bool {
-    boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()
-}
+    let Some((ty, _)) = payload.split_first_chunk::<4>() else {
+        return false;
+    };
 
-pub(crate) fn is_handshake(payload: &[u8]) -> bool {
-    use boringtun::noise::Packet;
-
-    boringtun::noise::Tunn::parse_incoming_packet(payload)
-        .is_ok_and(|p| matches!(p, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)))
+    matches!(
+        (u32::from_le_bytes(*ty), payload.len()),
+        (1, 148) | (2, 92) | (3, 64) | (4, 32..)
+    )
 }
