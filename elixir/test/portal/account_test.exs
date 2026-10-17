@@ -100,6 +100,29 @@ defmodule Portal.AccountTest do
     end
   end
 
+  describe "meters" do
+    test "is unset on a new account, so its Gateways report nothing" do
+      assert account_fixture().meters == nil
+    end
+
+    test "is ops-set, so the account changeset admins reach does not cast it" do
+      account =
+        account_fixture()
+        |> change(meters: ["ops.meter"])
+        |> Repo.update!()
+
+      changeset =
+        PortalWeb.Settings.Account.Database.change_account_name(account, %{
+          "name" => "New name",
+          "meters" => ["evil.meter"]
+        })
+
+      assert changeset.valid?
+      refute Map.has_key?(changeset.changes, :meters)
+      assert apply_changes(changeset).meters == ["ops.meter"]
+    end
+  end
+
   describe "changeset/1 key validations" do
     test "rejects key with wrong length" do
       changeset = build_changeset(%{key: "abc"})

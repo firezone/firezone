@@ -74,6 +74,7 @@ use anyhow::{Context as _, ErrorExt as _};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
+use opentelemetry::metrics::Counter;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -451,13 +452,18 @@ struct Spool {
     /// When the disk-full circuit breaker re-arms, if it is tripped.
     disk_full_until: Option<Instant>,
     dropped: u64,
+    errors: Counter<u64>,
 }
 
 impl Spool {
     fn new(root: &Path) -> Self {
+        let errors = otel_instruments::flow_log_report_errors();
+
         // The volume can only be queried through a path that exists, and the
         // spool root is the writer's to create either way.
         if let Err(e) = create_dir_secure(root) {
+            errors.add(1, &[otel_attributes::io_error_type(&e)]);
+
             tracing::warn!(root = %root.display(), "Failed to create flow-log spool root: {e}");
         }
 
@@ -472,6 +478,7 @@ impl Spool {
             counted_at: Instant::now(),
             disk_full_until: None,
             dropped: 0,
+            errors,
         }
     }
 
@@ -491,9 +498,25 @@ impl Spool {
         }
 
         match write_report(&self.root, report) {
-            Outcome::Written { bytes } => self.spooled += clusters_for(bytes, self.cluster),
-            Outcome::DiskFull => self.disk_full_until = Some(now + DISK_FULL_COOLDOWN),
-            Outcome::Skipped => {}
+            Ok(Outcome::Written { bytes }) => self.spooled += clusters_for(bytes, self.cluster),
+            Ok(Outcome::Skipped) => {}
+            Err(e) => self.handle_failed_write(&e, now),
+        }
+    }
+
+    /// A write that failed because the disk is full fails the same way until
+    /// something frees space, so the spool backs off instead of retrying.
+    fn handle_failed_write(&mut self, e: &anyhow::Error, now: Instant) {
+        tracing::debug!("{e:#}");
+
+        let Some(io) = e.any_downcast_ref::<std::io::Error>() else {
+            return;
+        };
+
+        self.errors.add(1, &[otel_attributes::io_error_type(io)]);
+
+        if io.kind() == std::io::ErrorKind::StorageFull {
+            self.disk_full_until = Some(now + DISK_FULL_COOLDOWN);
         }
     }
 
@@ -528,20 +551,17 @@ enum Outcome {
     Written {
         bytes: u64,
     },
-    /// The disk is full, so every write after this one fails the same way until
-    /// something frees space.
-    DiskFull,
     /// Nothing was written, for a reason particular to this report.
     Skipped,
 }
 
-fn write_report(root: &Path, report: &Report) -> Outcome {
+fn write_report(root: &Path, report: &Report) -> anyhow::Result<Outcome> {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 
-        return Outcome::Skipped;
+        return Ok(Outcome::Skipped);
     }
 
     let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
@@ -549,7 +569,7 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
         Err(e) => {
             tracing::warn!("Failed to serialize flow-log report: {e:#}");
 
-            return Outcome::Skipped;
+            return Ok(Outcome::Skipped);
         }
     };
 
@@ -558,24 +578,13 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
-        Ok(()) => Outcome::Written {
-            bytes: contents.len() as u64,
-        },
-        Err(e)
-            if e.any_downcast_ref::<std::io::Error>()
-                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-        {
-            tracing::debug!(path = %path.display(), "{e:#}");
 
-            Outcome::DiskFull
-        }
-        Err(e) => {
-            tracing::warn!(path = %path.display(), "{e:#}");
+    atomicfs::write(&path, &contents)
+        .with_context(|| format!("Failed to write flow-log report to {}", path.display()))?;
 
-            Outcome::Skipped
-        }
-    }
+    Ok(Outcome::Written {
+        bytes: contents.len() as u64,
+    })
 }
 
 /// What a report of `bytes` costs the spool.

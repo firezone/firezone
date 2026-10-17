@@ -47,6 +47,12 @@ services:
       OPS_COOKIE_SIGNING_SALT: "S/Cb9k/TiTcnjvjDRqXuWYj0TBd2cH7Q"
       OPS_ADMIN_USERNAME: "admin"
       OPS_ADMIN_PASSWORD: "firezone"
+      ## Development-only signing key for the Gateway metrics tokens.
+      METRICS_TOKEN_KEY_ID: "dev"
+      METRICS_TOKEN_PRIVATE_KEY: |
+        -----BEGIN PRIVATE KEY-----
+        MC4CAQAwBQYDK2VwBCIEIGLZO5mePS0T9HCiYRgxoyylxUwIyYiVMQHuIpd5kwv+
+        -----END PRIVATE KEY-----
       # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
