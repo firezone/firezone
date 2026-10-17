@@ -735,7 +735,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     end
 
     test "reports Enterprise overage to Firezone instead of the admins" do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail,
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail,
         recipient: "sales@example.com"
       )
 
@@ -756,7 +756,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     end
 
     test "repeats the Enterprise overage report every 30 days" do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail,
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail,
         recipient: "sales@example.com"
       )
 
@@ -781,7 +781,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     end
 
     test "does not record an Enterprise overage report when no recipient is set" do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: nil)
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: nil)
 
       account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
       admin_actor_fixture(account: account)

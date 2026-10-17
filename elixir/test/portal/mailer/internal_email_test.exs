@@ -1,4 +1,4 @@
-defmodule Portal.Mailer.FeedbackEmailTest do
+defmodule Portal.Mailer.InternalEmailTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
@@ -6,15 +6,15 @@ defmodule Portal.Mailer.FeedbackEmailTest do
   import Portal.SubjectFixtures
 
   alias Portal.Config
-  alias Portal.Mailer.FeedbackEmail
+  alias Portal.Mailer.InternalEmail
 
   test "uses the configured recipient" do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
     subject = subject_fixture(actor: actor, account: account)
-    Config.put_env_override(:portal, FeedbackEmail, recipient: "feedback@example.com")
+    Config.put_env_override(:portal, InternalEmail, recipient: "feedback@example.com")
 
-    email = FeedbackEmail.feedback_email(subject, "Feedback", "https://app.firezone.dev/")
+    email = InternalEmail.feedback_email(subject, "Feedback", "https://app.firezone.dev/")
 
     assert email.to == [{"", "feedback@example.com"}]
     assert email.subject == "In-portal feedback submission"
@@ -27,9 +27,9 @@ defmodule Portal.Mailer.FeedbackEmailTest do
         limits: %{monthly_active_users_count: 100}
       })
 
-    Config.put_env_override(:portal, FeedbackEmail, recipient: "sales@example.com")
+    Config.put_env_override(:portal, InternalEmail, recipient: "sales@example.com")
 
-    email = FeedbackEmail.seats_overage_email(account, 112)
+    email = InternalEmail.seats_overage_email(account, 112)
 
     assert email.to == [{"", "sales@example.com"}]
     assert email.subject == "Enterprise seat overage: #{account.name}"

@@ -747,7 +747,7 @@ if config_env() == :prod do
   config :portal, Portal.Mailer.PostureProviderInterestEmail,
     recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
 
-  config :portal, Portal.Mailer.FeedbackEmail,
+  config :portal, Portal.Mailer.InternalEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)
 
   config :portal, Portal.Workers.SignUpFollowUp,

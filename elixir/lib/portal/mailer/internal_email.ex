@@ -1,5 +1,8 @@
-defmodule Portal.Mailer.FeedbackEmail do
-  @moduledoc false
+defmodule Portal.Mailer.InternalEmail do
+  @moduledoc """
+  Emails to the Firezone team rather than to customers, sent to the
+  `FEEDBACK_EMAIL_RECIPIENT` address.
+  """
 
   import Portal.Mailer
   import Swoosh.Email

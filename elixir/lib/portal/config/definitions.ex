@@ -989,8 +989,9 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  Recipient address for feedback submitted through the portal.
-  Feedback is disabled when unset or blank.
+  Recipient address for emails to the Firezone team: portal feedback, sign-up
+  questionnaires, account deletion feedback and Enterprise seat overage reports.
+  They are not sent when unset or blank.
   """
   defconfig(:feedback_email_recipient, :string,
     default: nil,

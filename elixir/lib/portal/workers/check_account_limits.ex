@@ -17,7 +17,7 @@ defmodule Portal.Workers.CheckAccountLimits do
   alias Portal.Account
   alias Portal.Billing
   alias Portal.Mailer
-  alias Portal.Mailer.FeedbackEmail
+  alias Portal.Mailer.InternalEmail
   alias Portal.Mailer.Notifications
   alias __MODULE__.Database
   require Logger
@@ -84,7 +84,7 @@ defmodule Portal.Workers.CheckAccountLimits do
         end
 
       {:enterprise, :over} ->
-        if seats_overage_report_due?(account) and FeedbackEmail.enabled?() do
+        if seats_overage_report_due?(account) and InternalEmail.enabled?() do
           send_seats_overage_report(account, active_users)
         end
 
@@ -102,7 +102,7 @@ defmodule Portal.Workers.CheckAccountLimits do
 
   defp send_seats_overage_report(account, active_users) do
     account
-    |> FeedbackEmail.seats_overage_email(active_users)
+    |> InternalEmail.seats_overage_email(active_users)
     |> Mailer.enqueue()
     |> case do
       {:ok, _result} ->
