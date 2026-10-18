@@ -11,7 +11,7 @@ const MAX_SEGMENT_SIZE: usize =
 /// The size every buffer in [`GSO_BUFFERS`] is allocated with.
 ///
 /// An IP packet - and therefore the payload of one GSO send - can never exceed 65535 bytes.
-/// A [`Train`] is capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which
+/// A [`UdpGsoTrain`] is capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which
 /// is always below this capacity, so a pooled buffer never grows and never reallocates.
 ///
 /// The buffer occupies this much memory regardless of how many segments it actually carries; every
@@ -24,7 +24,7 @@ bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-qu
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
 #[derive(Debug, Clone, Copy)]
-pub struct Train {
+pub struct UdpGsoTrain {
     connection: Connection,
     /// The GSO segment size: the length of the first datagram.
     segment_size: usize,
@@ -33,7 +33,7 @@ pub struct Train {
     len: usize,
 }
 
-impl Train {
+impl UdpGsoTrain {
     /// Starts a train with a datagram of `len` bytes.
     pub fn new(src: Option<SocketAddr>, dst: SocketAddr, ecn: Ecn, len: usize) -> Self {
         debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn shorter_segment_seals_train() {
-        let mut train = Train::new(None, DST_1, Ecn::NonEct, 6);
+        let mut train = UdpGsoTrain::new(None, DST_1, Ecn::NonEct, 6);
 
         assert!(train.try_append(None, DST_1, Ecn::NonEct, 6));
         assert!(train.try_append(None, DST_1, Ecn::NonEct, 3));
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn rejects_other_connection_and_longer_segment() {
-        let mut train = Train::new(None, DST_1, Ecn::NonEct, 6);
+        let mut train = UdpGsoTrain::new(None, DST_1, Ecn::NonEct, 6);
 
         assert!(!train.try_append(None, DST_2, Ecn::NonEct, 6));
         assert!(!train.try_append(None, DST_1, Ecn::Ect0, 6));
@@ -158,7 +158,7 @@ mod tests {
     }
 
     fn assert_segments_per_send(segment_size: usize, segments_per_send: usize) {
-        let mut train = Train::new(None, DST_1, Ecn::NonEct, segment_size);
+        let mut train = UdpGsoTrain::new(None, DST_1, Ecn::NonEct, segment_size);
 
         for _ in 1..segments_per_send {
             assert!(train.try_append(None, DST_1, Ecn::NonEct, segment_size));

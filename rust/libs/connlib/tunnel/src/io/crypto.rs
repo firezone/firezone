@@ -17,7 +17,7 @@ use snownet::{DecryptJob, DecryptedPacket, EncryptJob};
 use socket_factory::{DatagramOut, MAX_GSO_SEGMENTS};
 use tokio::sync::oneshot;
 
-use super::Train;
+use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::Sockets;
 
@@ -68,7 +68,7 @@ pub struct Received<P> {
 /// through a `oneshot` channel per batch, which we queue in submission order: the UDP socket
 /// threads send the encrypted batches in that order and we accept the decrypted ones in that order.
 ///
-/// An encrypt batch is one GSO [`Train`]. It goes to a worker as soon as the next packet would
+/// An encrypt batch is one [`UdpGsoTrain`]. It goes to a worker as soon as the next packet would
 /// start a new train, or when we flush.
 pub struct CryptoWorkers {
     encrypt: Vec<mpsc::Sender<(EncryptBatch, oneshot::Sender<DatagramOut>)>>,
@@ -90,7 +90,7 @@ pub struct CryptoWorkers {
 }
 
 struct EncryptBatch {
-    train: Train,
+    train: UdpGsoTrain,
     jobs: Buffer<VecBuf<EncryptJob>>,
 }
 
@@ -152,7 +152,7 @@ impl CryptoWorkers {
         let mut jobs = ENCRYPT_JOBS.pull();
         jobs.push(job);
         let next = EncryptBatch {
-            train: Train::new(src, dst, ecn, len),
+            train: UdpGsoTrain::new(src, dst, ecn, len),
             jobs,
         };
 

@@ -260,7 +260,7 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// Worst-case memory pinned by the outbound UDP datagram queues.
 ///
 /// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
-/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). A [`DatagramOut`] of a [`Train`](crate::io::Train)
+/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). A [`DatagramOut`] of a [`UdpGsoTrain`](crate::io::UdpGsoTrain)
 /// owns a GSO buffer allocated at [`crate::io::GSO_BUFFER_SIZE`] regardless of how full it is. That
 /// pool never shrinks, so a send backlog that ever fills these queues pins this much memory for the
 /// rest of the session.

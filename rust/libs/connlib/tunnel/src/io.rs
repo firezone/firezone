@@ -3,12 +3,12 @@ mod device;
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
-mod train;
 mod udp_dns;
+mod udp_gso_train;
 
 pub use crypto::Received;
 pub use device::{Device, TunChannelClosed};
-pub(crate) use train::{GSO_BUFFER_SIZE, Train};
+pub(crate) use udp_gso_train::{GSO_BUFFER_SIZE, UdpGsoTrain};
 
 use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
