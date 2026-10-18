@@ -131,7 +131,7 @@ pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData>
         .collect::<BTreeSet<_>>()
 }
 
-const SITE_NAMES: [&str; 3] = ["sydney", "frankfurt", "virginia"];
+const SITE_NAMES: [&str; 3] = ["sydney", "us-west", "us-east"];
 
 pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> StubPortal {
     let internet_site = Site {
