@@ -16,13 +16,13 @@
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
 use opentelemetry::KeyValue;
-use std::collections::VecDeque;
 use std::io;
 use std::mem;
 use std::os::fd::{AsRawFd, RawFd};
 use std::pin::pin;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc::error::SendError;
 use tun_offload::virtio::{self, VNET_HDR_LEN};
 
 use tun::{InboundTx, OutboundRx, PacketBatch};
@@ -213,7 +213,7 @@ where
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
 
-    tokio::runtime::Builder::new_current_thread()
+    let result = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("Failed to create runtime")?
@@ -221,7 +221,6 @@ where
             let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
             let mut batch = PacketBatch::default();
-            let mut overflow = VecDeque::new();
 
             loop {
                 // Without the explicit wake-up on `closed`, this task would idle in
@@ -240,23 +239,6 @@ where
                 };
 
                 loop {
-                    // A full batch spills the rest of its super packet into `overflow`:
-                    // hand off the batch and continue the drain with the spilled packets.
-                    while !overflow.is_empty() {
-                        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
-                            tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                            return anyhow::Ok(());
-                        }
-
-                        while let Some(packet) = overflow.pop_front() {
-                            if let Err(packet) = batch.try_push(packet) {
-                                overflow.push_front(packet);
-                                break;
-                            }
-                        }
-                    }
-
                     let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
                         Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                         Ok(Ok(len)) => len,
@@ -267,40 +249,64 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    match virtio::split(&buf[..len]) {
-                        Ok(mut segments) => {
-                            batch_size_histogram
-                                .record(segments.len() as u64, &recv_metric_attributes());
-
-                            for packet in segments.drain(..) {
-                                #[cfg(debug_assertions)]
-                                tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                                if let Err(packet) = batch.try_push(packet) {
-                                    overflow.push_back(packet);
-                                }
-                            }
-                        }
+                    let segments = match virtio::split(&buf[..len]) {
+                        Ok(segments) => segments,
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                            continue;
                         }
-                        Err(e) => tracing::warn!("{e:#}"),
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                            continue;
+                        }
+                    };
+
+                    batch_size_histogram.record(segments.len() as u64, &recv_metric_attributes());
+
+                    // A super packet is a single flow and becomes a batch of its own; consecutive
+                    // plain packets of the same flow share one.
+                    let is_super_packet = segments.len() > 1;
+
+                    if is_super_packet && !batch.is_empty() {
+                        inbound_tx.send(mem::take(&mut batch)).await?;
+                    }
+
+                    for packet in segments {
+                        #[cfg(debug_assertions)]
+                        tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                        let pushed = if is_super_packet {
+                            batch.try_push(packet)
+                        } else {
+                            batch.try_push_same_flow(packet)
+                        };
+
+                        if let Err(packet) = pushed {
+                            inbound_tx
+                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .await?;
+                        }
+                    }
+
+                    if is_super_packet {
+                        inbound_tx.send(mem::take(&mut batch)).await?;
                     }
                 }
 
-                if batch.is_empty() {
-                    continue;
-                }
-
-                if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
-                    tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-                    return anyhow::Ok(());
+                if !batch.is_empty() {
+                    inbound_tx.send(mem::take(&mut batch)).await?;
                 }
             }
-        })?;
+        });
 
-    Ok(())
+    match result {
+        Err(e) if e.any_is::<SendError<PacketBatch>>() => {
+            tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+            Ok(())
+        }
+        result => result,
+    }
 }
 
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {

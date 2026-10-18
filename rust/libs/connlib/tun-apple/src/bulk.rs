@@ -181,12 +181,12 @@ pub fn recv(
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            let Err(packet) = batch.try_push(packet) else {
+                            let Err(packet) = batch.try_push_same_flow(packet) else {
                                 continue;
                             };
 
-                            // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
-                            // packets per syscall, but a full batch is handed off all the same.
+                            // The flow changed; the batch cannot be full as we read at most
+                            // `MAX_BATCH_SIZE` packets per syscall.
                             if inbound_tx
                                 .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
                                 .await

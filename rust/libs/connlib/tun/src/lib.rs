@@ -96,10 +96,31 @@ impl PacketBatch {
         Ok(())
     }
 
+    /// Appends a packet to the batch, handing it back if the batch is full or the packet
+    /// belongs to a different flow than the batch's last packet.
+    pub fn try_push_same_flow(&mut self, packet: IpPacket) -> Result<(), IpPacket> {
+        if self
+            .inner
+            .last()
+            .is_some_and(|last| !same_flow(last, &packet))
+        {
+            return Err(packet);
+        }
+
+        self.try_push(packet)
+    }
+
     /// Removes all packets from the batch, in order.
     pub fn drain(&mut self) -> impl Iterator<Item = IpPacket> + '_ {
         self.inner.drain(..)
     }
+}
+
+fn same_flow(a: &IpPacket, b: &IpPacket) -> bool {
+    a.source_and_destination() == b.source_and_destination()
+        && a.next_header() == b.next_header()
+        && a.source_protocol().ok() == b.source_protocol().ok()
+        && a.destination_protocol().ok() == b.destination_protocol().ok()
 }
 
 impl std::ops::Deref for PacketBatch {
@@ -253,5 +274,25 @@ mod tests {
         // The dropped batch's storage is recycled; it must come back empty.
         let batch = PacketBatch::default();
         assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn same_flow_push_refuses_a_new_flow() {
+        let udp = |dst_port| {
+            ip_packet::make::udp_packet(
+                std::net::Ipv4Addr::LOCALHOST,
+                std::net::Ipv4Addr::LOCALHOST,
+                1234,
+                dst_port,
+                &[],
+            )
+            .unwrap()
+        };
+
+        let mut batch = PacketBatch::new(udp(5678));
+
+        assert!(batch.try_push_same_flow(udp(5678)).is_ok());
+        assert!(batch.try_push_same_flow(udp(5679)).is_err());
+        assert_eq!(batch.len(), 2);
     }
 }

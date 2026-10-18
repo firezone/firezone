@@ -959,8 +959,10 @@ impl RecvBuffers {
     }
 }
 
-/// A batch of datagrams, received from the socket in a single syscall and exchanged
-/// over the socket channels as a single item.
+/// A batch of datagrams, received from the socket in a single syscall.
+///
+/// [`DatagramBatch::into_runs`] cuts it into the per-sender runs that the socket channels
+/// exchange as single items.
 ///
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
@@ -1041,6 +1043,44 @@ impl<B> DatagramBatch<B> {
             buf_index,
             segment_index: 0,
         }
+    }
+}
+
+impl DatagramBatch {
+    /// Splits the batch into runs of consecutive datagrams from the same remote address.
+    ///
+    /// With GRO, a run is typically a single receive buffer; without it, consecutive datagrams of
+    /// one sender within the same syscall.
+    pub fn into_runs(self) -> impl Iterator<Item = Self> {
+        let mut rest = Some(self);
+
+        std::iter::from_fn(move || {
+            let mut run = rest.take()?;
+
+            let Some(end) = run
+                .metas
+                .windows(2)
+                .position(|pair| pair[0].addr != pair[1].addr)
+                .map(|i| i + 1)
+            else {
+                return Some(run);
+            };
+
+            let mut buffers = UDP_RECV_BUFFERS.pull();
+            buffers.extend(run.buffers.drain(end..));
+            let mut metas = UDP_RECV_METAS.pull();
+            metas.extend(run.metas.drain(end..));
+            let len = metas.len();
+
+            let mut tail = Self::new(buffers, metas, run.port, len);
+            tail.drained = run.drained;
+            run.num_packets -= tail.num_packets;
+            run._total_bytes -= tail._total_bytes;
+
+            rest = Some(tail);
+
+            Some(run)
+        })
     }
 }
 
@@ -1263,6 +1303,47 @@ mod tests {
 
         assert_eq!(batch.drain().count(), 0);
         assert!(batch.is_empty());
+    }
+
+    #[test]
+    fn into_runs_cuts_where_the_remote_address_changes() {
+        let remote_a = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000);
+        let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
+        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
+
+        let mut batch = RecvBuffers::new(8).pull_batch();
+        for (i, (payload, meta)) in [
+            (&b"foo1foo2"[..], recv_meta(remote_a, local, 8, 4)),
+            (b"foo3", recv_meta(remote_a, local, 4, 4)),
+            (b"bar1", recv_meta(remote_b, local, 4, 4)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            batch.buffers[i][..payload.len()].copy_from_slice(payload);
+            batch.metas[i] = meta;
+        }
+
+        let runs = DatagramBatch::new(batch.buffers, batch.metas, 0, 3)
+            .into_runs()
+            .map(|mut run| {
+                let len = run.len();
+                let packets = run.drain().map(|d| d.packet.to_vec()).collect::<Vec<_>>();
+
+                (len, packets)
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            runs,
+            vec![
+                (
+                    3,
+                    vec![b"foo1".to_vec(), b"foo2".to_vec(), b"foo3".to_vec()]
+                ),
+                (1, vec![b"bar1".to_vec()]),
+            ]
+        );
     }
 
     /// A zero stride on a non-empty buffer must not stall the iterator: the receive

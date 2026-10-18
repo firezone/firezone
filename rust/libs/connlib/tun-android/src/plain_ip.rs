@@ -89,9 +89,9 @@ where
                     }
                 };
 
-                // Drain the FD before handing the packets off as a single batch, so one
-                // channel item feeds a whole read burst into the state loop instead of
-                // one packet.
+                // Drain the FD, handing off consecutive packets of the same flow as a single
+                // batch, so one channel item feeds a whole burst into the state loop instead
+                // of one packet.
                 loop {
                     let mut ip_packet_buf = IpPacketBuf::new();
 
@@ -112,11 +112,12 @@ where
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            let Err(packet) = batch.try_push(packet) else {
+                            let Err(packet) = batch.try_push_same_flow(packet) else {
                                 continue;
                             };
 
-                            // The batch is full: hand it off and start a new one.
+                            // The batch is full or the flow changed: hand it off and start
+                            // a new one.
                             if inbound_tx
                                 .send(mem::replace(&mut batch, PacketBatch::new(packet)))
                                 .await
