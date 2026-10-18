@@ -77,7 +77,7 @@ pub struct CryptoWorkers {
     next_decrypt: usize,
 
     open_encrypt: Option<EncryptBatch>,
-    /// Batches that found their UDP socket's queue full, sent by [`CryptoWorkers::poll_flush`].
+    /// Closed batches waiting for room in their UDP socket's queue.
     unsent_encrypts: VecDeque<EncryptBatch>,
     staged_decrypts: Buffer<VecBuf<Received<DecryptJob>>>,
 
@@ -160,16 +160,8 @@ impl CryptoWorkers {
             return;
         };
 
-        if self.unsent_encrypts.is_empty() {
-            let (tx, rx) = oneshot::channel();
-
-            if sockets.try_send_encrypting(batch.version(), rx) {
-                self.dispatch_encrypt(batch, tx);
-                return;
-            }
-        }
-
         self.unsent_encrypts.push_back(batch);
+        self.try_flush_encrypts(sockets);
     }
 
     /// Stages `job` for decryption.
@@ -245,6 +237,22 @@ impl CryptoWorkers {
         self.open_encrypt = None;
         self.unsent_encrypts.clear();
         self.staged_decrypts.clear();
+    }
+
+    /// Hands queued batches to the workers while their socket's queue has room.
+    fn try_flush_encrypts(&mut self, sockets: &mut Sockets) {
+        while let Some(batch) = self.unsent_encrypts.front() {
+            let (tx, rx) = oneshot::channel();
+
+            if !sockets.try_send_encrypting(batch.version(), rx) {
+                return;
+            }
+
+            let Some(batch) = self.unsent_encrypts.pop_front() else {
+                return;
+            };
+            self.dispatch_encrypt(batch, tx);
+        }
     }
 
     fn dispatch_encrypt(&mut self, batch: EncryptBatch, encrypted: oneshot::Sender<DatagramOut>) {
