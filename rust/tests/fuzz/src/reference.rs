@@ -32,7 +32,7 @@ const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
@@ -40,6 +40,7 @@ pub struct ReferenceState {
     /// Relays that answer new allocations with `508 Insufficient Capacity`.
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
     /// Relays that accept allocations again while nodes may still ignore them, and since when.
+    #[serde(skip)]
     pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
     /// Whether a node may have no relay left because every relay it tried rejected its allocation.
     pub(crate) node_may_lack_relays: bool,
@@ -55,6 +56,7 @@ pub struct ReferenceState {
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) icmp_error_hosts: IcmpErrorHosts,
 
+    #[serde(skip)]
     pub(crate) network: RoutingTable,
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,

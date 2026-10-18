@@ -1,7 +1,12 @@
 //! Runs the protocol fuzz targets and replays their saved inputs.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
-use std::{path::PathBuf, sync::LazyLock, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    sync::LazyLock,
+    time::Instant,
+};
 
 use anyhow::Context as _;
 use arbitrary::{Arbitrary, Unstructured};
@@ -40,6 +45,9 @@ fn main() -> anyhow::Result<()> {
     }
 
     let inputs = load_inputs(cli.replay)?;
+    if let Some(directory) = cli.emit_json {
+        return emit_json(cli.target, &inputs, &directory);
+    }
 
     let started = Instant::now();
     for _ in 0..cli.repeat {
@@ -56,6 +64,21 @@ fn main() -> anyhow::Result<()> {
         "Replayed {iterations} inputs in {elapsed:.6}s ({:.2} iterations/sec)",
         iterations as f64 / elapsed
     );
+
+    Ok(())
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn emit_json(
+    target: Target,
+    inputs: &[(PathBuf, Vec<u8>)],
+    directory: &Path,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        target == Target::TunnelProto,
+        "--emit-json supports only tunnel-proto"
+    );
+    fuzz::json::emit(inputs, directory, targets::tunnel_proto::run)?;
 
     Ok(())
 }
@@ -82,6 +105,15 @@ struct Cli {
     /// Replays input files or corpus directories in one process.
     #[arg(long, value_name = "PATH", num_args = 1..)]
     replay: Vec<PathBuf>,
+
+    /// Writes JSON Lines describing each replayed input into this directory instead of timing the replay.
+    #[arg(
+        long,
+        value_name = "DIR",
+        requires = "replay",
+        conflicts_with = "repeat"
+    )]
+    emit_json: Option<PathBuf>,
 
     /// Replays the entire corpus this many times.
     #[arg(long, default_value_t = 1, requires = "replay", value_parser = clap::value_parser!(u64).range(1..))]
@@ -161,6 +193,36 @@ mod tests {
         assert_eq!(cli.target, Target::IpPacket);
         assert_eq!(cli.repeat, 3);
         assert_eq!(cli.replay, vec![PathBuf::from("corpus")]);
+    }
+
+    #[test]
+    fn emitting_json_requires_a_single_replay() {
+        for args in [
+            vec!["fuzz", "tunnel-proto", "--emit-json", "json"],
+            vec![
+                "fuzz",
+                "tunnel-proto",
+                "--replay",
+                "corpus",
+                "--emit-json",
+                "json",
+                "--repeat",
+                "2",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+        let cli = Cli::try_parse_from([
+            "fuzz",
+            "tunnel-proto",
+            "--replay",
+            "corpus",
+            "--emit-json",
+            "json",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.emit_json, Some(PathBuf::from("json")));
     }
 
     #[test]

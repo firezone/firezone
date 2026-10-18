@@ -3,12 +3,17 @@
 use chrono::{DateTime, Utc};
 use fuzz::{
     feedback,
+    json::Observer,
     tunnel_proto::{FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber},
 };
 
 const MAX_TRANSITIONS: usize = 20;
 
 pub fn test(data: &[u8]) {
+    run(data, &mut ());
+}
+
+pub fn run(data: &[u8], observer: &mut impl Observer) {
     let _guard = init_fuzz_subscriber();
     let now = *crate::START_TIME;
 
@@ -18,6 +23,7 @@ pub fn test(data: &[u8]) {
     let mut portal = generator.portal();
     let mut reference = generator.reference_state(&portal);
     let mut feedback_recorder = feedback::Recorder::default();
+    observer.start(&portal, &reference);
 
     let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
     check_invariants(&reference, &tunnel, &portal);
@@ -30,6 +36,7 @@ pub fn test(data: &[u8]) {
         let transition = generator.transition(&reference, &portal);
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
+        observer.transition(applied, &transition, &reference);
         feedback_recorder.observe(&transition, &reference);
 
         reference.invalidate(&transition, &portal);
@@ -37,6 +44,7 @@ pub fn test(data: &[u8]) {
 
         portal.apply(&transition, &reference);
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
+        observer.applied(applied, &reference);
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
         feedback_recorder.record(&reference, &tunnel, &portal);

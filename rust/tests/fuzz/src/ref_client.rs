@@ -35,10 +35,11 @@ use std::{
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
-#[derive(Clone, derive_more::Debug)]
+#[derive(Clone, derive_more::Debug, serde::Serialize)]
 pub struct RefClient {
     id: ClientId,
 
+    #[serde(skip)]
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
@@ -50,6 +51,7 @@ pub struct RefClient {
     routes: Vec<(ResourceId, IpNetwork)>,
 
     /// Sampled malicious behaviours for this client.
+    #[serde(with = "crate::json::MaliciousBehaviourDef")]
     pub(crate) malicious_behaviour: MaliciousBehaviour,
 
     /// The operating system this client simulates.
@@ -84,6 +86,7 @@ pub struct RefClient {
 
     /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
+    #[serde(skip)]
     dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
 
     /// The [`ResourceStatus`] of each site.
@@ -96,25 +99,31 @@ pub struct RefClient {
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
+    #[serde(skip)]
     pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
+    #[serde(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
     /// The expected answers to the PTR queries in the device domain.
     #[debug(skip)]
+    #[serde(skip)]
     pub(crate) expected_device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
     #[debug(skip)]
+    #[serde(skip)]
     connection_resets: Vec<Instant>,
 
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
+    #[serde(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 
     /// Per peer Client, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
+    #[serde(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
     /// Per peer, the pools the portal authorised us to reach it through.
@@ -125,6 +134,7 @@ pub struct RefClient {
     #[debug(skip)]
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     #[debug(skip)]
+    #[serde(skip)]
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
 }
 
@@ -1082,7 +1092,7 @@ impl RefClient {
             .next()
     }
 
-    fn dns_resources_by_domain(
+    pub(crate) fn dns_resources_by_domain(
         &self,
         domain: &DomainName,
         eligible: impl Fn(&DnsResource) -> bool,

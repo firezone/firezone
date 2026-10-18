@@ -12,7 +12,7 @@ use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct ProbeId(u64);
 
 impl ProbeId {
@@ -31,7 +31,7 @@ impl ProbeId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct FlowId(u64);
 
 impl FlowId {
@@ -47,7 +47,7 @@ pub(crate) enum ProbeProtocol {
     Tcp { sport: SPort, dport: DPort },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct IcmpFlow {
     pub(crate) client_id: ClientId,
     pub(crate) src: IpAddr,
@@ -57,7 +57,7 @@ pub(crate) struct IcmpFlow {
     pub(crate) route: Route,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct UdpFlow {
     pub(crate) client_id: ClientId,
     pub(crate) src: IpAddr,
@@ -67,7 +67,7 @@ pub(crate) struct UdpFlow {
     pub(crate) route: Route,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct TcpFlow {
     pub(crate) client_id: ClientId,
     pub(crate) src: IpAddr,
@@ -77,14 +77,15 @@ pub(crate) struct TcpFlow {
     pub(crate) route: Route,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum Route {
     Resource {
         resource: ResourceId,
         gateway: GatewayId,
     },
-    Gateway(GatewayId),
-    Peer(ClientId),
+    Gateway(#[serde(serialize_with = "crate::json::value")] GatewayId),
+    Peer(#[serde(serialize_with = "crate::json::value")] ClientId),
 }
 
 impl Route {
@@ -97,7 +98,8 @@ impl Route {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum ProbeRequest {
     Icmp {
         src: IpAddr,
@@ -172,10 +174,11 @@ pub(crate) enum Remote {
     Client(ClientId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum ExpectedOutcome {
     Dropped,
-    RoundTripCompleted(Route),
+    RoundTripCompleted(#[serde(serialize_with = "crate::json::value")] Route),
     Rejected {
         by: RejectionRemote,
         response: RejectionResponse,
@@ -204,14 +207,15 @@ impl ExpectedOutcome {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum RejectionRemote {
     Local,
-    Gateway(GatewayId),
-    Client(ClientId),
+    Gateway(#[serde(serialize_with = "crate::json::value")] GatewayId),
+    Client(#[serde(serialize_with = "crate::json::value")] ClientId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum RejectionResponse {
     Prohibited,
     Unreachable,
@@ -219,22 +223,24 @@ pub(crate) enum RejectionResponse {
     Reset,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum TraceRequirement {
     Exact,
-    ExactOrLoss(KnownLoss),
+    ExactOrLoss(#[serde(serialize_with = "crate::json::value")] KnownLoss),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum KnownLoss {
     ConnectionReset,
     WireGuardRekey,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct ExpectedProbe {
     pub(crate) id: ProbeId,
     pub(crate) origin: ClientId,
+    #[serde(skip)]
     pub(crate) sent_at: Instant,
     pub(crate) request: ProbeRequest,
     pub(crate) outcome: ExpectedOutcome,

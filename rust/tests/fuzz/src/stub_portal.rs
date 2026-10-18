@@ -81,7 +81,7 @@ pub(crate) enum PoolMembers {
     Listed(BTreeSet<ClientId>),
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 pub struct PeerAuthorization {
     pub(crate) initiator: ClientId,
     pub(crate) target: ClientId,

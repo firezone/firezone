@@ -4,7 +4,8 @@ use std::net::IpAddr;
 use dns_types::prelude::*;
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct DnsRecords {
     inner: BTreeMap<DomainName, BTreeSet<OwnedRecordData>>,
 }

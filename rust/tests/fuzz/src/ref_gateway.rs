@@ -12,8 +12,9 @@ use std::{
 use tunnel_proto::{GatewayState, IpConfig};
 
 /// Reference state for a particular gateway.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RefGateway {
+    #[serde(skip)]
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,

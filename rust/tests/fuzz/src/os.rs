@@ -1,5 +1,5 @@
 /// The operating system a client simulates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum SimulatedOs {
     Linux,
     Android,

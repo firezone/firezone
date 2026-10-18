@@ -3136,6 +3136,7 @@ dependencies = [
  "rand 0.10.3",
  "relay-proto",
  "secrecy",
+ "serde",
  "serde_json",
  "sha2 0.11.0",
  "smallvec",

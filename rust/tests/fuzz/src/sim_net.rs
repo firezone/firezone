@@ -16,7 +16,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_relay::SimRelay;
 
-#[derive(Clone, derive_more::Debug)]
+#[derive(Clone, derive_more::Debug, serde::Serialize)]
 pub(crate) struct Host<T> {
     inner: T,
 
@@ -35,17 +35,19 @@ pub(crate) struct Host<T> {
     offline: bool,
 
     #[debug(skip)]
+    #[serde(skip)]
     span: Span,
 
     /// Messages that have "arrived" and are waiting to be dispatched.
     ///
     /// We buffer them here because we need also apply our latency on inbound packets.
     #[debug(skip)]
+    #[serde(skip)]
     inbox: BufferedTransmits,
 }
 
 /// The filtering behaviour of a host's network edge, per [RFC 4787, section 5](https://datatracker.ietf.org/doc/html/rfc4787#section-5).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum FilterMode {
     /// Everything is delivered (endpoint-independent filtering).
     Open,
@@ -70,7 +72,7 @@ impl FilterMode {
 }
 
 /// The mapping behaviour of a NAT, per [RFC 4787, section 4](https://datatracker.ietf.org/doc/html/rfc4787#section-4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) enum Mapping {
     /// The same internal socket maps to the same public socket, regardless of destination ("cone" NATs).
     EndpointIndependent,
@@ -85,7 +87,7 @@ pub(crate) enum Mapping {
 /// refreshes the binding is a MAY that differs between NATs, so it is sampled.
 /// Filter entries are only ever refreshed by outbound traffic: inbound
 /// refreshing them would defeat the filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct Expiry {
     pub(crate) timeout: Duration,
     pub(crate) inbound_refreshes: bool,
@@ -133,7 +135,8 @@ pub(crate) fn direct_path_possible(
 }
 
 /// The network edge of a host: every packet passes through it in both directions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind")]
 enum Edge {
     Open,
     Nat(Nat),
@@ -145,16 +148,19 @@ enum Edge {
 /// address is not routable from other hosts. IPv6 is not translated (there is
 /// no NAT66 in the wild) but subject to the same stateful filtering, like the
 /// "simple security" of [RFC 6092](https://datatracker.ietf.org/doc/html/rfc6092).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct Nat {
     ip4: Ipv4Addr,
     mapping: Mapping,
     filter: FilterMode,
     expiry: Expiry,
     next_port: u16,
+    #[serde(skip)]
     by_internal: BTreeMap<(SocketAddr, Option<SocketAddr>), SocketAddr>,
+    #[serde(skip)]
     by_public: BTreeMap<SocketAddr, Binding>,
     /// IPv6 destinations the host has sent to; the state backing [`FilterMode`] for IPv6.
+    #[serde(skip)]
     sent_to6: BTreeMap<SocketAddr, Instant>,
 }
 

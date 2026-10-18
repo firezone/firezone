@@ -19,10 +19,11 @@ use std::{
 };
 
 #[allow(private_interfaces)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(tag = "kind")]
 pub enum Transition {
-    AddResource(Resource),
-    RemoveResource(ResourceId),
+    AddResource(#[serde(serialize_with = "crate::json::value")] Resource),
+    RemoveResource(#[serde(serialize_with = "crate::json::value")] ResourceId),
     EditResource(ResourceEdit),
     /// Replaces the member list of a pool that lists its members; `revoked` are the
     /// portal's peer authorizations through it towards a client that left.
@@ -79,22 +80,23 @@ pub enum Transition {
         seed: u64,
         probe_id: ProbeId,
     },
-    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
+    SendDnsQueries(#[serde(serialize_with = "crate::json::value")] Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
         client_id: ClientId,
         record_domain: DomainName,
         family: IpFamily,
         address_index: u32,
         query_id: u16,
+        #[serde(with = "crate::json::UpstreamDef")]
         dns_server: dns::Upstream,
         transport: DnsTransport,
     },
     UpdateSystemDnsServers {
         servers: Vec<IpAddr>,
     },
-    UpdateUpstreamDo53Servers(Vec<UpstreamDo53>),
-    UpdateUpstreamDoHServers(Vec<UpstreamDoH>),
-    UpdateUpstreamSearchDomain(Option<DomainName>),
+    UpdateUpstreamDo53Servers(#[serde(serialize_with = "crate::json::value")] Vec<UpstreamDo53>),
+    UpdateUpstreamDoHServers(#[serde(serialize_with = "crate::json::value")] Vec<UpstreamDoH>),
+    UpdateUpstreamSearchDomain(#[serde(serialize_with = "crate::json::value")] Option<DomainName>),
     RoamClient {
         client_id: ClientId,
         ip4: Option<Ipv4Addr>,
@@ -108,25 +110,30 @@ pub enum Transition {
     },
     RestartClient {
         client_id: ClientId,
+        #[serde(skip)]
         key: PrivateKey,
     },
-    DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
+    DeployNewRelays(#[serde(serialize_with = "crate::json::value")] BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
     Idle {
         duration: Duration,
     },
-    RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+    RebootRelaysWhilePartitioned(
+        #[serde(serialize_with = "crate::json::value")] BTreeMap<RelayId, Host<u64>>,
+    ),
     /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
     /// while its existing allocations keep working.
-    ExhaustRelayPorts(RelayId),
+    ExhaustRelayPorts(#[serde(serialize_with = "crate::json::value")] RelayId),
     /// The relay has ports again, without the portal telling anyone.
-    FreeRelayPorts(RelayId),
-    DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    FreeRelayPorts(#[serde(serialize_with = "crate::json::value")] RelayId),
+    DeauthorizeWhileGatewayIsPartitioned(
+        #[serde(serialize_with = "crate::json::value")] ResourceId,
+    ),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
     ///
     /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
     /// The Client recovers through the Gateway's `no_authorization` p2p control event.
-    RevokeGatewayAuthorization(ResourceId),
+    RevokeGatewayAuthorization(#[serde(serialize_with = "crate::json::value")] ResourceId),
     /// Expires inbound authorizations at the receiving client while the sender retains its own.
     ExpirePeerAuthorizations {
         client: ClientId,
@@ -382,44 +389,47 @@ impl EditEffect<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct DnsQuery {
     pub(crate) domain: DomainName,
     pub(crate) r_type: RecordType,
     pub(crate) query_id: u16,
+    #[serde(with = "crate::json::UpstreamDef")]
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
     pub(crate) edns: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub(crate) enum IpFamily {
     Ipv4,
     Ipv6,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum DnsTransport {
     Udp { local_port: u16 },
     Tcp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct Seq(pub u16);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct Identifier(pub u16);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct SPort(pub u16);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub(crate) struct DPort(pub u16);
 
-#[derive(Clone, derive_more::Debug)]
+#[derive(Clone, derive_more::Debug, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum Destination {
     DomainName { resolved_ip: u32, name: DomainName },
-    IpAddr(IpAddr),
+    IpAddr(#[serde(serialize_with = "crate::json::value")] IpAddr),
 }
 
 impl Destination {

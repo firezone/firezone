@@ -25,7 +25,7 @@ workers="${FUZZ_REPLAY_WORKERS-$workers}"
 [ "$workers" -le "$(nproc)" ] || workers="$(nproc)"
 [ "$workers" -le "${#inputs[@]}" ] || workers="${#inputs[@]}"
 
-RUSTFLAGS="${RUSTFLAGS:-} --cfg no_fuzzing -C instrument-coverage -C debuginfo=line-tables-only" \
+RUSTFLAGS="${RUSTFLAGS:-} --cfg no_fuzzing --cfg coverage_nightly -C instrument-coverage -C debuginfo=line-tables-only" \
     cargo build --locked --release -p fuzz --bin fuzz \
     --target x86_64-unknown-linux-gnu --target-dir "$fuzz_target_dir/fuzz-coverage"
 mkdir -p "coverage/$target"

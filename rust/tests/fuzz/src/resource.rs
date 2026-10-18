@@ -19,7 +19,8 @@ use tunnel_proto::messages::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum Resource {
     Dns(DnsResource),
     Cidr(CidrResource),
@@ -27,7 +28,7 @@ pub(crate) enum Resource {
     DevicePool(DevicePoolResource),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub(crate) struct DnsResource {
     pub(crate) id: ResourceId,
     pub(crate) address: String,
@@ -35,30 +36,33 @@ pub(crate) struct DnsResource {
     pub(crate) address_description: Option<String>,
     pub(crate) sites: Vec<Site>,
     pub(crate) ip_stack: IpStack,
+    #[serde(serialize_with = "crate::json::filters")]
     pub(crate) filters: Vec<Filter>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub(crate) struct CidrResource {
     pub(crate) id: ResourceId,
     pub(crate) address: IpNetwork,
     pub(crate) name: String,
     pub(crate) address_description: Option<String>,
     pub(crate) sites: Vec<Site>,
+    #[serde(serialize_with = "crate::json::filters")]
     pub(crate) filters: Vec<Filter>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub(crate) struct InternetResource {
     pub(crate) name: String,
     pub(crate) id: ResourceId,
     pub(crate) sites: Vec<Site>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize)]
 pub(crate) struct DevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
+    #[serde(serialize_with = "crate::json::filters")]
     pub(crate) filters: Vec<Filter>,
 }
 
@@ -126,7 +130,7 @@ const _: fn(ResourceDescription) -> bool = |description| match description {
 };
 
 /// An edit of the resource with `old.id()`; any number of fields, including the type, may differ.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct ResourceEdit {
     pub(crate) old: Resource,
     pub(crate) new: Resource,

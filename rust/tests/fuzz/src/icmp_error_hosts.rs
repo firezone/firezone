@@ -2,7 +2,8 @@ use anyhow::{Result, bail};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
 use std::{collections::BTreeMap, net::IpAddr};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(transparent)]
 pub(crate) struct IcmpErrorHosts {
     inner: BTreeMap<IpAddr, IcmpError>,
 }
@@ -18,7 +19,8 @@ impl IcmpErrorHosts {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind")]
 pub(crate) enum IcmpError {
     Network,
     Host,
