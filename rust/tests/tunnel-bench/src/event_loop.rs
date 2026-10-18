@@ -116,7 +116,7 @@ fn outbound(
     peer: Side,
     now: Instant,
 ) {
-    let (event_loop, _) = EventLoop::spawn(local.state, local.socket, now);
+    let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
     let (peer, socket) = bind_peer(peer.socket);
     peer.spawn({
