@@ -142,7 +142,7 @@ impl CryptoWorkers {
     }
 
     /// Stages `job` for encryption.
-    pub fn encrypt(&mut self, job: EncryptJob) {
+    pub fn submit_encrypt(&mut self, job: EncryptJob) {
         match self.staged_encrypts.back_mut() {
             Some(jobs) if jobs.len() < ENCRYPT_BATCH_SIZE => jobs.push(job),
             Some(_) | None => {
@@ -154,11 +154,11 @@ impl CryptoWorkers {
     }
 
     /// Stages `job` for decryption.
-    pub fn decrypt(&mut self, job: Received<DecryptJob>) {
+    pub fn submit_decrypt(&mut self, job: Received<DecryptJob>) {
         self.staged_decrypts.push(job);
 
         if self.staged_decrypts.len() >= DECRYPT_BATCH_SIZE {
-            self.submit_decrypts();
+            self.flush_decrypts();
         }
     }
 
@@ -198,7 +198,7 @@ impl CryptoWorkers {
     ///
     /// Pending while a UDP socket has no room for another batch.
     pub fn poll_flush(&mut self, sockets: &mut Sockets, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.submit_decrypts();
+        self.flush_decrypts();
 
         while let Some(jobs) = self.staged_encrypts.front() {
             let v4 = jobs.iter().any(|job| job.dst().is_ipv4());
@@ -239,7 +239,7 @@ impl CryptoWorkers {
         self.staged_decrypts.clear();
     }
 
-    fn submit_decrypts(&mut self) {
+    fn flush_decrypts(&mut self) {
         if self.staged_decrypts.is_empty() {
             return;
         }

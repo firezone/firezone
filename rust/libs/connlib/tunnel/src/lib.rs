@@ -293,7 +293,7 @@ impl ClientTunnel {
                             .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(Some(job)) => self.io.encrypt(job),
+                            Ok(Some(job)) => self.io.submit_encrypt(job),
                             Ok(None) => {}
                             Err(e) => error.push(e),
                         }
@@ -327,7 +327,7 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(job)) => self.io.decrypt(io::Received {
+                            Ok(Some(job)) => self.io.submit_decrypt(io::Received {
                                 local: received.local,
                                 from: received.from,
                                 ecn: received.ecn,
@@ -516,7 +516,7 @@ impl GatewayTunnel {
                             .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(Some(job)) => self.io.encrypt(job),
+                            Ok(Some(job)) => self.io.submit_encrypt(job),
                             Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
@@ -563,7 +563,7 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             }) {
-                            Ok(Some(job)) => self.io.decrypt(io::Received {
+                            Ok(Some(job)) => self.io.submit_decrypt(io::Received {
                                 local: received.local,
                                 from: received.from,
                                 ecn: received.ecn,

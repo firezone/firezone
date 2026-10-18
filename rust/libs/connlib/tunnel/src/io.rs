@@ -89,7 +89,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
-    /// Packets decrypted from the jobs passed to [`Io::decrypt`].
+    /// Packets decrypted from the jobs passed to [`Io::submit_decrypt`].
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
@@ -441,13 +441,13 @@ impl Io {
     }
 
     /// Encrypts an encapsulated packet off the main thread.
-    pub fn encrypt(&mut self, job: snownet::EncryptJob) {
-        self.crypto.encrypt(job);
+    pub fn submit_encrypt(&mut self, job: snownet::EncryptJob) {
+        self.crypto.submit_encrypt(job);
     }
 
     /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].
-    pub fn decrypt(&mut self, job: Received<snownet::DecryptJob>) {
-        self.crypto.decrypt(job);
+    pub fn submit_decrypt(&mut self, job: Received<snownet::DecryptJob>) {
+        self.crypto.submit_decrypt(job);
     }
 
     pub fn send_network(
