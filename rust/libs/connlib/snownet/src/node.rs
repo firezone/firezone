@@ -1987,14 +1987,18 @@ where
             ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
                 self.tunnel
                     .handle_cookie_reply(reply, now)
-                    .map_err(anyhow::Error::new),
+                    .context("cookie reply"),
             ),
             ReceivedMessage::TransportData(data) => {
-                match self.tunnel.begin_decapsulate(data, now) {
+                match self
+                    .tunnel
+                    .begin_decapsulate(data, now)
+                    .context("data packet")
+                {
                     Ok(pending) => {
                         ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
                     }
-                    Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+                    Err(e) => ControlFlow::Break(Err(e)),
                 }
             }
         }
@@ -2011,7 +2015,11 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
+        let packet = match self
+            .tunnel
+            .commit_decapsulate(decrypted, now)
+            .context("data packet")
+        {
             Ok(Committed::Data { buffer, len }) => {
                 match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
                     Ok(p) => p,
@@ -2019,7 +2027,7 @@ where
                 }
             }
             Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
-            Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+            Err(e) => return ControlFlow::Break(Err(e)),
         };
 
         self.state
