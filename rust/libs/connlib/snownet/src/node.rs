@@ -97,6 +97,7 @@ pub struct Node<TId, RId> {
     buffered_transmits: TransmitBuffer,
 
     allocations: Allocations<RId>,
+    additional_host_candidates: Vec<Candidate>,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -203,6 +204,7 @@ where
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
+            additional_host_candidates: Default::default(),
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
@@ -239,6 +241,13 @@ where
                 %num_iceless,
                 "Soft-reset iceless connections (path-agent reset, key kept)"
             );
+
+            for (cid, c) in self.connections.iter_mut() {
+                for candidate in &self.additional_host_candidates {
+                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                }
+            }
+
             return;
         }
 
@@ -339,8 +348,13 @@ where
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
 
             // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay, &mut c.agent, &self.allocations, now);
+            let new_candidates = seed_agent_with_local_candidates(
+                c.relay,
+                &mut c.agent,
+                &self.allocations,
+                &self.additional_host_candidates,
+                now,
+            );
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -395,6 +409,9 @@ where
             now,
         );
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
+        for candidate in &self.additional_host_candidates {
+            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+        }
 
         if self.allocations.is_empty() {
             tracing::debug!("No relays available; requesting a new set");
@@ -788,6 +805,42 @@ where
         self.connections.clear_relays(to_remove.into_iter());
     }
 
+    /// Sets the local addresses to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Existing connections get the new candidates and have the ones no longer present invalidated.
+    pub fn set_additional_host_candidates(&mut self, addrs: BTreeSet<SocketAddr>, now: Instant) {
+        self.last_now = now;
+
+        let candidates = addrs
+            .into_iter()
+            .filter_map(|addr| {
+                Candidate::host(addr, "udp")
+                    .inspect_err(|e| tracing::debug!(%addr, "Invalid host candidate: {e}"))
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+        let removed = mem::replace(&mut self.additional_host_candidates, candidates)
+            .into_iter()
+            .filter(|c| !self.additional_host_candidates.contains(c))
+            .collect::<Vec<_>>();
+
+        for (cid, c) in self.connections.iter_mut() {
+            let relay_candidates = c
+                .relay
+                .map(|rid| self.allocations.candidates_for_relay(&rid))
+                .into_iter()
+                .flatten()
+                .collect::<SmallVec<[_; 8]>>();
+
+            for candidate in removed.iter().filter(|r| !relay_candidates.contains(r)) {
+                c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+            for candidate in &self.additional_host_candidates {
+                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+        }
+    }
+
     #[must_use]
     fn init_connection(
         &mut self,
@@ -1128,6 +1181,7 @@ fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: Option<RId>,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
+    additional_host_candidates: &'a [Candidate],
     now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
@@ -1137,6 +1191,7 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
+        .chain(additional_host_candidates.iter().cloned())
         .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
@@ -2116,6 +2171,16 @@ where
             return;
         }
 
+        self.invalidate_local_candidate(id, candidate, pending_events, now);
+    }
+
+    fn invalidate_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
+        now: Instant,
+    ) {
         let was_present = self.agent.invalidate_candidate(candidate, now);
 
         if was_present {
@@ -2386,5 +2451,76 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test_case::test_case(false; "ice")]
+    #[test_case::test_case(true; "iceless")]
+    fn signals_changes_to_additional_host_candidates(iceless: bool) {
+        let now = Instant::now();
+        let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+
+        node.set_additional_host_candidates(BTreeSet::from([HOST_A]), now);
+        upsert_connection(&mut node, iceless, now);
+        let on_upsert = candidate_events(&mut node, iceless);
+        node.set_additional_host_candidates(BTreeSet::from([HOST_B]), now);
+        let on_change = candidate_events(&mut node, iceless);
+
+        assert_eq!(on_upsert, vec![(true, HOST_A)]);
+        assert_eq!(on_change, vec![(false, HOST_A), (true, HOST_B)]);
+    }
+
+    #[test]
+    fn iceless_reset_resignals_additional_host_candidates() {
+        let now = Instant::now();
+        let mut node = Node::<u32, u32>::new([0; 32], now, Duration::ZERO);
+        node.set_additional_host_candidates(BTreeSet::from([HOST_A]), now);
+        upsert_connection(&mut node, true, now);
+        candidate_events(&mut node, true);
+
+        node.reset(now);
+
+        assert_eq!(candidate_events(&mut node, true), vec![(true, HOST_A)]);
+    }
+
+    const HOST_A: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 52625);
+    const HOST_B: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 52625);
+
+    fn upsert_connection(node: &mut Node<u32, u32>, iceless: bool, now: Instant) {
+        let creds = || Credentials {
+            username: "user".to_owned(),
+            password: "passwordpasswordpassword".to_owned(),
+        };
+
+        node.upsert_connection(
+            1,
+            PublicKey::from([1; 32]),
+            StaticSecret::from([2; 32]),
+            creds(),
+            creds(),
+            IceRole::Controlling,
+            IceConfig::client_default(),
+            IceConfig::client_idle(),
+            iceless,
+            now,
+        );
+    }
+
+    /// Returns `(is_new, addr)` for each candidate event, in order.
+    fn candidate_events(node: &mut Node<u32, u32>, iceless: bool) -> Vec<(bool, SocketAddr)> {
+        iter::from_fn(|| node.poll_event())
+            .filter_map(|event| match event {
+                Event::NewIceCandidate { candidate, .. } => Some((true, candidate)),
+                Event::InvalidateIceCandidate { candidate, .. } => Some((false, candidate)),
+                Event::ConnectionEstablished(_) => None,
+                Event::ConnectionFailed(_) => None,
+                Event::ConnectionClosed(_) => None,
+                Event::NoRelays { .. } => None,
+            })
+            .map(|(is_new, c)| {
+                let addr = crate::candidate::decode(iceless, &c).unwrap().addr();
+
+                (is_new, addr)
+            })
+            .collect()
     }
 }

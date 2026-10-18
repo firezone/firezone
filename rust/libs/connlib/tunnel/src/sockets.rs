@@ -15,7 +15,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
-const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+pub(crate) const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
 const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.

@@ -144,12 +144,20 @@ impl TunnelTest {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            client
-                .exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            let sockets = client.interface_sockets();
+            client.exec_mut(|c| {
+                c.sut
+                    .set_additional_host_candidates(sockets, flux_capacitor.now());
+                c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now())
+            });
         }
         for gateway in gateways.values_mut() {
-            gateway
-                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
+            let sockets = gateway.interface_sockets();
+            gateway.exec_mut(|g| {
+                g.sut
+                    .set_additional_host_candidates(sockets, flux_capacitor.now());
+                g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now())
+            });
         }
 
         let upstream_do53_servers = portal
@@ -661,7 +669,9 @@ impl TunnelTest {
                 client.migrate_nat(nat_ip4);
                 let added = self.network.add_host(client_id, client);
                 debug_assert!(added);
+                let sockets = client.interface_sockets();
                 client.exec_mut(|c| {
+                    c.sut.set_additional_host_candidates(sockets, now);
                     c.sut.reset(now, "roam");
                     c.sut.set_portal_connected(false);
                 });
@@ -846,8 +856,10 @@ impl TunnelTest {
                 let all_resources = ref_client.inner().resource_descriptions();
                 let internet_resource_state = ref_client.inner().internet_resource_active;
 
+                let sockets = client.interface_sockets();
                 client.exec_mut(|c| {
                     c.restart(key, internet_resource_state, now, utc_now);
+                    c.sut.set_additional_host_candidates(sockets, now);
 
                     // Apply to new instance.
                     c.sut.update_interface_config(Interface {

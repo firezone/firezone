@@ -187,6 +187,12 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips), now);
+    }
+
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
         self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
@@ -385,6 +391,12 @@ impl GatewayTunnel {
         }
 
         self.role_state.poll_timeout().map(|(deadline, _)| deadline)
+    }
+
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -620,4 +632,10 @@ impl GatewayTunnel {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
+}
+
+fn listen_sockets(ips: Vec<IpAddr>) -> Vec<SocketAddr> {
+    ips.into_iter()
+        .map(|ip| SocketAddr::new(ip, sockets::DEFAULT_LISTEN_PORT))
+        .collect()
 }

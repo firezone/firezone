@@ -2694,6 +2694,15 @@ impl ClientState {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(now); // Ensure all state changes are fully-propagated.
     }
+
+    /// Sets the local sockets to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Sockets on IPs that route through the tunnel are rejected.
+    pub fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        self.node
+            .set_additional_host_candidates(crate::additional_host_candidates(sockets), now);
+        self.drain_node_events(now);
+    }
 }
 
 fn internet_resource(

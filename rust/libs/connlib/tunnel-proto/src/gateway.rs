@@ -622,6 +622,15 @@ impl GatewayState {
         self.drain_node_events()
     }
 
+    /// Sets the local sockets to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Sockets on IPs that route through the tunnel are rejected.
+    pub fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        self.node
+            .set_additional_host_candidates(crate::additional_host_candidates(sockets), now);
+        self.drain_node_events()
+    }
+
     pub fn update_tun_device(&mut self, config: IpConfig) {
         self.tun_ip_config = Some(config);
     }
