@@ -55,3 +55,23 @@ mise run //rust/tests/fuzz:repro tunnel-proto artifacts/tunnel-proto/crashes-<ha
 ```
 
 `repro` enables debug tracing; set `RUST_LOG=trace` for more detail.
+
+## Querying the corpus
+
+Replaying the tunnel-proto corpus can write what each input generates as JSON Lines, one file per entity, into the git-ignored `json` directory.
+[sql/tunnel-proto.sql](sql/tunnel-proto.sql) defines a DuckDB view per file.
+IDs are counters that restart in every input, so every row carries its `input` and joins match on it:
+
+```console
+mise run //rust/tests/fuzz:emit-json tunnel-proto
+mise run //rust/tests/fuzz:query tunnel-proto "SELECT count(DISTINCT input) FROM transitions WHERE kind = 'RoamClient'"
+mise run //rust/tests/fuzz:query tunnel-proto "
+  SELECT input, step, r.address
+  FROM (SELECT input, step, unnest(dns_resources) AS id FROM dns_queries)
+  JOIN resources r USING (input, id)
+  WHERE r.address LIKE '**%'"
+```
+
+`dns_queries` and `probes` list the DNS resources matching a queried name in the order the reference model prefers them.
+Run `duckdb -init sql/tunnel-proto.sql` in this directory to query interactively.
+Rerun `emit-json` after changing the corpus or the harness.

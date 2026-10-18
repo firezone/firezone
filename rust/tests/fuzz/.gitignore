@@ -5,3 +5,4 @@ coverage
 crash-*
 *.profraw
 afl-output
+json
