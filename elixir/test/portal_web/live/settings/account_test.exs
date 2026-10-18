@@ -32,6 +32,20 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "usage" do
+    test "counts usage only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/account") |> html_response(200)
+      assert static =~ ~s(id="usage-skeleton")
+      refute static =~ ~s(id="usage")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      assert has_element?(lv, "#usage", "Admins")
+      refute has_element?(lv, "#usage-skeleton")
+    end
+  end
+
   describe "limits banner" do
     for {flags, message} <- [
           {%{users_limit_exceeded: true}, "users."},

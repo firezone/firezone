@@ -94,6 +94,18 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       assert account_id == account.id
     end
 
+    test "loads the tokens only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/api_clients") |> html_response(200)
+      assert static =~ ~s(id="api-tokens-skeleton")
+      refute static =~ "No API tokens yet"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/api_clients")
+      assert html =~ "No API tokens yet"
+      refute html =~ ~s(id="api-tokens-skeleton")
+    end
+
     test "renders empty state when no tokens", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn

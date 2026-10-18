@@ -193,6 +193,7 @@ defmodule PortalWeb.Policies.Components do
         :if={@policy && @panel.panel_view == :list}
         account={@account}
         policy={@policy}
+        connected_posture_providers={@postures.connected}
         providers={@providers}
         disabled_providers={@disabled_providers}
         x509_auth_provider_id={@x509_auth_provider_id}
@@ -501,7 +502,6 @@ defmodule PortalWeb.Policies.Components do
         <div>
           <div class="flex items-center gap-2">
             <p class="text-xs font-semibold text-body">Flow log reporting</p>
-            <Core.new_badge data-flow-logs-new-badge="true" />
           </div>
           <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
@@ -692,7 +692,6 @@ defmodule PortalWeb.Policies.Components do
             class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             {condition_type_label(type)}
-            <.condition_new_badge type={type} />
           </button>
         </div>
       </div>
@@ -729,12 +728,14 @@ defmodule PortalWeb.Policies.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_details_view(assigns) do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.policy_details_header policy={@policy} />
       <.policy_details_layout
+        connected_posture_providers={@connected_posture_providers}
         account={@account}
         policy={@policy}
         providers={@providers}
@@ -766,6 +767,7 @@ defmodule PortalWeb.Policies.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_details_layout(assigns) do
     ~H"""
@@ -809,6 +811,7 @@ defmodule PortalWeb.Policies.Components do
         <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
           <.policy_access_mapping account={@account} policy={@policy} />
           <.policy_conditions_list
+            connected_posture_providers={@connected_posture_providers}
             account={@account}
             policy={@policy}
             providers={@providers}
@@ -963,6 +966,7 @@ defmodule PortalWeb.Policies.Components do
   attr :disabled_providers, :list, default: []
   attr :x509_auth_provider_id, :string, default: nil
   attr :has_trust_anchors?, :boolean, default: false
+  attr :connected_posture_providers, :list, default: nil
 
   def policy_conditions_list(assigns) do
     ~H"""
@@ -995,7 +999,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
-      <PostureComponents.postures_summary postures={@policy.postures} />
+      <PostureComponents.postures_summary postures={@policy.postures} connected={@connected_posture_providers} />
     </div>
     """
   end
@@ -1633,22 +1637,11 @@ defmodule PortalWeb.Policies.Components do
 
   attr :type, :atom, required: true
 
-  defp condition_new_badge(%{type: :device_attested} = assigns) do
-    ~H"""
-    <Core.new_badge class="ml-1.5" data-condition-new-badge />
-    """
-  end
-
-  defp condition_new_badge(assigns), do: ~H""
-
-  attr :type, :atom, required: true
-
   defp grant_condition_card_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between px-3 py-2 bg-raised border-b border-border">
       <span class="text-xs font-medium text-heading">
         {condition_type_label(@type)}
-        <.condition_new_badge type={@type} />
       </span>
       <button
         type="button"

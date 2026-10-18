@@ -11,6 +11,8 @@ defmodule Portal.Billing.EventHandler do
   require Logger
 
   @subscription_events ["created", "resumed"]
+  # Self-serve plans. Moving between them is not a new enrollment.
+  @enrollment_plans [:team, :business]
 
   def handle_event(%{"object" => "event"} = event) do
     process_event_with_lock(event)
@@ -44,7 +46,7 @@ defmodule Portal.Billing.EventHandler do
          :ok <- process_event_by_type(event),
          :ok <- record_processed_event(event, customer_id) do
       account = Database.account_by_customer_id(customer_id)
-      conversion = if team_enrollment?(event, previous_account, account), do: account
+      conversion = if plan_enrollment?(event, previous_account, account), do: account
       {:ok, {event, conversion}}
     else
       {:skip, reason} ->
@@ -61,13 +63,13 @@ defmodule Portal.Billing.EventHandler do
     end
   end
 
-  defp team_enrollment?(event, previous_account, account) do
+  defp plan_enrollment?(event, previous_account, account) do
     event["type"] in ["customer.subscription.created", "customer.subscription.updated"] and
       get_in(event, ["data", "object", "status"]) == "active" and
       is_nil(get_in(event, ["data", "object", "pause_collection"])) and
       not is_nil(previous_account) and not is_nil(account) and
-      Billing.plan_type(account) == :team and
-      (Billing.plan_type(previous_account) != :team or
+      Billing.plan_type(account) in @enrollment_plans and
+      (Billing.plan_type(previous_account) not in @enrollment_plans or
          not is_nil(previous_account.metadata.stripe.trial_ends_at) or
          previous_account.metadata.stripe.subscription_status in ["trialing", "incomplete", "incomplete_expired"])
   end

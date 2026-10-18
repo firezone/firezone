@@ -34,13 +34,14 @@ defmodule PortalWeb.ServiceAccounts do
         portal_sessions_subscribed_actor_id: nil
       )
       |> assign(base_actor_assigns())
+      |> assign(actors: [], actors_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> LiveTable.assign_live_table("actors",
         query_module: Database,
         sortable_fields: [
           {:actors, :name},
           {:actors, :updated_at}
         ],
-        callback: &handle_actors_update!/2
+        loader: &load_actors/2
       )
 
     {:ok, socket}
@@ -599,9 +600,9 @@ defmodule PortalWeb.ServiceAccounts do
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
-  def handle_actors_update!(socket, list_opts) do
-    with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
+  defp load_actors(subject, list_opts) do
+    with {:ok, actors, metadata} <- Database.list_actors(subject, list_opts) do
+      {:ok, %{actors: actors, actors_metadata: metadata}}
     end
   end
 
@@ -638,6 +639,8 @@ defmodule PortalWeb.ServiceAccounts do
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="actors"
+          loading={@loading_by_table_id["actors"]}
+          query_error={@query_error_by_table_id["actors"]}
           rows={@actors}
           row_id={&"actor-#{&1.id}"}
           row_click={fn actor ->
@@ -757,11 +760,7 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.actors, change) do
-      socket
-    else
-      assign(socket, stale: true)
-    end
+    LiveTable.mark_stale_unless_reflected(socket, "actors", socket.assigns.actors, change)
   end
 
   defp default_token_expiration do

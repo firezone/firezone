@@ -1,6 +1,16 @@
 defmodule PortalWeb.ResourcesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Policy, Repo}
   alias Portal.Changes.Change
   alias Portal.Resource
@@ -41,6 +51,37 @@ defmodule PortalWeb.ResourcesTest do
   end
 
   describe "index (default action)" do
+    test "looks up the filtered site only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account, name: "Notice Site")
+      conn = authorize_conn(conn, actor)
+      path = ~p"/#{account}/resources?#{%{"resources_filter[site_id]" => site.id}}"
+
+      static = conn |> get(path) |> html_response(200)
+      refute static =~ "Viewing Resources for Site"
+
+      {:ok, _lv, html} = live(conn, path)
+      assert html =~ "Viewing Resources for Site"
+      assert html =~ "Notice Site"
+    end
+
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      resource_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/resources") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#resources-skeleton")
+      assert Floki.find(static, "#resources-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "#resources-rows tr")
+      refute has_element?(lv, "#resources-skeleton")
+    end
+
     test "renders resource list page", %{conn: conn, account: account, actor: actor} do
       resource = resource_fixture(account: account)
 
@@ -2050,7 +2091,7 @@ defmodule PortalWeb.ResourcesTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources")
 
       assert html =~ "Loading..."
 

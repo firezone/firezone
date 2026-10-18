@@ -564,8 +564,10 @@ defmodule Portal.Billing do
 
     case APIClient.fetch_customer_subscriptions(secret_key, customer_id) do
       {:ok, %{"data" => subscriptions}} ->
-        Enum.reduce_while(subscriptions, :ok, fn %{"id" => subscription_id}, :ok ->
-          cancel_subscription_by_id(secret_key, customer_id, subscription_id)
+        subscriptions
+        |> Enum.reject(&(&1["status"] == "incomplete_expired"))
+        |> Enum.reduce_while(:ok, fn subscription, :ok ->
+          cancel_subscription(secret_key, customer_id, subscription)
         end)
 
       {:error, reason} ->
@@ -581,6 +583,43 @@ defmodule Portal.Billing do
   def list_all_subscriptions do
     secret_key = fetch_config!(:secret_key)
     APIClient.list_all_subscriptions(secret_key)
+  end
+
+  defp cancel_subscription(secret_key, customer_id, %{"id" => subscription_id} = subscription) do
+    case cancel_subscription_by_id(secret_key, customer_id, subscription_id) do
+      {:cont, :ok} -> keep_collecting_debt(secret_key, customer_id, subscription)
+      {:halt, error} -> {:halt, error}
+    end
+  end
+
+  # Canceling turns off collection of open invoices; keep collecting what is already owed.
+  defp keep_collecting_debt(secret_key, customer_id, %{"id" => subscription_id, "status" => status})
+       when status in ["past_due", "unpaid"] do
+    with {:ok, %{"data" => invoices}} <-
+           APIClient.fetch_open_subscription_invoices(secret_key, subscription_id),
+         :ok <- resume_invoice_collection(secret_key, invoices) do
+      {:cont, :ok}
+    else
+      {:error, reason} ->
+        Logger.error("Cannot resume collection of a canceled Stripe subscription's invoices",
+          customer_id: customer_id,
+          subscription_id: subscription_id,
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :retry_later}}
+    end
+  end
+
+  defp keep_collecting_debt(_secret_key, _customer_id, _subscription), do: {:cont, :ok}
+
+  defp resume_invoice_collection(secret_key, invoices) do
+    Enum.reduce_while(invoices, :ok, fn %{"id" => invoice_id}, :ok ->
+      case APIClient.update_invoice_auto_advance(secret_key, invoice_id, true) do
+        {:ok, _invoice} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp cancel_subscription_by_id(secret_key, customer_id, subscription_id) do

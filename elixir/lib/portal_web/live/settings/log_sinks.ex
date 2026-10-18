@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.Sentinel
   alias Portal.S3
   alias Portal.Splunk
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -77,7 +78,7 @@ defmodule PortalWeb.Settings.LogSinks do
         s3_setup_tab: "console"
       )
 
-    {:ok, init(socket, new: true)}
+    {:ok, init_if_connected(socket)}
   end
 
   # New Log Sink
@@ -314,7 +315,7 @@ defmodule PortalWeb.Settings.LogSinks do
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
               <h2 class="text-xs font-semibold text-heading">Log Sinks</h2>
-              <span class="text-xs text-subtle tabular-nums">
+              <span :if={@log_sinks} class="text-xs text-subtle tabular-nums">
                 {length(@log_sinks)}
               </span>
             </div>
@@ -330,61 +331,64 @@ defmodule PortalWeb.Settings.LogSinks do
           </div>
 
           <div class="flex-1 overflow-auto">
-            <%= if Enum.empty?(@log_sinks) do %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-upload-cloud-2-line" class="w-5 h-5 text-subtle" />
+            <%= cond do %>
+              <% is_nil(@log_sinks) -> %>
+                <SettingsComponents.skeleton id="log-sinks-skeleton" />
+              <% Enum.empty?(@log_sinks) -> %>
+                <div class="flex items-center justify-center h-full">
+                  <div class="flex flex-col items-center gap-3 py-16">
+                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                      <Core.icon name="ri-upload-cloud-2-line" class="w-5 h-5 text-subtle" />
+                    </div>
+                    <div class="text-center">
+                      <p class="text-sm font-medium text-heading">No log sinks yet</p>
+                      <p class="text-xs text-subtle mt-0.5">
+                        Forward audit logs to an external destination.
+                      </p>
+                    </div>
+                    <Navigation.link
+                      patch={~p"/#{@account}/settings/log_sinks/new"}
+                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                    >
+                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
+                    </Navigation.link>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No log sinks yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      Forward audit logs to an external destination.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/log_sinks/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
-                  </Navigation.link>
                 </div>
-              </div>
-            <% else %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Log Sink
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Destination
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Delivered
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Backfill
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Delivery
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.sink_row
-                    :for={sink <- @log_sinks}
-                    type={sink_type(sink)}
-                    account={@account}
-                    sink={sink}
-                    open_sink_actions_id={@open_sink_actions_id}
-                  />
-                </tbody>
-              </table>
+              <% true -> %>
+                <table class="w-full text-sm border-collapse">
+                  <thead class="sticky top-0 z-10 bg-raised">
+                    <tr class="border-b border-border-strong">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                        Log Sink
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Status
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
+                        Destination
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Delivered
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Backfill
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Delivery
+                      </th>
+                      <th class="px-6 py-2.5 w-14"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <.sink_row
+                      :for={sink <- @log_sinks}
+                      type={sink_type(sink)}
+                      account={@account}
+                      sink={sink}
+                      open_sink_actions_id={@open_sink_actions_id}
+                    />
+                  </tbody>
+                </table>
             <% end %>
           </div>
         </div>
@@ -2296,6 +2300,14 @@ defmodule PortalWeb.Settings.LogSinks do
       %{last_synced_at: %DateTime{} = at} -> at
       _ -> nil
     end
+  end
+
+  # The static render shows a skeleton instead, so the sinks are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket),
+      do: init(socket, new: true),
+      else: assign(socket, log_sinks: nil, open_sink_actions_id: nil)
   end
 
   defp init(socket, opts \\ []) do
