@@ -795,7 +795,7 @@ dependencies = [
  "rtnetlink",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smbios-lib",
  "socket-factory",
  "telemetry",
@@ -2616,7 +2616,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "socket-factory",
  "telemetry",
  "tempfile",
@@ -3137,7 +3137,7 @@ dependencies = [
  "relay-proto",
  "secrecy",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "snownet",
  "stun_codec",
@@ -5908,7 +5908,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "socket-factory",
  "test-case",
  "thiserror 2.0.21",
@@ -6479,7 +6479,7 @@ dependencies = [
  "rand 0.10.3",
  "secrecy",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "stun_codec",
  "test-strategy",
@@ -7267,9 +7267,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
+checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
@@ -8191,7 +8191,7 @@ dependencies = [
  "sentry",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "socket-factory",
  "thiserror 2.0.21",
@@ -9950,7 +9950,7 @@ dependencies = [
 name = "windows-package-identity"
 version = "0.1.0"
 dependencies = [
- "sha2 0.11.0",
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -10493,7 +10493,7 @@ dependencies = [
  "base64 0.23.1",
  "rcgen",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "uuid",
  "x509-parser",
 ]
@@ -10525,7 +10525,7 @@ dependencies = [
  "rustls",
  "secrecy",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "tracing",
  "windows",
  "windows-core",
