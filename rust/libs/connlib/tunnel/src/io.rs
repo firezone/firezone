@@ -1,12 +1,13 @@
-mod crypto;
+mod decrypt;
 mod device;
 mod doh;
+mod encrypt;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 mod udp_gso_train;
 
-pub use crypto::Received;
+pub use decrypt::Received;
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::{GSO_BUFFER_SIZE, UdpGsoTrain};
 
@@ -14,8 +15,9 @@ use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
-use crypto::CryptoWorkers;
+use decrypt::Decryptor;
 use dns_types::DoHUrl;
+use encrypt::Encryptor;
 use futures::{
     FutureExt as _, TryFutureExt as _,
     channel::oneshot,
@@ -30,8 +32,10 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
-    sync::Arc,
+    num::NonZeroUsize,
+    sync::{Arc, mpsc},
     task::{Context, Poll, ready},
+    thread,
     time::{Duration, Instant},
 };
 use tun::Tun;
@@ -42,7 +46,8 @@ pub struct Io {
     sockets: Sockets,
     /// Control messages and packets encrypted on the main thread, e.g. handshakes and keepalives.
     datagrams: VecDeque<DatagramOut>,
-    crypto: CryptoWorkers,
+    encryptor: Encryptor,
+    decryptor: Decryptor,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -134,6 +139,7 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
         let packet_counter = otel_instruments::network_packets();
+        let (num_encrypt, num_decrypt) = num_crypto_workers();
 
         Self {
             sockets,
@@ -161,7 +167,8 @@ impl Io {
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
             datagrams: VecDeque::new(),
-            crypto: CryptoWorkers::new(packet_counter.clone()),
+            encryptor: Encryptor::new(num_encrypt, packet_counter.clone()),
+            decryptor: Decryptor::new(num_decrypt),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -256,11 +263,11 @@ impl Io {
         }
 
         let decrypted = if tun_has_room {
-            self.crypto.poll_decrypted(cx)
+            self.decryptor.poll_decrypted(cx)
         } else {
             Poll::Pending
         };
-        let network = if self.crypto.can_decrypt() {
+        let network = if self.decryptor.has_room() {
             self.sockets.poll_recv_from(cx)
         } else {
             Poll::Pending
@@ -402,7 +409,8 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        ready!(self.crypto.poll_flush(&mut self.sockets, cx))?;
+        self.decryptor.flush();
+        ready!(self.encryptor.poll_flush(&mut self.sockets, cx))?;
 
         Poll::Ready(Ok(()))
     }
@@ -425,7 +433,8 @@ impl Io {
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.datagrams.clear();
-        self.crypto.clear();
+        self.encryptor.clear();
+        self.decryptor.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
@@ -439,7 +448,7 @@ impl Io {
 
     /// Encrypts an encapsulated packet off the main thread.
     pub fn submit_encrypt(&mut self, job: snownet::EncryptJob) {
-        self.crypto.submit_encrypt(job, &mut self.sockets);
+        self.encryptor.submit(job, &mut self.sockets);
     }
 
     /// Submits every job `poll_job` yields, in that order.
@@ -454,7 +463,7 @@ impl Io {
 
     /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].
     pub fn submit_decrypt(&mut self, job: Received<snownet::DecryptJob>) {
-        self.crypto.submit_decrypt(job);
+        self.decryptor.submit(job);
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
@@ -615,6 +624,47 @@ impl Io {
             tracing::debug!(?meta, "Failed to queue DNS query")
         }
     }
+}
+
+/// How many encrypt and decrypt workers to spawn.
+///
+/// Crypto takes up to half of the cores, split evenly between both directions.
+fn num_crypto_workers() -> (usize, usize) {
+    let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let total = (cores / 2).max(2);
+    let encrypt = total / 2;
+
+    (encrypt, total - encrypt)
+}
+
+fn spawn_workers<T: Send + 'static>(
+    name: &str,
+    num_workers: usize,
+    work: impl Fn(mpsc::Receiver<T>) + Clone + Send + 'static,
+) -> Vec<mpsc::Sender<T>> {
+    (0..num_workers)
+        .filter_map(|i| {
+            let (tx, rx) = mpsc::channel();
+            let work = work.clone();
+            let name = format!("{name}-{i}");
+
+            thread::Builder::new()
+                .name(name.clone())
+                .spawn(move || work(rx))
+                .inspect_err(|e| tracing::warn!(%name, "Failed to spawn crypto worker: {e}"))
+                .ok()?;
+
+            Some(tx)
+        })
+        .collect()
+}
+
+/// Returns the worker after the one picked last.
+fn next_worker<'a, T>(workers: &'a [T], next: &mut usize) -> Option<&'a T> {
+    let worker = workers.get(*next % workers.len().max(1))?;
+    *next = next.wrapping_add(1);
+
+    Some(worker)
 }
 
 #[cfg(test)]
