@@ -326,34 +326,32 @@ impl ClientTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for received in batches
-                        .iter_mut()
-                        .flat_map(|batch| batch.drain())
-                        .inspect(|r| udp_received.record(r.packet))
-                    {
-                        let result = self
-                            .role_state
-                            .handle_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .with_context(|| FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            });
+                    for batch in batches.iter_mut() {
+                        for received in batch.drain().inspect(|r| udp_received.record(r.packet)) {
+                            let result = self
+                                .role_state
+                                .handle_network_input(
+                                    received.local,
+                                    received.from,
+                                    received.packet,
+                                    now,
+                                )
+                                .with_context(|| FailedToHandleNetworkPacket {
+                                    local: received.local,
+                                    from: received.from,
+                                });
 
-                        match result {
-                            Ok(Some(job)) => decrypts.push(io::Received {
-                                local: received.local,
-                                from: received.from,
-                                ecn: received.ecn,
-                                packet: job,
-                            }),
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e),
-                        };
+                            match result {
+                                Ok(Some(job)) => decrypts.push(io::Received {
+                                    local: received.local,
+                                    from: received.from,
+                                    ecn: received.ecn,
+                                    packet: job,
+                                }),
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error.push(e),
+                            };
+                        }
                     }
 
                     tick.want_continue();
@@ -584,34 +582,32 @@ impl GatewayTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for received in batches
-                        .iter_mut()
-                        .flat_map(|batch| batch.drain())
-                        .inspect(|r| udp_received.record(r.packet))
-                    {
-                        let result = self
-                            .role_state
-                            .handle_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .with_context(|| FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            });
+                    for batch in batches.iter_mut() {
+                        for received in batch.drain().inspect(|r| udp_received.record(r.packet)) {
+                            let result = self
+                                .role_state
+                                .handle_network_input(
+                                    received.local,
+                                    received.from,
+                                    received.packet,
+                                    now,
+                                )
+                                .with_context(|| FailedToHandleNetworkPacket {
+                                    local: received.local,
+                                    from: received.from,
+                                });
 
-                        match result {
-                            Ok(Some(job)) => decrypts.push(io::Received {
-                                local: received.local,
-                                from: received.from,
-                                ecn: received.ecn,
-                                packet: job,
-                            }),
-                            Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e),
-                        };
+                            match result {
+                                Ok(Some(job)) => decrypts.push(io::Received {
+                                    local: received.local,
+                                    from: received.from,
+                                    ecn: received.ecn,
+                                    packet: job,
+                                }),
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error.push(e),
+                            };
+                        }
                     }
 
                     tick.want_continue();

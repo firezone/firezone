@@ -360,7 +360,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
         }
 
         // Drain whatever else is already in the ring buffer, so one channel item
-        // carries the whole burst.
+        // carries a whole burst of one flow.
         loop {
             match session.try_receive() {
                 Ok(Some(pkt)) => {
@@ -388,8 +388,8 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
     }
 }
 
-/// Appends the packet to the batch; if the batch is full, hands it off and starts a
-/// new one with the packet.
+/// Appends the packet to the batch; if the batch is full or the packet belongs to a
+/// different flow, hands the batch off and starts a new one with the packet.
 ///
 /// Uses `blocking_send` so that if connlib is behind by a few packets, Wintun will
 /// queue up new packets in its ring buffer while we wait for our MPSC channel to
@@ -402,7 +402,7 @@ fn push_or_start_new_batch(
     packet: IpPacket,
     packet_tx: &tun::InboundTx,
 ) -> Result<(), ()> {
-    let Err(packet) = batch.try_push(packet) else {
+    let Err(packet) = batch.try_push_same_flow(packet) else {
         return Ok(());
     };
 
