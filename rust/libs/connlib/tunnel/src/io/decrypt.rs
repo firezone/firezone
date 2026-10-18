@@ -17,11 +17,11 @@ use super::{next_worker, spawn_workers};
 /// How many received packets go to a decrypt worker in one job at most.
 const DECRYPT_BATCH_SIZE: usize = 64;
 
-/// How many received packets may await decryption before we stop reading from the network.
+/// How many jobs may await decryption before we stop reading from the network.
 ///
-/// Each holds a copy of its datagram, so this bounds their memory like the UDP socket's queue
+/// Each packet holds a copy of its datagram, so this bounds their memory like the UDP socket's queue
 /// bounds that of the received batches.
-const MAX_DECRYPTS_IN_FLIGHT: usize = 4 * DECRYPT_BATCH_SIZE;
+const MAX_JOBS_IN_FLIGHT: usize = 4;
 
 bufferpool::buffer_pool!(
     static DECRYPT_JOBS: VecBuf<Received<DecryptJob>> = (DECRYPT_BATCH_SIZE, "decrypt-jobs"),
@@ -49,9 +49,8 @@ pub struct Decryptor {
     workers: Vec<mpsc::Sender<(Jobs, oneshot::Sender<Decrypted>)>>,
     next_worker: usize,
 
-    /// The jobs handed to the workers, with how many packets each holds.
-    decrypting: VecDeque<(usize, oneshot::Receiver<Decrypted>)>,
-    in_flight: usize,
+    /// The jobs handed to the workers.
+    decrypting: VecDeque<oneshot::Receiver<Decrypted>>,
 }
 
 type Jobs = Buffer<VecBuf<Received<DecryptJob>>>;
@@ -63,7 +62,6 @@ impl Decryptor {
             workers: spawn_workers("wg-decrypt", num_workers, decrypt),
             next_worker: 0,
             decrypting: VecDeque::new(),
-            in_flight: 0,
         }
     }
 
@@ -77,35 +75,27 @@ impl Decryptor {
 
     /// Whether we may hand more received packets to the workers.
     pub fn has_room(&self) -> bool {
-        self.in_flight < MAX_DECRYPTS_IN_FLIGHT
+        self.decrypting.len() < MAX_JOBS_IN_FLIGHT
     }
 
     /// Returns the next batch of decrypted packets, in the order they were received.
     pub fn poll_decrypted(&mut self, cx: &mut Context<'_>) -> Poll<Decrypted> {
         loop {
-            let Some((len, decrypted)) = self.decrypting.front_mut() else {
+            let Some(decrypted) = self.decrypting.front_mut() else {
                 return Poll::Pending;
             };
-            let len = *len;
             let result = ready!(Pin::new(decrypted).poll(cx));
 
             self.decrypting.pop_front();
-            self.in_flight -= len;
 
             match result {
                 Ok(decrypted) => return Poll::Ready(decrypted),
-                Err(_) => {
-                    tracing::debug!(
-                        num_packets = len,
-                        "Decrypt worker stopped; dropping packets"
-                    );
-                }
+                Err(_) => tracing::debug!("Decrypt worker stopped; dropping packets"),
             }
         }
     }
 
     fn submit(&mut self, jobs: Jobs) {
-        let len = jobs.len();
         let Some(worker) = next_worker(&self.workers, &mut self.next_worker) else {
             tracing::debug!("No decrypt worker running; dropping packets");
             return;
@@ -114,8 +104,7 @@ impl Decryptor {
 
         // A stopped worker drops the sender, so `poll_decrypted` skips the job.
         let _ = worker.send((jobs, tx));
-        self.decrypting.push_back((len, rx));
-        self.in_flight += len;
+        self.decrypting.push_back(rx);
     }
 }
 
