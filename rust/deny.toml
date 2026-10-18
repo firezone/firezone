@@ -98,6 +98,10 @@ ignore = [
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
 
+    # `zvariant` was merged into `zbus` 6; `ksni` and `tauri-plugin-opener` still pull in `zbus` 5.
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0372",
+
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
