@@ -9,6 +9,7 @@ binstall = false
 [tools]
 rust = { version = "nightly-2026-06-10", profile = "minimal", components = ["rust-src", "llvm-tools"] }
 "cargo:cargo-afl" = { version = "0.18.2", os = ["linux"] }
+"github:duckdb/duckdb" = { version = "1.5.6", matching_regex = "^duckdb_cli-" }
 
 [env]
 # Cargo tool installation must override the workspace rust-toolchain.toml too.

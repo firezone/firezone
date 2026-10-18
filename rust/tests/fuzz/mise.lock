@@ -4,6 +4,48 @@
 version = "0.18.2"
 backend = "cargo:cargo-afl"
 
+[[tools."github:duckdb/duckdb"]]
+version = "1.5.6"
+backend = "github:duckdb/duckdb"
+
+[tools."github:duckdb/duckdb".options]
+matching_regex = "^duckdb_cli-"
+
+[tools."github:duckdb/duckdb"."platforms.linux-arm64"]
+checksum = "sha256:c544e92c9b7c31fc53c2139802cabd8e2d1b2b3e3f933117f31611239c1402db"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-linux-arm64.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495292"
+
+[tools."github:duckdb/duckdb"."platforms.linux-arm64-musl"]
+checksum = "sha256:70f55385c1d42bc34c8865f4d5c606215545cb38c03a4c86a87f17d17773a3a3"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-linux-arm64-musl.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495213"
+
+[tools."github:duckdb/duckdb"."platforms.linux-x64"]
+checksum = "sha256:6e89deac1ebbc36eed0291caf8b567b030c7b86ac35998f71854e22b3c5d5e2f"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-linux-amd64.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495137"
+
+[tools."github:duckdb/duckdb"."platforms.linux-x64-musl"]
+checksum = "sha256:c8f8080a292a80f8f2066a3d27123d8d448ace1ab0bcb0819a104fb44f1f12de"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-linux-amd64-musl.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495049"
+
+[tools."github:duckdb/duckdb"."platforms.macos-arm64"]
+checksum = "sha256:8e0f6825653f8d057922e6147db920bebf072cb41f4b041fd35521c18d7d126e"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-osx-arm64.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495486"
+
+[tools."github:duckdb/duckdb"."platforms.macos-x64"]
+checksum = "sha256:ae74c8cd74304bde1d92d941aca37bc72084ee8daa5660913819d8a9e9d29331"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-osx-amd64.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495380"
+
+[tools."github:duckdb/duckdb"."platforms.windows-x64"]
+checksum = "sha256:798eae475d07c645ff3b914f7b0e676d06502b5412dd7552638fafed81f9e916"
+url = "https://github.com/duckdb/duckdb/releases/download/v1.5.6/duckdb_cli-windows-amd64.zip"
+url_api = "https://api.github.com/repos/duckdb/duckdb/releases/assets/595495726"
+
 [[tools.rust]]
 version = "nightly-2026-06-10"
 backend = "core:rust"
