@@ -326,8 +326,8 @@ impl ClientTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for batch in batches.iter_mut() {
-                        for received in batch.drain().inspect(|r| udp_received.record(r.packet)) {
+                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        for received in run.inspect(|r| udp_received.record(r.packet)) {
                             let result = self
                                 .role_state
                                 .handle_network_input(
@@ -582,8 +582,8 @@ impl GatewayTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for batch in batches.iter_mut() {
-                        for received in batch.drain().inspect(|r| udp_received.record(r.packet)) {
+                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        for received in run.inspect(|r| udp_received.record(r.packet)) {
                             let result = self
                                 .role_state
                                 .handle_network_input(
