@@ -90,19 +90,6 @@ pub struct Input {
     pub error: TunnelError,
 }
 
-impl Input {
-    fn error(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            device: None,
-            network: None,
-            tcp_dns_queries: Vec::new(),
-            udp_dns_queries: Vec::new(),
-            dns_responses: Vec::new(),
-            error: TunnelError::single(e),
-        }
-    }
-}
-
 fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
     match poll {
         Poll::Ready(r) => Some(r),
@@ -228,12 +215,15 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    /// Polls all IO sources that are ready.
+    ///
+    /// The TUN device is only read while the UDP sockets have room, and the network only while the TUN device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
-        if let Err(e) = ready!(self.flush(cx)) {
-            return Poll::Ready(Input::error(e));
-        }
-
         let mut error = TunnelError::default();
+
+        let udp_has_room = poll_result_to_option(self.flush_gso_queue(cx), &mut error).is_some();
+        let tun_has_room =
+            poll_result_to_option(self.tun.poll_send_ready(cx), &mut error).is_some();
 
         if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
             self.nameservers.evaluate();
@@ -255,13 +245,21 @@ impl Io {
             }
         }
 
-        let network = self.sockets.poll_recv_from(cx);
+        let network = if tun_has_room {
+            self.sockets.poll_recv_from(cx)
+        } else {
+            Poll::Pending
+        };
 
         while let Poll::Ready(e) = self.sockets.poll_error(cx) {
             error.push(e);
         }
 
-        let device = self.tun.poll_read(cx);
+        let device = if udp_has_room {
+            self.tun.poll_read(cx)
+        } else {
+            Poll::Pending
+        };
 
         let udp_dns_queries = self
             .udp_dns_server
@@ -356,7 +354,7 @@ impl Io {
             any_pending = true
         }
 
-        if self.tun.poll_flush(cx)?.is_pending() {
+        if self.tun.poll_send_ready(cx)?.is_pending() {
             any_pending = true;
         }
 

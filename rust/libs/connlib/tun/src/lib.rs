@@ -159,15 +159,12 @@ impl OutboundTx {
         self.0.try_send(batch)
     }
 
-    pub async fn send(
-        &self,
-        batch: PacketBatch,
-    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.send(batch).await
-    }
-
     pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
+    }
+
+    pub fn into_inner(self) -> mpsc::Sender<PacketBatch> {
+        self.0
     }
 }
 
