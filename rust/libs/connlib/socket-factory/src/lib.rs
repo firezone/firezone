@@ -1311,7 +1311,11 @@ mod tests {
         let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
         let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-        let mut batch = RecvBuffers::new(8).pull_batch();
+        let recv_buffers = RecvBuffers::new(8);
+        let mut batch = recv_buffers.pull_batch();
+        batch.buffers.resize_with(3, || recv_buffers.bytes.pull());
+        batch.metas.resize(3, quinn_udp::RecvMeta::default());
+
         for (i, (payload, meta)) in [
             (&b"foo1foo2"[..], recv_meta(remote_a, local, 8, 4)),
             (b"foo3", recv_meta(remote_a, local, 4, 4)),
