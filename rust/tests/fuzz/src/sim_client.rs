@@ -9,6 +9,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    sut::encrypt,
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -18,7 +19,8 @@ use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    iter,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -74,6 +76,9 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
+
+    /// Encrypted datagrams not yet handed to the network, in encapsulation order.
+    encrypted: VecDeque<Transmit>,
 }
 
 impl SimClient {
@@ -105,6 +110,7 @@ impl SimClient {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
             dns_resource_record_cache: Default::default(),
+            encrypted: VecDeque::new(),
         }
     }
 
@@ -305,20 +311,30 @@ impl SimClient {
         self.encapsulate(packet, now)
     }
 
-    /// Drive the SUT's TUN -> network path, encrypting the encapsulated datagram (if any).
+    /// Drive the SUT's TUN -> network path, returning the next encrypted datagram (if any).
+    ///
+    /// Like the event loop, this encrypts the jobs the SUT queued before the one it returns.
     fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        let Some(job) = self.sut.handle_tun_input(packet, now)? else {
-            return Ok(None);
-        };
+        let job = self.sut.handle_tun_input(packet, now)?;
+        self.encrypted.extend(
+            iter::from_fn(|| self.sut.poll_encrypt_job())
+                .chain(job)
+                .filter_map(encrypt),
+        );
 
-        Ok(job
-            .encrypt()
-            .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
-            .ok())
+        Ok(self.encrypted.pop_front())
+    }
+
+    /// Returns the next datagram the SUT encrypted, in encapsulation order.
+    pub(crate) fn poll_encrypted(&mut self) -> Option<snownet::Transmit> {
+        self.encrypted
+            .extend(iter::from_fn(|| self.sut.poll_encrypt_job()).filter_map(encrypt));
+
+        self.encrypted.pop_front()
     }
 
     /// Returns the next packet the simulated applications send and the probe it submits, if any.

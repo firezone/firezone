@@ -1162,8 +1162,8 @@ impl TunnelTest {
 
     fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
         for gateway in self.gateways.values_mut() {
-            while let Some(job) = gateway.exec_mut(|g| g.sut.poll_encrypt_job()) {
-                buffered_transmits.push_from(encrypt(job), gateway, now);
+            while let Some(transmit) = gateway.exec_mut(|g| g.poll_encrypted()) {
+                buffered_transmits.push_from(transmit, gateway, now);
             }
             while let Some(transmit) = gateway.exec_mut(|g| g.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, gateway, now);
@@ -1171,8 +1171,8 @@ impl TunnelTest {
         }
 
         for client in self.clients.values_mut() {
-            while let Some(job) = client.exec_mut(|c| c.sut.poll_encrypt_job()) {
-                buffered_transmits.push_from(encrypt(job), client, now);
+            while let Some(transmit) = client.exec_mut(|c| c.poll_encrypted()) {
+                buffered_transmits.push_from(transmit, client, now);
             }
             while let Some(transmit) = client.exec_mut(|g| g.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, client, now);
@@ -1774,7 +1774,7 @@ impl TunnelTest {
     }
 }
 
-fn encrypt(job: snownet::EncryptJob) -> Option<Transmit> {
+pub(crate) fn encrypt(job: snownet::EncryptJob) -> Option<Transmit> {
     job.encrypt()
         .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
         .ok()

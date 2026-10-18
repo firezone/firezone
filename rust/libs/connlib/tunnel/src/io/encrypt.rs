@@ -1,11 +1,5 @@
-use std::{
-    collections::VecDeque,
-    net::SocketAddr,
-    sync::mpsc,
-    task::{Context, Poll, ready},
-};
+use std::{net::SocketAddr, sync::mpsc};
 
-use anyhow::Result;
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
@@ -15,30 +9,28 @@ use tokio::sync::oneshot;
 
 use super::{UdpGsoTrain, next_worker, spawn_workers};
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::Sockets;
+use crate::sockets::{Encrypting, Sockets};
 
 bufferpool::buffer_pool!(
     static ENCRYPT_JOBS: VecBuf<EncryptJob> = (MAX_GSO_SEGMENTS, "encrypt-jobs"),
     batch: 4
 );
+bufferpool::buffer_pool!(
+    static ENCRYPTING: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "encrypting"),
+    batch: 4
+);
 
 /// Encrypts WireGuard data messages on worker threads, one [`UdpGsoTrain`] per job.
 ///
-/// A train goes to the next worker round-robin as soon as the next packet would start a new train,
-/// or when we flush. The result comes back through a `oneshot` channel, which we queue on the UDP
-/// socket thread in submission order, so it sends the datagrams in that order.
+/// Push packets in the order the state encapsulated them, i.e. reserved their counters, and their
+/// datagrams go out in that order: batches borrow the [`Encryptor`] mutably, so they never
+/// interleave. Within a batch, trains close in push order and queue their receivers in that order.
+/// When the batch ends, the receivers of each IP version go to its UDP socket thread as one item.
+/// A socket thread sends its items and their receivers front to back, and a flow has one
+/// destination, so all of its datagrams go through one socket thread.
 pub struct Encryptor {
     workers: Vec<mpsc::Sender<(Train, oneshot::Sender<DatagramOut>)>>,
     next_worker: usize,
-
-    open: Option<Train>,
-    /// Closed trains waiting for room in their UDP socket's queue.
-    unsent: VecDeque<Train>,
-}
-
-struct Train {
-    train: UdpGsoTrain,
-    jobs: Buffer<VecBuf<EncryptJob>>,
 }
 
 impl Encryptor {
@@ -48,102 +40,104 @@ impl Encryptor {
                 encrypt(trains, packet_counter.clone())
             }),
             next_worker: 0,
-            open: None,
-            unsent: VecDeque::new(),
         }
     }
 
-    /// Adds `job` to the open train, sending that train to a worker first if `job` starts a new train.
-    pub fn submit(&mut self, job: EncryptJob, sockets: &mut Sockets) {
-        let (src, dst, ecn, len) = (job.src(), job.dst(), job.ecn(), job.datagram_len());
+    /// Starts a batch whose datagrams are queued on `sockets` when it is dropped.
+    ///
+    /// Each UDP socket must have room for one more item.
+    pub fn batch<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptBatch<'a> {
+        EncryptBatch {
+            encryptor: self,
+            sockets,
+            open: None,
+            encrypting_v4: None,
+            encrypting_v6: None,
+        }
+    }
+}
 
+/// Packets to encrypt, sent to the UDP sockets when dropped.
+pub struct EncryptBatch<'a> {
+    encryptor: &'a mut Encryptor,
+    sockets: &'a mut Sockets,
+    open: Option<Train>,
+    encrypting_v4: Option<Encrypting>,
+    encrypting_v6: Option<Encrypting>,
+}
+
+impl EncryptBatch<'_> {
+    /// Adds `job` to the open train, handing that train to a worker first if `job` starts a new one.
+    pub fn push(&mut self, job: EncryptJob) {
         if let Some(open) = self.open.as_mut()
-            && open.train.try_append(src, dst, ecn, len)
+            && open
+                .train
+                .try_append(job.src(), job.dst(), job.ecn(), job.datagram_len())
         {
             open.jobs.push(job);
             return;
         }
 
-        let mut jobs = ENCRYPT_JOBS.pull();
-        jobs.push(job);
-        let next = Train {
-            train: UdpGsoTrain::new(src, dst, ecn, len),
-            jobs,
-        };
-
-        let Some(train) = self.open.replace(next) else {
-            return;
-        };
-
-        self.unsent.push_back(train);
-        self.try_flush(sockets);
-    }
-
-    /// Hands all trains to the workers and queues the encrypted datagrams on `sockets`.
-    ///
-    /// Pending while a UDP socket has no room for another datagram.
-    pub fn poll_flush(&mut self, sockets: &mut Sockets, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        self.unsent.extend(self.open.take());
-
-        while let Some(train) = self.unsent.front() {
-            let version = train.version();
-
-            if let Err(e) = ready!(sockets.poll_send_ready_for(version, cx)) {
-                self.unsent.clear();
-                return Poll::Ready(Err(e));
-            }
-
-            let Some(train) = self.unsent.pop_front() else {
-                break;
-            };
-            let (tx, rx) = oneshot::channel();
-            sockets.send_encrypting(version, rx)?;
-
-            self.dispatch(train, tx);
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Drops all trains not yet handed to a worker.
-    pub fn clear(&mut self) {
-        self.open = None;
-        self.unsent.clear();
-    }
-
-    /// Hands queued trains to the workers while their socket's queue has room.
-    fn try_flush(&mut self, sockets: &mut Sockets) {
-        while let Some(train) = self.unsent.front() {
-            let (tx, rx) = oneshot::channel();
-
-            if !sockets.try_send_encrypting(train.version(), rx) {
-                return;
-            }
-
-            let Some(train) = self.unsent.pop_front() else {
-                return;
-            };
-            self.dispatch(train, tx);
+        if let Some(closed) = self.open.replace(Train::new(job)) {
+            self.dispatch(closed);
         }
     }
 
-    fn dispatch(&mut self, train: Train, encrypted: oneshot::Sender<DatagramOut>) {
-        let Some(worker) = next_worker(&self.workers, &mut self.next_worker) else {
+    fn dispatch(&mut self, train: Train) {
+        let (tx, rx) = oneshot::channel();
+        let encrypting = match train.train.dst() {
+            SocketAddr::V4(_) => &mut self.encrypting_v4,
+            SocketAddr::V6(_) => &mut self.encrypting_v6,
+        };
+        encrypting.get_or_insert_with(|| ENCRYPTING.pull()).push(rx);
+
+        let Some(worker) = next_worker(&self.encryptor.workers, &mut self.encryptor.next_worker)
+        else {
             tracing::debug!("No encrypt worker running; dropping packets");
             return;
         };
 
         // A stopped worker drops the sender, so the socket skips the train.
-        let _ = worker.send((train, encrypted));
+        let _ = worker.send((train, tx));
     }
 }
 
-impl Train {
-    fn version(&self) -> IpVersion {
-        match self.train.dst() {
-            SocketAddr::V4(_) => IpVersion::V4,
-            SocketAddr::V6(_) => IpVersion::V6,
+impl Extend<EncryptJob> for EncryptBatch<'_> {
+    fn extend<T: IntoIterator<Item = EncryptJob>>(&mut self, jobs: T) {
+        for job in jobs {
+            self.push(job);
         }
+    }
+}
+
+impl Drop for EncryptBatch<'_> {
+    fn drop(&mut self) {
+        if let Some(open) = self.open.take() {
+            self.dispatch(open);
+        }
+
+        if let Some(encrypting) = self.encrypting_v4.take() {
+            self.sockets.send_encrypting(IpVersion::V4, encrypting);
+        }
+
+        if let Some(encrypting) = self.encrypting_v6.take() {
+            self.sockets.send_encrypting(IpVersion::V6, encrypting);
+        }
+    }
+}
+
+struct Train {
+    train: UdpGsoTrain,
+    jobs: Buffer<VecBuf<EncryptJob>>,
+}
+
+impl Train {
+    fn new(job: EncryptJob) -> Self {
+        let train = UdpGsoTrain::new(job.src(), job.dst(), job.ecn(), job.datagram_len());
+        let mut jobs = ENCRYPT_JOBS.pull();
+        jobs.push(job);
+
+        Self { train, jobs }
     }
 }
 

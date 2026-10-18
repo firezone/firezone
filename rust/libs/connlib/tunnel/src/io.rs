@@ -7,8 +7,9 @@ mod tcp_dns;
 mod udp_dns;
 mod udp_gso_train;
 
-pub use decrypt::Received;
+pub use decrypt::{DecryptBatch, Received};
 pub use device::{Device, TunChannelClosed};
+pub use encrypt::EncryptBatch;
 pub(crate) use udp_gso_train::{GSO_BUFFER_SIZE, UdpGsoTrain};
 
 use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
@@ -67,7 +68,6 @@ pub struct Io {
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
-    /// Packets decrypted from the jobs passed to [`Io::submit_decrypt`].
+    /// Packets decrypted from the jobs pushed to an [`Io::decrypt_batch`].
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
@@ -173,7 +173,6 @@ impl Io {
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
             packet_counter,
-            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -233,8 +232,8 @@ impl Io {
 
     /// Polls all IO sources that are ready.
     ///
-    /// The TUN device is only read while the UDP sockets have room, and decrypted packets are only
-    /// accepted while the TUN device has room.
+    /// The TUN device is only read while each UDP socket has room for an [`Io::encrypt_batch`], and
+    /// decrypted packets are only accepted while the TUN device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
         let mut error = TunnelError::default();
 
@@ -391,8 +390,8 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
-    /// Sends the queued datagrams and hands the staged packets to the crypto workers.
-    pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    /// Sends the queued control datagrams, resolving once each UDP socket has room for another item.
+    fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
         loop {
@@ -408,9 +407,6 @@ impl Io {
 
             self.sockets.send(datagram)?;
         }
-
-        self.decryptor.flush();
-        ready!(self.encryptor.poll_flush(&mut self.sockets, cx))?;
 
         Poll::Ready(Ok(()))
     }
@@ -433,8 +429,6 @@ impl Io {
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.datagrams.clear();
-        self.encryptor.clear();
-        self.decryptor.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
@@ -446,24 +440,23 @@ impl Io {
         }
     }
 
-    /// Encrypts an encapsulated packet off the main thread.
-    pub fn submit_encrypt(&mut self, job: snownet::EncryptJob) {
-        self.encryptor.submit(job, &mut self.sockets);
+    /// Resolves once each UDP socket has room for an [`Io::encrypt_batch`].
+    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.sockets.poll_send_ready(cx)
     }
 
-    /// Submits every job `poll_job` yields, in that order.
-    pub fn submit_encrypt_jobs(
-        &mut self,
-        mut poll_job: impl FnMut() -> Option<snownet::EncryptJob>,
-    ) {
-        while let Some(job) = poll_job() {
-            self.submit_encrypt(job);
-        }
+    /// Starts a batch of encapsulated packets to encrypt off the main thread.
+    ///
+    /// The batch takes up the room in the UDP sockets' queues found by [`Io::poll_send_ready`], or by
+    /// [`Io::poll`] before reading from the TUN device, so start one only right after either.
+    pub fn encrypt_batch(&mut self) -> EncryptBatch<'_> {
+        self.encryptor.batch(&mut self.sockets)
     }
 
-    /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].
-    pub fn submit_decrypt(&mut self, job: Received<snownet::DecryptJob>) {
-        self.decryptor.submit(job);
+    /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
+    /// [`Input::decrypted`].
+    pub fn decrypt_batch(&mut self) -> DecryptBatch<'_> {
+        self.decryptor.batch()
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
@@ -609,10 +602,6 @@ impl Io {
             .get_mut(&from)
             .ok_or(io::Error::other("No DNS server"))?
             .send_response(to, message)
-    }
-
-    pub(crate) fn inc_dropped_packet(&self, attrs: &[opentelemetry::KeyValue]) {
-        self.dropped_packets.add(1, attrs);
     }
 
     fn queue_dns_query(

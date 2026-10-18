@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 
 use super::{next_worker, spawn_workers};
 
-/// How many received packets go to a decrypt worker in one batch at most.
+/// How many received packets go to a decrypt worker in one job at most.
 const DECRYPT_BATCH_SIZE: usize = 64;
 
 /// How many received packets may await decryption before we stop reading from the network.
@@ -42,42 +42,36 @@ pub struct Received<P> {
 
 /// Decrypts WireGuard data messages on worker threads.
 ///
-/// Packets go to the next worker round-robin in batches. The results come back through a `oneshot`
-/// channel per batch, which we queue in submission order to accept the decrypted packets in that order.
+/// Packets go to the next worker round-robin in jobs of up to [`DECRYPT_BATCH_SIZE`]. The results
+/// come back through a `oneshot` channel per job, which we queue in submission order to accept the
+/// decrypted packets in that order.
 pub struct Decryptor {
-    workers: Vec<mpsc::Sender<Batch>>,
+    workers: Vec<mpsc::Sender<(Jobs, oneshot::Sender<Decrypted>)>>,
     next_worker: usize,
 
-    staged: Buffer<VecBuf<Received<DecryptJob>>>,
-    /// The batches handed to the workers, with how many packets each holds.
+    /// The jobs handed to the workers, with how many packets each holds.
     decrypting: VecDeque<(usize, oneshot::Receiver<Decrypted>)>,
     in_flight: usize,
 }
 
+type Jobs = Buffer<VecBuf<Received<DecryptJob>>>;
 type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
-
-struct Batch {
-    jobs: Buffer<VecBuf<Received<DecryptJob>>>,
-    decrypted: oneshot::Sender<Decrypted>,
-}
 
 impl Decryptor {
     pub fn new(num_workers: usize) -> Self {
         Self {
             workers: spawn_workers("wg-decrypt", num_workers, decrypt),
             next_worker: 0,
-            staged: DECRYPT_JOBS.pull(),
             decrypting: VecDeque::new(),
             in_flight: 0,
         }
     }
 
-    /// Stages `job` for decryption.
-    pub fn submit(&mut self, job: Received<DecryptJob>) {
-        self.staged.push(job);
-
-        if self.staged.len() >= DECRYPT_BATCH_SIZE {
-            self.flush();
+    /// Starts a batch of packets to decrypt, handed to the workers when it is dropped.
+    pub fn batch(&mut self) -> DecryptBatch<'_> {
+        DecryptBatch {
+            decryptor: self,
+            jobs: DECRYPT_JOBS.pull(),
         }
     }
 
@@ -110,18 +104,7 @@ impl Decryptor {
         }
     }
 
-    /// Drops all staged packets.
-    pub fn clear(&mut self) {
-        self.staged.clear();
-    }
-
-    /// Hands all staged packets to the next worker.
-    pub fn flush(&mut self) {
-        if self.staged.is_empty() {
-            return;
-        }
-
-        let jobs = mem::replace(&mut self.staged, DECRYPT_JOBS.pull());
+    fn submit(&mut self, jobs: Jobs) {
         let len = jobs.len();
         let Some(worker) = next_worker(&self.workers, &mut self.next_worker) else {
             tracing::debug!("No decrypt worker running; dropping packets");
@@ -129,22 +112,44 @@ impl Decryptor {
         };
         let (tx, rx) = oneshot::channel();
 
-        // A stopped worker drops the sender, so `poll_decrypted` skips the batch.
-        let _ = worker.send(Batch {
-            jobs,
-            decrypted: tx,
-        });
+        // A stopped worker drops the sender, so `poll_decrypted` skips the job.
+        let _ = worker.send((jobs, tx));
         self.decrypting.push_back((len, rx));
         self.in_flight += len;
     }
 }
 
-fn decrypt(batches: mpsc::Receiver<Batch>) {
-    for Batch {
-        mut jobs,
-        decrypted,
-    } in batches
-    {
+/// Packets to decrypt, handed to the workers when dropped.
+pub struct DecryptBatch<'a> {
+    decryptor: &'a mut Decryptor,
+    jobs: Jobs,
+}
+
+impl DecryptBatch<'_> {
+    pub fn push(&mut self, job: Received<DecryptJob>) {
+        self.jobs.push(job);
+
+        if self.jobs.len() == DECRYPT_BATCH_SIZE {
+            self.submit();
+        }
+    }
+
+    fn submit(&mut self) {
+        let jobs = mem::replace(&mut self.jobs, DECRYPT_JOBS.pull());
+        self.decryptor.submit(jobs);
+    }
+}
+
+impl Drop for DecryptBatch<'_> {
+    fn drop(&mut self) {
+        if !self.jobs.is_empty() {
+            self.submit();
+        }
+    }
+}
+
+fn decrypt(jobs: mpsc::Receiver<(Jobs, oneshot::Sender<Decrypted>)>) {
+    for (mut jobs, decrypted) in jobs {
         let mut packets = DECRYPTED.pull();
         packets.extend(jobs.drain(..).map(|job| Received {
             local: job.local,
@@ -153,7 +158,7 @@ fn decrypt(batches: mpsc::Receiver<Batch>) {
             packet: job.packet.decrypt(),
         }));
 
-        // We stopped if the receiver is gone; the channel for the next batch is closed too.
+        // We stopped if the receiver is gone; the channel for the next job is closed too.
         let _ = decrypted.send(packets);
     }
 }

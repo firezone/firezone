@@ -5,7 +5,9 @@ use futures::{SinkExt, ready};
 use ip_packet::IpVersion;
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
+use std::convert::Infallible;
 use std::env::VarError;
+use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{
     io,
@@ -67,8 +69,8 @@ pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
-    /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
-    bind_errors: VecDeque<anyhow::Error>,
+    /// Bind and send failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
+    errors: VecDeque<anyhow::Error>,
 }
 
 impl Sockets {
@@ -90,7 +92,7 @@ impl Sockets {
             Err(e) => {
                 // A family we cannot bind is survivable on its own - the other one carries the
                 // session - so the event-loop decides what a failure means instead of us.
-                self.bind_errors.push_back(
+                self.errors.push_back(
                     anyhow::Error::new(e).context(format!("Failed to bind UDP socket on {addr}")),
                 );
 
@@ -131,49 +133,18 @@ impl Sockets {
         Ok(())
     }
 
-    /// Waits until the socket for `version` has room for another [`Outbound`].
-    pub fn poll_send_ready_for(
-        &mut self,
-        version: IpVersion,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<()>> {
-        ready!(self.socket_mut(version)?.poll_send_ready(cx))?;
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Queues a datagram that is still being encrypted on the socket for `version`.
+    /// Queues datagrams that are still being encrypted on the socket for `version`, in order.
     ///
-    /// Call [`Sockets::poll_send_ready_for`] first.
-    pub fn send_encrypting(
-        &mut self,
-        version: IpVersion,
-        encrypting: oneshot::Receiver<DatagramOut>,
-    ) -> Result<()> {
-        self.socket_mut(version)?
-            .send(Outbound::Encrypting(encrypting))?;
-
-        Ok(())
-    }
-
-    /// Queues a datagram that is still being encrypted on the socket for `version`, if there is room.
-    ///
-    /// Returns `false` if the socket is missing, stopped or its queue is full.
-    pub fn try_send_encrypting(
-        &mut self,
-        version: IpVersion,
-        encrypting: oneshot::Receiver<DatagramOut>,
-    ) -> bool {
-        let Some(sender) = self
+    /// Call [`Sockets::poll_send_ready`] first. Failures are returned by [`Sockets::poll_error`].
+    pub fn send_encrypting(&mut self, version: IpVersion, encrypting: Encrypting) {
+        let result = self
             .socket_mut(version)
-            .ok()
-            .and_then(|socket| socket.channels.as_ref())
-            .and_then(|channels| channels.outbound_tx.get_ref())
-        else {
-            return false;
-        };
+            .map_err(anyhow::Error::new)
+            .and_then(|socket| socket.send(Outbound::Encrypting(encrypting)));
 
-        sender.try_send(Outbound::Encrypting(encrypting)).is_ok()
+        if let Err(e) = result {
+            self.errors.push_back(e);
+        }
     }
 
     fn socket_mut(&mut self, version: IpVersion) -> io::Result<&mut ThreadedUdpSocket> {
@@ -210,7 +181,7 @@ impl Sockets {
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
-        if let Some(error) = self.bind_errors.pop_front() {
+        if let Some(error) = self.errors.pop_front() {
             return Poll::Ready(error);
         }
 
@@ -233,13 +204,15 @@ impl Sockets {
 /// What a UDP socket thread sends, in queue order.
 pub(crate) enum Outbound {
     Datagram(DatagramOut),
-    /// A datagram still being encrypted by a crypto worker.
-    ///
-    /// The worker drops the sender if there is nothing to send.
-    Encrypting(oneshot::Receiver<DatagramOut>),
+    Encrypting(Encrypting),
 }
 
-/// How big the queue for outgoing UDP batches and socket errors is at most.
+/// Datagrams still being encrypted by the crypto workers, in the order to send them.
+///
+/// A worker drops the sender if there is nothing to send.
+pub(crate) type Encrypting = Buffer<VecBuf<oneshot::Receiver<DatagramOut>>>;
+
+/// How big the queue for outgoing UDP items and socket errors is at most.
 ///
 /// Every queued [`DatagramOut`] owns a buffer of up to [`crate::io::GSO_BUFFER_SIZE`] bytes that it
 /// pins until the send task drains it - and, because the buffer pool never shrinks, for the rest of
@@ -257,13 +230,14 @@ const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 /// blow the mobile budget. See [`MAX_UDP_INBOUND_QUEUE_MEMORY`].
 const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 
-/// Worst-case memory pinned by the outbound UDP datagram queues.
+/// Memory pinned by the outbound UDP queues when every item is a single datagram.
 ///
 /// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
-/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). A [`DatagramOut`] of a [`UdpGsoTrain`](crate::io::UdpGsoTrain)
+/// [`QUEUE_SIZE`] items (hence the `2 *`). A [`DatagramOut`] of a [`UdpGsoTrain`](crate::io::UdpGsoTrain)
 /// owns a GSO buffer allocated at [`crate::io::GSO_BUFFER_SIZE`] regardless of how full it is. That
 /// pool never shrinks, so a send backlog that ever fills these queues pins this much memory for the
-/// rest of the session.
+/// rest of the session. An [`Outbound::Encrypting`] item holds one such datagram per train of its
+/// batch, so batches of many trains pin a multiple of this.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
     2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
 
@@ -383,53 +357,61 @@ impl ThreadedUdpSocket {
                     let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
-                        loop {
-                            let num_batches = outbound_rx
-                                .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
-                                .await;
+                        let send = async |datagram| -> ControlFlow<&str> {
+                            let Err(e) = socket.send(datagram).await else {
+                                return ControlFlow::Continue(());
+                            };
 
-                            if num_batches == 0 {
-                                tracing::debug!(
-                                    "Channel for outbound datagrams closed; exiting UDP send task"
+                            if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                                io_error_counter.add(
+                                    1,
+                                    &[
+                                        otel::attr::network_io_direction_transmit(),
+                                        otel::attr::network_type_for_addr(preferred_addr),
+                                        otel::attr::io_error_type(io),
+                                        otel::attr::io_error_code(io),
+                                    ],
                                 );
-                                return;
                             }
 
-                            for outbound in pending_datagrams.drain(..) {
-                                let datagram = match outbound {
-                                    Outbound::Datagram(datagram) => datagram,
-                                    Outbound::Encrypting(encrypting) => {
-                                        let Ok(datagram) = encrypting.await else {
-                                            continue;
-                                        };
+                            // Dedicated channel so errors can't hold up received datagrams.
+                            match error_tx.send(e).await {
+                                Ok(()) => ControlFlow::Continue(()),
+                                Err(_) => ControlFlow::Break("Channel for errors closed"),
+                            }
+                        };
 
-                                        datagram
-                                    }
-                                };
+                        let ControlFlow::Break(reason): ControlFlow<_, Infallible> = async {
+                            loop {
+                                if outbound_rx
+                                    .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
+                                    .await
+                                    == 0
+                                {
+                                    return ControlFlow::Break(
+                                        "Channel for outbound datagrams closed",
+                                    );
+                                }
 
-                                if let Err(e) = socket.send(datagram).await {
-                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                        io_error_counter.add(
-                                            1,
-                                            &[
-                                                otel::attr::network_io_direction_transmit(),
-                                                otel::attr::network_type_for_addr(preferred_addr),
-                                                otel::attr::io_error_type(io),
-                                                otel::attr::io_error_code(io),
-                                            ],
-                                        );
-                                    }
+                                for outbound in pending_datagrams.drain(..) {
+                                    match outbound {
+                                        Outbound::Datagram(datagram) => send(datagram).await?,
+                                        Outbound::Encrypting(mut encrypting) => {
+                                            for encrypting in encrypting.drain(..) {
+                                                let Ok(datagram) = encrypting.await else {
+                                                    continue;
+                                                };
 
-                                    // Dedicated channel so errors can't hold up received datagrams.
-                                    if error_tx.send(e).await.is_err() {
-                                        tracing::debug!(
-                                            "Channel for errors closed; exiting UDP send task"
-                                        );
-                                        return;
+                                                send(datagram).await?;
+                                            }
+                                        }
                                     }
-                                };
+                                }
                             }
                         }
+                        .await;
+
+                        tracing::debug!("{reason}; exiting UDP send task");
                     }
                 });
                 let receive = runtime.spawn({

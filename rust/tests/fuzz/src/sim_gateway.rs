@@ -6,13 +6,14 @@ use super::{
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    sut::encrypt,
 };
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, SocketAddr},
     time::Instant,
@@ -42,6 +43,9 @@ pub(crate) struct SimGateway {
     tcp_servers: BTreeMap<(DomainName, u16), crate::tcp::Server>,
     /// Answers TCP to any address without a TCP server with a reset.
     closed_tcp_ports: crate::tcp::Server,
+
+    /// Encrypted datagrams not yet handed to the network, in encapsulation order.
+    encrypted: VecDeque<Transmit>,
 }
 
 #[derive(Debug, Clone)]
@@ -91,6 +95,7 @@ impl SimGateway {
             clients_by_ip: Default::default(),
             tcp_servers,
             closed_tcp_ports: crate::tcp::Server::new(now),
+            encrypted: VecDeque::new(),
         }
     }
 
@@ -188,20 +193,30 @@ impl SimGateway {
             .collect()
     }
 
-    /// Drive the SUT's TUN -> network path, encrypting the encapsulated datagram (if any).
+    /// Drive the SUT's TUN -> network path, returning the next encrypted datagram (if any).
+    ///
+    /// Like the event loop, this encrypts the jobs the SUT queued before the one it returns.
     fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        let Some(job) = self.sut.handle_tun_input(packet, now)? else {
-            return Ok(None);
-        };
+        let job = self.sut.handle_tun_input(packet, now)?;
+        self.encrypted.extend(
+            iter::from_fn(|| self.sut.poll_encrypt_job())
+                .chain(job)
+                .filter_map(encrypt),
+        );
 
-        Ok(job
-            .encrypt()
-            .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
-            .ok())
+        Ok(self.encrypted.pop_front())
+    }
+
+    /// Returns the next datagram the SUT encrypted, in encapsulation order.
+    pub(crate) fn poll_encrypted(&mut self) -> Option<snownet::Transmit> {
+        self.encrypted
+            .extend(iter::from_fn(|| self.sut.poll_encrypt_job()).filter_map(encrypt));
+
+        self.encrypted.pop_front()
     }
 
     pub(crate) fn deploy_new_dns_servers(

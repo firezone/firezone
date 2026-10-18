@@ -20,10 +20,10 @@ use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    future, mem,
+    future, iter, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll},
+    task::{Context, Poll, ready},
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
@@ -107,6 +107,7 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
 
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
@@ -155,6 +156,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
             needs_timeout: false,
         }
     }
@@ -200,8 +202,6 @@ impl ClientTunnel {
         self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
-        self.io
-            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io.send_network(trans);
         }
@@ -210,7 +210,14 @@ impl ClientTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| self.io.flush(cx)),
+                future::poll_fn(move |cx| {
+                    ready!(self.io.poll_send_ready(cx))?;
+                    self.io
+                        .encrypt_batch()
+                        .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
+
+                    self.io.flush(cx)
+                }),
             )
             .await
             .context("Failed to flush within 1s")??;
@@ -256,8 +263,11 @@ impl ClientTunnel {
 
             self.io.flush_tun_batch();
 
-            self.io
-                .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+            if let Poll::Ready(Ok(())) = self.io.poll_send_ready(cx) {
+                self.io
+                    .encrypt_batch()
+                    .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
+            }
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -284,14 +294,14 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.io
-                        .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
                     self.needs_timeout = true;
 
                     tick.want_continue();
                 }
 
                 if let Some(mut packets) = device {
+                    let mut batch = self.io.encrypt_batch();
+
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         let result = self
                             .role_state
@@ -299,11 +309,10 @@ impl ClientTunnel {
                             .context("Failed to handle packet from TUN device");
 
                         // Jobs queued by this call were encapsulated before the one it returns.
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+                        batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
 
                         match result {
-                            Ok(Some(job)) => self.io.submit_encrypt(job),
+                            Ok(Some(job)) => batch.push(job),
                             Ok(None) => {}
                             Err(e) => error.push(e),
                         }
@@ -311,15 +320,12 @@ impl ClientTunnel {
 
                     self.needs_timeout = true;
 
-                    // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
-                        error.push(e);
-                    }
-
                     tick.want_continue();
                 }
 
                 if let Some(mut batches) = network {
+                    let mut decrypts = self.io.decrypt_batch();
+
                     for received in batches
                         .iter_mut()
                         .flat_map(|batch| batch.drain())
@@ -337,11 +343,9 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             });
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
 
                         match result {
-                            Ok(Some(job)) => self.io.submit_decrypt(io::Received {
+                            Ok(Some(job)) => decrypts.push(io::Received {
                                 local: received.local,
                                 from: received.from,
                                 ecn: received.ecn,
@@ -369,8 +373,6 @@ impl ClientTunnel {
                                 local: received.local,
                                 from: received.from,
                             });
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
 
                         match result {
                             Ok(Some(packet)) => {
@@ -416,6 +418,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
             needs_timeout: false,
         }
     }
@@ -441,8 +444,6 @@ impl GatewayTunnel {
         self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
-        self.io
-            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io.send_network(trans);
         }
@@ -451,7 +452,14 @@ impl GatewayTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| self.io.flush(cx)),
+                future::poll_fn(move |cx| {
+                    ready!(self.io.poll_send_ready(cx))?;
+                    self.io
+                        .encrypt_batch()
+                        .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
+
+                    self.io.flush(cx)
+                }),
             )
             .await
             .context("Failed to flush within 1s")??;
@@ -478,8 +486,11 @@ impl GatewayTunnel {
                 return Poll::Ready(Ok(other));
             }
 
-            self.io
-                .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+            if let Poll::Ready(Ok(())) = self.io.poll_send_ready(cx) {
+                self.io
+                    .encrypt_batch()
+                    .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
+            }
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -531,6 +542,8 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
+                    let mut batch = self.io.encrypt_batch();
+
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         let result = self
                             .role_state
@@ -538,11 +551,10 @@ impl GatewayTunnel {
                             .context("Failed to handle packet from TUN device");
 
                         // Jobs queued by this call were encapsulated before the one it returns.
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+                        batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
 
                         match result {
-                            Ok(Some(job)) => self.io.submit_encrypt(job),
+                            Ok(Some(job)) => batch.push(job),
                             Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
@@ -551,10 +563,13 @@ impl GatewayTunnel {
                                     .unwrap_or(RoutingError::Other);
 
                                 // TODO: Include more attributes here like IPv4/IPv6?
-                                self.io.inc_dropped_packet(&[
-                                    otel::attr::error_type(routing_error),
-                                    otel::attr::network_io_direction_receive(),
-                                ]);
+                                self.dropped_packets.add(
+                                    1,
+                                    &[
+                                        otel::attr::error_type(routing_error),
+                                        otel::attr::network_io_direction_receive(),
+                                    ],
+                                );
 
                                 error.push(e);
                             }
@@ -563,15 +578,12 @@ impl GatewayTunnel {
 
                     self.needs_timeout = true;
 
-                    // Eagerly flush GSO queue.
-                    if let Poll::Ready(Err(e)) = self.io.flush_network(cx) {
-                        error.push(e);
-                    }
-
                     tick.want_continue();
                 }
 
                 if let Some(mut batches) = network {
+                    let mut decrypts = self.io.decrypt_batch();
+
                     for received in batches
                         .iter_mut()
                         .flat_map(|batch| batch.drain())
@@ -589,11 +601,9 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             });
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
 
                         match result {
-                            Ok(Some(job)) => self.io.submit_decrypt(io::Received {
+                            Ok(Some(job)) => decrypts.push(io::Received {
                                 local: received.local,
                                 from: received.from,
                                 ecn: received.ecn,
@@ -621,8 +631,6 @@ impl GatewayTunnel {
                                 local: received.local,
                                 from: received.from,
                             });
-                        self.io
-                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
 
                         match result {
                             Ok(Some(packet)) => {
