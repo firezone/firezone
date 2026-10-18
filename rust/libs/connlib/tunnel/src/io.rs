@@ -8,7 +8,7 @@ mod udp_gso_queue;
 
 pub use crypto::Received;
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, Train, UdpGsoQueue};
 
 use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -442,7 +442,7 @@ impl Io {
 
     /// Encrypts an encapsulated packet off the main thread.
     pub fn submit_encrypt(&mut self, job: snownet::EncryptJob) {
-        self.crypto.submit_encrypt(job);
+        self.crypto.submit_encrypt(job, &mut self.sockets);
     }
 
     /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].

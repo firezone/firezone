@@ -376,7 +376,7 @@ pub struct DatagramOut {
 }
 
 /// The most segments one GSO send may carry (`UDP_MAX_SEGMENTS` in `linux/udp.h`; `quinn-udp` reports the same on Linux).
-const MAX_GSO_SEGMENTS: usize = 64;
+pub const MAX_GSO_SEGMENTS: usize = 64;
 
 impl DatagramOut {
     /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.

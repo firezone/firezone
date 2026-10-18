@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, net::SocketAddr};
+use std::{collections::VecDeque, iter, net::SocketAddr};
 
 use bufferpool::Buffer;
 use ip_packet::Ecn;
@@ -11,8 +11,8 @@ const MAX_SEGMENT_SIZE: usize =
 /// The size every buffer in [`GSO_BUFFERS`] is allocated with.
 ///
 /// An IP packet - and therefore the payload of one GSO send - can never exceed 65535 bytes.
-/// Batches are capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which is
-/// always below this capacity, so a pooled buffer never grows and never reallocates.
+/// A [`Train`] is capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which
+/// is always below this capacity, so a pooled buffer never grows and never reallocates.
 ///
 /// The buffer occupies this much memory regardless of how many segments it actually carries; every
 /// in-flight [`DatagramOut`] pins one, which is why the outbound socket queue's depth directly bounds
@@ -21,11 +21,9 @@ pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
 
 bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-queue"), batch: 2);
 
-/// Holds UDP datagrams that we need to send, grouped into GSO batches per connection.
+/// Holds UDP datagrams that we need to send, grouped into one [`Train`] per GSO send.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) copies the provided payload into this queue.
-/// Batches are capped at what a single GSO send can carry, so each one is flushed with one syscall
-/// while GSO is available.
 pub struct UdpGsoQueue {
     /// Queued batches, in write order.
     ///
@@ -41,156 +39,144 @@ impl UdpGsoQueue {
         }
     }
 
-    /// Copy an already-formed datagram into the queue.
-    ///
-    /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
-    /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
-    /// directly into the queue via [`UdpGsoQueue::encrypt`].
+    /// Copies a datagram into the queue.
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let mut reservation = self.reserve(src, dst, ecn, payload.len());
-        reservation.buffer().copy_from_slice(payload);
-        reservation.commit();
+        let connection = Connection { src, dst, ecn };
+
+        // Extending anything but the most recent batch of a connection would reorder the flow.
+        if let Some(batch) = self
+            .batches
+            .iter_mut()
+            .rev()
+            .find(|batch| batch.train.connection == connection)
+            && batch.train.try_append(src, dst, ecn, payload.len())
+        {
+            batch.buffer.extend_from_slice(payload);
+            return;
+        }
+
+        let mut buffer = GSO_BUFFERS.pull();
+        buffer.clear();
+        buffer.extend_from_slice(payload);
+
+        self.batches.push_back(Batch {
+            train: Train::new(src, dst, ecn, payload.len()),
+            buffer,
+        });
     }
 
+    /// Drains the queued datagrams; the ones not consumed stay queued.
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
-        DrainDatagramsIter { queue: self }
+        iter::from_fn(|| {
+            let Batch { train, buffer } = self.batches.pop_front()?;
+
+            Some(train.into_datagram(buffer))
+        })
     }
 
     pub fn clear(&mut self) {
         self.batches.clear()
     }
-
-    /// Encrypt `job` directly into the queue.
-    pub fn encrypt(&mut self, job: EncryptJob) {
-        let mut reservation = self.reserve(job.src(), job.dst(), job.ecn(), job.datagram_len());
-
-        if let Err(e) = job.encrypt_into(reservation.buffer()) {
-            tracing::debug!("Failed to encrypt packet: {e}");
-            return;
-        }
-
-        reservation.commit();
-    }
 }
 
-impl UdpGsoQueue {
-    fn reserve(
+/// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
+/// shorter last one.
+#[derive(Debug, Clone, Copy)]
+pub struct Train {
+    connection: Connection,
+    /// The GSO segment size: the length of the first datagram.
+    segment_size: usize,
+    /// As many whole segments as one GSO send can carry to this destination.
+    max_len: usize,
+    len: usize,
+}
+
+impl Train {
+    /// Starts a train with a datagram of `len` bytes.
+    pub fn new(src: Option<SocketAddr>, dst: SocketAddr, ecn: Ecn, len: usize) -> Self {
+        debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
+
+        let max_len = DatagramOut::max_len(dst, len);
+        debug_assert!(
+            max_len <= GSO_BUFFER_SIZE,
+            "GSO_BUFFER_SIZE is miscalculated"
+        );
+
+        Self {
+            connection: Connection { src, dst, ecn },
+            segment_size: len,
+            max_len,
+            len,
+        }
+    }
+
+    pub fn dst(&self) -> SocketAddr {
+        self.connection.dst
+    }
+
+    /// Appends a datagram of `len` bytes, unless it has to start a new train.
+    pub fn try_append(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
         ecn: Ecn,
         len: usize,
-    ) -> GsoReservation<'_> {
-        debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
+    ) -> bool {
+        let same_connection = self.connection == Connection { src, dst, ecn };
 
-        let connection = Connection { src, dst, ecn };
-
-        // A datagram may only extend the most recent batch of its connection;
-        // extending anything older would reorder the flow.
-        let existing = self
-            .batches
-            .iter_mut()
-            .enumerate()
-            .rev()
-            .find(|(_, batch)| batch.connection == connection)
-            .filter(|(_, batch)| batch.can_append(len));
-
-        let index = match existing {
-            Some((index, batch)) => {
-                // A rolled-back reservation may have left the batch empty; it starts over with our segment size.
-                if batch.buffer.is_empty() {
-                    batch.segment_size = len;
-                    batch.max_len = DatagramOut::max_len(dst, len);
-                }
-
-                let new_len = batch.buffer.len() + len;
-                batch.buffer.resize(new_len, 0);
-
-                index
-            }
-            None => {
-                let max_len = DatagramOut::max_len(dst, len);
-                debug_assert!(
-                    max_len <= GSO_BUFFER_SIZE,
-                    "GSO_BUFFER_SIZE is miscalculated"
-                );
-
-                let mut buffer = GSO_BUFFERS.pull();
-                buffer.clear();
-                buffer.resize(len, 0);
-
-                self.batches.push_back(Batch {
-                    connection,
-                    segment_size: len,
-                    max_len,
-                    buffer,
-                });
-
-                self.batches.len() - 1
-            }
-        };
-
-        GsoReservation {
-            batch: &mut self.batches[index],
-            len,
-            committed: false,
-        }
-    }
-}
-
-/// One or more equal-size datagrams to a single [`Connection`], laid out back-to-back.
-struct Batch {
-    connection: Connection,
-    /// The GSO segment size: the length of the first datagram in the batch.
-    segment_size: usize,
-    /// The batch's size limit: as many whole segments as one GSO send can carry to this destination.
-    max_len: usize,
-    buffer: Buffer<Vec<u8>>,
-}
-
-impl Batch {
-    /// Whether another datagram of `len` bytes may be appended.
-    fn can_append(&self, len: usize) -> bool {
-        // A batch is "ongoing" as long as every segment so far has been full-size;
-        // a shorter, final segment seals it.
-        let is_ongoing = self.buffer.len().is_multiple_of(self.segment_size);
-
-        // Only equal-size segments plus at most one shorter, final one form a valid GSO batch.
+        // A shorter segment seals the train.
+        let is_ongoing = self.len.is_multiple_of(self.segment_size);
         let fits_segment = len <= self.segment_size;
+        let fits_send = self.len + len <= self.max_len;
 
-        // A batch never grows past what one GSO send can carry.
-        let fits_send = self.buffer.len() + len <= self.max_len;
+        if !(same_connection && is_ongoing && fits_segment && fits_send) {
+            return false;
+        }
 
-        is_ongoing && fits_segment && fits_send
-    }
-}
+        self.len += len;
 
-/// A reservation in a [`UdpGsoQueue`], pointing at the tail of one of its batches.
-struct GsoReservation<'a> {
-    batch: &'a mut Batch,
-    len: usize,
-    committed: bool,
-}
-
-impl GsoReservation<'_> {
-    fn buffer(&mut self) -> &mut [u8] {
-        let offset = self.batch.buffer.len() - self.len;
-
-        &mut self.batch.buffer[offset..]
+        true
     }
 
-    fn commit(mut self) {
-        self.committed = true;
-    }
-}
+    /// Encrypts `jobs` back-to-back into one datagram.
+    ///
+    /// Jobs that fail to encrypt are skipped; returns `None` if none are left.
+    pub fn encrypt(self, jobs: impl Iterator<Item = EncryptJob>) -> Option<DatagramOut> {
+        let mut buffer = GSO_BUFFERS.pull();
+        buffer.clear();
 
-impl Drop for GsoReservation<'_> {
-    fn drop(&mut self) {
-        if !self.committed {
-            let new_len = self.batch.buffer.len().saturating_sub(self.len);
-            self.batch.buffer.truncate(new_len);
+        for job in jobs {
+            let offset = buffer.len();
+            buffer.resize(offset + job.datagram_len(), 0);
+
+            if let Err(e) = job.encrypt_into(&mut buffer[offset..]) {
+                tracing::debug!("Failed to encrypt packet: {e}");
+                buffer.truncate(offset);
+            }
+        }
+
+        if buffer.is_empty() {
+            return None;
+        }
+
+        Some(self.into_datagram(buffer))
+    }
+
+    fn into_datagram(self, packet: Buffer<Vec<u8>>) -> DatagramOut {
+        DatagramOut {
+            src: self.connection.src,
+            dst: self.connection.dst,
+            // Skipped jobs may leave only the shorter last segment.
+            segment_size: self.segment_size.min(packet.len()),
+            packet,
+            ecn: self.connection.ecn,
         }
     }
+}
+
+struct Batch {
+    train: Train,
+    buffer: Buffer<Vec<u8>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -198,39 +184,6 @@ struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     ecn: Ecn,
-}
-
-/// An [`Iterator`] that drains datagrams from the [`UdpGsoQueue`].
-struct DrainDatagramsIter<'a> {
-    queue: &'a mut UdpGsoQueue,
-}
-
-impl Iterator for DrainDatagramsIter<'_> {
-    type Item = DatagramOut;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let Batch {
-                connection,
-                segment_size,
-                buffer,
-                ..
-            } = self.queue.batches.pop_front()?;
-
-            // A rolled-back reservation may leave an empty batch behind; there is nothing to send for it.
-            if buffer.is_empty() {
-                continue;
-            }
-
-            return Some(DatagramOut {
-                src: connection.src,
-                dst: connection.dst,
-                packet: buffer,
-                segment_size,
-                ecn: connection.ecn,
-            });
-        }
-    }
 }
 
 #[cfg(test)]
@@ -415,73 +368,6 @@ mod tests {
         for datagram in send_queue.datagrams() {
             assert_eq!(datagram.packet.capacity(), GSO_BUFFER_SIZE);
         }
-    }
-
-    #[test]
-    fn committing_a_reservation_keeps_the_datagram() {
-        let mut send_queue = UdpGsoQueue::new();
-
-        {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"foobar");
-            reservation.commit();
-        }
-
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
-    }
-
-    #[test]
-    fn dropping_a_reservation_without_committing_rolls_it_back() {
-        let mut send_queue = UdpGsoQueue::new();
-
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-
-        // Reserve a second segment in the same batch but drop it without committing.
-        {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
-        }
-
-        // Only the committed datagram remains; the reserved bytes were rolled back.
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foobar");
-        assert_eq!(datagrams[0].segment_size, 6);
-    }
-
-    #[test]
-    fn dropping_the_only_reservation_leaves_the_queue_empty() {
-        let mut send_queue = UdpGsoQueue::new();
-
-        {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
-        }
-
-        // Rolling back the last segment drops the empty batch.
-        assert_eq!(send_queue.datagrams().count(), 0);
-    }
-
-    #[test]
-    fn rolled_back_batch_restarts_with_new_segment_size() {
-        let mut send_queue = UdpGsoQueue::new();
-
-        {
-            let mut reservation = send_queue.reserve(None, DST_1, Ecn::NonEct, 6);
-            reservation.buffer().copy_from_slice(b"barbaz");
-        }
-
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
-
-        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        assert_eq!(datagrams.len(), 1);
-        assert_eq!(&datagrams[0].packet[..], b"foo");
-        assert_eq!(datagrams[0].segment_size, 3);
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
