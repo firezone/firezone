@@ -1082,7 +1082,7 @@ impl RefClient {
             .next()
     }
 
-    fn dns_resources_by_domain(
+    pub(crate) fn dns_resources_by_domain(
         &self,
         domain: &DomainName,
         eligible: impl Fn(&DnsResource) -> bool,
