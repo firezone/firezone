@@ -165,6 +165,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
         local_flow_logs: bool,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
@@ -186,6 +187,7 @@ impl Eventloop {
             clock.now(),
         );
         tunnel.update_system_resolvers(dns_servers.clone());
+        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(

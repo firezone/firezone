@@ -675,6 +675,7 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
+        Vec::default(),
         flow_logs_dir,
         false,
         runtime.handle().clone(),
