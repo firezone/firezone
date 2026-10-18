@@ -241,7 +241,7 @@ pub(crate) enum Outbound {
 
 /// How big the queue for outgoing UDP batches and socket errors is at most.
 ///
-/// Every queued [`DatagramOut`] owns a GSO buffer of [`crate::io::GSO_BUFFER_SIZE`] bytes that it
+/// Every queued [`DatagramOut`] owns a buffer of up to [`crate::io::GSO_BUFFER_SIZE`] bytes that it
 /// pins until the send task drains it - and, because the buffer pool never shrinks, for the rest of
 /// the session once a backlog has ever built up. We therefore size it as two drains' worth of
 /// [`UDP_SEND_BATCH_LIMIT`]: deep enough to keep the send task fed, shallow enough that a transient
@@ -260,10 +260,10 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// Worst-case memory pinned by the outbound UDP datagram queues.
 ///
 /// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
-/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). Every [`DatagramOut`] owns a GSO buffer from the
-/// [`UdpGsoQueue`](crate::io::UdpGsoQueue)'s pool, allocated at [`crate::io::GSO_BUFFER_SIZE`]
-/// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
-/// queues pins this much memory for the rest of the session.
+/// [`QUEUE_SIZE`] datagrams (hence the `2 *`). A [`DatagramOut`] of a [`Train`](crate::io::Train)
+/// owns a GSO buffer allocated at [`crate::io::GSO_BUFFER_SIZE`] regardless of how full it is. That
+/// pool never shrinks, so a send backlog that ever fills these queues pins this much memory for the
+/// rest of the session.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
     2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
 

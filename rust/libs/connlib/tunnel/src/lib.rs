@@ -201,8 +201,7 @@ impl ClientTunnel {
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
-            self.io
-                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+            self.io.send_network(trans);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -257,8 +256,7 @@ impl ClientTunnel {
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
-                self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+                self.io.send_network(trans);
                 tick.want_continue();
             }
 
@@ -424,8 +422,7 @@ impl GatewayTunnel {
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
-            self.io
-                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+            self.io.send_network(trans);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -461,8 +458,7 @@ impl GatewayTunnel {
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
-                self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
+                self.io.send_network(trans);
 
                 tick.want_continue();
             }

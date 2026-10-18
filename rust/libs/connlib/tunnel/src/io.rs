@@ -3,12 +3,12 @@ mod device;
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
+mod train;
 mod udp_dns;
-mod udp_gso_queue;
 
 pub use crypto::Received;
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, Train, UdpGsoQueue};
+pub(crate) use train::{GSO_BUFFER_SIZE, Train};
 
 use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
@@ -23,11 +23,11 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -41,7 +41,7 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     /// Control messages and packets encrypted on the main thread, e.g. handshakes and keepalives.
-    gso_queue: UdpGsoQueue,
+    datagrams: VecDeque<DatagramOut>,
     crypto: CryptoWorkers,
 
     nameservers: NameserverSet,
@@ -174,7 +174,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            gso_queue: UdpGsoQueue::new(),
+            datagrams: VecDeque::new(),
             crypto: CryptoWorkers::new(packet_counter.clone()),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -388,13 +388,12 @@ impl Io {
 
     /// Sends the queued datagrams and hands the staged packets to the crypto workers.
     pub fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
         let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
         loop {
             ready!(self.sockets.poll_send_ready(cx)?);
 
-            let Some(datagram) = datagrams.next() else {
+            let Some(datagram) = self.datagrams.pop_front() else {
                 break;
             };
 
@@ -427,7 +426,7 @@ impl Io {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
-        self.gso_queue.clear();
+        self.datagrams.clear();
         self.crypto.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
@@ -450,14 +449,14 @@ impl Io {
         self.crypto.submit_decrypt(job);
     }
 
-    pub fn send_network(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-    ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+    pub fn send_network(&mut self, transmit: snownet::Transmit) {
+        self.datagrams.push_back(DatagramOut {
+            src: transmit.src,
+            dst: transmit.dst,
+            segment_size: transmit.payload.len(),
+            packet: transmit.payload,
+            ecn: transmit.ecn,
+        });
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
