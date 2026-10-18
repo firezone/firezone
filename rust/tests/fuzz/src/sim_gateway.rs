@@ -42,9 +42,6 @@ pub(crate) struct SimGateway {
     tcp_servers: BTreeMap<(DomainName, u16), crate::tcp::Server>,
     /// Answers TCP to any address without a TCP server with a reset.
     closed_tcp_ports: crate::tcp::Server,
-
-    /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 #[derive(Debug, Clone)]
@@ -94,7 +91,6 @@ impl SimGateway {
             clients_by_ip: Default::default(),
             tcp_servers,
             closed_tcp_ports: crate::tcp::Server::new(now),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -192,19 +188,20 @@ impl SimGateway {
             .collect()
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    /// Drive the SUT's TUN -> network path, encrypting the encapsulated datagram (if any).
     fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+        let Some(job) = self.sut.handle_tun_input(packet, now)? else {
+            return Ok(None);
+        };
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(job
+            .encrypt()
+            .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
+            .ok())
     }
 
     pub(crate) fn deploy_new_dns_servers(

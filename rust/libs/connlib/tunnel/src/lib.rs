@@ -290,10 +290,11 @@ impl ClientTunnel {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.encryptor())
+                            .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(()) => {}
+                            Ok(Some(job)) => self.io.encrypt(job),
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         }
                     }
@@ -512,10 +513,11 @@ impl GatewayTunnel {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.encryptor())
+                            .handle_tun_input(packet, now)
                             .context("Failed to handle packet from TUN device")
                         {
-                            Ok(()) => {}
+                            Ok(Some(job)) => self.io.encrypt(job),
+                            Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
                                     .any_downcast_ref::<UnroutablePacket>()

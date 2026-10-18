@@ -440,9 +440,9 @@ impl Io {
         }
     }
 
-    /// The crypto workers, which encrypt encapsulated packets off the main thread.
-    pub fn encryptor(&mut self) -> &mut impl snownet::Encryptor {
-        &mut self.crypto
+    /// Encrypts an encapsulated packet off the main thread.
+    pub fn encrypt(&mut self, job: snownet::EncryptJob) {
+        self.crypto.encrypt(job);
     }
 
     /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].

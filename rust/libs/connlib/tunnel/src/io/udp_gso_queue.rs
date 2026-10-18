@@ -2,7 +2,7 @@ use std::{collections::VecDeque, net::SocketAddr};
 
 use bufferpool::Buffer;
 use ip_packet::Ecn;
-use snownet::{EncryptJob, Encryptor};
+use snownet::EncryptJob;
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
@@ -45,7 +45,7 @@ impl UdpGsoQueue {
     ///
     /// This is used for datagrams we cannot (or need not) encrypt in place, e.g. STUN/TURN control
     /// messages and handshakes. The throughput-critical TUN -> network direction encrypts packets
-    /// directly into the queue via the [`Encryptor`] implementation.
+    /// directly into the queue via [`UdpGsoQueue::encrypt`].
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
         let mut reservation = self.reserve(src, dst, ecn, payload.len());
         reservation.buffer().copy_from_slice(payload);
@@ -59,10 +59,9 @@ impl UdpGsoQueue {
     pub fn clear(&mut self) {
         self.batches.clear()
     }
-}
 
-impl Encryptor for UdpGsoQueue {
-    fn encrypt(&mut self, job: EncryptJob) {
+    /// Encrypt `job` directly into the queue.
+    pub fn encrypt(&mut self, job: EncryptJob) {
         let mut reservation = self.reserve(job.src(), job.dst(), job.ecn(), job.datagram_len());
 
         if let Err(e) = job.encrypt_into(reservation.buffer()) {

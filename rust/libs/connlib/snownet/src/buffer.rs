@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::crypto::{EncryptJob, Encryptor};
+use crate::crypto::EncryptJob;
 use crate::node::Transmit;
 
 /// Collects datagrams as standalone [`Transmit`]s.
@@ -21,6 +21,14 @@ impl TransmitBuffer {
     /// handshake that cannot be encrypted in place because there is no session yet.
     pub fn push(&mut self, transmit: Transmit) {
         self.transmits.push_back(transmit);
+    }
+
+    /// Encrypt `job` and collect the resulting [`Transmit`].
+    pub fn encrypt(&mut self, job: EncryptJob) {
+        match job.encrypt() {
+            Ok(transmit) => self.transmits.push_back(transmit),
+            Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
+        }
     }
 
     /// Returns the next collected [`Transmit`], if any.
@@ -46,14 +54,5 @@ impl Extend<Transmit> for TransmitBuffer {
 impl Default for TransmitBuffer {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Encryptor for TransmitBuffer {
-    fn encrypt(&mut self, job: EncryptJob) {
-        match job.encrypt() {
-            Ok(transmit) => self.transmits.push_back(transmit),
-            Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
-        }
     }
 }

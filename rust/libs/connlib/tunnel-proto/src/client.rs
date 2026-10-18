@@ -545,19 +545,18 @@ impl ClientState {
     ///
     /// Most packets originate from the TUN device, but internally-produced and previously-buffered
     /// packets also re-enter through this path. Sentinel DNS queries may be consumed locally; all
-    /// other packets are routed and either sent or buffered here.
+    /// other packets are routed and either returned as an [`snownet::EncryptJob`] or buffered here.
     pub fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
-        encryptor: &mut impl snownet::Encryptor,
-    ) -> Result<()> {
+    ) -> Result<Option<snownet::EncryptJob>> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
         if packet.destination().is_multicast() {
-            return Ok(());
+            return Ok(None);
         }
 
         let tun_config = self
@@ -576,7 +575,7 @@ impl ClientState {
 
         // DNS packets to our sentinel resolvers never become flows.
         let packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return Ok(()),
+            ControlFlow::Break(()) => return Ok(None),
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
@@ -605,16 +604,13 @@ impl ClientState {
                 // The peer opened the flow the error refers to, so we are its responder.
                 flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-                encapsulate_or_buffer(
+                return encapsulate_or_buffer(
                     packet,
                     cid.into(),
                     now,
                     &mut self.node,
-                    encryptor,
                     &mut self.pending_routed_packets,
-                )?;
-
-                return Ok(());
+                );
             }
         };
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
@@ -628,7 +624,7 @@ impl ClientState {
         let (packet, peer) = match (direct_gateway, peer_originated_client_flow, routes) {
             (None, None, Err(routing::Denied)) => {
                 reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                return Ok(());
+                return Ok(None);
             }
             (None, None, Ok(routes)) if routes.is_empty() => {
                 return Err(UnroutablePacket::unknown_resource(&packet).into());
@@ -653,7 +649,7 @@ impl ClientState {
                         packet,
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 let Some(token) = pools.iter().find_map(|&resource_id| {
@@ -664,7 +660,7 @@ impl ClientState {
                         packet,
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
@@ -690,7 +686,7 @@ impl ClientState {
                         packet,
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
@@ -706,7 +702,7 @@ impl ClientState {
                         packet,
                         now,
                     ) else {
-                        return Ok(());
+                        return Ok(None);
                     };
 
                     packet
@@ -723,21 +719,16 @@ impl ClientState {
             peer,
             now,
             &mut self.node,
-            encryptor,
             &mut self.pending_routed_packets,
-        )?;
-
-        Ok(())
+        )
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
     /// and flow tracking, queueing any resulting network transmit.
     fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
-        let mut buffered_transmits = std::mem::take(&mut self.buffered_transmits);
-        let result = self.handle_tun_input(packet, now, &mut buffered_transmits);
-        self.buffered_transmits = buffered_transmits;
-
-        result?;
+        if let Some(job) = self.handle_tun_input(packet, now)? {
+            self.buffered_transmits.encrypt(job);
+        }
 
         Ok(())
     }
@@ -2869,38 +2860,34 @@ fn encapsulate_and_queue(
     buffered_transmits: &mut snownet::TransmitBuffer,
     pending_peer_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) {
-    if let Err(e) = encapsulate_or_buffer(
-        packet,
-        pid,
-        now,
-        node,
-        buffered_transmits,
-        pending_peer_packets,
-    ) {
-        tracing::debug!(%pid, "Failed to encapsulate: {e:#}");
+    match encapsulate_or_buffer(packet, pid, now, node, pending_peer_packets) {
+        Ok(Some(job)) => buffered_transmits.encrypt(job),
+        Ok(None) => {}
+        Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
     }
 }
 
-/// Encapsulate `packet` for `pid` and hand it to `encryptor`, or buffer it if the connection is
-/// still being established.
+/// Encapsulate `packet` for `pid` into an [`snownet::EncryptJob`], or buffer it if the connection
+/// is still being established.
 fn encapsulate_or_buffer(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    encryptor: &mut impl snownet::Encryptor,
     pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
-) -> Result<()> {
+) -> Result<Option<snownet::EncryptJob>> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     if let Some(buffer) = pending_packets.get_mut(&pid) {
         buffer.push(packet);
-        return Ok(());
+        return Ok(None);
     }
 
-    match node.encapsulate(pid, packet, now, encryptor) {
-        Ok(Some(info)) => {
-            flow_tracker::record_transmit(info.src, info.dst);
+    match node.encapsulate(pid, packet, now) {
+        Ok(Some(job)) => {
+            flow_tracker::record_transmit(job.src(), job.dst());
+
+            return Ok(Some(job));
         }
         Ok(None) => {}
         Err(EncapsulateError { packet, error }) if error.any_is::<snownet::StillConnecting>() => {
@@ -2920,7 +2907,7 @@ fn encapsulate_or_buffer(
         Err(EncapsulateError { error, .. }) => return Err(error),
     };
 
-    Ok(())
+    Ok(None)
 }
 
 fn gateway_by_resource_mut<'p>(
@@ -3029,7 +3016,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
+                .handle_tun_input(packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3047,7 +3034,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
+                .handle_tun_input(packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3070,9 +3057,7 @@ mod tests {
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(packet, now).unwrap();
 
         let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
             if let ClientEvent::RequestAccess {
@@ -3105,9 +3090,7 @@ mod tests {
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(packet, now).unwrap();
 
         assert_no_device_connection_intent(&mut state);
         assert!(
@@ -3129,9 +3112,7 @@ mod tests {
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap()
         };
 
-        state
-            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(packet(), now).unwrap();
         while state.poll_event().is_some() {}
 
         state.handle_client_device_access_denied(
@@ -3144,9 +3125,7 @@ mod tests {
             "expected an ICMP error for the buffered packet"
         );
 
-        state
-            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(packet(), now).unwrap();
         assert!(
             state.poll_packets().is_none(),
             "expected the packet to be buffered for a new request"

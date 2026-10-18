@@ -24,7 +24,7 @@ use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
-use snownet::{RelaySocket, Transmit, TransmitBuffer};
+use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
@@ -220,19 +220,14 @@ impl State {
         now: Instant,
         dst: SocketAddr,
     ) -> Vec<DatagramOut> {
-        let mut transmits = TransmitBuffer::default();
         let segments = (0..count)
             .map(|_| {
-                match self {
-                    State::Client(client) => client
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
-                        .unwrap(),
-                    State::Gateway(gateway) => gateway
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
-                        .unwrap(),
-                }
+                let job = match self {
+                    State::Client(client) => client.handle_tun_input(packet.clone(), now),
+                    State::Gateway(gateway) => gateway.handle_tun_input(packet.clone(), now),
+                };
 
-                transmits.poll_transmit().unwrap().payload.to_vec()
+                job.unwrap().unwrap().encrypt().unwrap().payload.to_vec()
             })
             .collect::<Vec<_>>();
         let segment_size = segments[0].len();
@@ -663,11 +658,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(
-                tunnel.request(Protocol::Udp),
-                now,
-                &mut TransmitBuffer::default(),
-            )
+            .handle_tun_input(tunnel.request(Protocol::Udp), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -683,11 +674,13 @@ impl Tunnel {
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
     fn reply(&mut self, protocol: Protocol) -> IpPacket {
-        let mut transmits = TransmitBuffer::default();
-        self.client
-            .handle_tun_input(self.request(protocol), self.now, &mut transmits)
+        let datagram = self
+            .client
+            .handle_tun_input(self.request(protocol), self.now)
+            .unwrap()
+            .unwrap()
+            .encrypt()
             .unwrap();
-        let datagram = transmits.poll_transmit().unwrap();
         let job = self
             .gateway
             .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
@@ -853,9 +846,7 @@ fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
     let query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
 
-    client
-        .handle_tun_input(query, now, &mut TransmitBuffer::default())
-        .unwrap();
+    client.handle_tun_input(query, now).unwrap();
     let response = client.poll_packets().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
 

@@ -6,16 +6,10 @@ use sanstun::{Decrypted, PendingDecapsulate, PendingEncapsulate, TunnelId};
 
 use crate::node::Transmit;
 
-/// Encrypts the data messages produced by [`Node::encapsulate`](crate::Node::encapsulate).
-///
-/// Implementations may encrypt right away or hand the job to another thread.
-pub trait Encryptor {
-    fn encrypt(&mut self, job: EncryptJob);
-}
-
 /// An IP packet to encrypt into a WireGuard data message whose counter is already reserved.
 ///
 /// Encrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
+#[derive(Debug)]
 pub struct EncryptJob {
     src: Option<SocketAddr>,
     dst: SocketAddr,

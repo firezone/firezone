@@ -13,7 +13,7 @@ use anyhow::Result;
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::{Ecn, IpVersion};
 use opentelemetry::metrics::Counter;
-use snownet::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
+use snownet::{DecryptJob, DecryptedPacket, EncryptJob};
 use tokio::sync::oneshot;
 
 use super::UdpGsoQueue;
@@ -141,6 +141,18 @@ impl CryptoWorkers {
         }
     }
 
+    /// Stages `job` for encryption.
+    pub fn encrypt(&mut self, job: EncryptJob) {
+        match self.staged_encrypts.back_mut() {
+            Some(jobs) if jobs.len() < ENCRYPT_BATCH_SIZE => jobs.push(job),
+            Some(_) | None => {
+                let mut jobs = ENCRYPT_JOBS.pull();
+                jobs.push(job);
+                self.staged_encrypts.push_back(jobs);
+            }
+        }
+    }
+
     /// Stages `job` for decryption.
     pub fn decrypt(&mut self, job: Received<DecryptJob>) {
         self.staged_decrypts.push(job);
@@ -247,19 +259,6 @@ impl CryptoWorkers {
         });
         self.decrypting.push_back((len, rx));
         self.decrypts_in_flight += len;
-    }
-}
-
-impl Encryptor for CryptoWorkers {
-    fn encrypt(&mut self, job: EncryptJob) {
-        match self.staged_encrypts.back_mut() {
-            Some(jobs) if jobs.len() < ENCRYPT_BATCH_SIZE => jobs.push(job),
-            Some(_) | None => {
-                let mut jobs = ENCRYPT_JOBS.pull();
-                jobs.push(job);
-                self.staged_encrypts.push_back(jobs);
-            }
-        }
     }
 }
 

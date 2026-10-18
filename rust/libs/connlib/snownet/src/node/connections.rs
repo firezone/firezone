@@ -14,7 +14,6 @@ use sanstun::TunnelId;
 use crate::{
     Event,
     buffer::TransmitBuffer,
-    crypto::Encryptor as _,
     node::{
         Connection, ConnectionState, allocations::Allocations,
         inflight_stun_requests::InflightStunRequests,

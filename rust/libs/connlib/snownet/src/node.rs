@@ -11,7 +11,7 @@ pub use connections::UnknownConnection;
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::buffer::TransmitBuffer;
-use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob, Encryptor};
+use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -620,7 +620,7 @@ where
         Ok(Some((cid, packet)))
     }
 
-    /// Encapsulate an outgoing IP packet and hand it to `encryptor`.
+    /// Encapsulate an outgoing IP packet into an [`EncryptJob`].
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
@@ -634,20 +634,14 @@ where
         cid: TId,
         packet: IpPacket,
         now: Instant,
-        encryptor: &mut impl Encryptor,
-    ) -> Result<Option<EncapsulateInfo>, EncapsulateError> {
+    ) -> Result<Option<EncryptJob>, EncapsulateError> {
         self.last_now = now;
 
-        let encapsulation = match self.try_encapsulate(cid, &packet, now) {
-            Ok(Some(encapsulation)) => encapsulation,
-            Ok(None) => return Ok(None),
-            Err(error) => return Err(EncapsulateError { packet, error }),
-        };
-        let info = encapsulation.info();
-
-        encryptor.encrypt(encapsulation.into_job(packet));
-
-        Ok(Some(info))
+        match self.try_encapsulate(cid, &packet, now) {
+            Ok(Some(encapsulation)) => Ok(Some(encapsulation.into_job(packet))),
+            Ok(None) => Ok(None),
+            Err(error) => Err(EncapsulateError { packet, error }),
+        }
     }
 
     fn try_encapsulate(
@@ -1422,12 +1416,6 @@ impl fmt::Debug for Transmit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EncapsulateInfo {
-    pub src: Option<SocketAddr>,
-    pub dst: SocketAddr,
-}
-
 /// An [`IpPacket`] that [`Node::encapsulate`] failed to encapsulate.
 #[derive(Debug)]
 pub struct EncapsulateError {
@@ -1444,13 +1432,6 @@ struct Encapsulation {
 }
 
 impl Encapsulation {
-    fn info(&self) -> EncapsulateInfo {
-        EncapsulateInfo {
-            src: self.src,
-            dst: self.dst,
-        }
-    }
-
     fn into_job(self, packet: IpPacket) -> EncryptJob {
         EncryptJob::new(self.src, self.dst, self.channel, self.pending, packet)
     }

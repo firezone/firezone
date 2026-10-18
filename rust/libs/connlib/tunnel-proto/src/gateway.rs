@@ -116,8 +116,7 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-        encryptor: &mut impl snownet::Encryptor,
-    ) -> Result<()> {
+    ) -> Result<Option<snownet::EncryptJob>> {
         let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -139,13 +138,13 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?;
 
-        let Some(info) = encrypt_packet(packet, cid, &mut self.node, encryptor, now)? else {
-            return Ok(());
+        let Some(job) = encrypt_packet(packet, cid, &mut self.node, now)? else {
+            return Ok(None);
         };
 
-        flow_tracker::record_transmit(info.src, info.dst);
+        flow_tracker::record_transmit(job.src(), job.dst());
 
-        Ok(())
+        Ok(Some(job))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -227,13 +226,9 @@ impl GatewayState {
                 return Ok(None);
             };
 
-            encrypt_packet(
-                immediate_response,
-                cid,
-                &mut self.node,
-                &mut self.buffered_transmits,
-                now,
-            )?;
+            if let Some(job) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
+                self.buffered_transmits.encrypt(job);
+            }
 
             return Ok(None);
         }
@@ -249,25 +244,16 @@ impl GatewayState {
             } => {
                 flow_tracker::record_icmp_error(&reply);
 
-                encrypt_packet(
-                    reply,
-                    cid,
-                    &mut self.node,
-                    &mut self.buffered_transmits,
-                    now,
-                )?;
+                if let Some(job) = encrypt_packet(reply, cid, &mut self.node, now)? {
+                    self.buffered_transmits.encrypt(job);
+                }
 
                 if let Some(event) = no_authorization.and_then(|rejection| {
                     self.authorization_rejections
                         .on_rejected(cid, rejection, now)
-                }) {
-                    encrypt_packet(
-                        event,
-                        cid,
-                        &mut self.node,
-                        &mut self.buffered_transmits,
-                        now,
-                    )?;
+                }) && let Some(job) = encrypt_packet(event, cid, &mut self.node, now)?
+                {
+                    self.buffered_transmits.encrypt(job);
                 }
 
                 Ok(None)
@@ -461,13 +447,9 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        encrypt_packet(
-            packet,
-            req.client,
-            &mut self.node,
-            &mut self.buffered_transmits,
-            now,
-        )?;
+        if let Some(job) = encrypt_packet(packet, req.client, &mut self.node, now)? {
+            self.buffered_transmits.encrypt(job);
+        }
 
         Ok(())
     }
@@ -703,11 +685,10 @@ fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
-    encryptor: &mut impl snownet::Encryptor,
     now: Instant,
-) -> Result<Option<snownet::EncapsulateInfo>> {
-    match node.encapsulate(cid, packet, now, encryptor) {
-        Ok(info) => Ok(info),
+) -> Result<Option<snownet::EncryptJob>> {
+    match node.encapsulate(cid, packet, now) {
+        Ok(job) => Ok(job),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(EncapsulateError { error, .. }) if error.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
