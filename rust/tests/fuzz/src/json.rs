@@ -13,7 +13,7 @@ use std::{
 use anyhow::Context as _;
 use connlib_model::{ClientId, GatewayId, ResourceId, SiteId};
 use dns_types::{DoHUrl, DomainName};
-use serde::{Serialize, Serializer, ser::SerializeMap as _};
+use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 use tunnel_proto::{
     MaliciousBehaviour, dns,
@@ -324,9 +324,7 @@ where
     T: Serialize,
     S: Serializer,
 {
-    let mut map = serializer.serialize_map(Some(1))?;
-    map.serialize_entry("value", value)?;
-    map.end()
+    serializer.collect_map(std::iter::once(("value", value)))
 }
 
 pub(crate) fn filters<S>(filters: &[Filter], serializer: S) -> Result<S::Ok, S::Error>
