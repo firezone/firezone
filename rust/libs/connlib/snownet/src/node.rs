@@ -10,7 +10,6 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::TransmitBuffer;
 use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
@@ -88,7 +87,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 pub struct Node<TId, RId> {
     interface: Interface,
 
-    buffered_transmits: TransmitBuffer,
+    buffered_transmits: VecDeque<Transmit>,
 
     allocations: Allocations<RId>,
 
@@ -188,7 +187,7 @@ where
         Self {
             rng,
             interface,
-            buffered_transmits: TransmitBuffer::default(),
+            buffered_transmits: VecDeque::default(),
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
@@ -761,7 +760,7 @@ where
             return Some(transmit);
         }
 
-        let transmit = self.buffered_transmits.poll_transmit()?;
+        let transmit = self.buffered_transmits.pop_front()?;
 
         tracing::trace!(?transmit);
 
@@ -1167,7 +1166,7 @@ where
         now: Instant,
     ) {
         let Some((_, allocation)) = self.allocations.get_mut_by_allocation(local) else {
-            self.buffered_transmits.push(Transmit {
+            self.buffered_transmits.push_back(Transmit {
                 src: Some(local),
                 dst: remote,
                 payload: crate::DATAGRAMS.pull_initialised(message),
@@ -1182,7 +1181,7 @@ where
             return;
         };
 
-        self.buffered_transmits.push(Transmit {
+        self.buffered_transmits.push_back(Transmit {
             src: None,
             dst: encode_ok.socket,
             payload: crate::DATAGRAMS.pull_initialised(&channel_data),
@@ -1545,7 +1544,7 @@ where
         cid: TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
@@ -1723,14 +1722,14 @@ where
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
-                        transmits.push(transmit);
+                        transmits.push_back(transmit);
                     }
                 }
                 path_agent::Payload::Plaintext(ip) => {
                     if let Ok(Some(encapsulation)) =
                         self.encapsulate(cid, peer_socket, &ip, now, allocations)
                     {
-                        transmits.encrypt(encapsulation.into_job(*ip));
+                        queue_encrypted(transmits, encapsulation.into_job(*ip));
                     }
                 }
             }
@@ -1753,7 +1752,7 @@ where
             // Check if `is` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                transmits.push(Transmit {
+                transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
                     payload: crate::DATAGRAMS.pull_initialised(&stun_packet_bytes),
@@ -1773,7 +1772,7 @@ where
                 continue;
             };
 
-            transmits.push(Transmit {
+            transmits.push_back(Transmit {
                 src: None,
                 dst: encode_ok.socket,
                 payload: crate::DATAGRAMS.pull_initialised(&data_channel_packet),
@@ -1787,7 +1786,7 @@ where
         cid: &TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
     ) where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1804,7 +1803,7 @@ where
         cid: &TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
     ) where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1830,7 +1829,7 @@ where
         &mut self,
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         cid: TId,
         now: Instant,
@@ -1950,7 +1949,7 @@ where
         packet: ReceivedMessage,
         datagram: &[u8],
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) -> ControlFlow<Result<()>, DecryptJob>
     where
@@ -2066,7 +2065,7 @@ where
         cid: &TId,
         message: Datagram,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
         TId: fmt::Display,
@@ -2154,7 +2153,7 @@ where
     fn initiate_wg_session(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
         RId: Copy,
@@ -2186,7 +2185,7 @@ where
         self.last_proactive_handshake_sent_at = Some(now);
 
         if let Some(transmit) = make_owned_transmit(self.relay, socket, &bytes, allocations, now) {
-            transmits.push(transmit);
+            transmits.push_back(transmit);
         }
     }
 
@@ -2314,6 +2313,13 @@ fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> Interfa
     rng.fill_bytes(&mut seed[..]);
 
     Interface::new(seed, now, unix_ts).with_handshake_limit(HANDSHAKE_RATE_LIMIT)
+}
+
+fn queue_encrypted(transmits: &mut VecDeque<Transmit>, job: EncryptJob) {
+    match job.encrypt() {
+        Ok(transmit) => transmits.push_back(transmit),
+        Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
+    }
 }
 
 #[must_use]

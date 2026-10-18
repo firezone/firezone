@@ -52,7 +52,7 @@ pub struct GatewayState {
     next_periodic_tick: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
-    buffered_transmits: snownet::TransmitBuffer,
+    buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
@@ -82,7 +82,7 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             portal: Default::default(),
             buffered_events: VecDeque::default(),
-            buffered_transmits: snownet::TransmitBuffer::default(),
+            buffered_transmits: VecDeque::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             tun_ip_config: None,
@@ -227,7 +227,7 @@ impl GatewayState {
             };
 
             if let Some(job) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
-                self.buffered_transmits.encrypt(job);
+                queue_encrypted(&mut self.buffered_transmits, job);
             }
 
             return Ok(None);
@@ -245,7 +245,7 @@ impl GatewayState {
                 flow_tracker::record_icmp_error(&reply);
 
                 if let Some(job) = encrypt_packet(reply, cid, &mut self.node, now)? {
-                    self.buffered_transmits.encrypt(job);
+                    queue_encrypted(&mut self.buffered_transmits, job);
                 }
 
                 if let Some(event) = no_authorization.and_then(|rejection| {
@@ -253,7 +253,7 @@ impl GatewayState {
                         .on_rejected(cid, rejection, now)
                 }) && let Some(job) = encrypt_packet(event, cid, &mut self.node, now)?
                 {
-                    self.buffered_transmits.encrypt(job);
+                    queue_encrypted(&mut self.buffered_transmits, job);
                 }
 
                 Ok(None)
@@ -448,7 +448,7 @@ impl GatewayState {
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
         if let Some(job) = encrypt_packet(packet, req.client, &mut self.node, now)? {
-            self.buffered_transmits.encrypt(job);
+            queue_encrypted(&mut self.buffered_transmits, job);
         }
 
         Ok(())
@@ -560,7 +560,7 @@ impl GatewayState {
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .poll_transmit()
+            .pop_front()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -698,6 +698,13 @@ fn encrypt_packet(
             Err(error.context(UnroutablePacket::not_connected(&packet)))
         }
         Err(EncapsulateError { error, .. }) => Err(error).context("Failed to encapsulate"),
+    }
+}
+
+fn queue_encrypted(transmits: &mut VecDeque<snownet::Transmit>, job: snownet::EncryptJob) {
+    match job.encrypt() {
+        Ok(transmit) => transmits.push_back(transmit),
+        Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
     }
 }
 

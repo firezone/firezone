@@ -192,7 +192,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: snownet::TransmitBuffer,
+    buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -727,7 +727,7 @@ impl ClientState {
     /// and flow tracking, queueing any resulting network transmit.
     fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
         if let Some(job) = self.handle_tun_input(packet, now)? {
-            self.buffered_transmits.encrypt(job);
+            queue_encrypted(&mut self.buffered_transmits, job);
         }
 
         Ok(())
@@ -2470,7 +2470,7 @@ impl ClientState {
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .poll_transmit()
+            .pop_front()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -2857,13 +2857,20 @@ fn encapsulate_and_queue(
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut snownet::TransmitBuffer,
+    buffered_transmits: &mut VecDeque<snownet::Transmit>,
     pending_peer_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) {
     match encapsulate_or_buffer(packet, pid, now, node, pending_peer_packets) {
-        Ok(Some(job)) => buffered_transmits.encrypt(job),
+        Ok(Some(job)) => queue_encrypted(buffered_transmits, job),
         Ok(None) => {}
         Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
+    }
+}
+
+fn queue_encrypted(transmits: &mut VecDeque<snownet::Transmit>, job: snownet::EncryptJob) {
+    match job.encrypt() {
+        Ok(transmit) => transmits.push_back(transmit),
+        Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
     }
 }
 

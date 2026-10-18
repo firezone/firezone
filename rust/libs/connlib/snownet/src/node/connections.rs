@@ -13,10 +13,9 @@ use sanstun::TunnelId;
 
 use crate::{
     Event,
-    buffer::TransmitBuffer,
     node::{
-        Connection, ConnectionState, allocations::Allocations,
-        inflight_stun_requests::InflightStunRequests,
+        Connection, ConnectionState, Transmit, allocations::Allocations,
+        inflight_stun_requests::InflightStunRequests, queue_encrypted,
     },
 };
 
@@ -120,7 +119,7 @@ where
     pub(crate) fn handle_timeout(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
@@ -162,7 +161,7 @@ where
 
             match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations) {
                 Ok(Some(encapsulation)) => {
-                    transmits.encrypt(encapsulation.into_job(goodbye.packet.clone()));
+                    queue_encrypted(transmits, encapsulation.into_job(goodbye.packet.clone()));
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
                 }
                 Ok(None) => {
@@ -699,7 +698,7 @@ mod tests {
     ) {
         connections.handle_timeout(
             allocations,
-            &mut TransmitBuffer::new(),
+            &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
             now,

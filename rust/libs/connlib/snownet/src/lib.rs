@@ -6,7 +6,6 @@
 mod agent;
 mod allocation;
 mod backoff;
-mod buffer;
 mod candidate;
 mod channel_data;
 mod crypto;
@@ -14,7 +13,6 @@ mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use buffer::TransmitBuffer;
 pub use crypto::{DecryptJob, DecryptedPacket, EncryptJob};
 pub use node::{
     ConnectionPath, Credentials, EncapsulateError, Event, IceConfig, IceRole, Node,
