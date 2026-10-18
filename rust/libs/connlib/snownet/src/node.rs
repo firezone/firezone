@@ -69,6 +69,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 ///
 /// - [`Node::poll_timeout`] for learning when to "wake" the [`Node`]
 /// - [`Node::poll_transmit`] for transferring buffered data
+/// - [`Node::poll_encrypt_job`] for encrypting buffered packets
 /// - [`Node::poll_event`] for learning about state changes
 ///
 /// These sets of functions need to be combined into an event-loop by the caller.
@@ -88,6 +89,7 @@ pub struct Node<TId, RId> {
     interface: Interface,
 
     buffered_transmits: VecDeque<Transmit>,
+    encrypt_jobs: VecDeque<EncryptJob>,
 
     allocations: Allocations<RId>,
 
@@ -97,8 +99,8 @@ pub struct Node<TId, RId> {
 
     pending_events: VecDeque<Event<TId, RId>>,
     /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
-    /// returns it while transmits or events are queued so the driver drains
-    /// them without delay.
+    /// returns it while transmits, encrypt jobs or events are queued so the
+    /// driver drains them without delay.
     last_now: Instant,
 
     connection_count: Gauge<u64>,
@@ -188,6 +190,7 @@ where
             rng,
             interface,
             buffered_transmits: VecDeque::default(),
+            encrypt_jobs: VecDeque::default(),
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
@@ -216,6 +219,7 @@ where
 
         self.allocations.restart(now);
         self.buffered_transmits.clear();
+        self.encrypt_jobs.clear();
         self.pending_events.clear();
         self.inflight_stun_requests.clear();
         self.buffered_candidates.clear();
@@ -660,8 +664,10 @@ where
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        let queued_io = (!self.buffered_transmits.is_empty() || !self.pending_events.is_empty())
-            .then_some((self.last_now, "queued IO"));
+        let queued_io = (!self.buffered_transmits.is_empty()
+            || !self.encrypt_jobs.is_empty()
+            || !self.pending_events.is_empty())
+        .then_some((self.last_now, "queued IO"));
 
         iter::empty()
             .chain(queued_io)
@@ -709,6 +715,7 @@ where
         self.connections.handle_timeout(
             &mut self.allocations,
             &mut self.buffered_transmits,
+            &mut self.encrypt_jobs,
             &mut self.pending_events,
             &mut self.inflight_stun_requests,
             now,
@@ -748,6 +755,12 @@ where
         tracing::trace!(?transmit);
 
         Some(transmit)
+    }
+
+    /// Returns the next packet to encrypt, in the order the packets were encapsulated.
+    #[must_use]
+    pub fn poll_encrypt_job(&mut self) -> Option<EncryptJob> {
+        self.encrypt_jobs.pop_front()
     }
 
     pub fn update_relays(
@@ -1522,6 +1535,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
+        encrypt_jobs: &mut VecDeque<EncryptJob>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
@@ -1706,7 +1720,7 @@ where
                     if let Ok(Some(encapsulation)) =
                         self.encapsulate(cid, peer_socket, &ip, now, allocations)
                     {
-                        queue_encrypted(transmits, encapsulation.into_job(*ip));
+                        encrypt_jobs.push_back(encapsulation.into_job(*ip));
                     }
                 }
             }
@@ -2290,13 +2304,6 @@ fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> Interfa
     rng.fill_bytes(&mut seed[..]);
 
     Interface::new(seed, now, unix_ts).with_handshake_limit(HANDSHAKE_RATE_LIMIT)
-}
-
-fn queue_encrypted(transmits: &mut VecDeque<Transmit>, job: EncryptJob) {
-    match job.encrypt() {
-        Ok(transmit) => transmits.push_back(transmit),
-        Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
-    }
 }
 
 #[must_use]

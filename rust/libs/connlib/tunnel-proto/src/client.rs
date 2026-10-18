@@ -192,7 +192,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: VecDeque<snownet::Transmit>,
+    encrypt_jobs: VecDeque<snownet::EncryptJob>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -229,7 +229,7 @@ impl ClientState {
             resource_stub_resolver: ResourceStubResolver::new(records),
             device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
-            buffered_transmits: Default::default(),
+            encrypt_jobs: Default::default(),
             is_internet_resource_active,
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
@@ -724,10 +724,10 @@ impl ClientState {
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
-    /// and flow tracking, queueing any resulting network transmit.
+    /// and flow tracking, queueing any resulting [`snownet::EncryptJob`].
     fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
         if let Some(job) = self.handle_tun_input(packet, now)? {
-            queue_encrypted(&mut self.buffered_transmits, job);
+            self.encrypt_jobs.push_back(job);
         }
 
         Ok(())
@@ -862,7 +862,7 @@ impl ClientState {
                             ClientOrGatewayId::Client(cid),
                             now,
                             &mut self.node,
-                            &mut self.buffered_transmits,
+                            &mut self.encrypt_jobs,
                             &mut self.pending_peer_packets,
                         );
                         if let Some(event) = no_authorization.and_then(|rejection| {
@@ -874,7 +874,7 @@ impl ClientState {
                                 cid.into(),
                                 now,
                                 &mut self.node,
-                                &mut self.buffered_transmits,
+                                &mut self.encrypt_jobs,
                                 &mut self.pending_peer_packets,
                             );
                         }
@@ -1003,11 +1003,11 @@ impl ClientState {
         }
 
         let node = &mut self.node;
-        let buffered_transmits = &mut self.buffered_transmits;
+        let encrypt_jobs = &mut self.encrypt_jobs;
         let pending_packets = &mut self.pending_peer_packets;
 
         for packet in peer_packets.into_iter().flatten() {
-            encapsulate_and_queue(packet, pid, now, node, buffered_transmits, pending_packets);
+            encapsulate_and_queue(packet, pid, now, node, encrypt_jobs, pending_packets);
         }
     }
 
@@ -1758,6 +1758,8 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
+        self.encrypt_jobs
+            .extend(iter::from_fn(|| self.node.poll_encrypt_job()));
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
@@ -1912,7 +1914,7 @@ impl ClientState {
                 ClientOrGatewayId::Gateway(gid),
                 now,
                 &mut self.node,
-                &mut self.buffered_transmits,
+                &mut self.encrypt_jobs,
                 &mut self.pending_peer_packets,
             );
         }
@@ -2461,6 +2463,7 @@ impl ClientState {
         tracing::info!("Resetting network state ({reason})");
 
         self.node.reset(now);
+        self.encrypt_jobs.clear();
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
@@ -2469,9 +2472,14 @@ impl ClientState {
     }
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
-        self.buffered_transmits
+        self.node.poll_transmit()
+    }
+
+    /// Returns the next packet to encrypt, in the order the packets were encapsulated.
+    pub fn poll_encrypt_job(&mut self) -> Option<snownet::EncryptJob> {
+        self.encrypt_jobs
             .pop_front()
-            .or_else(|| self.node.poll_transmit())
+            .or_else(|| self.node.poll_encrypt_job())
     }
 
     pub fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
@@ -2850,27 +2858,20 @@ fn client_for_icmp_error(
     None
 }
 
-/// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
+/// Like [`encapsulate_or_buffer`], but queues the job into `encrypt_jobs` and drops (with a
 /// log) any error instead of returning it.
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<snownet::Transmit>,
+    encrypt_jobs: &mut VecDeque<snownet::EncryptJob>,
     pending_peer_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 ) {
     match encapsulate_or_buffer(packet, pid, now, node, pending_peer_packets) {
-        Ok(Some(job)) => queue_encrypted(buffered_transmits, job),
+        Ok(Some(job)) => encrypt_jobs.push_back(job),
         Ok(None) => {}
         Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
-    }
-}
-
-fn queue_encrypted(transmits: &mut VecDeque<snownet::Transmit>, job: snownet::EncryptJob) {
-    match job.encrypt() {
-        Ok(transmit) => transmits.push_back(transmit),
-        Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
     }
 }
 

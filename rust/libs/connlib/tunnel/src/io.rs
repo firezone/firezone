@@ -444,6 +444,16 @@ impl Io {
         self.crypto.submit_encrypt(job, &mut self.sockets);
     }
 
+    /// Submits every job `poll_job` yields, in that order.
+    pub fn submit_encrypt_jobs(
+        &mut self,
+        mut poll_job: impl FnMut() -> Option<snownet::EncryptJob>,
+    ) {
+        while let Some(job) = poll_job() {
+            self.submit_encrypt(job);
+        }
+    }
+
     /// Decrypts a received data message off the main thread, yielding it via [`Input::decrypted`].
     pub fn submit_decrypt(&mut self, job: Received<snownet::DecryptJob>) {
         self.crypto.submit_decrypt(job);

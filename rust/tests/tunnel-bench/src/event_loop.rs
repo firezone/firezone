@@ -749,8 +749,14 @@ impl Tunnel {
             }
         }
 
+        while let Some(job) = self.client.poll_encrypt_job() {
+            self.route(CLIENT_SOCKET, job.encrypt().unwrap());
+        }
         while let Some(transmit) = self.client.poll_transmit() {
             self.route(CLIENT_SOCKET, transmit);
+        }
+        while let Some(job) = self.gateway.poll_encrypt_job() {
+            self.route(GATEWAY_SOCKET, job.encrypt().unwrap());
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
             self.route(GATEWAY_SOCKET, transmit);

@@ -200,6 +200,8 @@ impl ClientTunnel {
         self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
+        self.io
+            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io.send_network(trans);
         }
@@ -254,6 +256,9 @@ impl ClientTunnel {
 
             self.io.flush_tun_batch();
 
+            self.io
+                .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io.send_network(trans);
@@ -279,6 +284,8 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
+                    self.io
+                        .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
                     self.needs_timeout = true;
 
                     tick.want_continue();
@@ -286,11 +293,16 @@ impl ClientTunnel {
 
                 if let Some(mut packets) = device {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        match self
+                        let result = self
                             .role_state
                             .handle_tun_input(packet, now)
-                            .context("Failed to handle packet from TUN device")
-                        {
+                            .context("Failed to handle packet from TUN device");
+
+                        // Jobs queued by this call were encapsulated before the one it returns.
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(job)) => self.io.submit_encrypt(job),
                             Ok(None) => {}
                             Err(e) => error.push(e),
@@ -313,7 +325,7 @@ impl ClientTunnel {
                         .flat_map(|batch| batch.drain())
                         .inspect(|r| udp_received.record(r.packet))
                     {
-                        match self
+                        let result = self
                             .role_state
                             .handle_network_input(
                                 received.local,
@@ -324,7 +336,11 @@ impl ClientTunnel {
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
-                            }) {
+                            });
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(job)) => self.io.submit_decrypt(io::Received {
                                 local: received.local,
                                 from: received.from,
@@ -341,7 +357,7 @@ impl ClientTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain(..) {
-                        match self
+                        let result = self
                             .role_state
                             .handle_decrypted_network_input(
                                 received.local,
@@ -352,7 +368,11 @@ impl ClientTunnel {
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
-                            }) {
+                            });
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(packet)) => {
                                 let packet = packet.with_ecn_from_transport(received.ecn);
 
@@ -421,6 +441,8 @@ impl GatewayTunnel {
         self.role_state.shut_down(now);
 
         // Drain all UDP packets that need to be sent.
+        self.io
+            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io.send_network(trans);
         }
@@ -455,6 +477,9 @@ impl GatewayTunnel {
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
+
+            self.io
+                .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -507,11 +532,16 @@ impl GatewayTunnel {
 
                 if let Some(mut packets) = device {
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        match self
+                        let result = self
                             .role_state
                             .handle_tun_input(packet, now)
-                            .context("Failed to handle packet from TUN device")
-                        {
+                            .context("Failed to handle packet from TUN device");
+
+                        // Jobs queued by this call were encapsulated before the one it returns.
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(job)) => self.io.submit_encrypt(job),
                             Ok(None) => {}
                             Err(e) => {
@@ -547,7 +577,7 @@ impl GatewayTunnel {
                         .flat_map(|batch| batch.drain())
                         .inspect(|r| udp_received.record(r.packet))
                     {
-                        match self
+                        let result = self
                             .role_state
                             .handle_network_input(
                                 received.local,
@@ -558,7 +588,11 @@ impl GatewayTunnel {
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
-                            }) {
+                            });
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(job)) => self.io.submit_decrypt(io::Received {
                                 local: received.local,
                                 from: received.from,
@@ -575,7 +609,7 @@ impl GatewayTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain(..) {
-                        match self
+                        let result = self
                             .role_state
                             .handle_decrypted_network_input(
                                 received.local,
@@ -586,7 +620,11 @@ impl GatewayTunnel {
                             .with_context(|| FailedToHandleNetworkPacket {
                                 local: received.local,
                                 from: received.from,
-                            }) {
+                            });
+                        self.io
+                            .submit_encrypt_jobs(|| self.role_state.poll_encrypt_job());
+
+                        match result {
                             Ok(Some(packet)) => {
                                 let packet = packet.with_ecn_from_transport(received.ecn);
 
