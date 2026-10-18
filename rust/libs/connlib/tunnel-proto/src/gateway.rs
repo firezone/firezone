@@ -18,7 +18,7 @@ use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use sanstun::{PublicKey, StaticSecret};
 use secrecy::ExposeSecret as _;
-use snownet::{EncapsulateError, IceConfig, IceRole, Node, RelaySocket};
+use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -687,17 +687,17 @@ fn encrypt_packet(
     node: &mut Node<ClientId, RelayId>,
     now: Instant,
 ) -> Result<Option<snownet::EncryptJob>> {
-    match node.encapsulate(cid, packet, now) {
-        Ok(job) => Ok(job),
+    match node.encapsulate(cid, &packet, now) {
+        Ok(encapsulation) => Ok(encapsulation.map(|enc| enc.into_job(packet))),
         // The Gateway does not buffer: it only sends in response to Client traffic.
-        Err(EncapsulateError { error, .. }) if error.any_is::<snownet::StillConnecting>() => {
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
             Ok(None)
         }
-        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::UnknownConnection>() => {
-            Err(error.context(UnroutablePacket::not_connected(&packet)))
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            Err(e.context(UnroutablePacket::not_connected(&packet)))
         }
-        Err(EncapsulateError { error, .. }) => Err(error).context("Failed to encapsulate"),
+        Err(e) => Err(e).context("Failed to encapsulate"),
     }
 }
 

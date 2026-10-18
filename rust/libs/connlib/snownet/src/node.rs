@@ -619,36 +619,19 @@ where
         Ok(Some((cid, packet)))
     }
 
-    /// Encapsulate an outgoing IP packet into an [`EncryptJob`].
+    /// Encapsulate an outgoing IP packet.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
-    ///
-    /// # Errors
-    ///
-    /// Returns the packet alongside the error, e.g. to buffer it while the connection is [`StillConnecting`].
     pub fn encapsulate(
-        &mut self,
-        cid: TId,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<EncryptJob>, EncapsulateError> {
-        self.last_now = now;
-
-        match self.try_encapsulate(cid, &packet, now) {
-            Ok(Some(encapsulation)) => Ok(Some(encapsulation.into_job(packet))),
-            Ok(None) => Ok(None),
-            Err(error) => Err(EncapsulateError { packet, error }),
-        }
-    }
-
-    fn try_encapsulate(
         &mut self,
         cid: TId,
         packet: &IpPacket,
         now: Instant,
     ) -> Result<Option<Encapsulation>> {
+        self.last_now = now;
+
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
@@ -1415,15 +1398,8 @@ impl fmt::Debug for Transmit {
     }
 }
 
-/// An [`IpPacket`] that [`Node::encapsulate`] failed to encapsulate.
-#[derive(Debug)]
-pub struct EncapsulateError {
-    pub packet: IpPacket,
-    pub error: anyhow::Error,
-}
-
 /// Where to send an outgoing packet, with its WireGuard counter reserved.
-struct Encapsulation {
+pub struct Encapsulation {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     channel: Option<u16>,
@@ -1431,7 +1407,8 @@ struct Encapsulation {
 }
 
 impl Encapsulation {
-    fn into_job(self, packet: IpPacket) -> EncryptJob {
+    /// Builds the [`EncryptJob`] for the packet that was passed to [`Node::encapsulate`].
+    pub fn into_job(self, packet: IpPacket) -> EncryptJob {
         EncryptJob::new(self.src, self.dst, self.channel, self.pending, packet)
     }
 }

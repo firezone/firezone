@@ -55,7 +55,7 @@ use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
 use sanstun::StaticSecret;
 use secrecy::ExposeSecret as _;
-use snownet::{EncapsulateError, Node, RelaySocket};
+use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -2890,14 +2890,15 @@ fn encapsulate_or_buffer(
         return Ok(None);
     }
 
-    match node.encapsulate(pid, packet, now) {
-        Ok(Some(job)) => {
+    match node.encapsulate(pid, &packet, now) {
+        Ok(Some(encapsulation)) => {
+            let job = encapsulation.into_job(packet);
             flow_tracker::record_transmit(job.src(), job.dst());
 
             return Ok(Some(job));
         }
         Ok(None) => {}
-        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::StillConnecting>() => {
+        Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets
                 .entry(pid)
                 .or_insert_with(|| {
@@ -2908,10 +2909,10 @@ fn encapsulate_or_buffer(
                 })
                 .push(packet);
         }
-        Err(EncapsulateError { packet, error }) if error.any_is::<snownet::UnknownConnection>() => {
-            return Err(error.context(UnroutablePacket::not_connected(&packet)));
+        Err(e) if e.any_is::<snownet::UnknownConnection>() => {
+            return Err(e.context(UnroutablePacket::not_connected(&packet)));
         }
-        Err(EncapsulateError { error, .. }) => return Err(error),
+        Err(e) => return Err(e),
     };
 
     Ok(None)
