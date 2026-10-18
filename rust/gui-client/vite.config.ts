@@ -18,7 +18,7 @@ function preserveGitkeep(): Plugin {
 
 const host = process.env.TAURI_DEV_HOST;
 const gitVersion =
-  process.env.GITHUB_SHA ?? execSync("git rev-parse --short HEAD").toString();
+  process.env.GITHUB_SHA ?? execSync("git rev-parse HEAD").toString().trim();
 
 // https://vite.dev/config/
 export default defineConfig({
