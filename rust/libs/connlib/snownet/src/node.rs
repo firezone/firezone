@@ -1955,20 +1955,28 @@ where
                 return ControlFlow::Break(
                     self.tunnel
                         .handle_cookie_reply(reply, now)
-                        .map_err(anyhow::Error::new),
+                        .context("cookie reply"),
                 );
             }
             ReceivedMessage::TransportData(data) => {
-                match self.tunnel.begin_decapsulate(data, now) {
+                match self
+                    .tunnel
+                    .begin_decapsulate(data, now)
+                    .context("data packet")
+                {
                     Ok(pending) => pending,
-                    Err(e) => return ControlFlow::Break(Err(anyhow::Error::new(e))),
+                    Err(e) => return ControlFlow::Break(Err(e)),
                 }
             }
         };
 
         let decrypted = pending.decrypt(datagram, IpPacketBuf::new());
 
-        let control_flow = match self.tunnel.commit_decapsulate(decrypted, now) {
+        let control_flow = match self
+            .tunnel
+            .commit_decapsulate(decrypted, now)
+            .context("data packet")
+        {
             Ok(Committed::Data { buffer, len }) => {
                 match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
                     Ok(p) => ControlFlow::Continue(p),
@@ -1976,7 +1984,7 @@ where
                 }
             }
             Ok(Committed::Keepalive) => ControlFlow::Break(Ok(())),
-            Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
+            Err(e) => ControlFlow::Break(Err(e)),
         };
 
         match control_flow {
