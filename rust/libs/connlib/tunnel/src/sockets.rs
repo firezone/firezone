@@ -24,8 +24,9 @@ const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
 /// How many outgoing UDP batches the send task drains from a socket's channel per wakeup.
 ///
 /// The outbound queue is sized as a small multiple of this (see [`QUEUE_SIZE`]), and every queued
-/// batch pins a GSO buffer, so a smaller limit means less retained send memory. Mobile clients talk to
-/// only a handful of peers at once, so they drain - and therefore queue - fewer batches at a time.
+/// item pins the GSO buffers of its trains, so a smaller limit means less retained send memory.
+/// Mobile clients talk to only a handful of peers at once, so they drain - and therefore queue -
+/// fewer batches at a time.
 const UDP_SEND_BATCH_LIMIT: usize = cfg_select! {
     target_os = "ios" => { 3 }
     target_os = "android" => { 3 }
@@ -214,11 +215,11 @@ pub(crate) type Encrypting = Buffer<VecBuf<oneshot::Receiver<DatagramOut>>>;
 
 /// How big the queue for outgoing UDP items and socket errors is at most.
 ///
-/// Every queued [`DatagramOut`] owns a buffer of up to [`crate::io::GSO_BUFFER_SIZE`] bytes that it
-/// pins until the send task drains it - and, because the buffer pool never shrinks, for the rest of
-/// the session once a backlog has ever built up. We therefore size it as two drains' worth of
-/// [`UDP_SEND_BATCH_LIMIT`]: deep enough to keep the send task fed, shallow enough that a transient
-/// send backlog cannot balloon memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
+/// Every queued item pins the GSO buffers of up to one TUN batch of packets until the send task has
+/// sent it - and, because the buffer pools never shrink, for the rest of the session once a backlog
+/// has ever built up. We therefore size it as two drains' worth of [`UDP_SEND_BATCH_LIMIT`]: deep
+/// enough to keep the send task fed, shallow enough that a transient send backlog cannot balloon
+/// memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
 /// See [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound.
 const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 
@@ -230,16 +231,20 @@ const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 /// blow the mobile budget. See [`MAX_UDP_INBOUND_QUEUE_MEMORY`].
 const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 
-/// Memory pinned by the outbound UDP queues when every item is a single datagram.
+/// Worst-case memory pinned by the outbound UDP send path while in flight.
 ///
-/// connlib runs one socket thread per address family (IPv4 + IPv6), each with an outbound queue of
-/// [`QUEUE_SIZE`] items (hence the `2 *`). A [`DatagramOut`] of a [`UdpGsoTrain`](crate::io::UdpGsoTrain)
-/// owns a GSO buffer allocated at [`crate::io::GSO_BUFFER_SIZE`] regardless of how full it is. That
-/// pool never shrinks, so a send backlog that ever fills these queues pins this much memory for the
-/// rest of the session. An [`Outbound::Encrypting`] item holds one such datagram per train of its
-/// batch, so batches of many trains pin a multiple of this.
-const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
-    2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
+/// Per address family (hence `2 *`), items can be held in two places at once: up to [`QUEUE_SIZE`]
+/// in the channel, counting the one an open encrypt batch has reserved, and up to
+/// [`UDP_SEND_BATCH_LIMIT`] drained by the send task. An item carries at most one TUN batch of
+/// packets, so at most as many trains, each with a [`DatagramOut`]. A train's GSO buffer is at most
+/// 2 KiB or twice its length, so at most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
+///
+/// Every size class pools its buffers separately, so backlogs of differently sized trains can
+/// leave more than this pooled.
+const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize = 2
+    * (QUEUE_SIZE + UDP_SEND_BATCH_LIMIT)
+    * tun::MAX_BATCH_SIZE
+    * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD);
 
 /// Worst-case memory pinned by the inbound UDP receive path while in flight.
 ///
@@ -253,12 +258,12 @@ const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const _: () = {
-    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 1024 * 1024);
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 2 * 1024 * 1024);
     assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 16 * 1024 * 1024);
 };
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 const _: () = {
-    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 20 * 1024 * 1024);
+    assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 64 * 1024 * 1024);
     assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 128 * 1024 * 1024);
 };
 

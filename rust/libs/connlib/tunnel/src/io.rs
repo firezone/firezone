@@ -10,7 +10,7 @@ mod udp_gso_train;
 pub use decrypt::{DecryptBatch, Received};
 pub use device::{Device, TunChannelClosed};
 pub use encrypt::EncryptBatch;
-pub(crate) use udp_gso_train::{GSO_BUFFER_SIZE, UdpGsoTrain};
+pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
 use anyhow::{ErrorExt, Result};

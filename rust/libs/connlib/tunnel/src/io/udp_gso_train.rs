@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use bufferpool::Buffer;
+use bufferpool::{Buffer, BufferPool};
 use ip_packet::Ecn;
 use snownet::EncryptJob;
 use socket_factory::DatagramOut;
@@ -8,18 +8,26 @@ use socket_factory::DatagramOut;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
-/// The size every buffer in [`GSO_BUFFERS`] is allocated with.
-///
-/// An IP packet - and therefore the payload of one GSO send - can never exceed 65535 bytes.
-/// A [`UdpGsoTrain`] is capped at one GSO send's worth of segments (see [`DatagramOut::max_len`]), which
-/// is always below this capacity, so a pooled buffer never grows and never reallocates.
-///
-/// The buffer occupies this much memory regardless of how many segments it actually carries; every
-/// in-flight [`DatagramOut`] pins one, which is why the outbound socket queue's depth directly bounds
-/// the send path's memory footprint.
-pub(crate) const GSO_BUFFER_SIZE: usize = u16::MAX as usize;
+bufferpool::buffer_pool!(static GSO_BUFFERS_2K: Vec<u8> = (2 * 1024, "gso-train-2k"), batch: 2);
+bufferpool::buffer_pool!(static GSO_BUFFERS_4K: Vec<u8> = (4 * 1024, "gso-train-4k"), batch: 2);
+bufferpool::buffer_pool!(static GSO_BUFFERS_8K: Vec<u8> = (8 * 1024, "gso-train-8k"), batch: 2);
+bufferpool::buffer_pool!(static GSO_BUFFERS_16K: Vec<u8> = (16 * 1024, "gso-train-16k"), batch: 2);
+bufferpool::buffer_pool!(static GSO_BUFFERS_32K: Vec<u8> = (32 * 1024, "gso-train-32k"), batch: 2);
+bufferpool::buffer_pool!(static GSO_BUFFERS_64K: Vec<u8> = (64 * 1024, "gso-train-64k"), batch: 2);
 
-bufferpool::buffer_pool!(static GSO_BUFFERS: Vec<u8> = (GSO_BUFFER_SIZE, "gso-queue"), batch: 2);
+/// The pool of the smallest buffers that fit `len` bytes: at most 2 KiB or twice `len`.
+///
+/// One GSO send never exceeds 64 KiB, so neither does a [`UdpGsoTrain`].
+fn gso_buffers(len: usize) -> &'static BufferPool<Vec<u8>> {
+    match len {
+        0..=2_048 => &GSO_BUFFERS_2K,
+        2_049..=4_096 => &GSO_BUFFERS_4K,
+        4_097..=8_192 => &GSO_BUFFERS_8K,
+        8_193..=16_384 => &GSO_BUFFERS_16K,
+        16_385..=32_768 => &GSO_BUFFERS_32K,
+        _ => &GSO_BUFFERS_64K,
+    }
+}
 
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
@@ -39,10 +47,6 @@ impl UdpGsoTrain {
         debug_assert!(len <= MAX_SEGMENT_SIZE, "MAX_SEGMENT_SIZE is miscalculated");
 
         let max_len = DatagramOut::max_len(dst, len);
-        debug_assert!(
-            max_len <= GSO_BUFFER_SIZE,
-            "GSO_BUFFER_SIZE is miscalculated"
-        );
 
         Self {
             connection: Connection { src, dst, ecn },
@@ -80,11 +84,11 @@ impl UdpGsoTrain {
         true
     }
 
-    /// Encrypts `jobs` back-to-back into one datagram.
+    /// Encrypts `jobs`, the ones this train was built from, back-to-back into one datagram.
     ///
     /// Jobs that fail to encrypt are skipped; returns `None` if none are left.
     pub fn encrypt(self, jobs: impl Iterator<Item = EncryptJob>) -> Option<DatagramOut> {
-        let mut buffer = GSO_BUFFERS.pull();
+        let mut buffer = gso_buffers(self.len).pull();
         buffer.clear();
 
         for job in jobs {
@@ -155,6 +159,19 @@ mod tests {
     #[test]
     fn small_segments_hit_kernel_segment_limit() {
         assert_segments_per_send(100, socket_factory::MAX_GSO_SEGMENTS);
+    }
+
+    #[test]
+    fn train_takes_smallest_fitting_buffer() {
+        for (len, capacity) in [
+            (1, 2 * 1024),
+            (2 * 1024, 2 * 1024),
+            (2 * 1024 + 1, 4 * 1024),
+            (32 * 1024 + 1, 64 * 1024),
+            (DatagramOut::max_len(DST_1, MAX_SEGMENT_SIZE), 64 * 1024),
+        ] {
+            assert_eq!(gso_buffers(len).pull().capacity(), capacity);
+        }
     }
 
     fn assert_segments_per_send(segment_size: usize, segments_per_send: usize) {
