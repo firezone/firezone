@@ -7,7 +7,7 @@ use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpPacket;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
-use tokio_util::sync::{PollSendError, PollSender};
+use tokio_util::sync::PollSender;
 
 /// How many packets a single item on the TUN channels may at most hold.
 ///
@@ -114,7 +114,7 @@ impl std::ops::Deref for PacketBatch {
 
 pub trait Tun: Send + Sync + 'static {
     /// Get a reference to the sender for outbound packets.
-    fn sender(&self) -> &OutboundTx;
+    fn sender(&mut self) -> &mut OutboundTx;
 
     /// Get a mutable reference to the receiver for inbound packets.
     fn receiver(&mut self) -> &mut InboundRx;
@@ -150,7 +150,6 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 ///
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
-#[derive(Clone)]
 pub struct OutboundTx(PollSender<PacketBatch>);
 
 impl OutboundTx {
@@ -164,17 +163,29 @@ impl OutboundTx {
         }
     }
 
-    /// Reserves a slot in the channel for the next [`OutboundTx::send_item`].
+    /// Reserves a slot in the channel for one batch.
+    ///
+    /// Dropping the [`Reservation`] keeps the slot for the next one.
     pub fn poll_reserve(
         &mut self,
         cx: &mut Context<'_>,
-    ) -> Poll<Result<(), PollSendError<PacketBatch>>> {
-        self.0.poll_reserve(cx)
+    ) -> Poll<Result<Reservation<'_>, mpsc::error::SendError<()>>> {
+        match self.0.poll_reserve(cx) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(Reservation(&mut self.0))),
+            Poll::Ready(Err(_)) => Poll::Ready(Err(mpsc::error::SendError(()))),
+            Poll::Pending => Poll::Pending,
+        }
     }
+}
 
-    /// Sends a batch into the slot reserved by [`OutboundTx::poll_reserve`].
-    pub fn send_item(&mut self, batch: PacketBatch) -> Result<(), PollSendError<PacketBatch>> {
-        self.0.send_item(batch)
+/// A slot reserved in the channel to the thread writing to the TUN device.
+pub struct Reservation<'a>(&'a mut PollSender<PacketBatch>);
+
+impl Reservation<'_> {
+    pub fn send(self, batch: PacketBatch) {
+        self.0
+            .send_item(batch)
+            .expect("a reservation always holds a slot");
     }
 }
 

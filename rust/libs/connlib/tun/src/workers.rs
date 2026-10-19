@@ -58,10 +58,10 @@ impl Workers {
 }
 
 impl Workers {
-    pub fn sender(&self) -> &OutboundTx {
-        &self
+    pub fn sender(&mut self) -> &mut OutboundTx {
+        &mut self
             .state
-            .as_ref()
+            .as_mut()
             .expect("Worker channels are present until drop")
             .0
     }

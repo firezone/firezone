@@ -4,13 +4,9 @@ use std::collections::VecDeque;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
-use tun::{OutboundTx, PacketBatch, Tun};
+use tun::{PacketBatch, Tun};
 
 pub struct Device {
-    // `tx` holds a clone of the TUN device's sender and must be dropped before `tun`:
-    // `Tun`'s drop can wait for its worker threads, which only exit once all sender
-    // clones are gone. Fields drop in declaration order.
-    tx: Option<OutboundTx>,
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
@@ -23,7 +19,6 @@ pub struct Device {
 impl Device {
     pub(crate) fn new() -> Self {
         Self {
-            tx: None,
             tun: None,
             waker: None,
             current_batch: PacketBatch::default(),
@@ -34,7 +29,6 @@ impl Device {
     pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
         tracing::debug!(name = %tun.name(), "Initializing TUN device");
 
-        self.tx = Some(tun.sender().clone());
         self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {
@@ -59,18 +53,19 @@ impl Device {
     ///
     /// Resolves once nothing is left to send, at which point the channel has room for another batch.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let Some(tx) = self.tx.as_mut() else {
+        let Some(tun) = self.tun.as_mut() else {
             return Poll::Ready(Ok(()));
         };
 
         loop {
-            ready!(tx.poll_reserve(cx)).map_err(|_| TunChannelClosed)?;
+            let reservation =
+                ready!(tun.sender().poll_reserve(cx)).map_err(|_| TunChannelClosed)?;
 
             let Some(batch) = self.pending_batches.pop_front() else {
                 return Poll::Ready(Ok(()));
             };
 
-            tx.send_item(batch).map_err(|_| TunChannelClosed)?;
+            reservation.send(batch);
         }
     }
 
@@ -239,8 +234,8 @@ mod tests {
     }
 
     impl Tun for TestTun {
-        fn sender(&self) -> &tun::OutboundTx {
-            &self.send_tx
+        fn sender(&mut self) -> &mut tun::OutboundTx {
+            &mut self.send_tx
         }
 
         fn receiver(&mut self) -> &mut tun::InboundRx {
