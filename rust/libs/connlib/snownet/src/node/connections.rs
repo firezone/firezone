@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
 use sanstun::TunnelId;
@@ -27,12 +28,12 @@ pub struct Connections<TId, RId> {
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
 
-    established_by_wireguard_session_index: HashMap<TunnelId, TId>,
+    established_by_wireguard_session_index: HashMap<TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_session_indices: HashMap<TunnelId, Instant>,
+    disconnected_session_indices: HashMap<TunnelId, Instant, FastRandomState>,
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
@@ -488,7 +489,7 @@ impl UnknownConnection {
 
     fn by_index(
         id: TunnelId,
-        disconnected_indices: &HashMap<TunnelId, Instant>,
+        disconnected_indices: &HashMap<TunnelId, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
