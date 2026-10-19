@@ -179,18 +179,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_replayed_handshake_initiation(
-        &mut self,
-        init: sanstun::ReplayedHandshakeInitiation,
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) -> Result<(), sanstun::Error> {
-        match self {
-            Self::Ice(_) => Err(sanstun::Error::ReplayedHandshakeInitiation(init)),
-            Self::Path(agent) => agent.handle_replayed_handshake_initiation(init, path, now),
-        }
-    }
-
     pub(crate) fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,

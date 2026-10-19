@@ -4,9 +4,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use sanstun::{
-    Datagram, HandshakeInitiation, HandshakeResponse, ReplayedHandshakeInitiation, Tunnel,
-};
+use sanstun::{Datagram, HandshakeInitiation, HandshakeResponse, Tunnel};
 
 use crate::candidate::Candidate;
 use crate::event::{Event, Payload, Transmit};
@@ -485,7 +483,8 @@ impl PathAgent {
 
     /// Runs `init`, received on `path`, through `tunnel`.
     ///
-    /// An accepted init's response is cached and queued on `path`.
+    /// An accepted init's response is cached and queued on `path`. A copy of an init we already
+    /// accepted is answered with the cached response.
     pub fn handle_handshake_initiation(
         &mut self,
         tunnel: &mut Tunnel,
@@ -495,7 +494,27 @@ impl PathAgent {
     ) -> Result<(), sanstun::Error> {
         let init_id = (init.sender_index(), init.timestamp());
 
-        let response = tunnel.handle_handshake_initiation(init, now)?;
+        let response = match tunnel.handle_handshake_initiation(init, now) {
+            Ok(response) => response,
+            Err(sanstun::Error::ReplayedHandshakeInitiation) => {
+                self.last_now = Some(now);
+
+                let response = self
+                    .cached_response(init_id, now)
+                    .ok_or(sanstun::Error::ReplayedHandshakeInitiation)?;
+
+                tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
+
+                self.pending_transmits.push_back(Transmit {
+                    local: path.0,
+                    remote: path.1,
+                    payload: Payload::Ciphertext(response),
+                });
+
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
         self.last_now = Some(now);
 
         tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
@@ -582,34 +601,6 @@ impl PathAgent {
             local: path.0,
             remote: path.1,
             payload: Payload::Ciphertext(keepalive),
-        });
-
-        Ok(())
-    }
-
-    /// Answers `init`, a copy of an init we already accepted, with the
-    /// response cached for it.
-    ///
-    /// Fails with [`sanstun::Error::ReplayedHandshakeInitiation`] if there is none.
-    pub fn handle_replayed_handshake_initiation(
-        &mut self,
-        init: ReplayedHandshakeInitiation,
-        path: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) -> Result<(), sanstun::Error> {
-        self.last_now = Some(now);
-
-        let Some(response) = self.cached_response((init.sender_index(), init.timestamp()), now)
-        else {
-            return Err(sanstun::Error::ReplayedHandshakeInitiation(init));
-        };
-
-        tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
-
-        self.pending_transmits.push_back(Transmit {
-            local: path.0,
-            remote: path.1,
-            payload: Payload::Ciphertext(response),
         });
 
         Ok(())
