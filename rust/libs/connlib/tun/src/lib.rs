@@ -5,7 +5,9 @@ pub use workers::Workers;
 
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpPacket;
+use std::task::{Context, Poll};
 use tokio::sync::mpsc;
+use tokio_util::sync::{PollSendError, PollSender};
 
 /// How many packets a single item on the TUN channels may at most hold.
 ///
@@ -139,7 +141,7 @@ pub trait Tun: Send + Sync + 'static {
 pub fn outbound_channel() -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
 
-    (OutboundTx(tx), OutboundRx(rx))
+    (OutboundTx(PollSender::new(tx)), OutboundRx(rx))
 }
 
 /// Creates the channel connecting the thread reading from the TUN device to the main thread.
@@ -155,7 +157,7 @@ pub fn inbound_channel() -> (InboundTx, InboundRx) {
 pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(capacity);
 
-    (OutboundTx(tx), OutboundRx(rx))
+    (OutboundTx(PollSender::new(tx)), OutboundRx(rx))
 }
 
 /// The sending half of the channel to the thread writing to the TUN device.
@@ -163,19 +165,30 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
 #[derive(Clone)]
-pub struct OutboundTx(mpsc::Sender<PacketFlow>);
+pub struct OutboundTx(PollSender<PacketFlow>);
 
 impl OutboundTx {
-    pub fn try_send(&self, batch: PacketFlow) -> Result<(), mpsc::error::TrySendError<PacketFlow>> {
-        self.0.try_send(batch)
+    pub fn try_send(
+        &self,
+        batch: PacketFlow,
+    ) -> Result<(), mpsc::error::TrySendError<PacketFlow>> {
+        match self.0.get_ref() {
+            Some(tx) => tx.try_send(batch),
+            None => Err(mpsc::error::TrySendError::Closed(batch)),
+        }
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<PacketFlow> {
-        self.0.downgrade()
+    /// Reserves a slot in the channel for the next [`OutboundTx::send_item`].
+    pub fn poll_reserve(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), PollSendError<PacketFlow>>> {
+        self.0.poll_reserve(cx)
     }
 
-    pub fn into_inner(self) -> mpsc::Sender<PacketFlow> {
-        self.0
+    /// Sends a batch into the slot reserved by [`OutboundTx::poll_reserve`].
+    pub fn send_item(&mut self, batch: PacketFlow) -> Result<(), PollSendError<PacketFlow>> {
+        self.0.send_item(batch)
     }
 }
 

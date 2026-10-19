@@ -40,7 +40,10 @@ impl Workers {
         ));
 
         let mut workers = Self {
-            state: Some((OutboundTx(outbound_tx), InboundRx(inbound_rx))),
+            state: Some((
+                OutboundTx(tokio_util::sync::PollSender::new(outbound_tx)),
+                InboundRx(inbound_rx),
+            )),
             send_thread: None,
             recv_thread: None,
         };

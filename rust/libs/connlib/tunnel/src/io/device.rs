@@ -4,14 +4,13 @@ use std::collections::VecDeque;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
-use tokio_util::sync::PollSender;
-use tun::{PacketFlow, Tun};
+use tun::{OutboundTx, PacketFlow, Tun};
 
 pub struct Device {
     // `tx` holds a clone of the TUN device's sender and must be dropped before `tun`:
     // `Tun`'s drop can wait for its worker threads, which only exit once all sender
     // clones are gone. Fields drop in declaration order.
-    tx: Option<PollSender<PacketFlow>>,
+    tx: Option<OutboundTx>,
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
@@ -35,7 +34,7 @@ impl Device {
     pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
         tracing::debug!(name = %tun.name(), "Initializing TUN device");
 
-        self.tx = Some(PollSender::new(tun.sender().clone().into_inner()));
+        self.tx = Some(tun.sender().clone());
         self.tun = Some(tun);
 
         if let Some(waker) = self.waker.take() {
@@ -56,8 +55,10 @@ impl Device {
         Poll::Ready(Ok(batch))
     }
 
-    /// Sends pending batches into the channel, resolving once it has room for another one.
-    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    /// Sends all pending batches into the channel.
+    ///
+    /// Resolves once nothing is left to send, at which point the channel has room for another batch.
+    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let Some(tx) = self.tx.as_mut() else {
             return Poll::Ready(Ok(()));
         };
@@ -97,7 +98,7 @@ impl Device {
 
     /// Marks the end of the current batch of packets.
     ///
-    /// The batch becomes a single channel item, sent by [`Device::poll_send_ready`].
+    /// The batch becomes a single channel item, sent by [`Device::poll_flush`].
     pub fn flush_batch(&mut self) {
         if self.current_batch.is_empty() {
             return;
@@ -124,7 +125,7 @@ mod tests {
     use std::task::Wake;
 
     #[tokio::test]
-    async fn send_ready_fails_when_channel_closed() {
+    async fn flush_fails_when_channel_closed() {
         let mut device = Device::new();
         let (test_tun, send_rx, _recv_tx) = TestTun::with_capacity(1);
         drop(send_rx);
@@ -133,8 +134,8 @@ mod tests {
         device.queue(test_packet(1));
         device.flush_batch();
 
-        let first = poll_fn(|cx| device.poll_send_ready(cx)).await.unwrap_err();
-        let second = poll_fn(|cx| device.poll_send_ready(cx)).await.unwrap_err();
+        let first = poll_fn(|cx| device.poll_flush(cx)).await.unwrap_err();
+        let second = poll_fn(|cx| device.poll_flush(cx)).await.unwrap_err();
 
         assert!(first.any_is::<TunChannelClosed>());
         assert!(second.any_is::<TunChannelClosed>());
@@ -153,7 +154,7 @@ mod tests {
         device.flush_batch();
         device.queue(test_packet(2));
         device.flush_batch();
-        let full = device.poll_send_ready(&mut cx);
+        let full = device.poll_flush(&mut cx);
         device.queue(test_packet(3));
         device.flush_batch();
 
@@ -162,15 +163,15 @@ mod tests {
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(1));
         assert!(woken.take());
-        assert!(device.poll_send_ready(&mut cx).is_pending());
+        assert!(device.poll_flush(&mut cx).is_pending());
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(2));
         assert!(woken.take());
-        assert!(device.poll_send_ready(&mut cx).is_pending());
+        assert!(device.poll_flush(&mut cx).is_pending());
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(3));
         assert!(woken.take());
-        assert!(device.poll_send_ready(&mut cx).is_ready());
+        assert!(device.poll_flush(&mut cx).is_ready());
     }
 
     #[tokio::test]
@@ -184,7 +185,7 @@ mod tests {
         }
         device.flush_batch();
 
-        poll_fn(|cx| device.poll_send_ready(cx)).await.unwrap();
+        poll_fn(|cx| device.poll_flush(cx)).await.unwrap();
 
         assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE);
         assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE);
