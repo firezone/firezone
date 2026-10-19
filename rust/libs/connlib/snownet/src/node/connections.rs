@@ -24,12 +24,12 @@ use crate::{
 const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
-    established: BTreeMap<TId, Connection<RId>>,
-    /// Closed connections waiting to send their goodbye; they stay in the index maps below.
-    closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
+    slots: Vec<Option<Entry<TId, RId>>>,
+    free_slots: Vec<usize>,
 
-    established_by_wireguard_session_index: HashMap<TunnelId, TId, FastRandomState>,
-    established_by_local_ufrag: BTreeMap<String, TId>,
+    by_id: BTreeMap<TId, usize>,
+    by_wireguard_session_index: HashMap<TunnelId, usize, FastRandomState>,
+    by_local_ufrag: BTreeMap<String, usize>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
@@ -37,13 +37,21 @@ pub struct Connections<TId, RId> {
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
+struct Entry<TId, RId> {
+    id: TId,
+    connection: Connection<RId>,
+    /// Set once the connection is closed and waits to send its goodbye.
+    goodbye: Option<Goodbye>,
+}
+
 impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
-            established: Default::default(),
-            closing: Default::default(),
-            established_by_wireguard_session_index: Default::default(),
-            established_by_local_ufrag: Default::default(),
+            slots: Default::default(),
+            free_slots: Default::default(),
+            by_id: Default::default(),
+            by_wireguard_session_index: Default::default(),
+            by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
@@ -60,43 +68,27 @@ where
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
-        let connection = self
-            .established
-            .remove(id)
-            .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
+        let slot = *self.by_id.get(id)?;
+        let removed = self.remove_slot(slot, now)?;
 
-        self.established_by_wireguard_session_index
-            .remove(&connection.tunnel.id());
-        if let Some(ufrag) = connection.agent.local_ufrag() {
-            self.established_by_local_ufrag.remove(ufrag);
-        }
-
-        self.disconnected_ids.insert(*id, now);
-        self.disconnected_public_keys
-            .insert(connection.tunnel.remote_static_public().to_bytes(), now);
-        self.disconnected_session_indices
-            .insert(connection.tunnel.id(), now);
-        if let Some(ufrag) = connection.agent.local_ufrag() {
-            self.disconnected_ufrags.insert(ufrag.to_owned(), now);
-        }
-
-        Some(connection)
+        Some(removed.connection)
     }
 
     /// Closes the connection to `id` and sends `goodbye` to the peer.
     pub(crate) fn close(&mut self, id: TId, goodbye: IpPacket, now: Instant) -> Result<()> {
-        let connection = self
-            .established
-            .remove(&id)
+        let entry = self
+            .by_id
+            .get(&id)
+            .and_then(|&slot| self.slots.get_mut(slot)?.as_mut())
+            .filter(|entry| entry.goodbye.is_none())
             .context("Cannot close unknown connection")?;
 
         tracing::debug!("Connection closed proactively (goodbye pending)");
 
-        let goodbye = Goodbye {
+        entry.goodbye = Some(Goodbye {
             packet: goodbye,
             deadline: now + GOODBYE_TIMEOUT,
-        };
-        self.closing.insert(id, (connection, goodbye));
+        });
 
         Ok(())
     }
@@ -106,15 +98,10 @@ where
         filter: impl Fn(&Connection<RId>) -> bool,
         now: Instant,
     ) {
-        let ids = self
-            .closing
-            .iter()
-            .filter_map(|(id, (c, _))| filter(c).then_some(*id))
-            .collect::<Vec<_>>();
-
-        for id in ids {
-            self.remove_established(&id, now);
-        }
+        self.remove_where(
+            |entry| entry.goodbye.is_some() && filter(&entry.connection),
+            now,
+        );
     }
 
     pub(crate) fn handle_timeout(
@@ -126,7 +113,7 @@ where
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
     ) {
-        for (&cid, connection) in self.established.iter_mut() {
+        for (cid, connection) in self.iter_mut() {
             if connection.relay.is_none() {
                 connection.assign_relay(cid, allocations, events, now);
             }
@@ -142,7 +129,7 @@ where
             );
         }
 
-        for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
+        for (cid, connection, goodbye) in self.iter_closing_mut() {
             if now >= goodbye.deadline {
                 tracing::debug!(id = %cid, state = %connection.state, index = ?connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
                 connection.state = ConnectionState::Failed;
@@ -188,9 +175,9 @@ where
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
 
-        for (cid, conn) in self.established.iter_mut() {
+        for (cid, conn) in self.iter_mut() {
             conn.reset_for_roam(now);
-            conn.clear_relay(*cid);
+            conn.clear_relay(cid);
 
             num_connections += 1;
         }
@@ -206,85 +193,128 @@ where
         }
     }
 
-    pub(crate) fn insert_established(
-        &mut self,
-        id: TId,
-        connection: Connection<RId>,
-    ) -> Option<Connection<RId>> {
-        let index = connection.tunnel.id();
-        let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
-        let existing = self.established.insert(id, connection);
-
-        // Remove previous mappings for connection.
-        self.established_by_wireguard_session_index
-            .retain(|_, c| c != &id);
-        self.established_by_wireguard_session_index
-            .insert(index, id);
-        if let Some(ufrag) = local_ufrag {
-            self.established_by_local_ufrag.insert(ufrag, id);
+    pub(crate) fn insert_established(&mut self, id: TId, connection: Connection<RId>) {
+        if let Some(&previous) = self.by_id.get(&id) {
+            self.free_slot(previous);
         }
 
-        existing
+        let index = connection.tunnel.id();
+        let local_ufrag = connection.agent.local_ufrag().map(ToOwned::to_owned);
+        let entry = Entry {
+            id,
+            connection,
+            goodbye: None,
+        };
+
+        let slot = match self.free_slots.pop() {
+            Some(slot) => {
+                self.slots[slot] = Some(entry);
+
+                slot
+            }
+            None => {
+                self.slots.push(Some(entry));
+
+                self.slots.len() - 1
+            }
+        };
+
+        self.by_id.insert(id, slot);
+        self.by_wireguard_session_index.insert(index, slot);
+        if let Some(ufrag) = local_ufrag {
+            self.by_local_ufrag.insert(ufrag, slot);
+        }
     }
 
     pub(crate) fn iter_mut_by_relay(
         &mut self,
         id: RId,
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
-        self.established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay == Some(id)).then_some((*cid, c)))
+        self.iter_mut().filter(move |(_, c)| c.relay == Some(id))
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, c)| (*id, c))
+        self.iter_slots_mut().filter_map(|(_, entry)| {
+            entry
+                .goodbye
+                .is_none()
+                .then_some((entry.id, &mut entry.connection))
+        })
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
-        let connection = self
-            .established
-            .get_mut(id)
+        let entry = self
+            .by_id
+            .get(id)
+            .and_then(|&slot| self.slots.get_mut(slot)?.as_mut())
+            .filter(|entry| entry.goodbye.is_none())
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
-        Ok(connection)
+        Ok(&mut entry.connection)
     }
 
     pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
-        self.established.get(id)
+        let entry = self
+            .by_id
+            .get(id)
+            .and_then(|&slot| self.slots.get(slot)?.as_ref())
+            .filter(|entry| entry.goodbye.is_none())?;
+
+        Some(&entry.connection)
+    }
+
+    /// Returns the connection in `slot` if it still has the session index `index`.
+    pub(crate) fn get_mut_by_slot(
+        &mut self,
+        slot: usize,
+        index: TunnelId,
+        now: Instant,
+    ) -> Result<(TId, &mut Connection<RId>)> {
+        let entry = self
+            .slots
+            .get_mut(slot)
+            .and_then(Option::as_mut)
+            .filter(|entry| entry.connection.tunnel.id() == index)
+            .with_context(|| {
+                UnknownConnection::by_index(index, &self.disconnected_session_indices, now)
+            })?;
+
+        Ok((entry.id, &mut entry.connection))
     }
 
     pub(crate) fn get_established_mut_session_index(
         &mut self,
         index: TunnelId,
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let id = *self
-            .established_by_wireguard_session_index
+    ) -> Result<(TId, usize, &mut Connection<RId>)> {
+        let (slot, entry) = self
+            .by_wireguard_session_index
             .get(&index)
+            .and_then(|&slot| Some((slot, self.slots.get_mut(slot)?.as_mut()?)))
             .with_context(|| {
                 UnknownConnection::by_index(index, &self.disconnected_session_indices, now)
             })?;
 
-        let connection = self.get_mut_including_closing(&id, now)?;
-
-        Ok((id, connection))
+        Ok((entry.id, slot, &mut entry.connection))
     }
 
     pub(crate) fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
         now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let (id, conn) = self
-            .established
-            .iter_mut()
-            .chain(self.closing.iter_mut().map(|(id, (c, _))| (id, c)))
-            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
+    ) -> Result<(TId, usize, &mut Connection<RId>)> {
+        // An established connection takes precedence over a closing one with the same key.
+        let (slot, entry) = self
+            .iter_slots()
+            .filter(|(_, entry)| entry.connection.tunnel.remote_static_public().as_bytes() == &key)
+            .min_by_key(|(_, entry)| entry.goodbye.is_some())
+            .map(|(slot, _)| slot)
+            .and_then(|slot| Some((slot, self.slots.get_mut(slot)?.as_mut()?)))
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
 
-        Ok((*id, conn))
+        Ok((entry.id, slot, &mut entry.connection))
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -297,18 +327,17 @@ where
             let (ufrag, _) = message
                 .split_username()
                 .context("Binding request does not have a USERNAME attribute")?;
-            let id = self
-                .established_by_local_ufrag
+            let entry = self
+                .by_local_ufrag
                 .get(ufrag)
+                .and_then(|&slot| self.slots.get_mut(slot)?.as_mut())
                 .ok_or(UnknownConnection::by_local_ufrag(
                     ufrag,
                     &self.disconnected_ufrags,
                     now,
-                ))
-                .copied()?;
-            let conn = self.get_mut_including_closing(&id, now)?;
+                ))?;
 
-            return Ok((id, conn));
+            return Ok((entry.id, &mut entry.connection));
         }
 
         if message.is_successful_binding_response() {
@@ -329,47 +358,54 @@ where
         id: &TId,
         now: Instant,
     ) -> Result<&mut Connection<RId>> {
-        if let Some(connection) = self.established.get_mut(id) {
-            return Ok(connection);
-        }
-
-        let (connection, _) = self
-            .closing
-            .get_mut(id)
+        let entry = self
+            .by_id
+            .get(id)
+            .and_then(|&slot| self.slots.get_mut(slot)?.as_mut())
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
-        Ok(connection)
+        Ok(&mut entry.connection)
     }
 
-    pub(crate) fn is_closing(&self, id: &TId) -> bool {
-        self.closing.contains_key(id)
+    pub(crate) fn is_closing(&self, slot: usize) -> bool {
+        self.slots
+            .get(slot)
+            .and_then(Option::as_ref)
+            .is_some_and(|entry| entry.goodbye.is_some())
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established.iter().map(|(id, conn)| (*id, conn))
+        self.iter_slots().filter_map(|(_, entry)| {
+            entry
+                .goodbye
+                .is_none()
+                .then_some((entry.id, &entry.connection))
+        })
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.established.len()
+        self.iter_established().count()
     }
 
     pub(crate) fn is_connected(&self, id: &TId) -> bool {
-        self.established
-            .get(id)
+        self.get_established(id)
             .is_some_and(Connection::is_connected)
     }
 
     pub(crate) fn clear(&mut self) {
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+        self.slots.clear();
+        self.free_slots.clear();
+        self.by_id.clear();
+        self.by_wireguard_session_index.clear();
+        self.by_local_ufrag.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.established.keys().copied()
+        self.iter_established().map(|(id, _)| id)
     }
 
     pub(crate) fn all_iceless(&self) -> bool {
-        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
+        self.len() > 0 && self.iter_established().all(|(_, c)| c.agent.is_iceless())
     }
 
     #[expect(
@@ -378,19 +414,21 @@ where
     )]
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(
-                self.established
-                    .values_mut()
-                    .filter_map(|c| c.poll_timeout()),
-            )
-            .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
-                let ready_at = c
-                    .first_handshake_completed_at
-                    .filter(|_| c.ready_socket(*id).is_ok());
+            .chain(self.slots.iter_mut().flatten().flat_map(|entry| {
+                let goodbye = entry.goodbye.as_ref().map(|goodbye| {
+                    let ready_at = entry
+                        .connection
+                        .first_handshake_completed_at
+                        .filter(|_| entry.connection.ready_socket(entry.id).is_ok());
 
-                iter::once((goodbye.deadline, "goodbye timeout"))
-                    .chain(ready_at.map(|t| (t, "goodbye ready")))
-                    .chain(c.poll_timeout())
+                    iter::once((goodbye.deadline, "goodbye timeout"))
+                        .chain(ready_at.map(|t| (t, "goodbye ready")))
+                });
+
+                goodbye
+                    .into_iter()
+                    .flatten()
+                    .chain(entry.connection.poll_timeout())
             }))
             .chain(
                 self.disconnected_ids
@@ -431,22 +469,11 @@ where
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
-        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
-            events.push_back(Event::ConnectionFailed(id));
-
-            for (index, _) in self
-                .established_by_wireguard_session_index
-                .extract_if(|_, c| *c == id)
-            {
-                self.disconnected_session_indices.insert(index, now);
-            }
-            self.disconnected_public_keys
-                .insert(conn.tunnel.remote_static_public().to_bytes(), now);
-            self.disconnected_ids.insert(id, now);
-            if let Some(ufrag) = conn.agent.local_ufrag() {
-                self.established_by_local_ufrag.remove(ufrag);
-                self.disconnected_ufrags.insert(ufrag.to_owned(), now);
-            }
+        for removed in self.remove_where(
+            |entry| entry.goodbye.is_none() && entry.connection.is_failed(),
+            now,
+        ) {
+            events.push_back(Event::ConnectionFailed(removed.id));
         }
 
         self.disconnected_ids
@@ -457,6 +484,84 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
+
+    /// Removes all connections matching `filter`, in `TId` order.
+    fn remove_where(
+        &mut self,
+        filter: impl Fn(&Entry<TId, RId>) -> bool,
+        now: Instant,
+    ) -> Vec<Entry<TId, RId>> {
+        let slots = self
+            .iter_slots()
+            .filter(|(_, entry)| filter(entry))
+            .map(|(slot, _)| slot)
+            .collect::<Vec<_>>();
+
+        slots
+            .into_iter()
+            .filter_map(|slot| self.remove_slot(slot, now))
+            .collect()
+    }
+
+    fn remove_slot(&mut self, slot: usize, now: Instant) -> Option<Entry<TId, RId>> {
+        let removed = self.free_slot(slot)?;
+        let connection = &removed.connection;
+
+        self.disconnected_ids.insert(removed.id, now);
+        self.disconnected_public_keys
+            .insert(connection.tunnel.remote_static_public().to_bytes(), now);
+        self.disconnected_session_indices
+            .insert(connection.tunnel.id(), now);
+        if let Some(ufrag) = connection.agent.local_ufrag() {
+            self.disconnected_ufrags.insert(ufrag.to_owned(), now);
+        }
+
+        Some(removed)
+    }
+
+    fn free_slot(&mut self, slot: usize) -> Option<Entry<TId, RId>> {
+        let removed = self.slots.get_mut(slot)?.take()?;
+        self.free_slots.push(slot);
+
+        self.by_id.remove(&removed.id);
+        self.by_wireguard_session_index
+            .remove(&removed.connection.tunnel.id());
+        if let Some(ufrag) = removed.connection.agent.local_ufrag() {
+            self.by_local_ufrag.remove(ufrag);
+        }
+
+        Some(removed)
+    }
+
+    fn iter_closing_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (TId, &mut Connection<RId>, &mut Goodbye)> {
+        self.iter_slots_mut().filter_map(|(_, entry)| {
+            let goodbye = entry.goodbye.as_mut()?;
+
+            Some((entry.id, &mut entry.connection, goodbye))
+        })
+    }
+
+    fn iter_slots(&self) -> impl Iterator<Item = (usize, &Entry<TId, RId>)> {
+        self.by_id
+            .values()
+            .filter_map(|&slot| Some((slot, self.slots.get(slot)?.as_ref()?)))
+    }
+
+    /// Iterates over all occupied slots in `TId` order.
+    fn iter_slots_mut(&mut self) -> impl Iterator<Item = (usize, &mut Entry<TId, RId>)> {
+        // The index visits the table out of order, so every slot is split into its own borrow up front.
+        let mut slots = self
+            .slots
+            .iter_mut()
+            .map(Option::as_mut)
+            .collect::<Vec<_>>();
+
+        self.by_id
+            .values()
+            .filter_map(move |&slot| Some((slot, slots.get_mut(slot)?.take()?)))
     }
 }
 
@@ -616,6 +721,31 @@ mod tests {
         handle_timeout(&mut connections, now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
+    }
+
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+    fn reused_slot_rejects_stale_session_index() {
+        let mut connections = Connections::default();
+        let now = Instant::now();
+        let (id, idx, _) = insert_dummy_connection(&mut connections);
+        let (_, slot, _) = connections
+            .get_established_mut_session_index(idx, now)
+            .unwrap();
+
+        connections.remove_established(&id, now);
+        connections.insert_established(2, new_connection(None, [2u8; 32]));
+
+        let (_, new_slot, _) = connections
+            .get_established_mut_by_public_key([2u8; 32], now)
+            .unwrap();
+        assert_eq!(new_slot, slot);
+        let err = connections
+            .get_mut_by_slot(slot, idx, now)
+            .unwrap_err()
+            .downcast::<UnknownConnection>()
+            .unwrap();
+        assert!(err.recently_disconnected());
     }
 
     #[test]

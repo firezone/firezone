@@ -31,8 +31,8 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use sanstun::{
-    Committed, Datagram, Decrypted, Interface, PendingEncapsulate, PresharedKey, PublicKey,
-    Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig,
+    Committed, Datagram, Decrypted, Interface, PendingDecapsulate, PendingEncapsulate,
+    PresharedKey, PublicKey, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig,
 };
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
@@ -594,17 +594,16 @@ where
         self.last_now = now;
 
         let DecryptedPacket {
+            slot,
             tunnel,
             path,
             decrypted,
         } = packet;
 
-        let (cid, conn) = self
-            .connections
-            .get_established_mut_session_index(tunnel, now)?;
+        let (cid, conn) = self.connections.get_mut_by_slot(slot, tunnel, now)?;
 
         let control_flow = conn.commit_decrypted(cid, path, decrypted, now);
-        let is_closing = self.connections.is_closing(&cid);
+        let is_closing = self.connections.is_closing(slot);
 
         let packet = match control_flow {
             ControlFlow::Continue(_) if is_closing => return Ok(None),
@@ -1094,10 +1093,11 @@ where
                 .connections
                 .get_established_mut_session_index(data.tunnel_id(), now),
         };
-        let (cid, conn) = match connection {
+        let (cid, slot, conn) = match connection {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+        let tunnel = conn.tunnel.id();
 
         let control_flow = conn.decapsulate(
             cid,
@@ -1110,7 +1110,7 @@ where
             now,
         );
 
-        if self.connections.is_closing(&cid) && control_flow.is_continue() {
+        if self.connections.is_closing(slot) && control_flow.is_continue() {
             return ControlFlow::Break(Ok(()));
         }
 
@@ -1119,7 +1119,12 @@ where
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
-            ControlFlow::Continue(decapsulation) => ControlFlow::Continue(decapsulation),
+            ControlFlow::Continue(pending) => ControlFlow::Continue(Decapsulation::new(
+                slot,
+                tunnel,
+                (destination, from),
+                pending,
+            )),
         }
     }
 
@@ -1132,7 +1137,7 @@ where
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> Result<()> {
-        let (_, connection) = self
+        let (_, _, connection) = self
             .connections
             .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now)?;
 
@@ -1918,7 +1923,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, Decapsulation>
+    ) -> ControlFlow<Result<()>, PendingDecapsulate>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1963,9 +1968,7 @@ where
             ),
             ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => {
-                        ControlFlow::Continue(Decapsulation::new(self.tunnel.id(), path, pending))
-                    }
+                    Ok(pending) => ControlFlow::Continue(pending),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }
