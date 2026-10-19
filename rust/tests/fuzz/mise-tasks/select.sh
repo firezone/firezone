@@ -36,6 +36,8 @@ showmap "candidates/$target" "$temporary/candidates"
 kept=0
 while IFS= read -r candidate; do
     name="${candidate##*/}"
+    # showmap writes no map for an empty input.
+    [ -f "$temporary/candidates/$name" ] || continue
     sort -u "$temporary/candidates/$name" >"$temporary/candidate"
     if comm -23 "$temporary/candidate" "$temporary/edges" | grep -q .; then
         sort -u -o "$temporary/edges" "$temporary/edges" "$temporary/candidate"
