@@ -10,8 +10,8 @@
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
 //!   kernel's network stack as a single skb ([`tun_offload::PacketCoalescer`]).
 //!
-//! Each item on the outbound channel is one batch of packets that arrived together
-//! upstream; coalescing extends across exactly that batch.
+//! Each item on the outbound channel holds consecutive packets of one flow; coalescing
+//! extends across exactly that item.
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
