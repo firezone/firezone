@@ -5,20 +5,20 @@ use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
 use tokio_util::sync::PollSender;
-use tun::{PacketBatch, Tun};
+use tun::{PacketFlow, Tun};
 
 pub struct Device {
     // `tx` holds a clone of the TUN device's sender and must be dropped before `tun`:
     // `Tun`'s drop can wait for its worker threads, which only exit once all sender
     // clones are gone. Fields drop in declaration order.
-    tx: Option<PollSender<PacketBatch>>,
+    tx: Option<PollSender<PacketFlow>>,
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
 
     /// The batch of packets queued since the last call to [`Device::flush_batch`].
-    current_batch: PacketBatch,
+    current_batch: PacketFlow,
     /// Completed batches waiting for room in the channel.
-    pending_batches: VecDeque<PacketBatch>,
+    pending_batches: VecDeque<PacketFlow>,
 }
 
 impl Device {
@@ -27,7 +27,7 @@ impl Device {
             tx: None,
             tun: None,
             waker: None,
-            current_batch: PacketBatch::default(),
+            current_batch: PacketFlow::default(),
             pending_batches: VecDeque::new(),
         }
     }
@@ -43,7 +43,7 @@ impl Device {
         }
     }
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<PacketBatch>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Result<PacketFlow>> {
         let Some(tun) = self.tun.as_mut() else {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
@@ -89,7 +89,7 @@ impl Device {
 
         if let Err(packet) = self.current_batch.try_push(packet) {
             // The batch is full: complete it and start a new one.
-            let batch = mem::replace(&mut self.current_batch, PacketBatch::new(packet));
+            let batch = mem::replace(&mut self.current_batch, PacketFlow::new(packet));
 
             self.pending_batches.push_back(batch);
         }
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(send_rx.recv().await.unwrap().len(), tun::MAX_BATCH_SIZE / 2);
     }
 
-    fn expect_single(mut batch: PacketBatch) -> IpPacket {
+    fn expect_single(mut batch: PacketFlow) -> IpPacket {
         assert_eq!(batch.len(), 1, "Expected exactly one packet in the batch");
 
         batch.drain().next().unwrap()
