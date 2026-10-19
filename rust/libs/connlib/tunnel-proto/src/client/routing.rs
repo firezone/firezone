@@ -478,6 +478,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn exact_dns_resource_wins_over_wildcard_with_narrower_filter() {
+        use crate::messages::{Filter, PortRange};
+
+        let mut tables = RoutingTables::default();
+        let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
+        let exact = ResourceId::from_u128(1);
+        let wildcard = ResourceId::from_u128(2);
+        let all_but_tcp_5432 = FilterEngine::new(&[
+            Filter::Tcp(PortRange::new(1, 5431).unwrap()),
+            Filter::Tcp(PortRange::new(5433, 65535).unwrap()),
+            Filter::Udp(PortRange::new(1, 65535).unwrap()),
+            Filter::Icmp,
+        ]);
+        for (resource, pattern, filter) in [
+            (exact, "db.example.com", FilterEngine::PermitAll),
+            (wildcard, "**.example.com", all_but_tcp_5432),
+        ] {
+            tables.upsert_dns(
+                destination.into(),
+                resource,
+                DnsResourceDomain::for_test(0, "db.example.com".parse().unwrap()),
+                dns::Pattern::new(pattern).unwrap(),
+                filter,
+            );
+        }
+
+        let routes = tables
+            .resolve(destination, Protocol::Tcp(443), None)
+            .unwrap();
+        assert_eq!(routes.resource_ids(), vec![exact, wildcard]);
+
+        let routes = tables
+            .resolve(destination, Protocol::Tcp(5432), None)
+            .unwrap();
+        assert_eq!(routes.resource_ids(), vec![exact]);
+    }
+
     impl MatchedRoutes {
         fn resource_ids(&self) -> Vec<ResourceId> {
             match self {

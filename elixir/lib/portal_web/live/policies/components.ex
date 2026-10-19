@@ -502,7 +502,6 @@ defmodule PortalWeb.Policies.Components do
         <div>
           <div class="flex items-center gap-2">
             <p class="text-xs font-semibold text-body">Flow log reporting</p>
-            <Core.new_badge data-flow-logs-new-badge="true" />
           </div>
           <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
@@ -693,7 +692,6 @@ defmodule PortalWeb.Policies.Components do
             class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             {condition_type_label(type)}
-            <.condition_new_badge type={type} />
           </button>
         </div>
       </div>
@@ -1639,22 +1637,11 @@ defmodule PortalWeb.Policies.Components do
 
   attr :type, :atom, required: true
 
-  defp condition_new_badge(%{type: :device_attested} = assigns) do
-    ~H"""
-    <Core.new_badge class="ml-1.5" data-condition-new-badge />
-    """
-  end
-
-  defp condition_new_badge(assigns), do: ~H""
-
-  attr :type, :atom, required: true
-
   defp grant_condition_card_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between px-3 py-2 bg-raised border-b border-border">
       <span class="text-xs font-medium text-heading">
         {condition_type_label(@type)}
-        <.condition_new_badge type={@type} />
       </span>
       <button
         type="button"

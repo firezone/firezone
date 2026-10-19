@@ -27,13 +27,14 @@ defmodule PortalWeb.Groups do
       |> assign(page_title: "Groups", selected_group: nil)
       |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
+      |> assign(groups: [], groups_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> LiveTable.assign_live_table("groups",
         query_module: Database,
         sortable_fields: [
           {:groups, :name},
           {:member_counts, :count}
         ],
-        callback: &handle_groups_update!/2
+        loader: &load_groups/2
       )
 
     {:ok, socket}
@@ -791,13 +792,9 @@ defmodule PortalWeb.Groups do
     {:noreply, socket}
   end
 
-  def handle_groups_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         groups: groups,
-         groups_metadata: metadata
-       )}
+  defp load_groups(subject, list_opts) do
+    with {:ok, groups, metadata} <- Database.list_groups(subject, list_opts) do
+      {:ok, %{groups: groups, groups_metadata: metadata}}
     end
   end
 
@@ -836,6 +833,8 @@ defmodule PortalWeb.Groups do
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
         <LiveTable.live_table
           id="groups"
+          loading={@loading_by_table_id["groups"]}
+          query_error={@query_error_by_table_id["groups"]}
           rows={@groups}
           row_id={&"group-#{&1.group.id}"}
           row_click={fn row -> ~p"/#{@account}/groups/#{row.group.id}?#{@query_params}" end}

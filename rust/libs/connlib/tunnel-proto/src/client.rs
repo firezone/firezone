@@ -678,15 +678,14 @@ impl ClientState {
                 (packet, cid.into())
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
-                let Some((route, authorization)) = routes.iter().find_map(|route| {
-                    self.outbound_authorizations
-                        .gateway(route.resource_id)
-                        .map(|authorization| (route, authorization))
-                }) else {
+                // Traffic only takes the most-preferred route, even if a less-preferred one is authorized.
+                let Some(route) = routes.first() else {
+                    return Err(UnroutablePacket::unknown_resource(&packet).into());
+                };
+                let Some(authorization) = self.outbound_authorizations.gateway(route.resource_id)
+                else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::resources(
-                            routes.iter().map(|route| route.resource_id),
-                        ),
+                        AuthorizationRequest::resources([route.resource_id]),
                         packet,
                         now,
                     );
@@ -2086,15 +2085,15 @@ impl ClientState {
                 });
             }
             resource_stub_resolver::ResolveStrategy::RecurseSite(resources) => {
-                let gateway_id = resources.iter().find_map(|resource| {
-                    self.outbound_authorizations
-                        .gateway_by_resource(*resource)
-                        .copied()
-                });
+                let &resource = resources.first()?;
+                let gateway_id = self
+                    .outbound_authorizations
+                    .gateway_by_resource(resource)
+                    .copied();
                 let Some(gateway) = gateway_id.and_then(|id| self.gateways.peer_by_id_mut(&id))
                 else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Resources(resources),
+                        AuthorizationRequest::resources([resource]),
                         DnsQueryForSite {
                             local,
                             remote,

@@ -58,6 +58,18 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   end
 
   describe "index (default action)" do
+    test "loads the trust anchors only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/trust_anchors") |> html_response(200)
+      assert static =~ ~s(id="trust-anchors-skeleton")
+      refute static =~ "No trust anchors yet"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/trust_anchors")
+      assert html =~ "No trust anchors yet"
+      refute html =~ ~s(id="trust-anchors-skeleton")
+    end
+
     test "renders empty state when no trust anchors", %{
       conn: conn,
       account: account,

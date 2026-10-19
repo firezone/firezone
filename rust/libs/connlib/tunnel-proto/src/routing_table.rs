@@ -27,8 +27,9 @@ pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
     fn resource_id(&self) -> ResourceId;
 
-    /// An entry-level tie-breaker applied after filter breadth
-    /// but before the network prefix-length comparison.
+    /// Compares how specifically two entries describe their destination.
+    ///
+    /// Takes precedence over the network prefix length.
     fn specificity(&self, other: &Self) -> Ordering {
         let _ = other;
         Ordering::Equal
@@ -148,7 +149,8 @@ where
 
     /// Returns address matches, or `None` if no network covers `ip`.
     ///
-    /// Entries are ordered by filter breadth, specificity, prefix length and resource ID.
+    /// Entries whose filter denies the traffic are excluded. The remaining ones are ordered by
+    /// specificity, prefix length, filter breadth and resource ID, most specific first.
     /// An empty list means that the address is covered but traffic is denied.
     pub(crate) fn matches(
         &mut self,
@@ -189,12 +191,10 @@ where
         entries
             .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
             .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
-                r_entry
-                    .filter()
-                    .breadth()
-                    .cmp(&l_entry.filter().breadth())
-                    .then(l_entry.specificity(r_entry))
+                l_entry
+                    .specificity(r_entry)
                     .then(by_netmask(l_net, r_net))
+                    .then(r_entry.filter().breadth().cmp(&l_entry.filter().breadth()))
                     .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
                     .reverse()
             })
@@ -257,8 +257,8 @@ mod tests {
     #[test]
     fn matches_returns_all_entries_in_preference_order() {
         let mut table = RoutingTable::new();
-        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        table.upsert(net("10.20.0.0/16"), entry(1, R2, permit_tcp(443)));
+        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_tcp(443)));
+        table.upsert(net("10.20.0.0/16"), entry(1, R2, permit_all()));
         table.upsert(net("10.20.0.0/16"), entry(1, R3, permit_tcp(443)));
 
         let matches = &table
@@ -274,7 +274,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
-            vec![R1]
+            vec![R2]
         );
     }
 
@@ -359,32 +359,22 @@ mod tests {
     }
 
     #[test]
-    fn dns_more_specific_pattern_wins_but_filter_beats_it() {
+    fn more_specific_pattern_wins_if_its_filter_allows_the_traffic() {
         let mut t = RoutingTable::<TestEntry>::new();
         let net = ip("1.2.3.4").into();
-
-        // R1: higher specificity (exact), R2: lower specificity (wildcard).
-        // Both permit TCP/80; R1 wins on specificity.
-        t.upsert(net, entry(2, R1, permit_tcp(80)));
+        t.upsert(net, entry(2, R1, permit_all()));
         t.upsert(net, entry(1, R2, permit_tcp(80)));
-        assert_eq!(
-            t.matches(ip("1.2.3.4"), tcp(80), FilterMode::Apply)
-                .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R1)
-        );
+        t.upsert(net, entry(3, R3, permit_tcp(443)));
 
-        // R3: lower specificity than R1, but the only entry that permits TCP/443.
-        // A matching filter beats a non-matching one regardless of specificity.
-        t.upsert(net, entry(1, R3, permit_tcp(443)));
-        assert_eq!(
-            t.matches(ip("1.2.3.4"), tcp(443), FilterMode::Apply)
+        let ids = |t: &mut RoutingTable<TestEntry>, port| {
+            t.matches(ip("1.2.3.4"), tcp(port), FilterMode::Apply)
                 .unwrap()
-                .first()
-                .map(|e| e.id),
-            Some(R3)
-        );
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&mut t, 80), vec![R1, R2]);
+        assert_eq!(ids(&mut t, 443), vec![R3, R1]);
     }
 
     #[test]

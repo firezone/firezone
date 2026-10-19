@@ -40,7 +40,10 @@ defmodule Portal.Analytics do
         "timestamp_ms" => opts[:timestamp_ms],
         "source_url" => PortalWeb.Endpoint.url() <> opts[:path],
         "action_source" => "web",
-        "user" => %{"emails_sha256" => [hash_email(email)]},
+        "user" => %{
+          "emails_sha256" => [hash_email(email)],
+          "external_ids_sha256" => [hash_external_id(account.id)]
+        },
         "data" => %{"type" => data_type}
       }
 
@@ -82,6 +85,14 @@ defmodule Portal.Analytics do
     email
     |> String.trim()
     |> String.downcase()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
+  # OpenAI matches external IDs case-sensitively, so only whitespace is trimmed.
+  def hash_external_id(id) do
+    id
+    |> String.trim()
     |> then(&:crypto.hash(:sha256, &1))
     |> Base.encode16(case: :lower)
   end
