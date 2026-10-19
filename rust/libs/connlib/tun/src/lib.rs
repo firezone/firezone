@@ -43,13 +43,13 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
-bufferpool::buffer_pool!(static PACKET_FLOWS: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"), batch: 4);
+bufferpool::buffer_pool!(static PACKET_BATCHES: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"), batch: 4);
 
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
 const MAX_CHANNEL_MEMORY: usize = 2
     * CHANNEL_CAPACITY
-    * (size_of::<PacketFlow>()
+    * (size_of::<PacketBatch>()
         + MAX_BATCH_SIZE * (size_of::<IpPacket>() + ip_packet::MAX_FZ_PAYLOAD));
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -57,29 +57,28 @@ const _: () = assert!(MAX_CHANNEL_MEMORY <= 4 * 1024 * 1024);
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 const _: () = assert!(MAX_CHANNEL_MEMORY <= 32 * 1024 * 1024);
 
-/// A batch of consecutive packets of one flow, exchanged over the TUN channels as a single item.
+/// A batch of packets, exchanged over the TUN channels as a single item.
 ///
 /// A batch holds at most [`MAX_BATCH_SIZE`] packets in a pooled buffer:
-/// [`PacketFlow::try_push`] hands the packet back once the batch is full or the packet
-/// belongs to a different flow, so the storage never grows and moving a batch only
-/// copies a pointer. Callers send off the batch and start a new one with
-/// [`PacketFlow::new`]. Emptied batches are
+/// [`PacketBatch::try_push`] hands the packet back once the batch is full, so the
+/// storage never grows and moving a batch only copies a pointer. Callers send off
+/// a full batch and start a new one with [`PacketBatch::new`]. Emptied batches are
 /// cleared on return to the pool by [`VecBuf`]'s `reset`, so stale packets don't
 /// keep their pooled payload buffers alive.
 #[derive(Debug)]
-pub struct PacketFlow {
+pub struct PacketBatch {
     inner: Buffer<VecBuf<IpPacket>>,
 }
 
-impl Default for PacketFlow {
+impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: PACKET_FLOWS.pull(),
+            inner: PACKET_BATCHES.pull(),
         }
     }
 }
 
-impl PacketFlow {
+impl PacketBatch {
     /// Starts a new batch containing the given packet.
     pub fn new(first: IpPacket) -> Self {
         let mut batch = Self::default();
@@ -88,15 +87,9 @@ impl PacketFlow {
         batch
     }
 
-    /// Appends a packet to the batch, handing it back if the batch is full or the packet
-    /// belongs to a different flow.
+    /// Appends a packet to the batch, handing it back if the batch is full.
     pub fn try_push(&mut self, packet: IpPacket) -> Result<(), IpPacket> {
-        if self.inner.len() == MAX_BATCH_SIZE
-            || self
-                .inner
-                .last()
-                .is_some_and(|last| !same_flow(last, &packet))
-        {
+        if self.inner.len() == MAX_BATCH_SIZE {
             return Err(packet);
         }
 
@@ -111,14 +104,7 @@ impl PacketFlow {
     }
 }
 
-fn same_flow(a: &IpPacket, b: &IpPacket) -> bool {
-    a.source_and_destination() == b.source_and_destination()
-        && a.next_header() == b.next_header()
-        && a.source_protocol().ok() == b.source_protocol().ok()
-        && a.destination_protocol().ok() == b.destination_protocol().ok()
-}
-
-impl std::ops::Deref for PacketFlow {
+impl std::ops::Deref for PacketBatch {
     type Target = [IpPacket];
 
     fn deref(&self) -> &[IpPacket] {
@@ -164,10 +150,13 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 ///
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
-pub struct OutboundTx(PollSender<PacketFlow>);
+pub struct OutboundTx(PollSender<PacketBatch>);
 
 impl OutboundTx {
-    pub fn try_send(&self, batch: PacketFlow) -> Result<(), mpsc::error::TrySendError<PacketFlow>> {
+    pub fn try_send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
         match self.0.get_ref() {
             Some(tx) => tx.try_send(batch),
             None => Err(mpsc::error::TrySendError::Closed(batch)),
@@ -190,10 +179,10 @@ impl OutboundTx {
 }
 
 /// A slot reserved in the channel to the thread writing to the TUN device.
-pub struct Reservation<'a>(&'a mut PollSender<PacketFlow>);
+pub struct Reservation<'a>(&'a mut PollSender<PacketBatch>);
 
 impl Reservation<'_> {
-    pub fn send(self, batch: PacketFlow) {
+    pub fn send(self, batch: PacketBatch) {
         self.0
             .send_item(batch)
             .expect("a reservation always holds a slot");
@@ -201,35 +190,38 @@ impl Reservation<'_> {
 }
 
 /// The receiving half of the channel to the thread writing to the TUN device.
-pub struct OutboundRx(mpsc::Receiver<PacketFlow>);
+pub struct OutboundRx(mpsc::Receiver<PacketBatch>);
 
 impl OutboundRx {
-    pub async fn recv(&mut self) -> Option<PacketFlow> {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn blocking_recv(&mut self) -> Option<PacketFlow> {
+    pub fn blocking_recv(&mut self) -> Option<PacketBatch> {
         self.0.blocking_recv()
     }
 }
 
 /// The sending half of the channel of packet batches read from the TUN device.
 #[derive(Clone)]
-pub struct InboundTx(mpsc::Sender<PacketFlow>);
+pub struct InboundTx(mpsc::Sender<PacketBatch>);
 
 impl InboundTx {
-    pub async fn send(&self, batch: PacketFlow) -> Result<(), mpsc::error::SendError<PacketFlow>> {
+    pub async fn send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.send(batch).await
     }
 
     pub fn blocking_send(
         &self,
-        batch: PacketFlow,
-    ) -> Result<(), mpsc::error::SendError<PacketFlow>> {
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.blocking_send(batch)
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<PacketFlow> {
+    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
         self.0.downgrade()
     }
 
@@ -240,21 +232,21 @@ impl InboundTx {
 }
 
 /// The receiving half of the channel of packet batches read from the TUN device.
-pub struct InboundRx(mpsc::Receiver<PacketFlow>);
+pub struct InboundRx(mpsc::Receiver<PacketBatch>);
 
 impl InboundRx {
     pub fn poll_recv(
         &mut self,
         cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<PacketFlow>> {
+    ) -> std::task::Poll<Option<PacketBatch>> {
         self.0.poll_recv(cx)
     }
 
-    pub async fn recv(&mut self) -> Option<PacketFlow> {
+    pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }
 
-    pub fn try_recv(&mut self) -> Result<PacketFlow, mpsc::error::TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
         self.0.try_recv()
     }
 }
@@ -274,30 +266,10 @@ mod tests {
         )
         .unwrap();
 
-        drop(PacketFlow::new(packet));
+        drop(PacketBatch::new(packet));
 
         // The dropped batch's storage is recycled; it must come back empty.
-        let batch = PacketFlow::default();
+        let batch = PacketBatch::default();
         assert!(batch.is_empty());
-    }
-
-    #[test]
-    fn push_refuses_a_new_flow() {
-        let udp = |dst_port| {
-            ip_packet::make::udp_packet(
-                std::net::Ipv4Addr::LOCALHOST,
-                std::net::Ipv4Addr::LOCALHOST,
-                1234,
-                dst_port,
-                &[],
-            )
-            .unwrap()
-        };
-
-        let mut batch = PacketFlow::new(udp(5678));
-
-        assert!(batch.try_push(udp(5678)).is_ok());
-        assert!(batch.try_push(udp(5679)).is_err());
-        assert_eq!(batch.len(), 2);
     }
 }

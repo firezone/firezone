@@ -8,7 +8,7 @@ use std::os::fd::AsRawFd;
 use std::pin::pin;
 use tokio::io::unix::AsyncFd;
 
-use tun::PacketFlow;
+use tun::PacketBatch;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
 const MAX_ENOSPC_RETRIES: u32 = 24;
@@ -160,7 +160,7 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
-            let mut batch = PacketFlow::default();
+            let mut batch = PacketBatch::default();
 
             loop {
                 let readable = pin!(fd.readable());
@@ -175,9 +175,9 @@ where
                     }
                 };
 
-                // Drain the FD, handing off consecutive packets of the same flow as a single
-                // batch, so one channel item feeds a whole burst into the state loop instead
-                // of one packet.
+                // Drain the FD before handing the packets off as a single batch, so one
+                // channel item feeds a whole read burst into the state loop instead of
+                // one packet.
                 loop {
                     let mut ip_packet_buf = IpPacketBuf::new();
 
@@ -202,10 +202,9 @@ where
                                 continue;
                             };
 
-                            // The batch is full or the flow changed: hand it off and start
-                            // a new one.
+                            // The batch is full: hand it off and start a new one.
                             if inbound_tx
-                                .send(mem::replace(&mut batch, PacketFlow::new(packet)))
+                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
                                 .await
                                 .is_err()
                             {

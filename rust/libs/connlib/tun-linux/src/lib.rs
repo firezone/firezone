@@ -10,22 +10,22 @@
 //! - Writes may combine multiple same-flow packets into one GSO write that traverses the
 //!   kernel's network stack as a single skb ([`tun_offload::PacketCoalescer`]).
 //!
-//! Each item on the outbound channel holds consecutive packets of one flow; coalescing
-//! extends across exactly that item.
+//! Each item on the outbound channel is one batch of packets that arrived together
+//! upstream; coalescing extends across exactly that batch.
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
 use opentelemetry::KeyValue;
+use std::collections::VecDeque;
 use std::io;
 use std::mem;
 use std::os::fd::{AsRawFd, RawFd};
 use std::pin::pin;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
-use tokio::sync::mpsc::error::SendError;
 use tun_offload::virtio::{self, VNET_HDR_LEN};
 
-use tun::{InboundTx, OutboundRx, PacketFlow};
+use tun::{InboundTx, OutboundRx, PacketBatch};
 use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
@@ -213,14 +213,15 @@ where
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
 
-    let result = tokio::runtime::Builder::new_current_thread()
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            let mut batch = PacketFlow::default();
+            let mut batch = PacketBatch::default();
+            let mut overflow = VecDeque::new();
 
             loop {
                 // Without the explicit wake-up on `closed`, this task would idle in
@@ -239,6 +240,23 @@ where
                 };
 
                 loop {
+                    // A full batch spills the rest of its super packet into `overflow`:
+                    // hand off the batch and continue the drain with the spilled packets.
+                    while !overflow.is_empty() {
+                        if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
+                            tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                            return anyhow::Ok(());
+                        }
+
+                        while let Some(packet) = overflow.pop_front() {
+                            if let Err(packet) = batch.try_push(packet) {
+                                overflow.push_front(packet);
+                                break;
+                            }
+                        }
+                    }
+
                     let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
                         Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
                         Ok(Ok(len)) => len,
@@ -259,9 +277,7 @@ where
                                 tracing::trace!(target: "wire::dev::recv", ?packet);
 
                                 if let Err(packet) = batch.try_push(packet) {
-                                    inbound_tx
-                                        .send(mem::replace(&mut batch, PacketFlow::new(packet)))
-                                        .await?;
+                                    overflow.push_back(packet);
                                 }
                             }
                         }
@@ -272,20 +288,19 @@ where
                     }
                 }
 
-                if !batch.is_empty() {
-                    inbound_tx.send(mem::take(&mut batch)).await?;
+                if batch.is_empty() {
+                    continue;
+                }
+
+                if inbound_tx.send(mem::take(&mut batch)).await.is_err() {
+                    tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                    return anyhow::Ok(());
                 }
             }
-        });
+        })?;
 
-    match result {
-        Err(e) if e.any_is::<SendError<PacketFlow>>() => {
-            tracing::debug!("Inbound packet receiver gone, shutting down task");
-
-            Ok(())
-        }
-        result => result,
-    }
+    Ok(())
 }
 
 fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {

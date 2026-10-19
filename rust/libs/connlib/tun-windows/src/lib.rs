@@ -330,7 +330,7 @@ fn drop_attributes_without_error() -> [KeyValue; 3] {
 }
 
 fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
-    let mut batch = tun::PacketFlow::default();
+    let mut batch = tun::PacketBatch::default();
 
     'recv: loop {
         let Some(session) = session.upgrade() else {
@@ -360,7 +360,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
         }
 
         // Drain whatever else is already in the ring buffer, so one channel item
-        // carries a whole burst of one flow.
+        // carries the whole burst.
         loop {
             match session.try_receive() {
                 Ok(Some(pkt)) => {
@@ -388,8 +388,8 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
     }
 }
 
-/// Appends the packet to the batch; if the batch is full or the packet belongs to a
-/// different flow, hands the batch off and starts a new one with the packet.
+/// Appends the packet to the batch; if the batch is full, hands it off and starts a
+/// new one with the packet.
 ///
 /// Uses `blocking_send` so that if connlib is behind by a few packets, Wintun will
 /// queue up new packets in its ring buffer while we wait for our MPSC channel to
@@ -398,7 +398,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
 ///
 /// Errors if the channel is closed.
 fn push_or_start_new_batch(
-    batch: &mut tun::PacketFlow,
+    batch: &mut tun::PacketBatch,
     packet: IpPacket,
     packet_tx: &tun::InboundTx,
 ) -> Result<(), ()> {
@@ -407,7 +407,10 @@ fn push_or_start_new_batch(
     };
 
     packet_tx
-        .blocking_send(std::mem::replace(&mut *batch, tun::PacketFlow::new(packet)))
+        .blocking_send(std::mem::replace(
+            &mut *batch,
+            tun::PacketBatch::new(packet),
+        ))
         .map_err(|_| {
             tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
         })

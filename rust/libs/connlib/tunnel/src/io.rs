@@ -93,7 +93,7 @@ enum DohClient {
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
-    pub device: Option<tun::PacketFlow>,
+    pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
     /// Packets decrypted from the jobs pushed to an [`Io::decrypt_batch`].
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,

@@ -28,7 +28,7 @@ use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
-use tun::{MAX_BATCH_SIZE, PacketFlow};
+use tun::{MAX_BATCH_SIZE, PacketBatch};
 use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
@@ -495,11 +495,11 @@ fn measure<T>(
 }
 
 /// Returns `count` copies of `packet` in batches.
-fn batches(packet: &IpPacket, count: usize) -> Vec<PacketFlow> {
-    let mut batches = Vec::<PacketFlow>::new();
+fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
+    let mut batches = Vec::<PacketBatch>::new();
     for i in 0..count {
         if i % MAX_BATCH_SIZE == 0 {
-            batches.push(PacketFlow::default());
+            batches.push(PacketBatch::default());
         }
         batches
             .last_mut()

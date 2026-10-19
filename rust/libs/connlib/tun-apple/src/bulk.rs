@@ -18,7 +18,7 @@ use tokio::io::{Interest, unix::AsyncFd};
 use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 use super::sys;
-use tun::{MAX_BATCH_SIZE, PacketFlow};
+use tun::{MAX_BATCH_SIZE, PacketBatch};
 
 const EMPTY_IOVEC: iovec = iovec {
     iov_base: std::ptr::null_mut(),
@@ -166,7 +166,7 @@ pub fn recv(
                     ],
                 );
 
-                let mut batch = PacketFlow::default();
+                let mut batch = PacketBatch::default();
 
                 for (buf, &len) in bufs.iter_mut().zip(&lens).take(n) {
                     if len == 0 {
@@ -185,10 +185,10 @@ pub fn recv(
                                 continue;
                             };
 
-                            // The flow changed; the batch cannot be full as we read at most
-                            // `MAX_BATCH_SIZE` packets per syscall.
+                            // Unreachable in practice: we read at most `MAX_BATCH_SIZE`
+                            // packets per syscall, but a full batch is handed off all the same.
                             if inbound_tx
-                                .send(std::mem::replace(&mut batch, PacketFlow::new(packet)))
+                                .send(std::mem::replace(&mut batch, PacketBatch::new(packet)))
                                 .await
                                 .is_err()
                             {
