@@ -51,7 +51,7 @@ impl Device {
 
     /// Sends all pending batches into the channel.
     ///
-    /// Resolves once nothing is left to send, at which point the channel has room for another batch.
+    /// Resolves once all pending batches are in the channel and it has room for another one.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let Some(tun) = self.tun.as_mut() else {
             return Poll::Ready(Ok(()));
