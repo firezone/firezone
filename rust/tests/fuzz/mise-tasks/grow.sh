@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Discover coverage, minimize, re-baseline and pack a fuzz corpus"
+#MISE description="Discover coverage, minimize and re-baseline a fuzz corpus"
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>"
@@ -25,7 +25,6 @@ step cmin "$target"
 step coverage "$target"
 step update-baseline "$target"
 step save-crashes "$target"
-step pack-corpus "$target"
 if [ "${#failed[@]}" -gt 0 ]; then
     echo "error: step(s) failed: ${failed[*]}" >&2
     exit 1

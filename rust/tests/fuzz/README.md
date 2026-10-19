@@ -19,7 +19,7 @@ Because replay retains process state between inputs, it checks regressions but d
 
 ## Corpora and coverage
 
-Committed corpora serve as regression tests and starting points for further discovery.
+Each target's inputs are committed under `corpus/<target>`; they serve as regression tests and starting points for further discovery.
 Minimization retains inputs that contribute edge coverage or fuzzer feedback; differences in execution counts alone do not justify retaining an input.
 AFL edge coverage and IJON feedback guide discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
