@@ -291,6 +291,18 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   end
 
   describe "index (default action)" do
+    test "loads the directories only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/directory_sync") |> html_response(200)
+      assert static =~ ~s(id="directories-skeleton")
+      refute static =~ "No directories yet"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/directory_sync")
+      assert html =~ "No directories yet"
+      refute html =~ ~s(id="directories-skeleton")
+    end
+
     test "renders empty state when no directories exist", %{
       conn: conn,
       account: account,

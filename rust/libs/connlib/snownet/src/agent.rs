@@ -7,7 +7,6 @@ use std::time::Instant;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use sanstun::Tunnel;
 
 use crate::{IceConfig, IceRole};
 
@@ -182,13 +181,14 @@ impl Agent {
 
     pub(crate) fn replay_cached_response(
         &mut self,
-        init: &[u8],
+        sender_index: u32,
+        timestamp: u128,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) -> bool {
         match self {
             Self::Ice(_) => false,
-            Self::Path(agent) => agent.replay_cached_response(init, path, now),
+            Self::Path(agent) => agent.replay_cached_response(sender_index, timestamp, path, now),
         }
     }
 
@@ -236,12 +236,6 @@ impl Agent {
         match self {
             Self::Ice(_) => None,
             Self::Path(path) => path.poll_event(),
-        }
-    }
-
-    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, now);
         }
     }
 

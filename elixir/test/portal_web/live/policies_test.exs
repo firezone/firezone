@@ -1,6 +1,16 @@
 defmodule PortalWeb.PoliciesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Policy, Repo}
   alias Portal.Changes.Change
 
@@ -38,6 +48,41 @@ defmodule PortalWeb.PoliciesTest do
   end
 
   describe "index (default action)" do
+    test "looks up the filtered site and resource only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account, name: "Notice Site")
+      resource = resource_fixture(account: account, name: "Notice Resource")
+      conn = authorize_conn(conn, actor)
+
+      for {filter, notice} <- [
+            {%{"policies_filter[site_id]" => site.id}, "Viewing Policies for Site"},
+            {%{"policies_filter[resource_id]" => resource.id}, "Viewing Policies for Resource"}
+          ] do
+        static = conn |> get(~p"/#{account}/policies?#{filter}") |> html_response(200)
+        refute static =~ notice
+
+        {:ok, _lv, html} = live(conn, ~p"/#{account}/policies?#{filter}")
+        assert html =~ notice
+      end
+    end
+
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      policy_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/policies") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#policies-skeleton")
+      assert Floki.find(static, "#policies-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies")
+      assert has_element?(lv, "#policies-rows tr")
+      refute has_element?(lv, "#policies-skeleton")
+    end
+
     test "renders policy list page", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -226,7 +271,6 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/new")
 
       assert html =~ "Flow log reporting"
-      assert has_element?(lv, "[data-flow-logs-new-badge]", "NEW")
 
       html =
         lv
@@ -1318,6 +1362,31 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "/#{account.slug}/settings/trust_anchors"
     end
 
+    test "looks up the X.509 trust anchor warning only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      enable_feature(:x509_auth)
+      x509_provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      policy =
+        policy_fixture(
+          group: group_fixture(account: account),
+          resource: resource_fixture(account: account),
+          conditions: [%{property: :auth_provider_id, operator: :is_in, values: [x509_provider.id]}]
+        )
+
+      conn = authorize_conn(conn, actor)
+      warning = "No devices will be able to use this authentication provider"
+
+      static = conn |> get(~p"/#{account}/policies/#{policy.id}") |> html_response(200)
+      refute static =~ warning
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert html =~ warning
+    end
+
     test "renders ip_range condition from saved policy", %{
       conn: conn,
       account: account,
@@ -1457,13 +1526,10 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       html = render_click(lv, "toggle_conditions_dropdown")
-      assert has_element?(lv, "button[phx-value-type='device_attested'] [data-condition-new-badge]", "NEW")
-      refute has_element?(lv, "button[phx-value-type='client_verified'] [data-condition-new-badge]")
       refute html =~ "Require Attestation</span"
 
       html = render_click(lv, "add_condition", %{"type" => "device_attested"})
       assert html =~ "Require Attestation"
-      assert has_element?(lv, "[data-condition-new-badge]", "NEW")
     end
 
     test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
@@ -1585,7 +1651,6 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Disk encryption"
       assert html =~ "Connect Intune or Iru to use this check."
       assert html =~ "to configure over 300 posture fields"
-      assert has_element?(lv, "#policy-postures [data-postures-new-badge]", "NEW")
       assert html =~ "kb/device-posture/grammar?utm_source=product"
       assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
       assert html =~ "settings/trust_anchors"
@@ -2050,7 +2115,7 @@ defmodule PortalWeb.PoliciesTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/policies")
 
       assert html =~ "Loading..."
 

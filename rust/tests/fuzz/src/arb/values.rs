@@ -131,13 +131,43 @@ pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -
     }
 }
 
-pub(super) fn arb_domain_name_string(g: &mut Generator, lo: usize, hi: usize) -> String {
-    let n = g.count(lo, hi);
+/// Returns the names of a small domain tree, all of at least two labels.
+///
+/// The tree grows below public suffixes from labels of small per-level pools. All levels below
+/// the second share one pool, so names in different branches share labels and wildcard patterns
+/// derived from one node also match nodes elsewhere in the tree.
+pub(super) fn arb_domain_tree(g: &mut Generator) -> Vec<DomainName> {
+    let depth = g.count(2, 4);
+    let roots = arb_distinct_labels(g, &PUBLIC_SUFFIXES, 1, 3)
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
 
-    (0..n)
-        .map(|_| g.lower_ascii(3, 6))
-        .collect::<Vec<_>>()
-        .join(".")
+    (2..=depth)
+        .scan(roots, |parents, level| {
+            let (pool, min_children) = if level == 2 {
+                (&SECOND_LEVEL_LABELS[..], 1)
+            } else {
+                (&SUBDOMAIN_LABELS[..], 0)
+            };
+            *parents = parents
+                .iter()
+                .flat_map(|parent| {
+                    arb_distinct_labels(g, pool, min_children, 3)
+                        .into_iter()
+                        .map(move |label| format!("{label}.{parent}"))
+                })
+                .collect::<Vec<_>>();
+
+            Some(parents.clone())
+        })
+        .flatten()
+        .map(|name| name.parse::<DomainName>().unwrap())
+        .collect()
+}
+
+pub(super) fn arb_tree_name(g: &mut Generator, domain_tree: &[DomainName]) -> DomainName {
+    domain_tree[g.choose_index(domain_tree.len())].clone()
 }
 
 pub(super) fn arb_cidr_resource_address(g: &mut Generator) -> IpNetwork {
@@ -198,39 +228,52 @@ pub(super) fn arb_different_cidr_resource_address(
     }
 }
 
-pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
-    let base = arb_domain_name_string(g, 2, 3);
+pub(super) fn arb_dns_resource_address(g: &mut Generator, domain_tree: &[DomainName]) -> String {
+    let name = arb_tree_name(g, domain_tree).to_string();
+    if g.bool() {
+        return name;
+    }
+
+    let labels = name.split('.').collect::<Vec<_>>();
+    let base = labels[g.count(0, labels.len() - 1)..].join(".");
+    let label = arb_subdomain_label(g);
     match g.choose_index(9) {
-        0 => base,
-        1 => format!("*.{base}"),
-        2 => format!("**.{base}"),
-        3 => format!("?.{base}"),
-        4 => format!("{}?.{base}", g.lower_ascii(2, 4)),
-        5 => format!("{}*.{base}", g.lower_ascii(2, 4)),
-        6 => format!("{}?*.{base}", g.lower_ascii(2, 4)),
-        7 => format!("{}.**.{base}", g.lower_ascii(2, 4)),
-        _ => format!("**.{}.**.{base}", g.lower_ascii(2, 4)),
+        0 => format!("*.{base}"),
+        1 => format!("**.{base}"),
+        2 => format!("{}.{base}", "?".repeat(label.len())),
+        3 => {
+            let i = g.choose_index(label.len());
+            format!("{}?{}.{base}", &label[..i], &label[i + 1..])
+        }
+        4 => format!("{}*.{base}", &label[..g.count(1, label.len())]),
+        5 => format!("*{}.{base}", &label[g.count(0, label.len() - 1)..]),
+        6 => format!("{label}.*.{base}"),
+        7 => format!("{label}.**.{base}"),
+        _ => format!("**.{label}.**.{base}"),
     }
 }
 
-pub(super) fn arb_domain_matching_dns_resource(g: &mut Generator, address: &str) -> DomainName {
+pub(super) fn arb_domain_matching_dns_resource(
+    g: &mut Generator,
+    address: &str,
+    domain_tree: &[DomainName],
+) -> DomainName {
+    let in_tree = domain_tree
+        .iter()
+        .filter(|name| dns::is_subdomain(name, address))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !in_tree.is_empty() && g.flip(75) {
+        return in_tree[g.choose_index(in_tree.len())].clone();
+    }
+
     let domain = address
         .split('.')
         .flat_map(|label| match label {
             "**" => (0..g.count(1, 2))
-                .map(|_| g.lower_ascii(2, 4))
+                .map(|_| arb_subdomain_label(g).to_owned())
                 .collect::<Vec<_>>(),
-            _ => vec![
-                label
-                    .chars()
-                    .map(|character| match character {
-                        '*' => g.lower_ascii(1, 3),
-                        '?' => g.lower_ascii(1, 1),
-                        literal => literal.to_string(),
-                    })
-                    .collect::<Vec<_>>()
-                    .concat(),
-            ],
+            _ => vec![arb_label_matching(g, label)],
         })
         .collect::<Vec<_>>()
         .join(".")
@@ -255,7 +298,7 @@ pub(super) fn arb_different_dns_resource_address(
         }
     }
 
-    let address = arb_dns_resource_address(g);
+    let address = arb_dns_resource_address(g, &state.domain_tree);
 
     if address != current {
         return address;
@@ -285,6 +328,45 @@ pub(super) fn arb_more_specific_subnet(
             IpNetwork::new_truncate(IpAddr::V6(ip), netmask).unwrap()
         }
     }
+}
+
+const PUBLIC_SUFFIXES: [&str; 3] = ["com", "internal", "us-east-1.rds.amazonaws.com"];
+const SECOND_LEVEL_LABELS: [&str; 3] = ["example", "corp", "cluster-a1"];
+const SUBDOMAIN_LABELS: [&str; 7] = ["db", "db-1", "db-2", "api", "app", "eu-west-1", "us-east-1"];
+
+fn arb_subdomain_label(g: &mut Generator) -> &'static str {
+    SUBDOMAIN_LABELS[g.choose_index(SUBDOMAIN_LABELS.len())]
+}
+
+fn arb_label_matching(g: &mut Generator, pattern: &str) -> String {
+    if !pattern.contains(['*', '?']) {
+        return pattern.to_owned();
+    }
+
+    let candidates = SUBDOMAIN_LABELS
+        .into_iter()
+        .filter(|label| dns::is_subdomain(&label.parse::<DomainName>().unwrap(), pattern))
+        .collect::<Vec<_>>();
+
+    candidates[g.choose_index(candidates.len())].to_owned()
+}
+
+fn arb_distinct_labels(
+    g: &mut Generator,
+    pool: &[&'static str],
+    lo: usize,
+    hi: usize,
+) -> Vec<&'static str> {
+    let mut pool = pool.to_vec();
+    let n = g.count(lo, hi);
+
+    (0..n)
+        .map(|i| {
+            let j = i + g.choose_index(pool.len() - i);
+            pool.swap(i, j);
+            pool[i]
+        })
+        .collect()
 }
 
 fn arb_do53_pool(g: &mut Generator) -> Vec<IpAddr> {

@@ -33,7 +33,10 @@ defmodule Portal.Analytics.OpenAITest do
     assert event["type"] == "registration_completed"
     assert event["data"] == %{"type" => "customer_action"}
     assert event["oppref"] == "original-click-reference"
-    assert event["user"] == %{"emails_sha256" => [Analytics.hash_email("ada@example.com")]}
+    assert event["user"] == %{
+             "emails_sha256" => [Analytics.hash_email("ada@example.com")],
+             "external_ids_sha256" => [Analytics.hash_external_id(account.id)]
+           }
     refute JSON.encode!(event) =~ "ada@example.com"
 
     test_pid = self()
@@ -59,6 +62,7 @@ defmodule Portal.Analytics.OpenAITest do
     assert event["id"] == "team_sub_team"
     assert event["timestamp_ms"] == 1_800_000_000_000
     assert event["user"]["emails_sha256"] == [Analytics.hash_email("ada@example.com")]
+    assert event["user"]["external_ids_sha256"] == [Analytics.hash_external_id(account.id)]
   end
 
   test "disabled, missing, denied and expired consent never enqueue", %{account: account} do

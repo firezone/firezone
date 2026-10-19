@@ -20,17 +20,3 @@ pub use node::{
 };
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64);
-
-/// Returns whether `payload` has the type and length of a WireGuard message.
-///
-/// This does not authenticate the message.
-pub fn is_wireguard(payload: &[u8]) -> bool {
-    let Some((ty, _)) = payload.split_first_chunk::<4>() else {
-        return false;
-    };
-
-    matches!(
-        (u32::from_le_bytes(*ty), payload.len()),
-        (1, 148) | (2, 92) | (3, 64) | (4, 32..)
-    )
-}

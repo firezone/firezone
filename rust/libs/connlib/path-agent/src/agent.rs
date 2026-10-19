@@ -52,9 +52,13 @@ pub struct PathAgent {
 
 #[derive(Default)]
 struct Responder {
-    last_init: Option<Vec<u8>>,
+    last_init: Option<InitId>,
     dedup: Option<ResponderDedup>,
 }
+
+/// An initiation's sender index and timestamp. Within one tunnel, only a
+/// copy of the same initiation shares both.
+type InitId = (u32, u128);
 
 pub(crate) struct PairState {
     pub(crate) kinds: (crate::CandidateKind, crate::CandidateKind),
@@ -187,7 +191,7 @@ impl OutboundInit {
 }
 
 struct ResponderDedup {
-    init_bytes: Vec<u8>,
+    init: InitId,
     response_bytes: Datagram,
     cached_at: Instant,
 }
@@ -437,15 +441,6 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
-    pub fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
-        let Some(init) = tunnel.initiate_handshake(now) else {
-            tracing::debug!("WireGuard declined to emit a HandshakeInit");
-            return;
-        };
-
-        self.send_handshake_initiation(init, now);
-    }
-
     pub fn send_handshake_initiation(&mut self, init: Datagram, now: Instant) {
         self.last_now = Some(now);
 
@@ -492,7 +487,7 @@ impl PathAgent {
         }
     }
 
-    /// Runs `init`, received on `path` as `datagram`, through `tunnel`.
+    /// Runs `init`, received on `path`, through `tunnel`.
     ///
     /// Duplicates are dropped before they reach `tunnel`; an accepted init is
     /// recorded and its response queued on `path`.
@@ -500,13 +495,14 @@ impl PathAgent {
         &mut self,
         tunnel: &mut Tunnel,
         init: HandshakeInitiation,
-        datagram: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> Result<(), sanstun::Error> {
+        let init_id = (init.sender_index(), init.timestamp());
+
         // Drop dups arriving on multiple pairs in one tick so WireGuard
         // doesn't reject them as replays.
-        if self.responder.last_init.as_deref() == Some(datagram) {
+        if self.responder.last_init == Some(init_id) {
             tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
 
             return Ok(());
@@ -519,7 +515,7 @@ impl PathAgent {
 
         // Remembered so fanned-out duplicates arriving on other pairs in
         // this tick are dropped (see the duplicate check above).
-        self.responder.last_init = Some(datagram.to_vec());
+        self.responder.last_init = Some(init_id);
 
         self.register_peer_reflexive(path, now);
 
@@ -553,7 +549,7 @@ impl PathAgent {
         tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
 
         self.responder.dedup = Some(ResponderDedup {
-            init_bytes: datagram.to_vec(),
+            init: init_id,
             response_bytes: response.clone(),
             cached_at: now,
         });
@@ -608,17 +604,19 @@ impl PathAgent {
         Ok(())
     }
 
-    /// Answers a retransmitted init with the response cached for it, returning
-    /// whether there was one.
+    /// Answers a retransmitted init, identified by its sender index and
+    /// timestamp, with the response cached for it, returning whether there
+    /// was one.
     pub fn replay_cached_response(
         &mut self,
-        init: &[u8],
+        sender_index: u32,
+        timestamp: u128,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
         self.last_now = Some(now);
 
-        let Some(response) = self.cached_response(init, now) else {
+        let Some(response) = self.cached_response((sender_index, timestamp), now) else {
             return false;
         };
 
@@ -633,14 +631,14 @@ impl PathAgent {
         true
     }
 
-    fn cached_response(&self, init: &[u8], now: Instant) -> Option<Datagram> {
+    fn cached_response(&self, init: InitId, now: Instant) -> Option<Datagram> {
         let d = self.responder.dedup.as_ref()?;
 
         if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {
             return None;
         }
 
-        if d.init_bytes != init {
+        if d.init != init {
             return None;
         }
 

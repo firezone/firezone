@@ -1,6 +1,16 @@
 defmodule PortalWeb.ServiceAccountsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.Actor
   alias Portal.Changes.Change
   alias Portal.Repo
@@ -34,6 +44,20 @@ defmodule PortalWeb.ServiceAccountsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      service_account_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/service_accounts") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#actors-skeleton")
+      assert Floki.find(static, "#actors-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/service_accounts")
+      assert has_element?(lv, "#actors-rows tr")
+      refute has_element?(lv, "#actors-skeleton")
+    end
+
     test "renders service accounts page title", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -740,10 +764,11 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts/#{service_account}/edit")
 
-      html =
-        lv
-        |> form("form[phx-submit='save']", actor: %{name: "Updated SA Name"})
-        |> render_submit()
+      lv
+      |> form("form[phx-submit='save']", actor: %{name: "Updated SA Name"})
+      |> render_submit()
+
+      html = render_async(lv)
 
       updated_service_account =
         Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id)
@@ -1029,7 +1054,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/service_accounts")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/service_accounts")
 
       assert html =~ "Loading..."
 
@@ -1131,7 +1156,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert has_element?(lv, "#actors-reload-btn")
 
       render_click(lv, "reload", %{"table_id" => "actors"})
-      assert render(lv) =~ "Renamed Service Account"
+      assert render_async(lv) =~ "Renamed Service Account"
     end
   end
   describe "live table filters across panel operations" do
@@ -1208,7 +1233,7 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}?#{filter}")
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ "ci-renamed"
       refute html =~ other.name
     end

@@ -3,7 +3,8 @@ defmodule PortalWeb.Settings.DNS do
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
-    account = Database.get_account_by_id!(socket.assigns.account.id, socket.assigns.subject)
+    # FetchAccount already loaded the account, so there is no need to query it again.
+    account = socket.assigns.account
     account = %{account | config: Portal.Accounts.Config.ensure_defaults(account.config)}
 
     socket =
@@ -456,15 +457,7 @@ defmodule PortalWeb.Settings.DNS do
   end
 
   defmodule Database do
-    import Ecto.Query
     alias Portal.Safe
-    alias Portal.Account
-
-    def get_account_by_id!(id, subject) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.scoped(subject)
-      |> Safe.one!()
-    end
 
     def update(changeset, subject) do
       changeset

@@ -5,9 +5,9 @@ use telemetry::Dsn;
 mod make_writer;
 
 // mark:next-android-version
-pub const RELEASE: &str = "connlib-android@1.5.16";
+pub const RELEASE: &str = "connlib-android@1.5.17";
 // mark:next-android-version
-pub const VERSION: &str = "1.5.16";
+pub const VERSION: &str = "1.5.17";
 pub const COMPONENT: &str = "android-client";
 
 /// We have valid use cases for headless Android clients

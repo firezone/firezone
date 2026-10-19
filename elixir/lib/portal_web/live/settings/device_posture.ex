@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   require Logger
@@ -102,7 +103,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        feedback_sent?: false,
        feedback_error: nil
      )
-     |> init()}
+     |> init_if_connected()}
   end
 
   def handle_params(_params, _url, %{assigns: %{live_action: :select_type}} = socket) do
@@ -687,7 +688,9 @@ defmodule PortalWeb.Settings.DevicePosture do
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
               <h2 class="text-xs font-semibold text-heading">Posture Providers</h2>
-              <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
+              <span :if={@providers} class="text-xs text-subtle tabular-nums">
+                {length(@providers)}
+              </span>
             </div>
             <Navigation.link
               patch={~p"/#{@account}/settings/device_posture/new"}
@@ -698,58 +701,61 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
 
           <div class="flex-1 overflow-auto">
-            <%= if Enum.empty?(@providers) do %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+            <%= cond do %>
+              <% is_nil(@providers) -> %>
+                <SettingsComponents.skeleton id="providers-skeleton" />
+              <% Enum.empty?(@providers) -> %>
+                <div class="flex items-center justify-center h-full">
+                  <div class="flex flex-col items-center gap-3 py-16">
+                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                      <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+                    </div>
+                    <div class="text-center">
+                      <p class="text-sm font-medium text-heading">No posture providers yet</p>
+                      <p class="text-xs text-subtle mt-0.5">
+                        Add a posture provider to allow device health checks before granting access.
+                      </p>
+                    </div>
+                    <Navigation.link
+                      patch={~p"/#{@account}/settings/device_posture/new"}
+                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                    >
+                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+                    </Navigation.link>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No posture providers yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      Add a posture provider to allow device health checks before granting access.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/device_posture/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-                  </Navigation.link>
                 </div>
-              </div>
-            <% else %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Provider
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Tenant
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Devices
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.provider_row
-                    :for={provider <- @providers}
-                    account={@account}
-                    provider={provider}
-                    open_actions_id={@open_provider_actions_id}
-                    pending_confirm={@pending_confirm}
-                  />
-                </tbody>
-              </table>
+              <% true -> %>
+                <table class="w-full text-sm border-collapse">
+                  <thead class="sticky top-0 z-10 bg-raised">
+                    <tr class="border-b border-border-strong">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                        Provider
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Status
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
+                        Tenant
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Devices
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Synced
+                      </th>
+                      <th class="px-6 py-2.5 w-14"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <.provider_row
+                      :for={provider <- @providers}
+                      account={@account}
+                      provider={provider}
+                      open_actions_id={@open_provider_actions_id}
+                      pending_confirm={@pending_confirm}
+                    />
+                  </tbody>
+                </table>
             <% end %>
           </div>
         </div>
@@ -1851,6 +1857,12 @@ defmodule PortalWeb.Settings.DevicePosture do
     Enum.find_value(changeset.errors, fn {field, {message, _opts}} ->
       if field not in @form_fields[type], do: message
     end)
+  end
+
+  # The static render shows a skeleton instead, so the providers are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket), do: init(socket), else: assign(socket, providers: nil)
   end
 
   defp init(socket) do

@@ -24,10 +24,7 @@ defmodule PortalWeb.Policies do
       |> assign(page_title: "Policies")
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
       |> assign(selected_policy: nil, policy_providers: [], policy_disabled_providers: [])
-      |> assign(
-        x509_auth_provider_id: Database.x509_auth_provider_id(subject),
-        has_trust_anchors?: Database.has_trust_anchors?(subject)
-      )
+      |> assign(x509_auth_assigns(socket, subject))
       |> assign(
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -35,6 +32,7 @@ defmodule PortalWeb.Policies do
         policy_authorizations_expanded_id: nil
       )
       |> assign(base_policy_assigns(socket))
+      |> assign(policies: [], policies_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> LiveTable.assign_live_table("policies",
         query_module: Database,
         sortable_fields: [],
@@ -45,7 +43,7 @@ defmodule PortalWeb.Policies do
           :resource_name,
           :site_id
         ],
-        callback: &handle_policies_update!/2
+        loader: &load_policies/2
       )
 
     {:ok, socket}
@@ -124,6 +122,13 @@ defmodule PortalWeb.Policies do
   def handle_params(params, uri, socket) do
     socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
+    # The site and resource only label the filter notice, so the static render
+    # goes without them.
+    filter_assigns =
+      if connected?(socket),
+        do: policy_filter_assigns(params, socket.assigns.subject),
+        else: [filter_site: nil, filter_resource: nil]
+
     {:noreply,
      assign(
        socket,
@@ -132,8 +137,7 @@ defmodule PortalWeb.Policies do
          policy_providers: [],
          policy_disabled_providers: [],
          return_to: uri_path(uri)
-       ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
-         default_policy_assigns(socket)
+       ] ++ filter_assigns ++ default_policy_assigns(socket)
      )}
   end
 
@@ -184,15 +188,11 @@ defmodule PortalWeb.Policies do
     end
   end
 
-  def handle_policies_update!(socket, list_opts) do
+  defp load_policies(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, group: [:directory], resource: [])
 
-    with {:ok, policies, metadata} <- Database.list_policies(socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         policies: policies,
-         policies_metadata: metadata
-       )}
+    with {:ok, policies, metadata} <- Database.list_policies(subject, list_opts) do
+      {:ok, %{policies: policies, policies_metadata: metadata}}
     end
   end
 
@@ -228,6 +228,8 @@ defmodule PortalWeb.Policies do
         <LiveTable.live_table
           stale={@stale}
           id="policies"
+          loading={@loading_by_table_id["policies"]}
+          query_error={@query_error_by_table_id["policies"]}
           rows={@policies}
           row_id={&"policies-#{&1.id}"}
           row_click={fn policy -> ~p"/#{@account}/policies/#{policy.id}?#{@query_params}" end}
@@ -1116,10 +1118,21 @@ defmodule PortalWeb.Policies do
   defp cond_values(nil), do: []
   defp cond_values(cond), do: cond.values
 
+  # These only drive a warning in the policy form, so the static render goes
+  # without them rather than querying for them twice.
+  defp x509_auth_assigns(socket, subject) do
+    if connected?(socket) do
+      [
+        x509_auth_provider_id: Database.x509_auth_provider_id(subject),
+        has_trust_anchors?: Database.has_trust_anchors?(subject)
+      ]
+    else
+      [x509_auth_provider_id: nil, has_trust_anchors?: false]
+    end
+  end
+
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.policies, change),
-      do: socket,
-      else: assign(socket, stale: true)
+    LiveTable.mark_stale_unless_reflected(socket, "policies", socket.assigns.policies, change)
   end
 
   defmodule Database do

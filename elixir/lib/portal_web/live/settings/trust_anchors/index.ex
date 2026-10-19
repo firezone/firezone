@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   alias Portal.{Safe, TrustAnchor}
   alias Portal.Crypto.X509
+  alias PortalWeb.Settings.Components, as: SettingsComponents
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
@@ -128,13 +129,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def mount(_params, _session, socket) do
-    trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
-
     socket =
       socket
       |> assign(page_title: "Trust Anchors")
-      |> assign(trust_anchors: trust_anchors)
-      |> assign_revocation_health(trust_anchors)
+      |> load_trust_anchors_if_connected()
       |> assign(selected_trust_anchor: nil)
       |> assign(form: nil, input_mode: :paste)
       |> assign(confirm_delete?: false)
@@ -212,7 +210,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
-            <span class="text-xs text-subtle tabular-nums">
+            <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
               {length(@trust_anchors)}
             </span>
           </div>
@@ -228,52 +226,55 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         </div>
 
         <div class="flex-1 overflow-auto">
-          <%= if Enum.empty?(@trust_anchors) do %>
-            <div class="flex items-center justify-center h-full">
-              <div class="flex flex-col items-center gap-3 py-16">
-                <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <Core.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
+          <%= cond do %>
+            <% is_nil(@trust_anchors) -> %>
+              <SettingsComponents.skeleton id="trust-anchors-skeleton" />
+            <% Enum.empty?(@trust_anchors) -> %>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <Core.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No trust anchors yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      Add a CA certificate chain to validate presented certificates against.
+                    </p>
+                  </div>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/trust_anchors/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
+                  </Navigation.link>
                 </div>
-                <div class="text-center">
-                  <p class="text-sm font-medium text-heading">No trust anchors yet</p>
-                  <p class="text-xs text-subtle mt-0.5">
-                    Add a CA certificate chain to validate presented certificates against.
-                  </p>
-                </div>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/trust_anchors/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
-                </Navigation.link>
               </div>
-            </div>
-          <% else %>
-            <table class="w-full text-sm border-collapse">
-              <thead class="sticky top-0 z-10 bg-raised">
-                <tr class="border-b border-border-strong">
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                    Name
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Certificates
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Created
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <.trust_anchor_row
-                  :for={trust_anchor <- @trust_anchors}
-                  trust_anchor={trust_anchor}
-                  health={@revocation_health[trust_anchor.id]}
-                  selected?={
-                    !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
-                  }
-                />
-              </tbody>
-            </table>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                      Name
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Certificates
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Created
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.trust_anchor_row
+                    :for={trust_anchor <- @trust_anchors}
+                    trust_anchor={trust_anchor}
+                    health={@revocation_health[trust_anchor.id]}
+                    selected?={
+                      !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
+                    }
+                  />
+                </tbody>
+              </table>
           <% end %>
         </div>
       </div>
@@ -1161,6 +1162,20 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end)
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
+  end
+
+  # The static render shows a skeleton instead, so the trust anchors are only
+  # queried once, by the connected mount.
+  defp load_trust_anchors_if_connected(socket) do
+    if connected?(socket) do
+      trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
+      socket
+      |> assign(trust_anchors: trust_anchors)
+      |> assign_revocation_health(trust_anchors)
+    else
+      assign(socket, trust_anchors: nil, revocation_health: %{})
+    end
   end
 
   # Every anchor's issuers in one lookup, keyed by anchor, so the table reads

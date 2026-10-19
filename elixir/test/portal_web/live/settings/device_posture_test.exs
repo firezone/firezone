@@ -114,6 +114,18 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     end
   end
 
+  test "loads the providers only after the socket connects", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_conn(conn, actor)
+
+    static = conn |> get(~p"/#{account}/settings/device_posture") |> html_response(200)
+    assert static =~ ~s(id="providers-skeleton")
+    refute static =~ "No posture providers yet"
+
+    {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/device_posture")
+    assert html =~ "No posture providers yet"
+    refute html =~ ~s(id="providers-skeleton")
+  end
+
   test "renders the empty provider settings page", %{conn: conn, account: account, actor: actor} do
     {:ok, _lv, html} =
       conn
