@@ -6722,7 +6722,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=tunnel-rejects-replays#389cd65b1b958353a9746ec24fcd7a9093099dfc"
+source = "git+https://github.com/firezone/sanstun?branch=main#e201eb227973126833e31908a21eed4d60de241a"
 dependencies = [
  "blake2",
  "chacha20",
