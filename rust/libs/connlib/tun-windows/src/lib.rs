@@ -71,7 +71,7 @@ impl Drop for Io {
 }
 
 impl tun::Tun for Io {
-    fn sender(&self) -> &tun::OutboundTx {
+    fn sender(&mut self) -> &mut tun::OutboundTx {
         self.workers.sender()
     }
     fn receiver(&mut self) -> &mut tun::InboundRx {
