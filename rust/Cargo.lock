@@ -8828,6 +8828,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 

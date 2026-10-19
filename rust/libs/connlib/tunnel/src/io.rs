@@ -86,7 +86,7 @@ pub struct Input {
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
-    pub dns_response: Option<dns::RecursiveResponse>,
+    pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
@@ -97,7 +97,7 @@ impl Input {
             network: None,
             tcp_dns_queries: Vec::new(),
             udp_dns_queries: Vec::new(),
-            dns_response: None,
+            dns_responses: Vec::new(),
             error: TunnelError::single(e),
         }
     }
@@ -291,11 +291,9 @@ impl Io {
             })
             .collect::<Vec<_>>();
 
-        let dns_response = loop {
-            let Poll::Ready((result, mut meta)) = self.dns_queries.poll_unpin(cx) else {
-                break Poll::Pending;
-            };
+        let mut dns_responses = Vec::new();
 
+        while let Poll::Ready((result, mut meta)) = self.dns_queries.poll_unpin(cx) {
             let message = match result {
                 Ok(message) => message,
                 Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
@@ -319,7 +317,7 @@ impl Io {
                 continue;
             }
 
-            break Poll::Ready(dns::RecursiveResponse {
+            dns_responses.push(dns::RecursiveResponse {
                 server: meta.server,
                 query: meta.query,
                 message,
@@ -329,13 +327,13 @@ impl Io {
                 started_at: meta.started_at,
                 recursion: dns::Recursion::Local,
             });
-        };
+        }
 
         if device.is_pending()
             && network.is_pending()
             && tcp_dns_queries.is_empty()
             && udp_dns_queries.is_empty()
-            && dns_response.is_pending()
+            && dns_responses.is_empty()
             && error.is_empty()
         {
             return Poll::Pending;
@@ -346,7 +344,7 @@ impl Io {
             network: poll_to_option(network),
             tcp_dns_queries,
             udp_dns_queries,
-            dns_response: poll_to_option(dns_response),
+            dns_responses,
             error,
         })
     }
@@ -701,7 +699,7 @@ mod tests {
                     tracing::debug!("Ignoring error unrelated to DNS: {e:#}");
                 }
 
-                if let Some(response) = input.dns_response {
+                if let Some(response) = input.dns_responses.pop() {
                     return response;
                 }
             }
@@ -728,8 +726,8 @@ mod tests {
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tun::OutboundTx {
-            &self.tx
+        fn sender(&mut self) -> &mut tun::OutboundTx {
+            &mut self.tx
         }
 
         fn receiver(&mut self) -> &mut tun::InboundRx {

@@ -8,11 +8,10 @@ target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
 build_afl
-collect_findings all
 shopt -s nullglob
 inputs=("corpus/$target"/*)
 if [ "${#inputs[@]}" -eq 0 ]; then
-    echo "Corpus is missing or empty; run unpack-corpus $target first" >&2
+    echo "The $target corpus is empty" >&2
     exit 1
 fi
 

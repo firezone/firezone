@@ -11,6 +11,7 @@ cd "${APPLE_DIR}"
 # Built for the simulator in general rather than a particular one: the same
 # products run on every simulator, so one build serves an iPhone and an iPad.
 # The simulator asks for no signing, and the entitlements need a profile.
+# The build hash is pinned so the screenshots only change when the UI does.
 xcodebuild build-for-testing \
     -project Firezone.xcodeproj \
     -scheme FirezoneUITests \
@@ -22,4 +23,5 @@ xcodebuild build-for-testing \
     CODE_SIGN_ENTITLEMENTS= \
     DEVELOPMENT_TEAM= \
     PROVISIONING_PROFILE_SPECIFIER= \
-    ONLY_ACTIVE_ARCH=YES
+    ONLY_ACTIVE_ARCH=YES \
+    GIT_SHA=0000000000000000000000000000000000000000
