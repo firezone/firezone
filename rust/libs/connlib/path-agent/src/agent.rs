@@ -588,18 +588,20 @@ impl PathAgent {
     }
 
     /// Answers `init`, a copy of an init we already accepted, with the
-    /// response cached for it, returning whether there was one.
+    /// response cached for it.
+    ///
+    /// Fails with [`sanstun::Error::ReplayedHandshakeInitiation`] if there is none.
     pub fn handle_replayed_handshake_initiation(
         &mut self,
-        init: &ReplayedHandshakeInitiation,
+        init: ReplayedHandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> bool {
+    ) -> Result<(), sanstun::Error> {
         self.last_now = Some(now);
 
         let Some(response) = self.cached_response((init.sender_index(), init.timestamp()), now)
         else {
-            return false;
+            return Err(sanstun::Error::ReplayedHandshakeInitiation(init));
         };
 
         tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
@@ -610,7 +612,7 @@ impl PathAgent {
             payload: Payload::Ciphertext(response),
         });
 
-        true
+        Ok(())
     }
 
     fn cached_response(&self, init: InitId, now: Instant) -> Option<Datagram> {
