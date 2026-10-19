@@ -316,7 +316,7 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
         let packet_counter = otel_instruments::network_packets();
-        let (num_encrypt, num_decrypt) = num_crypto_workers();
+        let workers = spawn_workers(num_crypto_workers(), packet_counter.clone());
 
         Self {
             sockets,
@@ -344,8 +344,8 @@ impl Io {
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
             datagrams: VecDeque::new(),
-            encryptor: Encryptor::new(num_encrypt, packet_counter.clone()),
-            decryptor: Decryptor::new(num_decrypt),
+            encryptor: Encryptor::new(workers.clone()),
+            decryptor: Decryptor::new(workers),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -671,31 +671,46 @@ impl Io {
     }
 }
 
-/// How many encrypt and decrypt workers to spawn.
+/// A job for a crypto worker.
 ///
-/// Crypto takes up to half of the cores, split evenly between both directions.
-fn num_crypto_workers() -> (usize, usize) {
-    let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
-    let total = (cores / 2).max(2);
-    let encrypt = total / 2;
-
-    (encrypt, total - encrypt)
+/// Every worker takes both kinds, so traffic in one direction can use all of them.
+enum Work {
+    Encrypt(encrypt::Train, tokio::sync::oneshot::Sender<DatagramOut>),
+    Decrypt(
+        decrypt::Job,
+        tokio::sync::oneshot::Sender<decrypt::Decrypted>,
+    ),
 }
 
-fn spawn_workers<T: Send + 'static>(
-    name: &str,
+/// How many crypto workers to spawn: up to half of the cores.
+fn num_crypto_workers() -> usize {
+    let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+
+    (cores / 2).max(2)
+}
+
+fn spawn_workers(
     num_workers: usize,
-    work: impl Fn(mpsc::Receiver<T>) + Clone + Send + 'static,
-) -> Vec<mpsc::Sender<T>> {
+    packet_counter: opentelemetry::metrics::Counter<u64>,
+) -> Vec<mpsc::Sender<Work>> {
     (0..num_workers)
         .filter_map(|i| {
             let (tx, rx) = mpsc::channel();
-            let work = work.clone();
-            let name = format!("{name}-{i}");
+            let packet_counter = packet_counter.clone();
+            let name = format!("wg-crypto-{i}");
 
             thread::Builder::new()
                 .name(name.clone())
-                .spawn(move || work(rx))
+                .spawn(move || {
+                    for work in rx {
+                        match work {
+                            Work::Encrypt(train, encrypted) => {
+                                encrypt::encrypt(train, encrypted, &packet_counter)
+                            }
+                            Work::Decrypt(job, decrypted) => decrypt::decrypt(job, decrypted),
+                        }
+                    }
+                })
                 .inspect_err(|e| tracing::warn!(%name, "Failed to spawn crypto worker: {e}"))
                 .ok()?;
 

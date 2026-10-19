@@ -14,7 +14,7 @@ use snownet::{Decapsulation, DecryptedPacket};
 use socket_factory::{DatagramIn, RecvBuffer};
 use tokio::sync::oneshot;
 
-use super::{next_worker, spawn_workers};
+use super::{Work, next_worker};
 
 /// How many received packets go to a decrypt worker in one job at most.
 ///
@@ -63,19 +63,19 @@ pub struct Received<P> {
 /// messages. The results come back through a `oneshot` channel per job, which we queue in
 /// submission order to accept the decrypted packets in that order.
 pub struct Decryptor {
-    workers: Vec<mpsc::Sender<(Job, oneshot::Sender<Decrypted>)>>,
+    workers: Vec<mpsc::Sender<Work>>,
     next_worker: usize,
 
     /// The jobs handed to the workers.
     decrypting: VecDeque<oneshot::Receiver<Decrypted>>,
 }
 
-type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
+pub(super) type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
 
 /// Receive buffers and the data messages within them to decrypt.
 ///
 /// Each buffer holds at least one of the messages.
-struct Job {
+pub(super) struct Job {
     buffers: Buffer<VecBuf<RecvBuffer>>,
     messages: Buffer<VecBuf<Message>>,
 }
@@ -96,9 +96,9 @@ impl Job {
 }
 
 impl Decryptor {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn new(workers: Vec<mpsc::Sender<Work>>) -> Self {
         Self {
-            workers: spawn_workers("wg-decrypt", num_workers, decrypt),
+            workers,
             next_worker: 0,
             decrypting: VecDeque::new(),
         }
@@ -142,7 +142,7 @@ impl Decryptor {
         let (tx, rx) = oneshot::channel();
 
         // A stopped worker drops the sender, so `poll_decrypted` skips the job.
-        let _ = worker.send((job, tx));
+        let _ = worker.send(Work::Decrypt(job, tx));
         self.decrypting.push_back(rx);
     }
 }
@@ -203,21 +203,19 @@ impl Drop for DecryptBatch<'_> {
     }
 }
 
-fn decrypt(jobs: mpsc::Receiver<(Job, oneshot::Sender<Decrypted>)>) {
-    for (mut job, decrypted) in jobs {
-        let mut packets = DECRYPTED.pull();
-        packets.extend(job.messages.drain(..).map(|message| {
-            let buffer = &job.buffers[message.buffer];
+pub(super) fn decrypt(mut job: Job, decrypted: oneshot::Sender<Decrypted>) {
+    let mut packets = DECRYPTED.pull();
+    packets.extend(job.messages.drain(..).map(|message| {
+        let buffer = &job.buffers[message.buffer];
 
-            Received {
-                local: buffer.local(),
-                from: buffer.from(),
-                ecn: buffer.ecn(),
-                packet: message.decapsulation.decrypt(&buffer[message.datagram]),
-            }
-        }));
+        Received {
+            local: buffer.local(),
+            from: buffer.from(),
+            ecn: buffer.ecn(),
+            packet: message.decapsulation.decrypt(&buffer[message.datagram]),
+        }
+    }));
 
-        // We stopped if the receiver is gone; the channel for the next job is closed too.
-        let _ = decrypted.send(packets);
-    }
+    // We stopped if the receiver is gone; the channel for the next job is closed too.
+    let _ = decrypted.send(packets);
 }

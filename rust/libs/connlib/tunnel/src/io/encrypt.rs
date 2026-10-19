@@ -7,7 +7,7 @@ use snownet::EncryptJob;
 use socket_factory::{DatagramOut, MAX_GSO_SEGMENTS};
 use tokio::sync::oneshot;
 
-use super::{UdpGsoTrain, next_worker, spawn_workers};
+use super::{UdpGsoTrain, Work, next_worker};
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{Encrypting, Sockets};
 
@@ -29,16 +29,14 @@ bufferpool::buffer_pool!(
 /// A socket thread sends its items and their receivers front to back, and a flow has one
 /// destination, so all of its datagrams go through one socket thread.
 pub struct Encryptor {
-    workers: Vec<mpsc::Sender<(Train, oneshot::Sender<DatagramOut>)>>,
+    workers: Vec<mpsc::Sender<Work>>,
     next_worker: usize,
 }
 
 impl Encryptor {
-    pub fn new(num_workers: usize, packet_counter: Counter<u64>) -> Self {
+    pub fn new(workers: Vec<mpsc::Sender<Work>>) -> Self {
         Self {
-            workers: spawn_workers("wg-encrypt", num_workers, move |trains| {
-                encrypt(trains, packet_counter.clone())
-            }),
+            workers,
             next_worker: 0,
         }
     }
@@ -98,7 +96,7 @@ impl EncryptBatch<'_> {
         };
 
         // A stopped worker drops the sender, so the socket skips the train.
-        let _ = worker.send((train, tx));
+        let _ = worker.send(Work::Encrypt(train, tx));
     }
 }
 
@@ -126,7 +124,7 @@ impl Drop for EncryptBatch<'_> {
     }
 }
 
-struct Train {
+pub(super) struct Train {
     train: UdpGsoTrain,
     jobs: Buffer<VecBuf<EncryptJob>>,
 }
@@ -141,22 +139,21 @@ impl Train {
     }
 }
 
-fn encrypt(
-    trains: mpsc::Receiver<(Train, oneshot::Sender<DatagramOut>)>,
-    packet_counter: Counter<u64>,
+pub(super) fn encrypt(
+    Train { train, mut jobs }: Train,
+    encrypted: oneshot::Sender<DatagramOut>,
+    packet_counter: &Counter<u64>,
 ) {
-    for (Train { train, mut jobs }, encrypted) in trains {
-        let Some(datagram) = train.encrypt(jobs.drain(..)) else {
-            continue;
-        };
+    let Some(datagram) = train.encrypt(jobs.drain(..)) else {
+        return;
+    };
 
-        let mut transmitted = UdpPacketCounts::transmit(&packet_counter);
+    let mut transmitted = UdpPacketCounts::transmit(packet_counter);
 
-        for segment in datagram.packet.chunks(datagram.segment_size) {
-            transmitted.record(segment);
-        }
-
-        // The socket thread stopped if the receiver is gone.
-        let _ = encrypted.send(datagram);
+    for segment in datagram.packet.chunks(datagram.segment_size) {
+        transmitted.record(segment);
     }
+
+    // The socket thread stopped if the receiver is gone.
+    let _ = encrypted.send(datagram);
 }
