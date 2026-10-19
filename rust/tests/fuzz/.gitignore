@@ -1,7 +1,5 @@
 target
 artifacts
-coverage
 crash-*
-*.profraw
 afl-output
 candidates

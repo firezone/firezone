@@ -21,8 +21,6 @@ step() {
 }
 step fuzz "$target" --workers "$workers" --seconds "${usage_seconds:?}" "$@"
 step select "$target"
-step coverage "$target"
-step update-baseline "$target"
 step save-crashes "$target"
 if [ "${#failed[@]}" -gt 0 ]; then
     echo "error: step(s) failed: ${failed[*]}" >&2

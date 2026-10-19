@@ -9,5 +9,4 @@ version = "nightly-2026-06-10"
 backend = "core:rust"
 
 [tools.rust.options]
-components = "llvm-tools,rust-src"
 profile = "minimal"

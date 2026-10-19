@@ -1,13 +1,12 @@
 ---
 name: Fuzz corpora (nightly)
 run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
-# Adds to every committed fuzz corpus the inputs that reach edges it does not,
-# refreshing the uncovered-region ceilings alongside. The scheduled run works
-# on main and proposes each target's result as its own bot PR; dispatching the
-# workflow on any other branch pushes the result back to that branch instead,
-# e.g. to re-grow the corpus for a PR that changes the harness. A dispatch can
-# also narrow the run to a single target. Pull-request CI only replays
-# committed inputs; coverage discovery happens here.
+# Adds to every committed fuzz corpus the inputs that reach edges it does not.
+# The scheduled run works on main and proposes each target's result as its own
+# bot PR; dispatching the workflow on any other branch pushes the result back
+# to that branch instead, e.g. to re-grow the corpus for a PR that changes the
+# harness. A dispatch can also narrow the run to a single target. Pull-request
+# CI only replays committed inputs; coverage discovery happens here.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
@@ -130,28 +129,15 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         run: mise run //rust/tests/fuzz:select ${{ matrix.fuzz-target }}
-      - name: Measure coverage
-        if: ${{ !cancelled() }}
-        timeout-minutes: 25
-        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
-      - name: Refresh the uncovered-region ceiling
-        if: ${{ !cancelled() }}
-        timeout-minutes: 10
-        run: mise run //rust/tests/fuzz:update-baseline ${{ matrix.fuzz-target }}
-      # After the measurement: these inputs crash the target by definition, so a
-      # `coverage` run that included them could not produce a profile and the
-      # ceiling would go unrefreshed for the night.
       - name: Keep the failing inputs
         if: ${{ !cancelled() }}
         run: mise run //rust/tests/fuzz:save-crashes ${{ matrix.fuzz-target }}
-      - name: Save corpus and coverage baseline
+      - name: Save the corpus
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-${{ matrix.fuzz-target }}
-          path: |
-            rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}/
-            rust/tests/fuzz/expected-coverage/${{ matrix.fuzz-target }}.json
+          path: rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}/
           if-no-files-found: error
 
   propose:
@@ -192,7 +178,7 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A "tests/fuzz/corpus/$TARGET" "tests/fuzz/expected-coverage/$TARGET.json"
+          git add -A "tests/fuzz/corpus/$TARGET"
           if git diff --cached --quiet; then
             echo "The $TARGET corpus is unchanged; nothing to push."
             exit 0
@@ -222,6 +208,6 @@ jobs:
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "chore(fuzz): grow the $TARGET corpus" \
-              --body "The nightly fuzz job found inputs for \`$TARGET\` that reach edges the committed corpus did not, and refreshed its uncovered-region ceiling." \
+              --body "The nightly fuzz job found inputs for \`$TARGET\` that reach edges the committed corpus did not." \
               --reviewer firezone/engineering
           fi
