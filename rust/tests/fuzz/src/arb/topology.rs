@@ -34,16 +34,12 @@ pub(super) fn generate(
     domain_tree: Vec<DomainName>,
 ) -> ReferenceState {
     let clients = arb_clients(g, portal);
-    let gateways = arb_gateways(g, portal, &domain_tree);
-    let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
     let sites = arb_sites(g, portal, &host_routes);
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
-    let gateways = gateways
-        .into_iter()
-        .map(|(id, gateway)| (id, gateway(&sites)))
-        .collect::<BTreeMap<_, _>>();
+    let gateways = arb_gateways(g, portal, &domain_tree, &sites);
+    let relays = arb_relays(g);
 
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
@@ -146,15 +142,9 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         name: "Internet".to_owned(),
     };
     let regular_sites = (0..g.count(1, 3))
-        .map(|i| {
-            let id = g.fresh_site_id();
-            // Consumes the bytes a random name used to, so existing corpus inputs keep their meaning.
-            let _ = g.lower_ascii(4, 10);
-
-            Site {
-                id,
-                name: SITE_NAMES[i].to_owned(),
-            }
+        .map(|i| Site {
+            id: g.fresh_site_id(),
+            name: SITE_NAMES[i].to_owned(),
         })
         .collect::<SmallVec<[_; 3]>>();
     g.allocate_site_subnets(&regular_sites);
@@ -419,33 +409,26 @@ fn arb_gateways(
     g: &mut Generator,
     portal: &StubPortal,
     domain_tree: &[DomainName],
-) -> BTreeMap<GatewayId, impl FnOnce(&BTreeMap<SiteId, SiteView>) -> Host<RefGateway> + use<>> {
+    sites: &BTreeMap<SiteId, SiteView>,
+) -> BTreeMap<GatewayId, Host<RefGateway>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
+            let site = sites[&site_id].clone();
             let site_specific = arb_site_specific_dns_records(g, portal, site_id, domain_tree);
-            let key = g.fresh_private_key();
+            let inner = RefGateway::from_parts(
+                g.fresh_private_key(),
+                tun4,
+                tun6,
+                site.routes,
+                site_specific,
+                site.unresolvable_names,
+            );
             let latency = g.latency(200);
             let edge = arb_edge_config(g);
-            let nat_ip4 = g.nat_ip4();
-            let socket_ip4 = g.socket_ip4();
-            let socket_ip6 = g.socket_ip6();
-
-            let gateway = move |sites: &BTreeMap<SiteId, SiteView>| {
-                let site = sites[&site_id].clone();
-                let inner = RefGateway::from_parts(
-                    key,
-                    tun4,
-                    tun6,
-                    site.routes,
-                    site_specific,
-                    site.unresolvable_names,
-                );
-                let host = Host::new(inner, latency, 52625, edge, nat_ip4);
-                with_interface(host, Some(socket_ip4), Some(socket_ip6))
-            };
-
-            (id, gateway)
+            let host = Host::new(inner, latency, 52625, edge, g.nat_ip4());
+            let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+            (id, host)
         })
         .collect::<BTreeMap<_, _>>()
 }

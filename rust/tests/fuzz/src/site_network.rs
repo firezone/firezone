@@ -221,12 +221,12 @@ impl SiteNetwork {
         }
     }
 
-    /// Answers the DNS queries received so far, by transport and then by socket.
+    /// Answers the DNS queries received so far.
     pub(crate) fn poll_dns_answers(
         &mut self,
         global_dns_records: &DnsRecords,
         now: Instant,
-    ) -> [Vec<(SocketAddr, IpPacket)>; 2] {
+    ) -> Vec<IpPacket> {
         self.dns_servers.poll_answers(global_dns_records, now)
     }
 
