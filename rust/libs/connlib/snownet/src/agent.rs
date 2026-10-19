@@ -181,13 +181,14 @@ impl Agent {
 
     pub(crate) fn replay_cached_response(
         &mut self,
-        init: &[u8],
+        sender_index: u32,
+        timestamp: u128,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) -> bool {
         match self {
             Self::Ice(_) => false,
-            Self::Path(agent) => agent.replay_cached_response(init, path, now),
+            Self::Path(agent) => agent.replay_cached_response(sender_index, timestamp, path, now),
         }
     }
 

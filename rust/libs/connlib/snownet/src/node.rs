@@ -1008,13 +1008,17 @@ where
 
                 return ControlFlow::Break(Ok(()));
             }
-            Err(sanstun::Error::ReplayedHandshakeInitiation { peer_static_public })
-                if self.replay_handshake_response(
-                    &peer_static_public,
-                    packet,
-                    (destination, from),
-                    now,
-                ) =>
+            Err(sanstun::Error::ReplayedHandshakeInitiation {
+                peer_static_public,
+                sender_index,
+                timestamp,
+            }) if self.replay_handshake_response(
+                &peer_static_public,
+                sender_index,
+                timestamp,
+                (destination, from),
+                now,
+            ) =>
             {
                 return ControlFlow::Break(Ok(()));
             }
@@ -1078,13 +1082,17 @@ where
     fn replay_handshake_response(
         &mut self,
         peer: &PublicKey,
-        init: &[u8],
+        sender_index: u32,
+        timestamp: u128,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
         self.connections
             .get_established_mut_by_public_key(peer.to_bytes(), now)
-            .is_ok_and(|(_, c)| c.agent.replay_cached_response(init, path, now))
+            .is_ok_and(|(_, c)| {
+                c.agent
+                    .replay_cached_response(sender_index, timestamp, path, now)
+            })
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
@@ -1869,13 +1877,9 @@ where
         let pending = match packet {
             ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
-                    Agent::Path(agent) => agent.handle_handshake_initiation(
-                        &mut self.tunnel,
-                        init,
-                        datagram,
-                        path,
-                        now,
-                    ),
+                    Agent::Path(agent) => {
+                        agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
+                    }
                     Agent::Ice(_) => self
                         .tunnel
                         .handle_handshake_initiation(init, now)

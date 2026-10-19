@@ -225,18 +225,26 @@ fn responder_dedup_replays_within_window_then_expires() {
 
     // The interface rejects a replay; one inside the window is answered from the cache.
     let replay_at = now + RESPONDER_DEDUP_TTL - ms(1);
-    assert!(
-        hs.responder_interface
-            .receive(path.1, &hs.init, replay_at)
-            .is_err()
-    );
-    assert!(a.replay_cached_response(&hs.init, path, replay_at));
+    let Err(sanstun::Error::ReplayedHandshakeInitiation {
+        sender_index,
+        timestamp,
+        ..
+    }) = hs.responder_interface.receive(path.1, &hs.init, replay_at)
+    else {
+        panic!("expected a replayed initiation");
+    };
+    assert!(a.replay_cached_response(sender_index, timestamp, path, replay_at));
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 
     a.handle_timeout(now + RESPONDER_DEDUP_TTL);
     let _ = a.transmits();
 
-    assert!(!a.replay_cached_response(&hs.init, path, now + RESPONDER_DEDUP_TTL + secs(1)));
+    assert!(!a.replay_cached_response(
+        sender_index,
+        timestamp,
+        path,
+        now + RESPONDER_DEDUP_TTL + secs(1)
+    ));
     assert!(a.poll_transmit().is_none(), "cache expired");
 }
 
@@ -900,7 +908,7 @@ impl AgentExt for PathAgent {
         };
         match packet {
             ReceivedMessage::HandshakeInitiation(init) => {
-                self.handle_handshake_initiation(tunnel, init, bytes, path, now)
+                self.handle_handshake_initiation(tunnel, init, path, now)
             }
             ReceivedMessage::HandshakeResponse(response) => {
                 self.handle_handshake_response(tunnel, response, bytes, path, now)
