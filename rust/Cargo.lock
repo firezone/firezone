@@ -6722,7 +6722,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=handshake-initiation-getters#8f6d13f954e80f1f789c5c8a6d4ace5758f491fe"
+source = "git+https://github.com/firezone/sanstun?branch=main#9db245f760c9bcced7bf98fbe120c9827ff6ebbd"
 dependencies = [
  "blake2",
  "chacha20",
