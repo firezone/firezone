@@ -13,7 +13,7 @@ use itertools::Itertools as _;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    mem,
+    iter, mem,
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
@@ -106,9 +106,12 @@ impl SimGateway {
         let by_socket = |a: &(SocketAddr, IpPacket), b: &(SocketAddr, IpPacket)| a.0 <= b.0;
 
         // DNS answers leave by transport, then by socket, whichever side of the Gateway serves them.
-        let packets = own_udp_answers
-            .into_iter()
-            .merge_by(network_udp_answers, by_socket)
+        let packets = iter::empty()
+            .chain(
+                own_udp_answers
+                    .into_iter()
+                    .merge_by(network_udp_answers, by_socket),
+            )
             .chain(
                 own_tcp_answers
                     .into_iter()

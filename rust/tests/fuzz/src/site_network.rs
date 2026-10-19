@@ -63,8 +63,10 @@ pub(crate) struct SiteNetwork {
     routes: Routes,
 
     dns_servers: DnsServers,
-    /// The TCP server of each `(domain, port)`, serving every address the Gateway resolved the domain to.
-    tcp_servers: BTreeMap<(DomainName, u16), tcp::Server>,
+    /// The TCP resources that probes try to reach, one server per `(domain, port)`.
+    ///
+    /// Each serves every address the Gateway resolved its domain to.
+    tcp_services: BTreeMap<(DomainName, u16), tcp::Server>,
     /// Answers TCP to any address without a TCP server with a reset.
     closed_tcp_ports: tcp::Server,
 }
@@ -80,10 +82,10 @@ pub(crate) struct Delivery {
 impl SiteNetwork {
     pub(crate) fn new(
         routes: Routes,
-        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
+        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
     ) -> Self {
-        let tcp_servers = tcp_services
+        let tcp_services = tcp_resources
             .into_iter()
             .flat_map(|(domain, ports)| ports.into_iter().map(move |port| (domain.clone(), port)))
             .map(|(domain, port)| {
@@ -99,7 +101,7 @@ impl SiteNetwork {
         Self {
             routes,
             dns_servers: DnsServers::default(),
-            tcp_servers,
+            tcp_services,
             closed_tcp_ports: tcp::Server::new(now),
         }
     }
@@ -177,7 +179,7 @@ impl SiteNetwork {
             let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
             if icmp_error.is_none()
-                && let Some(server) = self.tcp_server_for(socket, remote, &resolved_to)
+                && let Some(server) = self.tcp_service_for(socket, remote, &resolved_to)
             {
                 server.handle_inbound(packet.clone());
 
@@ -221,7 +223,7 @@ impl SiteNetwork {
     }
 
     pub(crate) fn poll_tcp_servers(&mut self, now: Instant) -> Vec<IpPacket> {
-        self.tcp_servers
+        self.tcp_services
             .values_mut()
             .chain([&mut self.closed_tcp_ports])
             .flat_map(|server| {
@@ -233,7 +235,7 @@ impl SiteNetwork {
     }
 
     pub(crate) fn drop_unfinished_tcp_connections(&mut self) {
-        for server in self.tcp_servers.values_mut() {
+        for server in self.tcp_services.values_mut() {
             server.drop_unfinished();
         }
     }
@@ -243,24 +245,24 @@ impl SiteNetwork {
     ///
     /// A host keeps serving after its domain points elsewhere: a Gateway translates to the
     /// addresses it last resolved until the Client re-resolves the domain.
-    fn tcp_server_for(
+    fn tcp_service_for(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
         resolved_to: impl Fn(&DomainName, IpAddr) -> bool,
     ) -> Option<&mut tcp::Server> {
         let key = self
-            .tcp_servers
+            .tcp_services
             .iter()
             .find(|(_, server)| server.is_established(local, remote))
             .or_else(|| {
-                self.tcp_servers.iter().find(|((domain, port), _)| {
+                self.tcp_services.iter().find(|((domain, port), _)| {
                     *port == local.port() && resolved_to(domain, local.ip())
                 })
             })
             .map(|(key, _)| key.clone())?;
 
-        self.tcp_servers.get_mut(&key)
+        self.tcp_services.get_mut(&key)
     }
 }
 
