@@ -223,16 +223,17 @@ fn responder_dedup_replays_within_window_then_expires() {
     a.drain_events();
     let _ = a.transmits();
 
-    // The interface rejects a replay; one inside the window is answered from the cache.
+    // The tunnel rejects a replay; one inside the window is answered from the cache.
     let replay_at = now + RESPONDER_DEDUP_TTL - ms(1);
-    let Err(sanstun::Error::ReplayedHandshakeInitiation(replayed)) =
-        hs.responder_interface.receive(path.1, &hs.init, replay_at)
-    else {
-        panic!("expected a replayed initiation");
-    };
     assert!(
-        a.handle_replayed_handshake_initiation(replayed, path, replay_at)
-            .is_ok()
+        a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            path,
+            replay_at
+        )
+        .is_ok()
     );
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 
@@ -240,14 +241,15 @@ fn responder_dedup_replays_within_window_then_expires() {
     let _ = a.transmits();
 
     let expired_at = now + RESPONDER_DEDUP_TTL + secs(1);
-    let Err(sanstun::Error::ReplayedHandshakeInitiation(replayed)) =
-        hs.responder_interface.receive(path.1, &hs.init, expired_at)
-    else {
-        panic!("expected a replayed initiation");
-    };
     assert!(matches!(
-        a.handle_replayed_handshake_initiation(replayed, path, expired_at),
-        Err(sanstun::Error::ReplayedHandshakeInitiation(_))
+        a.receive(
+            &mut hs.responder,
+            &mut hs.responder_interface,
+            &hs.init,
+            path,
+            expired_at
+        ),
+        Err(sanstun::Error::ReplayedHandshakeInitiation)
     ));
     assert!(a.poll_transmit().is_none(), "cache expired");
 }

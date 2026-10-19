@@ -1058,13 +1058,6 @@ where
 
                 return ControlFlow::Break(Ok(()));
             }
-            Err(sanstun::Error::ReplayedHandshakeInitiation(init)) => {
-                return ControlFlow::Break(self.handle_replayed_handshake_initiation(
-                    init,
-                    (destination, from),
-                    now,
-                ));
-            }
             // If the packet is not a WireGuard packet, bail early.
             Err(sanstun::Error::InvalidPacket) => {
                 tracing::debug!(packet = %hex::encode(packet));
@@ -1126,25 +1119,6 @@ where
                 pending,
             )),
         }
-    }
-
-    /// Lets the connection to the initiating peer answer `init` from its cache.
-    // `#[cold]` keeps this lookup from bloating the inlined path every data message takes.
-    #[cold]
-    fn handle_replayed_handshake_initiation(
-        &mut self,
-        init: sanstun::ReplayedHandshakeInitiation,
-        path: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) -> Result<()> {
-        let (_, _, connection) = self
-            .connections
-            .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now)?;
-
-        connection
-            .agent
-            .handle_replayed_handshake_initiation(init, path, now)
-            .context("Failed to verify WireGuard packet")
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
