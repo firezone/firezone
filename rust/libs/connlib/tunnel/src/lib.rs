@@ -308,33 +308,35 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in run.inspect(|r| udp_received.record(r.packet)) {
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
-                                }) {
-                                Ok(Some(packet)) => {
-                                    let packet = packet.with_ecn_from_transport(received.ecn);
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
 
-                                    tun_transmitted.record(&packet);
-                                    self.io.queue_tun(packet);
-                                }
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
-
-                        self.io.flush_tun_batch();
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }
@@ -512,33 +514,35 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in run.inspect(|r| udp_received.record(r.packet)) {
-                            match self
-                                .role_state
-                                .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
-                                }) {
-                                Ok(Some(packet)) => {
-                                    let packet = packet.with_ecn_from_transport(received.ecn);
+                    for received in batches
+                        .iter_mut()
+                        .flat_map(|batch| batch.drain())
+                        .inspect(|r| udp_received.record(r.packet))
+                    {
+                        match self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .with_context(|| FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            }) {
+                            Ok(Some(packet)) => {
+                                let packet = packet.with_ecn_from_transport(received.ecn);
 
-                                    tun_transmitted.record(&packet);
-                                    self.io.queue_tun(packet);
-                                }
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
-                            };
-                        }
-
-                        self.io.flush_tun_batch();
+                                tun_transmitted.record(&packet);
+                                self.io.queue_tun(packet);
+                            }
+                            Ok(None) => self.needs_timeout = true,
+                            Err(e) => error.push(e),
+                        };
                     }
+
+                    self.io.flush_tun_batch();
 
                     tick.want_continue();
                 }

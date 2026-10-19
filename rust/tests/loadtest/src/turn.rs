@@ -703,7 +703,7 @@ async fn receive(
                     }
                 };
 
-                for datagram in batch.drain().flatten() {
+                for datagram in batch.drain() {
                     record_datagram(&mut stats, &counters, datagram.packet, payload_size);
                 }
             }
@@ -1139,7 +1139,7 @@ async fn recv_response(socket: &PerfUdpSocket, server: SocketAddr) -> Result<Vec
     loop {
         let mut batch = socket.recv_from().await?;
 
-        for datagram in batch.drain().flatten() {
+        for datagram in batch.drain() {
             if datagram.from == server {
                 return Ok(datagram.packet.to_vec());
             }

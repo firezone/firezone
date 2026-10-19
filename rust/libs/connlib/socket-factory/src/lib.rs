@@ -1023,26 +1023,23 @@ impl<B> DatagramBatch<B> {
         self.len() == 0
     }
 
-    /// Removes all datagrams from the batch, in order, grouped into runs of consecutive
-    /// datagrams from the same remote address; draining again yields nothing.
-    ///
-    /// With GRO, a run is typically a single receive buffer; without it, consecutive buffers
-    /// of one sender.
+    /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// When [`quinn_udp`] returns us the buffers, it will have populated the
     /// [`quinn_udp::RecvMeta`]s accordingly. Thus, our main job here is to loop over the
     /// `buffers` and `metas` pair-wise, inspect the `meta` and segment the data within
     /// the buffer accordingly.
-    pub fn drain(&mut self) -> impl Iterator<Item = impl Iterator<Item = DatagramIn<'_>>>
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<'_>>
     where
         B: Deref<Target = Vec<u8>>,
     {
         let buf_index = if self.drained { self.buffers.len() } else { 0 };
         self.drained = true;
 
-        Runs {
+        Drain {
             batch: self,
             buf_index,
+            segment_index: 0,
         }
     }
 }
@@ -1057,43 +1054,13 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
 }
 
 /// The iterator behind [`DatagramBatch::drain`].
-struct Runs<'a, B: 'static> {
+struct Drain<'a, B: 'static> {
     batch: &'a DatagramBatch<B>,
     buf_index: usize,
-}
-
-impl<'a, B> Iterator for Runs<'a, B> {
-    type Item = Run<'a, B>;
-
-    fn next(&mut self) -> Option<Run<'a, B>> {
-        let metas = &self.batch.metas[self.buf_index..];
-        let from = metas.first()?.addr;
-        let len = metas
-            .iter()
-            .position(|m| m.addr != from)
-            .unwrap_or(metas.len());
-
-        let start = self.buf_index;
-        self.buf_index += len;
-
-        Some(Run {
-            batch: self.batch,
-            buf_index: start,
-            buf_end: self.buf_index,
-            segment_index: 0,
-        })
-    }
-}
-
-/// Consecutive receive buffers of one [`DatagramBatch`] from the same remote address.
-struct Run<'a, B: 'static> {
-    batch: &'a DatagramBatch<B>,
-    buf_index: usize,
-    buf_end: usize,
     segment_index: usize,
 }
 
-impl<'a, B> Iterator for Run<'a, B>
+impl<'a, B> Iterator for Drain<'a, B>
 where
     B: Deref<Target = Vec<u8>>,
 {
@@ -1103,7 +1070,7 @@ where
         let batch = self.batch;
 
         loop {
-            if self.buf_index >= self.buf_end {
+            if self.buf_index >= batch.buffers.len() {
                 return None;
             }
 
@@ -1260,7 +1227,7 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 3);
-        let mut iter = batch.drain().flatten();
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
         assert_eq!(iter.next().unwrap().packet, b"foobar2");
@@ -1292,48 +1259,10 @@ mod tests {
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 1);
 
-        assert_eq!(batch.drain().flatten().count(), 1);
+        assert_eq!(batch.drain().count(), 1);
 
-        assert_eq!(batch.drain().flatten().count(), 0);
+        assert_eq!(batch.drain().count(), 0);
         assert!(batch.is_empty());
-    }
-
-    #[test]
-    fn drain_cuts_runs_where_the_remote_address_changes() {
-        let remote_a = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000);
-        let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
-        let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
-
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(b"foo1foo2".to_vec()),
-            DummyBuffer(b"foo3".to_vec()),
-            DummyBuffer(b"bar1".to_vec()),
-            DummyBuffer(b"foo4".to_vec()),
-        ]);
-
-        let mut metas = DUMMY_METAS.pull();
-        metas.extend([
-            recv_meta(remote_a, local, 8, 4),
-            recv_meta(remote_a, local, 4, 4),
-            recv_meta(remote_b, local, 4, 4),
-            recv_meta(remote_a, local, 4, 4),
-        ]);
-
-        let mut batch = DatagramBatch::new(buffers, metas, 0, 4);
-        let runs = batch
-            .drain()
-            .map(|run| run.map(|d| d.packet.to_vec()).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
-
-        assert_eq!(
-            runs,
-            vec![
-                vec![b"foo1".to_vec(), b"foo2".to_vec(), b"foo3".to_vec()],
-                vec![b"bar1".to_vec()],
-                vec![b"foo4".to_vec()],
-            ]
-        );
     }
 
     /// A zero stride on a non-empty buffer must not stall the iterator: the receive
@@ -1363,7 +1292,7 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
-        let mut iter = batch.drain().flatten();
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foo");
         assert!(iter.next().is_none());
@@ -1411,7 +1340,7 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
-        let mut iter = batch.drain().flatten();
+        let mut iter = batch.drain();
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
         assert!(iter.next().is_none());
