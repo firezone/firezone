@@ -146,7 +146,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn flush_tun(&mut self) {
-        let poll = self.io.tun.poll_send_ready(self.cx);
+        let poll = self.io.tun.poll_flush(self.cx);
 
         self.tun_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -409,7 +409,7 @@ impl Io {
             any_pending = true
         }
 
-        if self.tun.poll_send_ready(cx)?.is_pending() {
+        if self.tun.poll_flush(cx)?.is_pending() {
             any_pending = true;
         }
 
