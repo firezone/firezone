@@ -1,9 +1,9 @@
 use super::dns_records::DnsRecords;
-use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
+use super::site_network::Routes;
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -54,8 +54,8 @@ pub struct ReferenceState {
     /// The ports each DNS Resource domain serves TCP on.
     pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
 
-    /// A subset of all DNS resource records that have been selected to produce an ICMP error.
-    pub(crate) icmp_error_hosts: IcmpErrorHosts,
+    /// The routes of the network behind every site's Gateways.
+    pub(crate) site_routes: Routes,
 
     pub(crate) network: RoutingTable,
 
@@ -82,7 +82,7 @@ impl ReferenceState {
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
         tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
-        icmp_error_hosts: IcmpErrorHosts,
+        site_routes: Routes,
         network: RoutingTable,
     ) -> Self {
         Self {
@@ -95,7 +95,7 @@ impl ReferenceState {
             global_dns_records,
             domain_tree,
             tcp_resources,
-            icmp_error_hosts,
+            site_routes,
             network,
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
@@ -204,7 +204,7 @@ impl ReferenceState {
             Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
-                let icmp_error_hosts = &self.icmp_error_hosts;
+                let site_routes = &self.site_routes;
 
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
@@ -222,7 +222,7 @@ impl ReferenceState {
                             gateway,
                             upstream_do53,
                             global_dns_records,
-                            icmp_error_hosts,
+                            site_routes,
                         );
 
                         if let Some(listing) = listing {

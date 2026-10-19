@@ -311,11 +311,10 @@ pub(super) fn generate(
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let mut records = arb_dns_record_set(g);
-            // Like at the start, a TCP-serving domain never resolves to an ICMP-error host.
+            // Like at the start, a TCP-serving domain never resolves to an unreachable address.
             if state.tcp_resources.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {
-                    record_ip(record)
-                        .is_some_and(|ip| state.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+                    record_ip(record).is_some_and(|ip| state.site_routes.is_unreachable(ip))
                 }) {}
             }
             Transition::UpdateDnsRecords { domain, records }

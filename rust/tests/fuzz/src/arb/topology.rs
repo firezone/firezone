@@ -6,7 +6,7 @@ use std::{
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData};
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use smallvec::SmallVec;
 use tunnel_proto::MaliciousBehaviour;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
@@ -18,13 +18,13 @@ use super::values::{
     arb_system_dns_servers, arb_tree_name, arb_upstream_do53_servers, arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
-use crate::icmp_error_hosts::{IcmpError, IcmpErrorHosts};
 use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
 pub(super) fn generate(
@@ -36,9 +36,8 @@ pub(super) fn generate(
     let gateways = arb_gateways(g, portal, &domain_tree);
     let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
-    let icmp_error_hosts =
-        arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
-    let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts);
+    let site_routes = arb_site_routes(g, &dns_resource_records, portal.upstream_do53());
+    let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &site_routes);
 
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
@@ -70,7 +69,7 @@ pub(super) fn generate(
         global_dns_records,
         domain_tree,
         tcp_resources,
-        icmp_error_hosts,
+        site_routes,
         network,
     )
 }
@@ -536,13 +535,12 @@ fn arb_global_dns_records(g: &mut Generator, domain_tree: &[DomainName]) -> DnsR
         .collect::<DnsRecords>()
 }
 
-fn arb_icmp_error_hosts(
+fn arb_site_routes(
     g: &mut Generator,
-    clients: &BTreeMap<ClientId, Host<RefClient>>,
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
-) -> IcmpErrorHosts {
-    let mut entries = records
+) -> Routes {
+    let mut unreachable = records
         .ips_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
@@ -559,28 +557,20 @@ fn arb_icmp_error_hosts(
     // recursive queries tunnelled to it fail with an ICMP error instead of a response.
     for server in upstream_do53 {
         if g.flip(25) {
-            entries.insert(server.ip, arb_icmp_error(g));
+            unreachable.insert(server.ip, arb_icmp_error(g));
         }
     }
 
-    // Traffic to a Client terminates at its TUN IP; nothing is routed beyond it.
-    // A port that nothing listens on is therefore the only error it can originate.
-    //
-    // Only a Client that ignores its own flow tracking gets to answer this way: an
-    // honest build drops the error before it leaves, because no flow of its own and
-    // no route to the peer covers it.
-    for client in clients.values() {
-        let client = client.inner();
+    let default_routes = [
+        IpNetwork::V4(Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()),
+        IpNetwork::V6(Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0).unwrap()),
+    ]
+    .map(|network| (network, RouteType::Deliver));
+    let host_routes = unreachable
+        .into_iter()
+        .map(|(ip, error)| (IpNetwork::from(ip), RouteType::Unreachable(error)));
 
-        if !client.malicious_behaviour.send_untracked_icmp_errors {
-            continue;
-        }
-
-        entries.insert(client.tunnel_ip4.into(), IcmpError::Port);
-        entries.insert(client.tunnel_ip6.into(), IcmpError::Port);
-    }
-
-    IcmpErrorHosts::from_entries(entries)
+    Routes::new(default_routes.into_iter().chain(host_routes))
 }
 
 fn arb_icmp_error(g: &mut Generator) -> IcmpError {
@@ -596,7 +586,7 @@ fn arb_icmp_error(g: &mut Generator) -> IcmpError {
 fn arb_tcp_resources(
     g: &mut Generator,
     records: &DnsRecords,
-    icmp_error_hosts: &IcmpErrorHosts,
+    site_routes: &Routes,
 ) -> BTreeMap<DomainName, BTreeSet<u16>> {
     let mut all_domains = records.domains_iter().collect::<Vec<_>>();
     if all_domains.is_empty() {
@@ -613,7 +603,7 @@ fn arb_tcp_resources(
 
             let has_icmp_error = records
                 .domain_ips_iter(&domain)
-                .any(|ip| icmp_error_hosts.icmp_error_for_ip(ip).is_some());
+                .any(|ip| site_routes.is_unreachable(ip));
             let has_ips = records.domain_ips_iter(&domain).next().is_some();
             if has_icmp_error || !has_ips {
                 return None;

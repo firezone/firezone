@@ -1,5 +1,9 @@
 use super::{
-    dns_records::DnsRecords, reference::PrivateKey, sim_gateway::SimGateway, sim_net::ExecMutScope,
+    dns_records::DnsRecords,
+    reference::PrivateKey,
+    sim_gateway::SimGateway,
+    sim_net::ExecMutScope,
+    site_network::{Routes, SiteNetwork},
 };
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
@@ -43,6 +47,7 @@ impl RefGateway {
     pub(crate) fn init(
         self,
         id: GatewayId,
+        routes: Routes,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: DateTime<Utc>,
@@ -60,7 +65,9 @@ impl RefGateway {
             v6: self.tunnel_ip6,
         });
 
-        SimGateway::new(id, sut, tcp_services, self.site_specific_dns_records, now)
+        let network = SiteNetwork::new(routes, tcp_services, now);
+
+        SimGateway::new(id, sut, network, self.site_specific_dns_records)
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

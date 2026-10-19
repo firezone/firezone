@@ -801,12 +801,8 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         }
 
-        let responds_with_icmp_error = remote_responds_with_icmp_error(
-            expected,
-            received,
-            remote,
-            &reference.icmp_error_hosts,
-        );
+        let responds_with_icmp_error =
+            remote_responds_with_icmp_error(expected, received, remote, reference);
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),
             received.packet.destination().is_ipv6(),

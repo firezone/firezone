@@ -1,5 +1,4 @@
 use super::{
-    icmp_error_hosts::IcmpErrorHosts,
     probe::{
         DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
         ProbeId, ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse,
@@ -39,7 +38,7 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         &ref_state.expected_probes,
         &all_ref_clients,
         state,
-        &ref_state.icmp_error_hosts,
+        ref_state,
     );
     assert_dns_nat(state);
 
@@ -67,7 +66,7 @@ fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     state: &TunnelTest,
-    icmp_error_hosts: &IcmpErrorHosts,
+    ref_state: &ReferenceState,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -172,7 +171,7 @@ fn assert_probes(
                     received_request,
                     received_response,
                     expected_remote,
-                    icmp_error_hosts,
+                    ref_state,
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
@@ -456,10 +455,10 @@ fn assert_received_response(
     received_request: &ReceivedRequest,
     received_response: &ReceivedResponse,
     remote: Remote,
-    icmp_error_hosts: &IcmpErrorHosts,
+    ref_state: &ReferenceState,
 ) {
     let responds_with_icmp_error =
-        remote_responds_with_icmp_error(expected, received_request, remote, icmp_error_hosts);
+        remote_responds_with_icmp_error(expected, received_request, remote, ref_state);
 
     if responds_with_icmp_error {
         assert_icmp_error_response(expected, submitted_request, received_response, None);
