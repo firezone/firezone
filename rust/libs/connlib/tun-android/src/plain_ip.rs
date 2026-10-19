@@ -112,7 +112,7 @@ where
                             #[cfg(debug_assertions)]
                             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-                            let Err(packet) = batch.try_push_same_flow(packet) else {
+                            let Err(packet) = batch.try_push(packet) else {
                                 continue;
                             };
 

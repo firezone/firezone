@@ -88,7 +88,7 @@ impl Device {
         }
 
         if let Err(packet) = self.current_batch.try_push(packet) {
-            // The batch is full: complete it and start a new one.
+            // The batch is full or the flow changed: complete it and start a new one.
             let batch = mem::replace(&mut self.current_batch, PacketFlow::new(packet));
 
             self.pending_batches.push_back(batch);
@@ -179,8 +179,8 @@ mod tests {
         let (test_tun, mut send_rx, _send_tx) = TestTun::with_capacity(4);
         device.set_tun(Box::new(test_tun));
 
-        for i in 0..(2 * tun::MAX_BATCH_SIZE + tun::MAX_BATCH_SIZE / 2) {
-            device.queue(test_packet(i as u16));
+        for _ in 0..(2 * tun::MAX_BATCH_SIZE + tun::MAX_BATCH_SIZE / 2) {
+            device.queue(test_packet(1));
         }
         device.flush_batch();
 

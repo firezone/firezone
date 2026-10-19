@@ -249,47 +249,26 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    let segments = match virtio::split(&buf[..len]) {
-                        Ok(segments) => segments,
+                    match virtio::split(&buf[..len]) {
+                        Ok(mut segments) => {
+                            batch_size_histogram
+                                .record(segments.len() as u64, &recv_metric_attributes());
+
+                            for packet in segments.drain(..) {
+                                #[cfg(debug_assertions)]
+                                tracing::trace!(target: "wire::dev::recv", ?packet);
+
+                                if let Err(packet) = batch.try_push(packet) {
+                                    inbound_tx
+                                        .send(mem::replace(&mut batch, PacketFlow::new(packet)))
+                                        .await?;
+                                }
+                            }
+                        }
                         Err(e) if e.any_is::<ip_packet::Fragmented>() => {
                             tracing::debug!("{e:#}"); // Log on debug to be less noisy.
-                            continue;
                         }
-                        Err(e) => {
-                            tracing::warn!("{e:#}");
-                            continue;
-                        }
-                    };
-
-                    batch_size_histogram.record(segments.len() as u64, &recv_metric_attributes());
-
-                    // A super packet is a single flow and becomes a batch of its own; consecutive
-                    // plain packets of the same flow share one.
-                    let is_super_packet = segments.len() > 1;
-
-                    if is_super_packet && !batch.is_empty() {
-                        inbound_tx.send(mem::take(&mut batch)).await?;
-                    }
-
-                    for packet in segments {
-                        #[cfg(debug_assertions)]
-                        tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                        let pushed = if is_super_packet {
-                            batch.try_push(packet)
-                        } else {
-                            batch.try_push_same_flow(packet)
-                        };
-
-                        if let Err(packet) = pushed {
-                            inbound_tx
-                                .send(mem::replace(&mut batch, PacketFlow::new(packet)))
-                                .await?;
-                        }
-                    }
-
-                    if is_super_packet {
-                        inbound_tx.send(mem::take(&mut batch)).await?;
+                        Err(e) => tracing::warn!("{e:#}"),
                     }
                 }
 
