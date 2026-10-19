@@ -911,7 +911,9 @@ bufferpool::buffer_pool!(
     "udp-recv-bytes",
     batch: cfg_select! {
         apple => { quinn_udp::BATCH_SIZE }
-        _ => { 2 }
+        target_os = "android" => { 2 }
+        // A magazine holds two batches: enough to take back the unused buffers of a receive.
+        _ => { quinn_udp::BATCH_SIZE.div_ceil(2) }
     }
 );
 bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4);
