@@ -133,15 +133,23 @@ pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData>
         .collect::<BTreeSet<_>>()
 }
 
+const SITE_NAMES: [&str; 3] = ["sydney", "us-west", "us-east"];
+
 pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> StubPortal {
     let internet_site = Site {
         id: g.fresh_site_id(),
         name: "Internet".to_owned(),
     };
     let regular_sites = (0..g.count(1, 3))
-        .map(|_| Site {
-            id: g.fresh_site_id(),
-            name: g.lower_ascii(4, 10),
+        .map(|i| {
+            let id = g.fresh_site_id();
+            // Consumes the bytes a random name used to, so existing corpus inputs keep their meaning.
+            let _ = g.lower_ascii(4, 10);
+
+            Site {
+                id,
+                name: SITE_NAMES[i].to_owned(),
+            }
         })
         .collect::<SmallVec<[_; 3]>>();
 
