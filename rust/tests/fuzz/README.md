@@ -29,9 +29,9 @@ Each distinct value recorded at an annotation site is a feature scoped to that s
 Replay evaluates annotations without recording feedback.
 
 Pull-request CI checks that discovery coverage is stable within and across forkservers and replays the committed corpora.
-The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows corpora and retains failing inputs for regression testing.
-On the default branch it proposes corpus PRs; dispatching it on another branch pushes results back to that branch.
-Use that workflow when changes require new inputs, including changes to how the tunnel generator interprets existing inputs.
+The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows corpora and retains failing inputs for regression testing; the [monthly workflow](../../../.github/workflows/fuzz-cmin.yml) minimizes them.
+On the default branch they propose corpus PRs; dispatching either on another branch pushes results back to that branch.
+Use the nightly workflow when changes require new inputs, including changes to how the tunnel generator interprets existing inputs, and the monthly one when changes make existing inputs redundant.
 
 ## Usage
 
