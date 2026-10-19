@@ -66,7 +66,7 @@ where
             .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
 
         self.established_by_wireguard_session_index
-            .remove(&connection.index);
+            .remove(&connection.tunnel.id());
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
@@ -75,7 +75,7 @@ where
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
         self.disconnected_session_indices
-            .insert(connection.index, now);
+            .insert(connection.tunnel.id(), now);
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.disconnected_ufrags.insert(ufrag.to_owned(), now);
         }
@@ -142,7 +142,7 @@ where
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
             if now >= goodbye.deadline {
-                tracing::debug!(id = %cid, state = %connection.state, index = ?connection.index, "Connection closed proactively (failed to send goodbye in time)");
+                tracing::debug!(id = %cid, state = %connection.state, index = ?connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
                 connection.state = ConnectionState::Failed;
                 continue;
             }
@@ -206,9 +206,9 @@ where
     pub(crate) fn insert_established(
         &mut self,
         id: TId,
-        index: TunnelId,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
+        let index = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
         let existing = self.established.insert(id, connection);
 
@@ -638,7 +638,7 @@ mod tests {
         let now = Instant::now();
 
         let conn = new_connection(Some(1), [1u8; 32]);
-        connections.insert_established(1, conn.index, conn);
+        connections.insert_established(1, conn);
 
         connections.clear_relays(std::iter::once(1u32));
 
@@ -660,7 +660,7 @@ mod tests {
 
         let mut conn = new_connection(Some(1), [1u8; 32]);
         conn.agent = crate::agent::Agent::path();
-        connections.insert_established(1, conn.index, conn);
+        connections.insert_established(1, conn);
 
         connections.reset_for_roam(now);
 
@@ -711,9 +711,9 @@ mod tests {
     ) -> (u32, TunnelId, PublicKey) {
         let conn = new_connection(Some(0), [1u8; 32]);
         let id = 1;
-        let idx = conn.index;
+        let idx = conn.tunnel.id();
         let key = conn.tunnel.remote_static_public();
-        connections.insert_established(id, conn.index, conn);
+        connections.insert_established(id, conn);
 
         (id, idx, key)
     }
@@ -766,7 +766,6 @@ mod tests {
 
         Connection {
             agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
-            index: tunnel.id(),
             tunnel,
             preshared_key: StaticSecret::from(Zeroizing::new([0; 32])),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),

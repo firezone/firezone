@@ -7,7 +7,6 @@ use std::time::Instant;
 
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
-use sanstun::Tunnel;
 
 use crate::{IceConfig, IceRole};
 
@@ -236,12 +235,6 @@ impl Agent {
         match self {
             Self::Ice(_) => None,
             Self::Path(path) => path.poll_event(),
-        }
-    }
-
-    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, now);
         }
     }
 

@@ -437,15 +437,6 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
-    pub fn initiate_handshake(&mut self, tunnel: &mut Tunnel, now: Instant) {
-        let Some(init) = tunnel.initiate_handshake(now) else {
-            tracing::debug!("WireGuard declined to emit a HandshakeInit");
-            return;
-        };
-
-        self.send_handshake_initiation(init, now);
-    }
-
     pub fn send_handshake_initiation(&mut self, init: Datagram, now: Instant) {
         self.last_now = Some(now);
 
