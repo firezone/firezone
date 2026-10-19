@@ -168,10 +168,7 @@ pub fn outbound_channel_for_test(capacity: usize) -> (OutboundTx, OutboundRx) {
 pub struct OutboundTx(PollSender<PacketFlow>);
 
 impl OutboundTx {
-    pub fn try_send(
-        &self,
-        batch: PacketFlow,
-    ) -> Result<(), mpsc::error::TrySendError<PacketFlow>> {
+    pub fn try_send(&self, batch: PacketFlow) -> Result<(), mpsc::error::TrySendError<PacketFlow>> {
         match self.0.get_ref() {
             Some(tx) => tx.try_send(batch),
             None => Err(mpsc::error::TrySendError::Closed(batch)),
