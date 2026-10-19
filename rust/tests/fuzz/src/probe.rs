@@ -7,7 +7,9 @@ use std::{
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::icmp_error_hosts::IcmpErrorHosts;
+use crate::ref_client::RefClient;
+use crate::ref_gateway::RefGateway;
+use crate::site_network::{IcmpError, RouteType};
 use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
@@ -241,25 +243,53 @@ pub(crate) struct ExpectedProbe {
     pub(crate) trace_requirement: TraceRequirement,
 }
 
-pub(crate) fn remote_responds_with_icmp_error(
+/// How the remote answers a request it received.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RemoteResponse {
+    Echo,
+    /// A TCP reset.
+    Reset,
+    /// An ICMP error, of the given kind if known.
+    IcmpError(Option<IcmpError>),
+    Nothing,
+}
+
+/// Returns how the remote answers `received_request`, given that its destination answers with
+/// `answer`.
+pub(crate) fn remote_response(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
-    remote: Remote,
-    icmp_error_hosts: &IcmpErrorHosts,
-) -> bool {
-    let is_icmp_peer = match (&expected.request, remote) {
-        (ProbeRequest::Icmp { .. }, Remote::Gateway(_)) => false,
-        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => true,
-        (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => false,
-        (ProbeRequest::Udp { .. }, Remote::Client(_)) => false,
-        (ProbeRequest::Tcp { .. }, Remote::Gateway(_)) => false,
-        (ProbeRequest::Tcp { .. }, Remote::Client(_)) => false,
+    answer: RemoteResponse,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+) -> RemoteResponse {
+    let peer = |client: ClientId| {
+        if ref_clients[&client]
+            .malicious_behaviour
+            .send_untracked_icmp_errors
+        {
+            return RemoteResponse::IcmpError(None);
+        }
+
+        answer
+    };
+    let network = |gateway: GatewayId| match ref_gateways[&gateway]
+        .routes
+        .route(received_request.packet.destination())
+    {
+        RouteType::Deliver => answer,
+        RouteType::Unreachable(error) => RemoteResponse::IcmpError(Some(error)),
+        RouteType::Blackhole => RemoteResponse::Nothing,
     };
 
-    !is_icmp_peer
-        && icmp_error_hosts
-            .icmp_error_for_ip(received_request.packet.destination())
-            .is_some()
+    match (&expected.request, received_request.remote) {
+        (ProbeRequest::Icmp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => answer,
+        (ProbeRequest::Udp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer(client),
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Tcp { .. }, Remote::Client(client)) => peer(client),
+    }
 }
 
 #[derive(Debug, Clone)]

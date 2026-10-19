@@ -23,12 +23,12 @@ public enum BundleHelper {
     Bundle.main.object(forInfoDictionaryKey: "NoTelemetry") as? String == "true"
   }
 
-  static var gitSha: String {
+  static var gitSha: String? {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty
-    else { return "unknown" }
+    else { return nil }
 
-    return String(gitSha.prefix(8))
+    return gitSha
   }
 
   /// The app group the app shares with its extensions, or `nil` when the bundle's

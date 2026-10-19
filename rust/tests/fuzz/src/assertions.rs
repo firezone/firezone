@@ -1,19 +1,21 @@
 use super::{
-    icmp_error_hosts::IcmpErrorHosts,
     probe::{
         DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
-        ProbeId, ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse,
-        Remote, SubmittedRequest, TraceRequirement, remote_responds_with_icmp_error,
+        ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace, ReceivedRequest, ReceivedResponse,
+        RejectionRemote, RejectionResponse, Remote, RemoteResponse, SubmittedRequest,
+        TraceRequirement, remote_response,
     },
     ref_client::RefClient,
+    ref_gateway::RefGateway,
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
+    site_network::{IcmpError, icmp_error_reply},
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::Destination,
 };
-use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
@@ -35,11 +37,16 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         .iter()
         .map(|(id, host)| (*id, host.inner()))
         .collect();
+    let all_ref_gateways = ref_state
+        .gateways
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
     assert_probes(
         &ref_state.expected_probes,
         &all_ref_clients,
+        &all_ref_gateways,
         state,
-        &ref_state.icmp_error_hosts,
     );
     assert_dns_nat(state);
 
@@ -66,8 +73,8 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
 fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
     state: &TunnelTest,
-    icmp_error_hosts: &IcmpErrorHosts,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -137,43 +144,36 @@ fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
                 }
             }
-            ExpectedOutcome::RoundTripCompleted(route) => {
-                let expected_remote = route.remote();
-                let [received_request] = trace.received_requests.as_slice() else {
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
-                    continue;
-                };
-
-                if received_request.remote != expected_remote {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+            ExpectedOutcome::RoundTripCompleted(route) => assert_round_trip(
+                expected,
+                &trace,
+                submitted_request,
+                route.remote(),
+                RemoteResponse::Echo,
+                ref_clients,
+                ref_gateways,
+            ),
+            // A SYN to a closed port reaches the network behind the Gateway like any other.
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                response: RejectionResponse::Reset,
+            } if matches!(
+                expected.request,
+                ProbeRequest::Tcp {
+                    write_len: None,
+                    ..
                 }
-                assert_received_request(expected, submitted_request, received_request, ref_clients);
-
-                let [received_response] = trace.received_responses.as_slice() else {
-                    if trace.received_responses.is_empty()
-                        && expected.trace_requirement
-                            == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
-                    {
-                        tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
-                        continue;
-                    }
-
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received response");
-                    continue;
-                };
-
-                if received_response.client != expected.origin {
-                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
-                }
-
-                assert_received_response(
+            ) =>
+            {
+                assert_round_trip(
                     expected,
+                    &trace,
                     submitted_request,
-                    received_request,
-                    received_response,
-                    expected_remote,
-                    icmp_error_hosts,
-                );
+                    Remote::Gateway(gateway),
+                    RemoteResponse::Reset,
+                    ref_clients,
+                    ref_gateways,
+                )
             }
             ExpectedOutcome::Rejected { response, .. } => {
                 let ([], [received_response], []) = (
@@ -209,6 +209,63 @@ fn assert_probes(
             }
         }
     }
+}
+
+/// Checks a probe that `expected_remote` received and answers with `answer` where its network
+/// delivers.
+fn assert_round_trip(
+    expected: &ExpectedProbe,
+    trace: &ProbeTrace,
+    submitted_request: &SubmittedRequest,
+    expected_remote: Remote,
+    answer: RemoteResponse,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+) {
+    let [received_request] = trace.received_requests.as_slice() else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
+        return;
+    };
+
+    if received_request.remote != expected_remote {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+    }
+    assert_received_request(expected, submitted_request, received_request, ref_clients);
+
+    let response = remote_response(
+        expected,
+        received_request,
+        answer,
+        ref_clients,
+        ref_gateways,
+    );
+    let [received_response] = trace.received_responses.as_slice() else {
+        if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
+            return;
+        }
+        if trace.received_responses.is_empty()
+            && expected.trace_requirement
+                == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
+        {
+            tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
+            return;
+        }
+
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received response");
+        return;
+    };
+
+    if received_response.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
+    }
+
+    assert_received_response(
+        expected,
+        submitted_request,
+        received_request,
+        received_response,
+        response,
+    );
 }
 
 /// Checks the gateway's stable DNS NAT mapping for each transport session.
@@ -455,16 +512,43 @@ fn assert_received_response(
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
     received_response: &ReceivedResponse,
-    remote: Remote,
-    icmp_error_hosts: &IcmpErrorHosts,
+    response: RemoteResponse,
 ) {
-    let responds_with_icmp_error =
-        remote_responds_with_icmp_error(expected, received_request, remote, icmp_error_hosts);
+    match response {
+        RemoteResponse::Echo => {
+            assert_echo_response(expected, submitted_request, received_response)
+        }
+        RemoteResponse::Reset => {
+            assert_reset_response(expected, submitted_request, received_response)
+        }
+        RemoteResponse::IcmpError(error) => {
+            assert_icmp_error_response(expected, submitted_request, received_response, None);
 
-    if responds_with_icmp_error {
-        assert_icmp_error_response(expected, submitted_request, received_response, None);
-    } else {
-        assert_echo_response(expected, submitted_request, received_response);
+            if let Some(error) = error {
+                assert_icmp_error_kind(expected, received_request, received_response, error);
+            }
+        }
+        RemoteResponse::Nothing => {
+            tracing::error!(target: "assertions", id = ?expected.id, "Received a response to a probe the network dropped");
+        }
+    }
+}
+
+/// Checks that the ICMP error the network answered `received_request` with reached the Client.
+fn assert_icmp_error_kind(
+    expected: &ExpectedProbe,
+    received_request: &ReceivedRequest,
+    received_response: &ReceivedResponse,
+    error: IcmpError,
+) {
+    let kind = |packet: &IpPacket| packet.icmp_error().ok().flatten().map(|(_, kind)| kind);
+    let expected_kind = icmp_error_reply(&received_request.packet, error)
+        .ok()
+        .and_then(|reply| kind(&reply));
+    let actual_kind = kind(&received_response.packet);
+
+    if actual_kind != expected_kind {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_kind, ?actual_kind, "Received probe response contains the wrong ICMP error");
     }
 }
 

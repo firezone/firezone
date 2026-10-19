@@ -69,7 +69,7 @@ android {
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
         val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
-        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
+        resValue("string", "git_sha", gitSha)
 
         // CI sets this for every build that is not a release, so nothing it builds reports.
         val noTelemetry = System.getenv("FIREZONE_NO_TELEMETRY") == "true"

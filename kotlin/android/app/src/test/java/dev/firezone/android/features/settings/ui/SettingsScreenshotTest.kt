@@ -172,6 +172,6 @@ private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.
         onCancel = {},
         // The advanced page shows the commit the app was built from, which changes with every
         // push; pin it so the image only changes when the UI does.
-        buildSha = "Build: \"00000000\"",
+        buildSha = "0000000000000000000000000000000000000000",
     )
 }
