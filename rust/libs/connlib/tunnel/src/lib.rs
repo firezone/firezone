@@ -283,7 +283,7 @@ impl ClientTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                dns_response,
+                dns_responses,
                 tcp_dns_queries: _,
                 udp_dns_queries: _,
                 device,
@@ -292,7 +292,7 @@ impl ClientTunnel {
                 mut error,
             }) = self.io.poll(cx)
             {
-                if let Some(response) = dns_response {
+                for response in dns_responses {
                     self.role_state.handle_dns_response(response, now);
                     self.needs_timeout = true;
 
@@ -498,7 +498,7 @@ impl GatewayTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                dns_response,
+                dns_responses,
                 tcp_dns_queries,
                 udp_dns_queries,
                 device,
@@ -507,7 +507,7 @@ impl GatewayTunnel {
                 mut error,
             }) = self.io.poll(cx)
             {
-                if let Some(response) = dns_response {
+                for response in dns_responses {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");
 

@@ -99,7 +99,7 @@ pub struct Input {
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
-    pub dns_response: Option<dns::RecursiveResponse>,
+    pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
 
@@ -147,7 +147,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
                 decrypted: None,
                 tcp_dns_queries: Vec::new(),
                 udp_dns_queries: Vec::new(),
-                dns_response: None,
+                dns_responses: Vec::new(),
                 error: TunnelError::default(),
             },
         }
@@ -244,7 +244,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         }
     }
 
-    fn poll_dns_response(&mut self) {
+    fn poll_dns_responses(&mut self) {
         while let Poll::Ready((result, mut meta)) = self.io.dns_queries.poll_unpin(self.cx) {
             let message = match result {
                 Ok(message) => message,
@@ -270,7 +270,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
                 continue;
             }
 
-            self.input.dns_response = Some(dns::RecursiveResponse {
+            self.input.dns_responses.push(dns::RecursiveResponse {
                 server: meta.server,
                 query: meta.query,
                 message,
@@ -280,8 +280,6 @@ impl<'a, 'cx> PollState<'a, 'cx> {
                 started_at: meta.started_at,
                 recursion: dns::Recursion::Local,
             });
-
-            return;
         }
     }
 
@@ -293,7 +291,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             && input.decrypted.is_none()
             && input.tcp_dns_queries.is_empty()
             && input.udp_dns_queries.is_empty()
-            && input.dns_response.is_none()
+            && input.dns_responses.is_empty()
             && input.error.is_empty()
         {
             return Poll::Pending;
@@ -425,7 +423,7 @@ impl Io {
         state.poll_socket_errors();
         state.poll_device();
         state.poll_dns_queries();
-        state.poll_dns_response();
+        state.poll_dns_responses();
 
         state.into_input()
     }
@@ -831,7 +829,7 @@ mod tests {
                     tracing::debug!("Ignoring error unrelated to DNS: {e:#}");
                 }
 
-                if let Some(response) = input.dns_response {
+                if let Some(response) = input.dns_responses.pop() {
                     return response;
                 }
             }
