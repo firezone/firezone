@@ -401,7 +401,7 @@ fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
 
 fn tcp_service_ports(state: &ReferenceState, domain: &DomainName) -> Vec<u16> {
     state
-        .tcp_resources
+        .tcp_services
         .get(domain)
         .into_iter()
         .flatten()

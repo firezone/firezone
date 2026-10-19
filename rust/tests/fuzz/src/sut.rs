@@ -1,6 +1,5 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::dns_records::DnsRecords;
-use super::icmp_error_hosts::IcmpErrorHosts;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
@@ -117,7 +116,7 @@ impl TunnelTest {
                     |ref_gateway, _, _| {
                         ref_gateway.init(
                             *gid,
-                            ref_state.tcp_resources.clone(),
+                            ref_state.tcp_services.clone(),
                             flux_capacitor.now(),
                             flux_capacitor.now(),
                         )
@@ -161,9 +160,7 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway.exec_mut(|g| {
-                g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
-            })
+            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
         let mut this = Self {
@@ -594,9 +591,7 @@ impl TunnelTest {
                 for gateway in self.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| {
-                        g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
-                    })
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
@@ -1000,12 +995,7 @@ impl TunnelTest {
             // iteration are turned into packets before we look for more work.
             // Timeouts are not fired here; that happens once we run out of IO
             // progress below.
-            self.drive_network(
-                &ref_state.global_dns_records,
-                &ref_state.icmp_error_hosts,
-                buffered_transmits,
-                now,
-            );
+            self.drive_network(&ref_state.global_dns_records, buffered_transmits, now);
 
             for (id, gateway) in self.gateways.iter_mut() {
                 let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
@@ -1119,9 +1109,8 @@ impl TunnelTest {
                     continue;
                 };
 
-                let Some(transmit) = client.exec_mut(|sim| {
-                    sim.on_received_packet(packet, &ref_state.icmp_error_hosts, now)
-                }) else {
+                let Some(transmit) = client.exec_mut(|sim| sim.on_received_packet(packet, now))
+                else {
                     continue 'outer;
                 };
 
@@ -1179,7 +1168,6 @@ impl TunnelTest {
     fn drive_network(
         &mut self,
         global_dns_records: &DnsRecords,
-        icmp_error_hosts: &IcmpErrorHosts,
         buffered_transmits: &mut BufferedTransmits,
         now: Instant,
     ) {
@@ -1217,9 +1205,7 @@ impl TunnelTest {
 
             // Handle the client's `Transmit`s.
             while let Some(transmit) = client.poll_inbox(now) {
-                let Some(transmit) =
-                    client.exec_mut(|c| c.receive(transmit, icmp_error_hosts, now))
-                else {
+                let Some(transmit) = client.exec_mut(|c| c.receive(transmit, now)) else {
                     continue;
                 };
 
@@ -1234,8 +1220,7 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
-                else {
+                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, now)) else {
                     continue;
                 };
 

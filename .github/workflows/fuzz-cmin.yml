@@ -1,0 +1,125 @@
+---
+name: Fuzz corpora (minimize)
+run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
+# Minimizes every committed fuzz corpus by AFL++ edge coverage and feedback.
+# The nightly run only ever adds inputs, so this is what removes the ones a
+# later discovery made redundant. The scheduled run works on main and proposes
+# each target's result as its own bot PR; dispatching the workflow on any other
+# branch pushes the result back to that branch instead, e.g. after a harness
+# rewrite. A dispatch can also narrow the run to a single target.
+"on":
+  schedule:
+    - cron: "0 8 1 * *" # monthly, 08:00 UTC on the 1st
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "A single fuzz target to work on, e.g. 'tunnel-proto'. Leave empty for every target in rust/tests/fuzz/targets.json."
+        required: false
+        type: string
+        default: ""
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-cmin-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  targets:
+    name: fuzz-targets
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: targets
+        env:
+          # Empty for the schedule, which cannot pass inputs.
+          REQUESTED_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+
+          read -r requested _ <<<"$REQUESTED_TARGET"
+
+          if [[ -z "$requested" ]]; then
+            echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "targets=$(jq -nc --arg target "$requested" '[$target]')" >> "$GITHUB_OUTPUT"
+
+  minimize:
+    name: minimize-${{ matrix.fuzz-target }}
+    needs: [targets]
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: ${{ fromJSON(needs.targets.outputs.targets) }}
+    runs-on: ubuntu-24.04
+    env:
+      # Match pull-request builds so they share compiler-cache entries.
+      RUSTFLAGS: "--deny warnings"
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/tests/fuzz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-afl
+      - uses: ./.github/actions/free-disk-space
+      # This runner is disposable. Bypass Ubuntu's crash-reporting pipe so AFL
+      # receives crashing children promptly instead of classifying them as hangs.
+      - name: Configure crash reporting for AFL++
+        run: sudo sysctl -w kernel.core_pattern=core
+      - name: Minimize the corpus
+        timeout-minutes: 30
+        run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
+      - name: Save the corpus
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-${{ matrix.fuzz-target }}
+          path: rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}/
+          if-no-files-found: error
+
+  propose:
+    name: propose-${{ matrix.fuzz-target }}
+    needs: [targets, minimize]
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      # One at a time: every job in this matrix pushes, and on a dispatched
+      # branch they all push to the same ref.
+      max-parallel: 1
+      matrix:
+        fuzz-target: ${{ fromJSON(needs.targets.outputs.targets) }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The download cannot delete what minimization removed, so start from
+      # nothing and let the commit see the deletions.
+      - name: Remove the committed corpus
+        run: rm -rf "tests/fuzz/corpus/${{ matrix.fuzz-target }}"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: fuzz-${{ matrix.fuzz-target }}
+          path: rust/tests/fuzz/corpus/${{ matrix.fuzz-target }}
+      - uses: ./.github/actions/propose-fuzz-corpus
+        with:
+          target: ${{ matrix.fuzz-target }}
+          branch-prefix: chore/fuzz-cmin-
+          title: "chore(fuzz): minimize the ${{ matrix.fuzz-target }} corpus"
+          body: "The monthly fuzz job minimized the `${{ matrix.fuzz-target }}` corpus by AFL++ edge coverage and feedback."
+          gpg-key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}

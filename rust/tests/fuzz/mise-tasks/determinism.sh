@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Check that AFL++ observes identical coverage when replaying identical inputs"
-#MISE depends=["unpack-corpus {{usage.target}}"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail
