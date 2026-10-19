@@ -82,10 +82,10 @@ pub(crate) struct Delivery {
 impl SiteNetwork {
     pub(crate) fn new(
         routes: Routes,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
     ) -> Self {
-        let tcp_services = tcp_resources
+        let tcp_services = tcp_services
             .into_iter()
             .flat_map(|(domain, ports)| ports.into_iter().map(move |port| (domain.clone(), port)))
             .map(|(domain, port)| {

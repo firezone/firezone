@@ -37,7 +37,7 @@ pub(super) fn generate(
     let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let site_routes = arb_site_routes(g, &dns_resource_records, portal.upstream_do53());
-    let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &site_routes);
+    let tcp_services = arb_tcp_services(g, &dns_resource_records, &site_routes);
     let gateways = gateways
         .into_iter()
         .map(|(id, gateway)| (id, gateway(site_routes.clone())))
@@ -72,7 +72,7 @@ pub(super) fn generate(
         relays,
         global_dns_records,
         domain_tree,
-        tcp_resources,
+        tcp_services,
         network,
     )
 }
@@ -594,7 +594,7 @@ fn arb_icmp_error(g: &mut Generator) -> IcmpError {
     }
 }
 
-fn arb_tcp_resources(
+fn arb_tcp_services(
     g: &mut Generator,
     records: &DnsRecords,
     site_routes: &Routes,

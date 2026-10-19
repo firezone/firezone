@@ -51,7 +51,7 @@ pub struct ReferenceState {
     pub(crate) domain_tree: Vec<DomainName>,
 
     /// The ports each DNS Resource domain serves TCP on.
-    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
+    pub(crate) tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
 
     pub(crate) network: RoutingTable,
 
@@ -77,7 +77,7 @@ impl ReferenceState {
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         network: RoutingTable,
     ) -> Self {
         Self {
@@ -89,7 +89,7 @@ impl ReferenceState {
             node_may_lack_relays: false,
             global_dns_records,
             domain_tree,
-            tcp_resources,
+            tcp_services,
             network,
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
@@ -821,7 +821,7 @@ impl ReferenceState {
     fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
         match dst {
             Destination::DomainName { name, .. } => self
-                .tcp_resources
+                .tcp_services
                 .get(name)
                 .is_some_and(|ports| ports.contains(&dport.0)),
             Destination::IpAddr(_) => false,
