@@ -158,56 +158,11 @@ jobs:
         with:
           name: fuzz-${{ matrix.fuzz-target }}
           path: rust/tests/fuzz
-      - name: Set up GnuPG for the corpus commit
-        uses: ./.github/actions/setup-gpg
-        id: setup-gpg
+      - uses: ./.github/actions/propose-fuzz-corpus
         with:
-          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          email: github-bot@firezone.dev
-      - name: Push corpus update
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
-          REF: ${{ github.ref_name }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          TARGET: ${{ matrix.fuzz-target }}
-        run: |
-          set -euo pipefail
-
-          git config --local user.email "github-bot@firezone.dev"
-          git config --local user.name "Firezone Bot"
-          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
-          git config --local commit.gpgsign true
-
-          git add -A "tests/fuzz/corpus/$TARGET"
-          if git diff --cached --quiet; then
-            echo "The $TARGET corpus is unchanged; nothing to push."
-            exit 0
-          fi
-          git commit -m "chore(fuzz): grow the $TARGET corpus"
-
-          # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
-          # it do not trigger the pull request's workflows.
-          git config --local http.https://github.com/.extraheader ""
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-
-          if [ "$REF" != "$DEFAULT_BRANCH" ]; then
-            # The dispatching branch may have moved while the fuzz jobs ran, so
-            # replay the update onto its tip rather than overwriting it.
-            git fetch origin "$REF"
-            git rebase "origin/$REF"
-            git push origin "HEAD:$REF"
-            exit 0
-          fi
-
-          # A branch per target, so a corpus that carries a crashing input only
-          # holds up its own review.
-          branch="chore/fuzz-corpora-$TARGET"
-          git checkout -B "$branch"
-          git push -u origin HEAD --force
-
-          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
-            gh pr create \
-              --title "chore(fuzz): grow the $TARGET corpus" \
-              --body "The nightly fuzz job found inputs for \`$TARGET\` that reach edges the committed corpus did not." \
-              --reviewer firezone/engineering
-          fi
+          target: ${{ matrix.fuzz-target }}
+          branch-prefix: chore/fuzz-corpora-
+          title: "chore(fuzz): grow the ${{ matrix.fuzz-target }} corpus"
+          body: "The nightly fuzz job found inputs for `${{ matrix.fuzz-target }}` that reach edges the committed corpus did not."
+          gpg-key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
