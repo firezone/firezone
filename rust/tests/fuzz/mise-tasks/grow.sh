@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Discover coverage, minimize, re-baseline and pack a fuzz corpus"
+#MISE description="Discover coverage and add what reaches new edges to a fuzz corpus"
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>"
@@ -12,8 +12,7 @@ workers="${usage_workers:-$(($(nproc) * 3 / 4))}"
 [ "$workers" -gt 0 ] || workers=1
 eval "set -- ${usage_afl_args:-}"
 
-# Salvage completed phases even if discovery or minimization fails. Crashes
-# enter the committed corpus after coverage so they cannot prevent measurement.
+# Salvage completed phases even if discovery fails.
 failed=()
 step() {
     if ! mise run "//rust/tests/fuzz:$1" "${@:2}"; then
@@ -21,11 +20,8 @@ step() {
     fi
 }
 step fuzz "$target" --workers "$workers" --seconds "${usage_seconds:?}" "$@"
-step cmin "$target"
-step coverage "$target"
-step update-baseline "$target"
+step select "$target"
 step save-crashes "$target"
-step pack-corpus "$target"
 if [ "${#failed[@]}" -gt 0 ]; then
     echo "error: step(s) failed: ${failed[*]}" >&2
     exit 1

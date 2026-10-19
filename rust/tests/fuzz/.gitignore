@@ -1,8 +1,6 @@
 target
-corpus
 artifacts
-coverage
 crash-*
-*.profraw
 afl-output
+candidates
 json
