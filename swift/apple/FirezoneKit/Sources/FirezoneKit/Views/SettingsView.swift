@@ -185,9 +185,7 @@ public struct SettingsView: View {
         .padding(20)
         Spacer()
         HStack(spacing: 5) {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
+          BuildLabel()
           Spacer()
           Button(
             "Reset to Defaults",
@@ -431,9 +429,7 @@ public struct SettingsView: View {
         }
         Spacer()
         HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
+          BuildLabel()
           Spacer()
         }
         .padding([.leading, .bottom], 20)
@@ -766,3 +762,20 @@ struct FormTextField: View {
     }
   }
 #endif
+
+private struct BuildLabel: View {
+  var body: some View {
+    HStack(spacing: 0) {
+      Text("Build: ")
+        .foregroundColor(.gray)
+      if let gitSha = BundleHelper.gitSha,
+        let url = URL(string: "https://github.com/firezone/firezone/commit/\(gitSha)")
+      {
+        Link(String(gitSha.prefix(8)), destination: url)
+      } else {
+        Text("unknown")
+          .foregroundColor(.gray)
+      }
+    }
+  }
+}
