@@ -7,7 +7,8 @@ use std::{
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::reference::ReferenceState;
+use crate::ref_client::RefClient;
+use crate::site_network::Routes;
 use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
@@ -245,28 +246,22 @@ pub(crate) fn remote_responds_with_icmp_error(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
     remote: Remote,
-    reference: &ReferenceState,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    site_routes: &Routes,
 ) -> bool {
     let destination = received_request.packet.destination();
     let peer_sends_icmp_errors = |client: ClientId| {
-        reference.clients[&client]
-            .inner()
+        ref_clients[&client]
             .malicious_behaviour
             .send_untracked_icmp_errors
     };
 
     match (&expected.request, remote) {
-        (ProbeRequest::Icmp { .. }, Remote::Gateway(_)) => {
-            reference.site_routes.is_unreachable(destination)
-        }
+        (ProbeRequest::Icmp { .. }, Remote::Gateway(_)) => site_routes.is_unreachable(destination),
         (ProbeRequest::Icmp { .. }, Remote::Client(_)) => false,
-        (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => {
-            reference.site_routes.is_unreachable(destination)
-        }
+        (ProbeRequest::Udp { .. }, Remote::Gateway(_)) => site_routes.is_unreachable(destination),
         (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer_sends_icmp_errors(client),
-        (ProbeRequest::Tcp { .. }, Remote::Gateway(_)) => {
-            reference.site_routes.is_unreachable(destination)
-        }
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(_)) => site_routes.is_unreachable(destination),
         (ProbeRequest::Tcp { .. }, Remote::Client(client)) => peer_sends_icmp_errors(client),
     }
 }

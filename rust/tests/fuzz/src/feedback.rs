@@ -30,7 +30,7 @@ use crate::{
     probe::{
         DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
         FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionResponse, Remote, Route,
-        SubmittedRequest, remote_responds_with_icmp_error,
+        SubmittedRequest,
     },
     reference::ReferenceState,
     resource::{EditEffect, classify},
@@ -801,8 +801,9 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         }
 
-        let responds_with_icmp_error =
-            remote_responds_with_icmp_error(expected, received, remote, reference);
+        let responds_with_icmp_error = reference
+            .site_routes
+            .is_unreachable(received.packet.destination());
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),
             received.packet.destination().is_ipv6(),

@@ -8,6 +8,7 @@ use super::{
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
+    site_network::Routes,
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::Destination,
@@ -38,7 +39,7 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         &ref_state.expected_probes,
         &all_ref_clients,
         state,
-        ref_state,
+        &ref_state.site_routes,
     );
     assert_dns_nat(state);
 
@@ -66,7 +67,7 @@ fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     state: &TunnelTest,
-    ref_state: &ReferenceState,
+    site_routes: &Routes,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -171,7 +172,8 @@ fn assert_probes(
                     received_request,
                     received_response,
                     expected_remote,
-                    ref_state,
+                    ref_clients,
+                    site_routes,
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
@@ -455,10 +457,16 @@ fn assert_received_response(
     received_request: &ReceivedRequest,
     received_response: &ReceivedResponse,
     remote: Remote,
-    ref_state: &ReferenceState,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    site_routes: &Routes,
 ) {
-    let responds_with_icmp_error =
-        remote_responds_with_icmp_error(expected, received_request, remote, ref_state);
+    let responds_with_icmp_error = remote_responds_with_icmp_error(
+        expected,
+        received_request,
+        remote,
+        ref_clients,
+        site_routes,
+    );
 
     if responds_with_icmp_error {
         assert_icmp_error_response(expected, submitted_request, received_response, None);
