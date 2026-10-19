@@ -769,13 +769,26 @@ impl ReferenceState {
             client.note_sent(Some(route.remote()), sent_at);
         });
 
-        self.record_expected_probe(
-            id,
-            origin,
-            request,
-            sent_at,
-            ExpectedOutcome::RoundTripCompleted(route),
-        )
+        // Each time the client resolves a domain again, the Gateway does too and stops
+        // translating for an address family the domain no longer has.
+        let outcome = match (route, request.destination()) {
+            (Route::Resource { resource, gateway }, Destination::DomainName { name, .. })
+                if self.clients[&origin]
+                    .inner()
+                    .dns_resource_resolution(resource, name)
+                    .is_some_and(|records| {
+                        !records.contains(&address_record_type(request.source()))
+                    }) =>
+            {
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Unreachable,
+                }
+            }
+            _ => ExpectedOutcome::RoundTripCompleted(route),
+        };
+
+        self.record_expected_probe(id, origin, request, sent_at, outcome)
     }
 
     fn record_probe(
@@ -1033,14 +1046,9 @@ impl ReferenceState {
         let Destination::DomainName { name, .. } = dst else {
             return None;
         };
-        let required_record = if src.is_ipv4() {
-            RecordType::A
-        } else {
-            RecordType::AAAA
-        };
         let resolves_for_source = client
             .dns_resource_resolution(resource, name)
-            .is_some_and(|records| records.contains(&required_record));
+            .is_some_and(|records| records.contains(&address_record_type(src)));
 
         (!resolves_for_source).then_some(RejectionResponse::Unreachable)
     }
@@ -1669,6 +1677,15 @@ fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
 }
 
 /// The outcome of a TCP segment that the remote end of `route` has no connection for.
+/// The type of the records that hold the addresses a packet from `src` can go to.
+fn address_record_type(src: IpAddr) -> RecordType {
+    if src.is_ipv4() {
+        RecordType::A
+    } else {
+        RecordType::AAAA
+    }
+}
+
 fn reset_by(route: Route) -> ExpectedOutcome {
     let by = match route {
         Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
