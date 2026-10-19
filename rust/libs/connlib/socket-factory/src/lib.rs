@@ -922,15 +922,15 @@ bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (q
 pub struct RecvBufs<B>(Vec<B>);
 
 impl<B> Deref for RecvBufs<B> {
-    type Target = Vec<B>;
+    type Target = [B];
 
-    fn deref(&self) -> &Vec<B> {
+    fn deref(&self) -> &[B] {
         &self.0
     }
 }
 
 impl<B> DerefMut for RecvBufs<B> {
-    fn deref_mut(&mut self) -> &mut Vec<B> {
+    fn deref_mut(&mut self) -> &mut [B] {
         &mut self.0
     }
 }
@@ -985,10 +985,13 @@ impl RecvBuffers {
         let mut buffers = UDP_RECV_BUFFERS.pull();
         let mut metas = UDP_RECV_METAS.pull();
 
-        // Buffers sized for a previous socket configuration are discarded.
-        for _ in buffers.extract_if(.., |b| b.len() != self.recv_buf_size) {}
-        let missing = quinn_udp::BATCH_SIZE - buffers.len();
-        buffers.extend(std::iter::repeat_with(|| self.bytes.pull()).take(missing));
+        // Buffers sized for a previous socket configuration are replaced.
+        for buffer in buffers.iter_mut().filter(|b| b.len() != self.recv_buf_size) {
+            *buffer = self.bytes.pull();
+        }
+        buffers
+            .0
+            .resize_with(quinn_udp::BATCH_SIZE, || self.bytes.pull());
         metas.resize(quinn_udp::BATCH_SIZE, quinn_udp::RecvMeta::default());
 
         RecvBatch { buffers, metas }
@@ -1238,8 +1241,8 @@ mod tests {
     #[test]
     fn drain_segments_buffers_correctly() {
         let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.clear();
-        buffers.extend([
+        buffers.0.clear();
+        buffers.0.extend([
             DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
             DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
             DummyBuffer(b"".to_vec()),
@@ -1283,8 +1286,8 @@ mod tests {
     #[test]
     fn drained_batch_yields_nothing() {
         let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.clear();
-        buffers.extend([DummyBuffer(b"foo".to_vec())]);
+        buffers.0.clear();
+        buffers.0.extend([DummyBuffer(b"foo".to_vec())]);
 
         let mut metas = DUMMY_METAS.pull();
         metas.extend([recv_meta(
@@ -1307,8 +1310,8 @@ mod tests {
     #[test]
     fn zero_stride_buffer_is_skipped() {
         let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.clear();
-        buffers.extend([
+        buffers.0.clear();
+        buffers.0.extend([
             DummyBuffer(b"garbage    ".to_vec()),
             DummyBuffer(b"foo        ".to_vec()),
         ]);
@@ -1356,8 +1359,8 @@ mod tests {
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
         let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.clear();
-        buffers.extend([
+        buffers.0.clear();
+        buffers.0.extend([
             DummyBuffer(vec![0; oversized]),
             DummyBuffer(b"foobar1".to_vec()),
         ]);
