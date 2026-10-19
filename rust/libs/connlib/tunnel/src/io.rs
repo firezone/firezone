@@ -82,7 +82,7 @@ enum DohClient {
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
-    pub device: Option<tun::PacketBatch>,
+    pub device: Option<tun::PacketFlow>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,

@@ -25,7 +25,7 @@ use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc::error::SendError;
 use tun_offload::virtio::{self, VNET_HDR_LEN};
 
-use tun::{InboundTx, OutboundRx, PacketBatch};
+use tun::{InboundTx, OutboundRx, PacketFlow};
 use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 /// Size of the buffer for reading super packets: a `virtio_net_hdr` plus the largest
@@ -220,7 +220,7 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
-            let mut batch = PacketBatch::default();
+            let mut batch = PacketFlow::default();
 
             loop {
                 // Without the explicit wake-up on `closed`, this task would idle in
@@ -283,7 +283,7 @@ where
 
                         if let Err(packet) = pushed {
                             inbound_tx
-                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .send(mem::replace(&mut batch, PacketFlow::new(packet)))
                                 .await?;
                         }
                     }
@@ -300,7 +300,7 @@ where
         });
 
     match result {
-        Err(e) if e.any_is::<SendError<PacketBatch>>() => {
+        Err(e) if e.any_is::<SendError<PacketFlow>>() => {
             tracing::debug!("Inbound packet receiver gone, shutting down task");
 
             Ok(())

@@ -160,7 +160,7 @@ mod tests {
                 move |inbound_tx| {
                     started.wait();
                     while inbound_tx
-                        .blocking_send(crate::PacketBatch::default())
+                        .blocking_send(crate::PacketFlow::default())
                         .is_ok()
                     {}
                     stopped.fetch_add(1, Ordering::SeqCst);

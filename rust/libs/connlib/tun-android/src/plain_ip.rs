@@ -8,7 +8,7 @@ use std::os::fd::AsRawFd;
 use std::pin::pin;
 use tokio::io::unix::AsyncFd;
 
-use tun::PacketBatch;
+use tun::PacketFlow;
 
 pub fn tun_send<T>(
     fd: T,
@@ -74,7 +74,7 @@ where
         .context("Failed to create runtime")?
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
-            let mut batch = PacketBatch::default();
+            let mut batch = PacketFlow::default();
 
             loop {
                 let readable = pin!(fd.readable());
@@ -119,7 +119,7 @@ where
                             // The batch is full or the flow changed: hand it off and start
                             // a new one.
                             if inbound_tx
-                                .send(mem::replace(&mut batch, PacketBatch::new(packet)))
+                                .send(mem::replace(&mut batch, PacketFlow::new(packet)))
                                 .await
                                 .is_err()
                             {

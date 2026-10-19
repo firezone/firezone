@@ -330,7 +330,7 @@ fn drop_attributes_without_error() -> [KeyValue; 3] {
 }
 
 fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
-    let mut batch = tun::PacketBatch::default();
+    let mut batch = tun::PacketFlow::default();
 
     'recv: loop {
         let Some(session) = session.upgrade() else {
@@ -398,7 +398,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
 ///
 /// Errors if the channel is closed.
 fn push_or_start_new_batch(
-    batch: &mut tun::PacketBatch,
+    batch: &mut tun::PacketFlow,
     packet: IpPacket,
     packet_tx: &tun::InboundTx,
 ) -> Result<(), ()> {
@@ -407,10 +407,7 @@ fn push_or_start_new_batch(
     };
 
     packet_tx
-        .blocking_send(std::mem::replace(
-            &mut *batch,
-            tun::PacketBatch::new(packet),
-        ))
+        .blocking_send(std::mem::replace(&mut *batch, tun::PacketFlow::new(packet)))
         .map_err(|_| {
             tracing::debug!("Stopping TUN recv worker thread because the packet channel closed");
         })
