@@ -1510,11 +1510,14 @@ where
                 sanstun::Event::SendKeepalive(keepalive) => {
                     self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
                 }
-                sanstun::Event::Established { at } => {
-                    self.first_handshake_completed_at = Some(at);
-                    self.agent.confirm_session(at);
+                sanstun::Event::Established {
+                    started_at,
+                    confirmed_at,
+                } => {
+                    self.first_handshake_completed_at = Some(confirmed_at);
+                    self.agent.confirm_session(confirmed_at);
 
-                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(at), "Completed wireguard handshake");
+                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(confirmed_at), handshake_duration = ?confirmed_at.duration_since(started_at), "Completed wireguard handshake");
 
                     // Only signal establishment once we can actually send, i.e. ICE has nominated
                     // a socket. Otherwise, the event is emitted once a socket is nominated.
