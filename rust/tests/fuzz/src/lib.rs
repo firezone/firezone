@@ -1,5 +1,4 @@
 //! Provides the fuzz harness for connlib's tunnel state machine.
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 

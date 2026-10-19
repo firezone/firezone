@@ -1,6 +1,5 @@
 //! Runs the protocol fuzz targets and replays their saved inputs.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 use std::{
     path::{Path, PathBuf},
@@ -66,7 +65,6 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn emit_json(target: Target, inputs: &[(PathBuf, Vec<u8>)], directory: Option<&Path>) {
     let Some(directory) = directory else {
         return;

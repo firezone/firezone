@@ -1,5 +1,4 @@
 //! Writes replayed tunnel-proto inputs as JSON Lines, one file per entity, for querying the corpus.
-#![cfg_attr(coverage_nightly, coverage(off))]
 
 use std::{
     collections::BTreeMap,
