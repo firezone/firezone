@@ -230,16 +230,24 @@ fn responder_dedup_replays_within_window_then_expires() {
     else {
         panic!("expected a replayed initiation");
     };
-    assert!(a.handle_replayed_handshake_initiation(&replayed, path, replay_at));
+    assert!(
+        a.handle_replayed_handshake_initiation(replayed, path, replay_at)
+            .is_ok()
+    );
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 
     a.handle_timeout(now + RESPONDER_DEDUP_TTL);
     let _ = a.transmits();
 
-    assert!(!a.handle_replayed_handshake_initiation(
-        &replayed,
-        path,
-        now + RESPONDER_DEDUP_TTL + secs(1)
+    let expired_at = now + RESPONDER_DEDUP_TTL + secs(1);
+    let Err(sanstun::Error::ReplayedHandshakeInitiation(replayed)) =
+        hs.responder_interface.receive(path.1, &hs.init, expired_at)
+    else {
+        panic!("expected a replayed initiation");
+    };
+    assert!(matches!(
+        a.handle_replayed_handshake_initiation(replayed, path, expired_at),
+        Err(sanstun::Error::ReplayedHandshakeInitiation(_))
     ));
     assert!(a.poll_transmit().is_none(), "cache expired");
 }
