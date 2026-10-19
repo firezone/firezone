@@ -179,16 +179,15 @@ impl Agent {
         }
     }
 
-    pub(crate) fn replay_cached_response(
+    pub(crate) fn handle_replayed_handshake_initiation(
         &mut self,
-        sender_index: u32,
-        timestamp: u128,
+        init: &sanstun::ReplayedHandshakeInitiation,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) -> bool {
         match self {
             Self::Ice(_) => false,
-            Self::Path(agent) => agent.replay_cached_response(sender_index, timestamp, path, now),
+            Self::Path(agent) => agent.handle_replayed_handshake_initiation(init, path, now),
         }
     }
 

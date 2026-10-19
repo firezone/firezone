@@ -230,16 +230,14 @@ fn responder_dedup_replays_within_window_then_expires() {
     else {
         panic!("expected a replayed initiation");
     };
-    let (sender_index, timestamp) = (replayed.sender_index(), replayed.timestamp());
-    assert!(a.replay_cached_response(sender_index, timestamp, path, replay_at));
+    assert!(a.handle_replayed_handshake_initiation(&replayed, path, replay_at));
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 
     a.handle_timeout(now + RESPONDER_DEDUP_TTL);
     let _ = a.transmits();
 
-    assert!(!a.replay_cached_response(
-        sender_index,
-        timestamp,
+    assert!(!a.handle_replayed_handshake_initiation(
+        &replayed,
         path,
         now + RESPONDER_DEDUP_TTL + secs(1)
     ));

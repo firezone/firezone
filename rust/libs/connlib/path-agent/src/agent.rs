@@ -4,7 +4,9 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use sanstun::{Datagram, HandshakeInitiation, HandshakeResponse, Tunnel};
+use sanstun::{
+    Datagram, HandshakeInitiation, HandshakeResponse, ReplayedHandshakeInitiation, Tunnel,
+};
 
 use crate::candidate::Candidate;
 use crate::event::{Event, Payload, Transmit};
@@ -37,7 +39,7 @@ pub struct PathAgent {
     /// in between means the peer isn't hearing us: the primary path is dead.
     peer_rekeys: u32,
 
-    responder: Responder,
+    responder_dedup: Option<ResponderDedup>,
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
@@ -48,12 +50,6 @@ pub struct PathAgent {
 
     peer_reflexive_addrs: BTreeSet<SocketAddr>,
     next_pair_id: u16,
-}
-
-#[derive(Default)]
-struct Responder {
-    last_init: Option<InitId>,
-    dedup: Option<ResponderDedup>,
 }
 
 /// An initiation's sender index and timestamp. Within one tunnel, only a
@@ -489,8 +485,7 @@ impl PathAgent {
 
     /// Runs `init`, received on `path`, through `tunnel`.
     ///
-    /// Duplicates are dropped before they reach `tunnel`; an accepted init is
-    /// recorded and its response queued on `path`.
+    /// An accepted init's response is cached and queued on `path`.
     pub fn handle_handshake_initiation(
         &mut self,
         tunnel: &mut Tunnel,
@@ -500,22 +495,10 @@ impl PathAgent {
     ) -> Result<(), sanstun::Error> {
         let init_id = (init.sender_index(), init.timestamp());
 
-        // Drop dups arriving on multiple pairs in one tick so WireGuard
-        // doesn't reject them as replays.
-        if self.responder.last_init == Some(init_id) {
-            tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
-
-            return Ok(());
-        }
-
         let response = tunnel.handle_handshake_initiation(init, now)?;
         self.last_now = Some(now);
 
         tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
-
-        // Remembered so fanned-out duplicates arriving on other pairs in
-        // this tick are dropped (see the duplicate check above).
-        self.responder.last_init = Some(init_id);
 
         self.register_peer_reflexive(path, now);
 
@@ -548,7 +531,7 @@ impl PathAgent {
         // memory without re-decapsulating.
         tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
 
-        self.responder.dedup = Some(ResponderDedup {
+        self.responder_dedup = Some(ResponderDedup {
             init: init_id,
             response_bytes: response.clone(),
             cached_at: now,
@@ -604,19 +587,18 @@ impl PathAgent {
         Ok(())
     }
 
-    /// Answers a retransmitted init, identified by its sender index and
-    /// timestamp, with the response cached for it, returning whether there
-    /// was one.
-    pub fn replay_cached_response(
+    /// Answers `init`, a copy of an init we already accepted, with the
+    /// response cached for it, returning whether there was one.
+    pub fn handle_replayed_handshake_initiation(
         &mut self,
-        sender_index: u32,
-        timestamp: u128,
+        init: &ReplayedHandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
         self.last_now = Some(now);
 
-        let Some(response) = self.cached_response((sender_index, timestamp), now) else {
+        let Some(response) = self.cached_response((init.sender_index(), init.timestamp()), now)
+        else {
             return false;
         };
 
@@ -632,7 +614,7 @@ impl PathAgent {
     }
 
     fn cached_response(&self, init: InitId, now: Instant) -> Option<Datagram> {
-        let d = self.responder.dedup.as_ref()?;
+        let d = self.responder_dedup.as_ref()?;
 
         if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {
             return None;
@@ -770,8 +752,7 @@ impl PathAgent {
                     .then_some(i.started_at)
             });
         let dedup_expiry = self
-            .responder
-            .dedup
+            .responder_dedup
             .as_ref()
             .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
@@ -797,10 +778,10 @@ impl PathAgent {
     }
 
     fn expire_dedup(&mut self, now: Instant) {
-        if let Some(d) = &self.responder.dedup
+        if let Some(d) = &self.responder_dedup
             && now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL
         {
-            self.responder.dedup = None;
+            self.responder_dedup = None;
         }
     }
 

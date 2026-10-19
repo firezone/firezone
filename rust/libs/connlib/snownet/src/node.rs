@@ -1008,8 +1008,8 @@ where
 
                 return ControlFlow::Break(Ok(()));
             }
-            Err(sanstun::Error::ReplayedHandshakeInitiation(replayed))
-                if self.replay_handshake_response(&replayed, (destination, from), now) =>
+            Err(sanstun::Error::ReplayedHandshakeInitiation(init))
+                if self.handle_replayed_handshake_initiation(&init, (destination, from), now) =>
             {
                 return ControlFlow::Break(Ok(()));
             }
@@ -1066,25 +1066,21 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    /// Lets the connection to `peer` answer a replayed handshake initiation from its cache,
-    /// returning whether it did.
+    /// Lets the connection to the initiating peer answer `init` from its cache, returning
+    /// whether it did.
     // `#[cold]` keeps this lookup from bloating the inlined path every data message takes.
     #[cold]
-    fn replay_handshake_response(
+    fn handle_replayed_handshake_initiation(
         &mut self,
-        replayed: &sanstun::ReplayedHandshakeInitiation,
+        init: &sanstun::ReplayedHandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
         self.connections
-            .get_established_mut_by_public_key(replayed.peer_static_public().to_bytes(), now)
+            .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now)
             .is_ok_and(|(_, c)| {
-                c.agent.replay_cached_response(
-                    replayed.sender_index(),
-                    replayed.timestamp(),
-                    path,
-                    now,
-                )
+                c.agent
+                    .handle_replayed_handshake_initiation(init, path, now)
             })
     }
 
