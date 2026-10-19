@@ -21,7 +21,7 @@ defmodule Portal.Analytics.PostHog do
       "website_source" => attribution["source"]
     }
 
-    dispatch("Portal Attribution Received", attribution["distinct_id"], properties)
+    capture_async("Portal Attribution Received", attribution["distinct_id"], properties)
   end
 
   @spec identify_actor(Portal.Actor.t(), Portal.Account.t(), attribution() | nil) :: :ok
@@ -32,7 +32,7 @@ defmodule Portal.Analytics.PostHog do
 
   def identify_actor(actor, account, attribution) do
     {event, distinct_id, properties} = identify_event(actor, account, attribution)
-    dispatch(event, distinct_id, properties)
+    capture_async(event, distinct_id, properties)
   end
 
   @doc false
@@ -119,7 +119,11 @@ defmodule Portal.Analytics.PostHog do
     end
   end
 
-  defp dispatch(event, distinct_id, properties) do
+  @doc """
+  Sends an event in the background, so callers never wait on or fail because of PostHog.
+  """
+  @spec capture_async(String.t(), String.t(), map()) :: :ok
+  def capture_async(event, distinct_id, properties) do
     if enabled?() do
       Task.Supervisor.start_child(
         Portal.Analytics.TaskSupervisor,
