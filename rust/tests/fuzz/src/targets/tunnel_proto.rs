@@ -20,8 +20,9 @@ pub fn run(data: &[u8], observer: &mut impl Observer) {
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);
     let mut generator = Generator::new(data);
-    let mut portal = generator.portal();
-    let mut reference = generator.reference_state(&portal);
+    let domain_tree = generator.domain_tree();
+    let mut portal = generator.portal(&domain_tree);
+    let mut reference = generator.reference_state(&portal, domain_tree);
     let mut feedback_recorder = feedback::Recorder::default();
     observer.start(&portal, &reference);
 

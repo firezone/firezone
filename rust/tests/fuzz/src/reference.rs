@@ -49,6 +49,8 @@ pub struct ReferenceState {
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
+    /// The names that DNS resource addresses, records and queried domains are derived from.
+    pub(crate) domain_tree: Vec<DomainName>,
 
     /// The ports each DNS Resource domain serves TCP on.
     pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
@@ -80,6 +82,7 @@ impl ReferenceState {
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
+        domain_tree: Vec<DomainName>,
         tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
         icmp_error_hosts: IcmpErrorHosts,
         network: RoutingTable,
@@ -92,6 +95,7 @@ impl ReferenceState {
             recovering_relays: Default::default(),
             node_may_lack_relays: false,
             global_dns_records,
+            domain_tree,
             tcp_resources,
             icmp_error_hosts,
             network,
