@@ -58,7 +58,7 @@ const BURST: usize = 10_000;
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
 /// Bounded so no UDP receive buffer overflows.
-const IN_FLIGHT: usize = 2_048;
+const IN_FLIGHT: usize = 8_192;
 
 /// How often the slowest pipeline stage may park per 1000 packets.
 ///
@@ -256,7 +256,7 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status files of its thread and of the tunnel's crypto workers.
+    /// The `/proc` status files of its thread and of the tunnel's crypto workers and UDP threads.
     statuses: Vec<PathBuf>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
@@ -327,12 +327,15 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let crypto_workers = threads()
+        let stages = threads()
             .into_iter()
-            .filter(|(tid, comm)| !threads_before.contains_key(tid) && comm.starts_with("wg-"))
+            .filter(|(tid, comm)| {
+                !threads_before.contains_key(tid)
+                    && (comm.starts_with("wg-") || comm.starts_with("UDP "))
+            })
             .map(|(tid, _)| Path::new("/proc/self/task").join(tid).join("status"));
         let statuses = std::iter::once(status_rx.recv().unwrap())
-            .chain(crypto_workers)
+            .chain(stages)
             .collect();
 
         (
@@ -346,18 +349,22 @@ impl EventLoop {
     }
 
     /// Returns how often each pipeline stage has parked, the event loop first.
-    fn parks(&self) -> Vec<u64> {
+    ///
+    /// A stage whose thread has exited, like a UDP socket that failed to bind, reports `None`.
+    fn parks(&self) -> Vec<Option<u64>> {
         self.statuses
             .iter()
             .map(|status| {
-                std::fs::read_to_string(status)
-                    .unwrap()
+                let status = std::fs::read_to_string(status).ok()?;
+                let parks = status
                     .lines()
                     .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
                     .unwrap()
                     .trim()
                     .parse()
-                    .unwrap()
+                    .unwrap();
+
+                Some(parks)
             })
             .collect()
     }
@@ -473,15 +480,14 @@ fn measure<T>(
         })
     });
     let packets = arrivals.count() - before.1;
-    // A crypto worker that never woke up had no work, e.g. decrypting while sending.
+    // A stage that never woke up had no work, e.g. decrypting while sending.
     let parks = event_loop
         .parks()
         .into_iter()
         .zip(before.0)
-        .map(|(after, before)| after - before)
+        .map(|(after, before)| Some(after? - before?))
         .enumerate()
-        .filter(|&(stage, parks)| stage == 0 || parks > 0)
-        .map(|(_, parks)| parks)
+        .filter_map(|(stage, parks)| (stage == 0 || parks > Some(0)).then_some(parks?))
         .min()
         .unwrap() as f64
         * 1000.0
