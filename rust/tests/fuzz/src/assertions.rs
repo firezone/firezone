@@ -2,13 +2,14 @@ use super::{
     probe::{
         DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
         ProbeId, ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse,
-        Remote, SubmittedRequest, TraceRequirement, remote_responds_with_icmp_error,
+        Remote, RemoteResponse, SubmittedRequest, TraceRequirement, remote_response,
     },
     ref_client::RefClient,
     ref_gateway::RefGateway,
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
+    site_network::{IcmpError, icmp_error_reply},
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::Destination,
@@ -154,7 +155,12 @@ fn assert_probes(
                 }
                 assert_received_request(expected, submitted_request, received_request, ref_clients);
 
+                let response =
+                    remote_response(expected, received_request, ref_clients, ref_gateways);
                 let [received_response] = trace.received_responses.as_slice() else {
+                    if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
+                        continue;
+                    }
                     if trace.received_responses.is_empty()
                         && expected.trace_requirement
                             == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
@@ -176,9 +182,7 @@ fn assert_probes(
                     submitted_request,
                     received_request,
                     received_response,
-                    expected_remote,
-                    ref_clients,
-                    ref_gateways,
+                    response,
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
@@ -461,22 +465,40 @@ fn assert_received_response(
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
     received_response: &ReceivedResponse,
-    remote: Remote,
-    ref_clients: &BTreeMap<ClientId, &RefClient>,
-    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+    response: RemoteResponse,
 ) {
-    let responds_with_icmp_error = remote_responds_with_icmp_error(
-        expected,
-        received_request,
-        remote,
-        ref_clients,
-        ref_gateways,
-    );
+    match response {
+        RemoteResponse::Echo => {
+            assert_echo_response(expected, submitted_request, received_response)
+        }
+        RemoteResponse::IcmpError(error) => {
+            assert_icmp_error_response(expected, submitted_request, received_response, None);
 
-    if responds_with_icmp_error {
-        assert_icmp_error_response(expected, submitted_request, received_response, None);
-    } else {
-        assert_echo_response(expected, submitted_request, received_response);
+            if let Some(error) = error {
+                assert_icmp_error_kind(expected, received_request, received_response, error);
+            }
+        }
+        RemoteResponse::Nothing => {
+            tracing::error!(target: "assertions", id = ?expected.id, "Received a response to a probe the network dropped");
+        }
+    }
+}
+
+/// Checks that the ICMP error the network answered `received_request` with reached the Client.
+fn assert_icmp_error_kind(
+    expected: &ExpectedProbe,
+    received_request: &ReceivedRequest,
+    received_response: &ReceivedResponse,
+    error: IcmpError,
+) {
+    let kind = |packet: &IpPacket| packet.icmp_error().ok().flatten().map(|(_, kind)| kind);
+    let expected_kind = icmp_error_reply(&received_request.packet, error)
+        .ok()
+        .and_then(|reply| kind(&reply));
+    let actual_kind = kind(&received_response.packet);
+
+    if actual_kind != expected_kind {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_kind, ?actual_kind, "Received probe response contains the wrong ICMP error");
     }
 }
 

@@ -9,6 +9,7 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
+use crate::site_network::{IcmpError, RouteType};
 use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
 
 pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
@@ -242,29 +243,47 @@ pub(crate) struct ExpectedProbe {
     pub(crate) trace_requirement: TraceRequirement,
 }
 
-pub(crate) fn remote_responds_with_icmp_error(
+/// How the remote answers a request it received.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RemoteResponse {
+    Echo,
+    /// An ICMP error, of the given kind if known.
+    IcmpError(Option<IcmpError>),
+    Nothing,
+}
+
+pub(crate) fn remote_response(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
-    remote: Remote,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
-) -> bool {
-    let destination = received_request.packet.destination();
-    let peer_sends_icmp_errors = |client: ClientId| {
-        ref_clients[&client]
+) -> RemoteResponse {
+    let peer = |client: ClientId| {
+        if ref_clients[&client]
             .malicious_behaviour
             .send_untracked_icmp_errors
-    };
-    let unreachable_from =
-        |gateway: GatewayId| ref_gateways[&gateway].routes.is_unreachable(destination);
+        {
+            return RemoteResponse::IcmpError(None);
+        }
 
-    match (&expected.request, remote) {
-        (ProbeRequest::Icmp { .. }, Remote::Gateway(gateway)) => unreachable_from(gateway),
-        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => false,
-        (ProbeRequest::Udp { .. }, Remote::Gateway(gateway)) => unreachable_from(gateway),
-        (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer_sends_icmp_errors(client),
-        (ProbeRequest::Tcp { .. }, Remote::Gateway(gateway)) => unreachable_from(gateway),
-        (ProbeRequest::Tcp { .. }, Remote::Client(client)) => peer_sends_icmp_errors(client),
+        RemoteResponse::Echo
+    };
+    let network = |gateway: GatewayId| match ref_gateways[&gateway]
+        .routes
+        .route(received_request.packet.destination())
+    {
+        RouteType::Deliver => RemoteResponse::Echo,
+        RouteType::Unreachable(error) => RemoteResponse::IcmpError(Some(error)),
+        RouteType::Blackhole => RemoteResponse::Nothing,
+    };
+
+    match (&expected.request, received_request.remote) {
+        (ProbeRequest::Icmp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => RemoteResponse::Echo,
+        (ProbeRequest::Udp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer(client),
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Tcp { .. }, Remote::Client(client)) => peer(client),
     }
 }
 

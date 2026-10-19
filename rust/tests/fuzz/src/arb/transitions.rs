@@ -310,7 +310,8 @@ pub(super) fn generate(
         }
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
-            let mut records = arb_dns_record_set(g);
+            let subnet = g.local_subnet(&domain);
+            let mut records = arb_dns_record_set(g, subnet);
             // Like at the start, a TCP-serving domain never resolves to an unreachable address.
             if state.tcp_services.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {
@@ -318,7 +319,7 @@ pub(super) fn generate(
                         state
                             .gateways
                             .values()
-                            .any(|gateway| gateway.inner().routes.is_unreachable(ip))
+                            .any(|gateway| !gateway.inner().routes.delivers(ip))
                     })
                 }) {}
             }

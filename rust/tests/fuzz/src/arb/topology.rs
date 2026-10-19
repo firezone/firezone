@@ -12,6 +12,7 @@ use tunnel_proto::MaliciousBehaviour;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 
 use super::context::Generator;
+use super::packets::{host_in_v4, host_in_v6};
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_dns_resource_address,
     arb_domain_matching_dns_resource, arb_filters, arb_ip_stack_kind, arb_more_specific_subnet,
@@ -36,11 +37,12 @@ pub(super) fn generate(
     let gateways = arb_gateways(g, portal, &domain_tree);
     let relays = arb_relays(g);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
-    let site_routes = arb_site_routes(g, &dns_resource_records, portal.upstream_do53());
-    let tcp_services = arb_tcp_services(g, &dns_resource_records, &site_routes);
+    let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
+    let sites = arb_sites(g, portal, &host_routes);
+    let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
     let gateways = gateways
         .into_iter()
-        .map(|(id, gateway)| (id, gateway(site_routes.clone())))
+        .map(|(id, gateway)| (id, gateway(&sites)))
         .collect::<BTreeMap<_, _>>();
 
     let global_dns_records = merge_dns_records(
@@ -114,13 +116,16 @@ pub(super) fn arb_socket_ip_stack(g: &mut Generator) -> (Option<Ipv4Addr>, Optio
     }
 }
 
-pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
+pub(super) fn arb_dns_record_set(
+    g: &mut Generator,
+    subnet: Option<(Ipv4Network, Ipv6Network)>,
+) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
 
     (0..n)
         .map(|_| {
             if g.flip(75) {
-                return dns_types::records::ip(arb_dns_resource_ip(g));
+                return dns_types::records::ip(arb_dns_resource_ip(g, subnet));
             }
 
             let sections = g.count(6, 10);
@@ -128,7 +133,7 @@ pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData>
                 .flat_map(|_| std::iter::once(255u8).chain(std::iter::repeat_n(b'a', 255)))
                 .collect::<Vec<_>>();
             dns_types::records::txt(content)
-                .unwrap_or_else(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
+                .unwrap_or_else(|_| dns_types::records::ip(arb_dns_resource_ip(g, subnet)))
         })
         .collect::<BTreeSet<_>>()
 }
@@ -152,6 +157,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
             }
         })
         .collect::<SmallVec<[_; 3]>>();
+    g.allocate_site_subnets(&regular_sites);
 
     let clients = (0..2)
         .map(|_| (g.fresh_client_id(), g.tunnel_ip4(), g.tunnel_ip6()))
@@ -198,14 +204,35 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
 }
 
 fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
+    let id = g.fresh_resource_id();
+    let address = match g.site_subnet(site.id).filter(|_| g.flip(50)) {
+        Some(subnet) => arb_local_cidr_address(g, subnet),
+        None => arb_cidr_resource_address(g),
+    };
+
     CidrResource {
-        id: g.fresh_resource_id(),
-        address: arb_cidr_resource_address(g),
+        id,
+        address,
         name: g.lower_ascii(4, 10),
         address_description: arb_address_description(g),
         sites: vec![site.clone()],
         filters: arb_filters(g),
     }
+}
+
+/// Picks a network around a site's subnet, which may also cover other sites' subnets.
+fn arb_local_cidr_address(g: &mut Generator, (v4, v6): (Ipv4Network, Ipv6Network)) -> IpNetwork {
+    if g.bool() {
+        let ip = host_in_v4(g, v4);
+        let netmask = g.count(24, 32) as u8;
+
+        return IpNetwork::V4(Ipv4Network::new_truncate(ip, netmask).unwrap());
+    }
+
+    let ip = host_in_v6(g, v6);
+    let netmask = g.count(46, 128) as u8;
+
+    IpNetwork::V6(Ipv6Network::new_truncate(ip, netmask).unwrap())
 }
 
 fn arb_dns_resource(g: &mut Generator, site: &Site, domain_tree: &[DomainName]) -> DnsResource {
@@ -392,7 +419,7 @@ fn arb_gateways(
     g: &mut Generator,
     portal: &StubPortal,
     domain_tree: &[DomainName],
-) -> BTreeMap<GatewayId, impl FnOnce(Routes) -> Host<RefGateway> + use<>> {
+) -> BTreeMap<GatewayId, impl FnOnce(&BTreeMap<SiteId, SiteView>) -> Host<RefGateway> + use<>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
@@ -404,8 +431,16 @@ fn arb_gateways(
             let socket_ip4 = g.socket_ip4();
             let socket_ip6 = g.socket_ip6();
 
-            let gateway = move |routes| {
-                let inner = RefGateway::from_parts(key, tun4, tun6, routes, site_specific);
+            let gateway = move |sites: &BTreeMap<SiteId, SiteView>| {
+                let site = sites[&site_id].clone();
+                let inner = RefGateway::from_parts(
+                    key,
+                    tun4,
+                    tun6,
+                    site.routes,
+                    site_specific,
+                    site.unresolvable_names,
+                );
                 let host = Host::new(inner, latency, 52625, edge, nat_ip4);
                 with_interface(host, Some(socket_ip4), Some(socket_ip6))
             };
@@ -475,15 +510,41 @@ fn arb_listening_port(g: &mut Generator) -> u16 {
     }
 }
 
+/// Generates the names each DNS resource resolves, some of them local to the resource's site.
+///
+/// A name keeps the network it was first generated in, so all its addresses are in one.
 fn arb_dns_resource_records(
     g: &mut Generator,
     portal: &StubPortal,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
-    portal
-        .dns_resources()
-        .map(|resource| arb_records_for_dns_resource(g, &resource.address, domain_tree))
-        .fold(DnsRecords::default(), merge_dns_records)
+    let mut records = DnsRecords::default();
+    let mut owners = BTreeMap::<DomainName, Option<SiteId>>::new();
+
+    for resource in portal.dns_resources() {
+        let local = resource
+            .sites
+            .first()
+            .map(|site| site.id)
+            .filter(|_| g.flip(50));
+
+        for _ in 0..arb_name_count(g, &resource.address) {
+            let name = arb_domain_matching_dns_resource(g, &resource.address, domain_tree);
+            let owner = *owners.entry(name.clone()).or_insert(local);
+            let subnet = owner.and_then(|site| g.site_subnet(site));
+
+            records.merge(DnsRecords::from_iter([(name, arb_resolved_ips(g, subnet))]));
+        }
+    }
+
+    g.set_local_names(
+        owners
+            .into_iter()
+            .filter_map(|(name, owner)| Some((name, owner?)))
+            .collect(),
+    );
+
+    records
 }
 
 fn arb_site_specific_dns_records(
@@ -504,20 +565,22 @@ fn arb_records_for_dns_resource(
     address: &str,
     domain_tree: &[DomainName],
 ) -> DnsRecords {
-    let n = if address.contains('*') || address.contains('?') {
-        g.count(1, 3)
-    } else {
-        1
-    };
-
-    (0..n)
+    (0..arb_name_count(g, address))
         .map(|_| {
             (
                 arb_domain_matching_dns_resource(g, address, domain_tree),
-                arb_resolved_ips(g),
+                arb_resolved_ips(g, None),
             )
         })
         .collect()
+}
+
+fn arb_name_count(g: &mut Generator, address: &str) -> usize {
+    if address.contains('*') || address.contains('?') {
+        return g.count(1, 3);
+    }
+
+    1
 }
 
 fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
@@ -525,40 +588,62 @@ fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
     records
 }
 
-fn arb_resolved_ips(g: &mut Generator) -> BTreeSet<OwnedRecordData> {
+fn arb_resolved_ips(
+    g: &mut Generator,
+    subnet: Option<(Ipv4Network, Ipv6Network)>,
+) -> BTreeSet<OwnedRecordData> {
     let n = g.count(1, 5);
 
     (0..n)
-        .map(|_| dns_types::records::ip(arb_dns_resource_ip(g)))
+        .map(|_| dns_types::records::ip(arb_dns_resource_ip(g, subnet)))
         .collect::<BTreeSet<_>>()
 }
 
-fn arb_dns_resource_ip(g: &mut Generator) -> IpAddr {
+/// Picks a public address, or one in `subnet`.
+fn arb_dns_resource_ip(g: &mut Generator, subnet: Option<(Ipv4Network, Ipv6Network)>) -> IpAddr {
     if g.bool() {
         let last = g.u8();
 
-        IpAddr::V4(Ipv4Addr::new(198, 51, 100, last))
-    } else {
-        let n = g.u16();
+        return match subnet {
+            None => IpAddr::V4(Ipv4Addr::new(198, 51, 100, last)),
+            Some((v4, _)) => {
+                let host = u32::from(last) % (1 << (32 - v4.netmask()));
 
-        IpAddr::V6(Ipv6Addr::new(0x2001, 0xDB80, 0x2020, 0x2020, 0, 0, 0, n))
+                IpAddr::V4(Ipv4Addr::from(u32::from(v4.network_address()) + host))
+            }
+        };
+    }
+
+    let n = g.u16();
+
+    match subnet {
+        None => IpAddr::V6(Ipv6Addr::new(0x2001, 0xDB80, 0x2020, 0x2020, 0, 0, 0, n)),
+        Some((_, v6)) => IpAddr::V6(Ipv6Addr::from(
+            u128::from(v6.network_address()) + u128::from(n),
+        )),
     }
 }
+
+/// Generates records for names from the tree; a name local to a site resolves within its subnet.
 fn arb_global_dns_records(g: &mut Generator, domain_tree: &[DomainName]) -> DnsRecords {
     let n = g.count(0, 4);
     (0..n)
         .map(|_| {
             let domain = arb_tree_name(g, domain_tree);
-            (domain, arb_dns_record_set(g))
+            let subnet = g.local_subnet(&domain);
+            let records = arb_dns_record_set(g, subnet);
+
+            (domain, records)
         })
         .collect::<DnsRecords>()
 }
 
-fn arb_site_routes(
+/// Generates the routes every site shares: hosts that answer with an ICMP error.
+fn arb_host_routes(
     g: &mut Generator,
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
-) -> Routes {
+) -> Vec<(IpNetwork, RouteType)> {
     let mut unreachable = records
         .ips_iter()
         .collect::<BTreeSet<_>>()
@@ -580,16 +665,79 @@ fn arb_site_routes(
         }
     }
 
-    let default_routes = [
-        IpNetwork::V4(Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()),
-        IpNetwork::V6(Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0).unwrap()),
-    ]
-    .map(|network| (network, RouteType::Deliver));
-    let host_routes = unreachable
+    unreachable
         .into_iter()
-        .map(|(ip, error)| (IpNetwork::from(ip), RouteType::Unreachable(error)));
+        .map(|(ip, error)| (IpNetwork::from(ip), RouteType::Unreachable(error)))
+        .collect()
+}
 
-    Routes::new(default_routes.into_iter().chain(host_routes))
+/// What the Gateways of a site share.
+#[derive(Clone)]
+struct SiteView {
+    routes: Routes,
+    unresolvable_names: BTreeSet<DomainName>,
+}
+
+/// Generates the view of each site with Gateways.
+///
+/// A site delivers to its own subnet and answers traffic to other sites' subnets the same
+/// way, and its resolver may not resolve names local to other sites.
+fn arb_sites(
+    g: &mut Generator,
+    portal: &StubPortal,
+    host_routes: &[(IpNetwork, RouteType)],
+) -> BTreeMap<SiteId, SiteView> {
+    let sites = portal
+        .gateway_tunnel_ips()
+        .map(|(_, _, _, site)| site)
+        .collect::<BTreeSet<_>>();
+    let local_names = g.local_names().clone();
+
+    sites
+        .into_iter()
+        .map(|site| {
+            let unreachable = match g.choose_index(3) {
+                0 => RouteType::Blackhole,
+                1 => RouteType::Unreachable(IcmpError::Network),
+                _ => RouteType::Unreachable(IcmpError::Host),
+            };
+            let default_routes = [
+                IpNetwork::V4(Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 0).unwrap()),
+                IpNetwork::V6(Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 0).unwrap()),
+            ]
+            .map(|network| (network, RouteType::Deliver));
+            let subnet_routes = g.site_subnets().iter().flat_map(|(owner, (v4, v6))| {
+                let route = if *owner == site {
+                    RouteType::Deliver
+                } else {
+                    unreachable
+                };
+
+                [(IpNetwork::V4(*v4), route), (IpNetwork::V6(*v6), route)]
+            });
+            let routes = Routes::new(
+                default_routes
+                    .into_iter()
+                    .chain(subnet_routes)
+                    .chain(host_routes.iter().copied()),
+            );
+
+            let unresolvable_names = local_names
+                .iter()
+                .filter(|(_, owner)| **owner != site)
+                .filter(|_| g.flip(50))
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            (
+                site,
+                SiteView {
+                    routes,
+                    unresolvable_names,
+                },
+            )
+        })
+        .collect()
 }
 
 fn arb_icmp_error(g: &mut Generator) -> IcmpError {
@@ -605,7 +753,7 @@ fn arb_icmp_error(g: &mut Generator) -> IcmpError {
 fn arb_tcp_services(
     g: &mut Generator,
     records: &DnsRecords,
-    site_routes: &Routes,
+    sites: &BTreeMap<SiteId, SiteView>,
 ) -> BTreeMap<DomainName, BTreeSet<u16>> {
     let mut all_domains = records.domains_iter().collect::<Vec<_>>();
     if all_domains.is_empty() {
@@ -620,11 +768,11 @@ fn arb_tcp_services(
             let domain = all_domains[i].clone();
             let port = g.u16_in(1..=u16::MAX);
 
-            let has_icmp_error = records
+            let is_unreachable = records
                 .domain_ips_iter(&domain)
-                .any(|ip| site_routes.is_unreachable(ip));
+                .any(|ip| sites.values().any(|site| !site.routes.delivers(ip)));
             let has_ips = records.domain_ips_iter(&domain).next().is_some();
-            if has_icmp_error || !has_ips {
+            if is_unreachable || !has_ips {
                 return None;
             }
 

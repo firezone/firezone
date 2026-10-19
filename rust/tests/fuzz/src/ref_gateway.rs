@@ -7,7 +7,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
-use dns_types::DomainName;
+use dns_types::{DomainName, OwnedRecordData};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{Ipv4Addr, Ipv6Addr},
@@ -25,6 +25,8 @@ pub struct RefGateway {
     pub(crate) routes: Routes,
 
     site_specific_dns_records: DnsRecords,
+    /// Names the Gateway's upstream resolver does not resolve.
+    unresolvable_names: BTreeSet<DomainName>,
 }
 
 impl RefGateway {
@@ -35,6 +37,7 @@ impl RefGateway {
         tunnel_ip6: Ipv6Addr,
         routes: Routes,
         site_specific_dns_records: DnsRecords,
+        unresolvable_names: BTreeSet<DomainName>,
     ) -> Self {
         Self {
             key,
@@ -42,6 +45,7 @@ impl RefGateway {
             tunnel_ip6,
             routes,
             site_specific_dns_records,
+            unresolvable_names,
         }
     }
 
@@ -75,6 +79,19 @@ impl RefGateway {
 
     pub fn dns_records(&self) -> &DnsRecords {
         &self.site_specific_dns_records
+    }
+
+    /// The records the Gateway's upstream resolver returns for `domain`.
+    pub(crate) fn resolve<'a>(
+        &self,
+        domain: &DomainName,
+        global_dns_records: &'a DnsRecords,
+    ) -> impl Iterator<Item = OwnedRecordData> + 'a {
+        let resolves = !self.unresolvable_names.contains(domain);
+
+        global_dns_records
+            .domain_records_iter(domain)
+            .filter(move |_| resolves)
     }
 }
 

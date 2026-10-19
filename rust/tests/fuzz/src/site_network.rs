@@ -28,6 +28,8 @@ pub(crate) enum RouteType {
     Deliver,
     /// Answers packets with an ICMP error.
     Unreachable(IcmpError),
+    /// Drops packets silently.
+    Blackhole,
 }
 
 impl Routes {
@@ -50,11 +52,8 @@ impl Routes {
         *route
     }
 
-    pub(crate) fn is_unreachable(&self, dst: IpAddr) -> bool {
-        match self.route(dst) {
-            RouteType::Deliver => false,
-            RouteType::Unreachable(_) => true,
-        }
+    pub(crate) fn delivers(&self, dst: IpAddr) -> bool {
+        self.route(dst) == RouteType::Deliver
     }
 }
 
@@ -111,7 +110,7 @@ impl SiteNetwork {
 
         for server in servers {
             // Nothing listens on a resolver that is unreachable.
-            if self.routes.is_unreachable(server.ip()) {
+            if !self.routes.delivers(server.ip()) {
                 continue;
             }
 
@@ -133,6 +132,15 @@ impl SiteNetwork {
         let icmp_error = match self.routes.route(dst_ip) {
             RouteType::Deliver => None,
             RouteType::Unreachable(error) => Some(icmp_error_reply(&packet, error).unwrap()),
+            RouteType::Blackhole => {
+                return Delivery {
+                    request_received: is_echo_request(&packet)
+                        || packet.as_udp().is_some_and(|udp| {
+                            !(is_dns_query(&udp) && udp.destination_port() == 53)
+                        }),
+                    reply: None,
+                };
+            }
         };
 
         if let Some(icmp) = packet.as_icmpv4()
@@ -273,6 +281,15 @@ pub(crate) enum IcmpError {
     Port,
     PacketTooBig { mtu: u32 },
     TimeExceeded { code: u8 },
+}
+
+fn is_echo_request(packet: &IpPacket) -> bool {
+    packet
+        .as_icmpv4()
+        .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoRequest(_)))
+        || packet
+            .as_icmpv6()
+            .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoRequest(_)))
 }
 
 fn icmp_echo_reply(packet: &IpPacket, echo: IcmpEchoHeader, payload: &[u8]) -> IpPacket {
