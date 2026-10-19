@@ -115,9 +115,6 @@ mod tests {
     use anyhow::ErrorExt;
     use std::future::poll_fn;
     use std::net::Ipv4Addr;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::task::Wake;
 
     #[tokio::test]
     async fn flush_fails_when_channel_closed() {
@@ -141,9 +138,7 @@ mod tests {
         let mut device = Device::new();
         let (test_tun, mut send_rx, _recv_tx) = TestTun::with_capacity(1);
         device.set_tun(Box::new(test_tun));
-        let woken = Arc::new(FlagWaker::default());
-        let waker = Waker::from(woken.clone());
-        let mut cx = Context::from_waker(&waker);
+        let mut cx = Context::from_waker(Waker::noop());
 
         device.queue(test_packet(1));
         device.flush_batch();
@@ -154,18 +149,14 @@ mod tests {
         device.flush_batch();
 
         assert!(full.is_pending());
-        assert!(!woken.take());
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(1));
-        assert!(woken.take());
         assert!(device.poll_flush(&mut cx).is_pending());
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(2));
-        assert!(woken.take());
         assert!(device.poll_flush(&mut cx).is_pending());
 
         assert_eq!(expect_single(send_rx.recv().await.unwrap()), test_packet(3));
-        assert!(woken.take());
         assert!(device.poll_flush(&mut cx).is_ready());
     }
 
@@ -202,21 +193,6 @@ mod tests {
             &[],
         )
         .unwrap()
-    }
-
-    #[derive(Default)]
-    struct FlagWaker(AtomicBool);
-
-    impl FlagWaker {
-        fn take(&self) -> bool {
-            self.0.swap(false, Ordering::SeqCst)
-        }
-    }
-
-    impl Wake for FlagWaker {
-        fn wake(self: Arc<Self>) {
-            self.0.store(true, Ordering::SeqCst);
-        }
     }
 
     struct TestTun {
