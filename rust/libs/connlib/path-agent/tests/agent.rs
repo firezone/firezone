@@ -225,14 +225,12 @@ fn responder_dedup_replays_within_window_then_expires() {
 
     // The interface rejects a replay; one inside the window is answered from the cache.
     let replay_at = now + RESPONDER_DEDUP_TTL - ms(1);
-    let Err(sanstun::Error::ReplayedHandshakeInitiation {
-        sender_index,
-        timestamp,
-        ..
-    }) = hs.responder_interface.receive(path.1, &hs.init, replay_at)
+    let Err(sanstun::Error::ReplayedHandshakeInitiation(replayed)) =
+        hs.responder_interface.receive(path.1, &hs.init, replay_at)
     else {
         panic!("expected a replayed initiation");
     };
+    let (sender_index, timestamp) = (replayed.sender_index(), replayed.timestamp());
     assert!(a.replay_cached_response(sender_index, timestamp, path, replay_at));
     assert!(a.poll_transmit().is_some(), "cached response replayed");
 

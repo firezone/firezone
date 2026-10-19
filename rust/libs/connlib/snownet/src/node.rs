@@ -1008,17 +1008,8 @@ where
 
                 return ControlFlow::Break(Ok(()));
             }
-            Err(sanstun::Error::ReplayedHandshakeInitiation {
-                peer_static_public,
-                sender_index,
-                timestamp,
-            }) if self.replay_handshake_response(
-                &peer_static_public,
-                sender_index,
-                timestamp,
-                (destination, from),
-                now,
-            ) =>
+            Err(sanstun::Error::ReplayedHandshakeInitiation(replayed))
+                if self.replay_handshake_response(&replayed, (destination, from), now) =>
             {
                 return ControlFlow::Break(Ok(()));
             }
@@ -1081,17 +1072,19 @@ where
     #[cold]
     fn replay_handshake_response(
         &mut self,
-        peer: &PublicKey,
-        sender_index: u32,
-        timestamp: u128,
+        replayed: &sanstun::ReplayedHandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> bool {
         self.connections
-            .get_established_mut_by_public_key(peer.to_bytes(), now)
+            .get_established_mut_by_public_key(replayed.peer_static_public().to_bytes(), now)
             .is_ok_and(|(_, c)| {
-                c.agent
-                    .replay_cached_response(sender_index, timestamp, path, now)
+                c.agent.replay_cached_response(
+                    replayed.sender_index(),
+                    replayed.timestamp(),
+                    path,
+                    now,
+                )
             })
     }
 
