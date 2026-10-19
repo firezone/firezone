@@ -726,8 +726,8 @@ mod tests {
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tun::OutboundTx {
-            &self.tx
+        fn sender(&mut self) -> &mut tun::OutboundTx {
+            &mut self.tx
         }
 
         fn receiver(&mut self) -> &mut tun::InboundRx {

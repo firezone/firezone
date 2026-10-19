@@ -366,8 +366,8 @@ struct FakeTun {
 }
 
 impl tun::Tun for FakeTun {
-    fn sender(&self) -> &tun::OutboundTx {
-        &self.writes
+    fn sender(&mut self) -> &mut tun::OutboundTx {
+        &mut self.writes
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
