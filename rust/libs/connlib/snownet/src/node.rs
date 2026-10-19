@@ -1114,7 +1114,13 @@ where
             return ControlFlow::Break(Ok(()));
         }
 
-        control_flow.map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        match control_flow {
+            ControlFlow::Break(Err(e)) => {
+                ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
+            }
+            ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
+            ControlFlow::Continue(decapsulation) => ControlFlow::Continue(decapsulation),
+        }
     }
 
     /// Lets the connection to the initiating peer answer `init` from its cache.
@@ -1956,15 +1962,11 @@ where
                     .context("cookie reply"),
             ),
             ReceivedMessage::TransportData(data) => {
-                match self
-                    .tunnel
-                    .begin_decapsulate(data, now)
-                    .context("data packet")
-                {
+                match self.tunnel.begin_decapsulate(data, now) {
                     Ok(pending) => {
                         ControlFlow::Continue(Decapsulation::new(self.tunnel.id(), path, pending))
                     }
-                    Err(e) => ControlFlow::Break(Err(e)),
+                    Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }
         }
@@ -1981,19 +1983,17 @@ where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
     {
-        let packet = match self
-            .tunnel
-            .commit_decapsulate(decrypted, now)
-            .context("data packet")
-        {
-            Ok(Committed::Data { buffer, len }) => {
-                match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
-                    Ok(p) => p,
-                    Err(e) => return ControlFlow::Break(Err(e)),
+        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
+            Ok(Committed::Data { buffer, len }) => match IpPacket::new(buffer, len) {
+                Ok(p) => p,
+                Err(e) => {
+                    return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
                 }
-            }
+            },
             Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
-            Err(e) => return ControlFlow::Break(Err(e)),
+            Err(e) => {
+                return ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet")));
+            }
         };
 
         self.state
