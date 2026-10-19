@@ -74,11 +74,11 @@ defmodule PortalWeb.AnalyticsTest do
       {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
       assert_receive {:posthog, %{"event" => "$pageview"}}
 
-      render_click(lv, "open_new_site_panel", %{"secret" => "do-not-send"})
+      render_click(lv, "dismiss_rotated_gateway_token", %{"secret" => "do-not-send"})
 
       assert_receive {:posthog, %{"event" => "Portal Action", "properties" => properties} = body}
 
-      assert properties["action"] == "open_new_site_panel"
+      assert properties["action"] == "dismiss_rotated_gateway_token"
       assert properties["view"] == "PortalWeb.Sites"
       assert properties["$pathname"] == "/:account_id_or_slug/sites"
       assert properties["$groups"] == %{"account" => account.id}
@@ -109,6 +109,20 @@ defmodule PortalWeb.AnalyticsTest do
       assert properties["view"] == "PortalWeb.Sites"
       assert properties["distinct_id"] == actor.id
       assert properties["$groups"] == %{"account" => account.id}
+    end
+
+    test "skips UI chrome such as opening and closing panels", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
+      assert_receive {:posthog, %{"event" => "$pageview"}}
+
+      render_click(lv, "open_new_site_panel", %{})
+      render_click(lv, "close_new_site_panel", %{})
+
+      refute_receive {:posthog, %{"event" => "Portal Action"}}, 200
     end
 
     test "skips form change and keydown events", %{conn: conn, account: account, actor: actor} do

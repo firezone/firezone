@@ -155,6 +155,8 @@ defmodule Portal.ChangeLogs.Consumer do
 
     Logger.info("Flushed #{inserted_count}/#{attempted_count} change logs")
 
+    Portal.Analytics.ConfigurationChanges.capture(entries)
+
     drop_batch_seed(%{state | flush_buffer: %{}})
   end
 

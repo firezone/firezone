@@ -92,6 +92,18 @@ defmodule Portal.Analytics.PostHog do
     end
   end
 
+  @doc """
+  Builds a UUID that is the same for the same parts. PostHog drops events whose UUID
+  it has already seen, so sending one again (e.g. on a retry) doesn't duplicate it.
+  """
+  @spec event_uuid([term()]) :: Ecto.UUID.t()
+  def event_uuid(parts) do
+    <<a::48, _version::4, b::12, _variant::2, c::62, _rest::binary>> =
+      :crypto.hash(:sha256, Enum.join(parts, ":"))
+
+    Ecto.UUID.load!(<<a::48, 8::4, b::12, 2::2, c::62>>)
+  end
+
   @spec enabled?() :: boolean()
   def enabled? do
     :portal

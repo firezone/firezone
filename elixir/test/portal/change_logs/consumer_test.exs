@@ -892,6 +892,50 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert log2.timestamp == committed_at
     end
 
+    test "sends the flushed changes to PostHog", %{account: account} do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:posthog, JSON.decode!(body)})
+        Req.Test.json(conn, %{"status" => "Ok"})
+      end)
+
+      Portal.Config.put_env_override(:portal, Portal.Analytics.PostHog,
+        enabled: true,
+        host: "https://posthog.test",
+        project_api_key: "phc_test",
+        req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+      )
+
+      actor_id = Ecto.UUID.generate()
+
+      entry = %{
+        log_id: LogId.build_change_log(@seq_start, 0),
+        timestamp: DateTime.utc_now(),
+        lsn: 700,
+        object: "policies",
+        operation: :delete,
+        account_id: account.id,
+        after: nil,
+        before: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+        vsn: 0,
+        subject: %{
+          "actor_id" => actor_id,
+          "actor_type" => "api_client",
+          "user_agent" => "Terraform/1.9.0 terraform-provider-firezone/0.4.0"
+        }
+      }
+
+      Consumer.flush(%{flush_buffer: %{700 => entry}, seq_start: @seq_start, tenant_offsets: %{}})
+
+      assert_receive {:posthog, %{"batch" => [%{"properties" => properties}]}}
+      assert properties["distinct_id"] == actor_id
+      assert properties["object"] == "policy"
+      assert properties["operation"] == "delete"
+      assert properties["source"] == "terraform"
+    end
+
     test "flushes entries regardless of buffer key order", %{account: account} do
       committed_at = DateTime.utc_now()
 

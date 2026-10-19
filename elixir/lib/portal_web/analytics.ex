@@ -25,8 +25,12 @@ defmodule PortalWeb.Analytics do
     [:phoenix, :live_component, :handle_event, :stop]
   ]
 
-  # Per-keystroke events that would drown out deliberate actions.
-  @noisy_events ~w[handle_keydown]
+  # UI chrome (opening panels, switching tabs, paging, typing) that would drown out
+  # deliberate actions. This is a deny list rather than an allow list on purpose:
+  # a noisy new event is easy to spot and add here, while an important one that
+  # was never allowed would go unnoticed.
+  @noisy_events ~w[handle_keydown change_tab change_policy_authorizations_page]
+  @noisy_event_prefixes ~w[open_ close_ toggle_ cancel_ switch_ show_ focus_ blur_ search]
 
   @context_key {__MODULE__, :context}
 
@@ -117,7 +121,8 @@ defmodule PortalWeb.Analytics do
   # phx-change events carry `_target` and fire on every keystroke. Event names
   # come from templates, but are checked anyway so nothing unexpected is sent.
   defp trackable_event?(event, params) do
-    event not in @noisy_events and not (is_map(params) and Map.has_key?(params, "_target")) and
+    event not in @noisy_events and not String.starts_with?(event, @noisy_event_prefixes) and
+      not (is_map(params) and Map.has_key?(params, "_target")) and
       Regex.match?(~r/\A[a-z0-9_]{1,64}\z/, event)
   end
 
