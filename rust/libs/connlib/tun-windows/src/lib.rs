@@ -402,7 +402,7 @@ fn push_or_start_new_batch(
     packet: IpPacket,
     packet_tx: &tun::InboundTx,
 ) -> Result<(), ()> {
-    let Err(packet) = batch.try_push_same_flow(packet) else {
+    let Err(packet) = batch.try_push(packet) else {
         return Ok(());
     };
 

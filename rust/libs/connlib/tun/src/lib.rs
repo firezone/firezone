@@ -55,12 +55,13 @@ const _: () = assert!(MAX_CHANNEL_MEMORY <= 4 * 1024 * 1024);
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 const _: () = assert!(MAX_CHANNEL_MEMORY <= 32 * 1024 * 1024);
 
-/// A batch of packets, exchanged over the TUN channels as a single item.
+/// A batch of consecutive packets of one flow, exchanged over the TUN channels as a single item.
 ///
 /// A batch holds at most [`MAX_BATCH_SIZE`] packets in a pooled buffer:
-/// [`PacketFlow::try_push`] hands the packet back once the batch is full, so the
-/// storage never grows and moving a batch only copies a pointer. Callers send off
-/// a full batch and start a new one with [`PacketFlow::new`]. Emptied batches are
+/// [`PacketFlow::try_push`] hands the packet back once the batch is full or the packet
+/// belongs to a different flow, so the storage never grows and moving a batch only
+/// copies a pointer. Callers send off the batch and start a new one with
+/// [`PacketFlow::new`]. Emptied batches are
 /// cleared on return to the pool by [`VecBuf`]'s `reset`, so stale packets don't
 /// keep their pooled payload buffers alive.
 #[derive(Debug)]
@@ -85,29 +86,21 @@ impl PacketFlow {
         batch
     }
 
-    /// Appends a packet to the batch, handing it back if the batch is full.
+    /// Appends a packet to the batch, handing it back if the batch is full or the packet
+    /// belongs to a different flow.
     pub fn try_push(&mut self, packet: IpPacket) -> Result<(), IpPacket> {
-        if self.inner.len() == MAX_BATCH_SIZE {
+        if self.inner.len() == MAX_BATCH_SIZE
+            || self
+                .inner
+                .last()
+                .is_some_and(|last| !same_flow(last, &packet))
+        {
             return Err(packet);
         }
 
         self.inner.push(packet);
 
         Ok(())
-    }
-
-    /// Appends a packet to the batch, handing it back if the batch is full or the packet
-    /// belongs to a different flow than the batch's last packet.
-    pub fn try_push_same_flow(&mut self, packet: IpPacket) -> Result<(), IpPacket> {
-        if self
-            .inner
-            .last()
-            .is_some_and(|last| !same_flow(last, &packet))
-        {
-            return Err(packet);
-        }
-
-        self.try_push(packet)
     }
 
     /// Removes all packets from the batch, in order.
@@ -268,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn same_flow_push_refuses_a_new_flow() {
+    fn push_refuses_a_new_flow() {
         let udp = |dst_port| {
             ip_packet::make::udp_packet(
                 std::net::Ipv4Addr::LOCALHOST,
@@ -282,8 +275,8 @@ mod tests {
 
         let mut batch = PacketFlow::new(udp(5678));
 
-        assert!(batch.try_push_same_flow(udp(5678)).is_ok());
-        assert!(batch.try_push_same_flow(udp(5679)).is_err());
+        assert!(batch.try_push(udp(5678)).is_ok());
+        assert!(batch.try_push(udp(5679)).is_err());
         assert_eq!(batch.len(), 2);
     }
 }
