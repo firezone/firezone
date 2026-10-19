@@ -45,6 +45,9 @@ jobs:
         run: |
           cargo build --release -p tunnel-bench
           cp target/release/tunnel-bench tests/tunnel-bench/
+      # Runs each benchmark once, so a broken one fails here instead of on Bencher.
+      - name: Test bench
+        run: target/release/tunnel-bench --test
       - name: Push image to the Bencher registry
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
