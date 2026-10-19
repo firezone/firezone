@@ -84,8 +84,6 @@ jobs:
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
-      # GIT_SHA stays unset: the settings screens print it as their build
-      # string, and the commit would move two images on every push.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
@@ -198,8 +196,6 @@ jobs:
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
-      # GIT_SHA stays unset: the settings screens print it as their build
-      # string, and the commit would move two images on every push.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
