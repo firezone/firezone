@@ -90,19 +90,6 @@ pub struct Input {
     pub error: TunnelError,
 }
 
-impl Input {
-    fn error(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            device: None,
-            network: None,
-            tcp_dns_queries: Vec::new(),
-            udp_dns_queries: Vec::new(),
-            dns_responses: Vec::new(),
-            error: TunnelError::single(e),
-        }
-    }
-}
-
 fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
     match poll {
         Poll::Ready(r) => Some(r),
@@ -122,6 +109,172 @@ where
             None
         }
         Poll::Pending => None,
+    }
+}
+
+/// The state of a single [`Io::poll`] call.
+struct PollState<'a, 'cx> {
+    io: &'a mut Io,
+    cx: &'a mut Context<'cx>,
+    udp_has_room: bool,
+    tun_has_room: bool,
+    input: Input,
+}
+
+impl<'a, 'cx> PollState<'a, 'cx> {
+    fn new(io: &'a mut Io, cx: &'a mut Context<'cx>) -> Self {
+        Self {
+            io,
+            cx,
+            udp_has_room: false,
+            tun_has_room: false,
+            input: Input {
+                device: None,
+                network: None,
+                tcp_dns_queries: Vec::new(),
+                udp_dns_queries: Vec::new(),
+                dns_responses: Vec::new(),
+                error: TunnelError::default(),
+            },
+        }
+    }
+
+    fn flush_udp(&mut self) {
+        let poll = self.io.flush_gso_queue(self.cx);
+
+        self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
+    }
+
+    fn flush_tun(&mut self) {
+        let poll = self.io.tun.poll_flush(self.cx);
+
+        self.tun_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
+    }
+
+    fn poll_nameservers(&mut self) {
+        if self
+            .io
+            .reval_nameserver_interval
+            .poll_tick(self.cx)
+            .is_ready()
+        {
+            self.io.nameservers.evaluate();
+        }
+
+        // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
+        let _ = self.io.nameservers.poll(self.cx);
+    }
+
+    fn poll_doh_bootstrap(&mut self) {
+        while let Poll::Ready((url, result)) = self.io.doh_clients_bootstrap.poll_unpin(self.cx) {
+            match result.map_err(anyhow::Error::new).flatten() {
+                Ok(client) => {
+                    self.io
+                        .doh_clients
+                        .insert(url, DohClient::Connected(client));
+                }
+                Err(e) => {
+                    tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
+
+                    self.io.doh_clients.remove(&url);
+                }
+            }
+        }
+    }
+
+    fn poll_network(&mut self) {
+        if !self.tun_has_room {
+            return;
+        }
+
+        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx));
+    }
+
+    fn poll_socket_errors(&mut self) {
+        while let Poll::Ready(e) = self.io.sockets.poll_error(self.cx) {
+            self.input.error.push(e);
+        }
+    }
+
+    fn poll_device(&mut self) {
+        if !self.udp_has_room {
+            return;
+        }
+
+        let poll = self.io.tun.poll_read(self.cx);
+
+        self.input.device = poll_result_to_option(poll, &mut self.input.error);
+    }
+
+    fn poll_dns_queries(&mut self) {
+        for server in self.io.udp_dns_server.values_mut() {
+            if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
+            {
+                self.input.udp_dns_queries.push(query);
+            }
+        }
+
+        for server in self.io.tcp_dns_server.values_mut() {
+            if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
+            {
+                self.input.tcp_dns_queries.push(query);
+            }
+        }
+    }
+
+    fn poll_dns_responses(&mut self) {
+        while let Poll::Ready((result, mut meta)) = self.io.dns_queries.poll_unpin(self.cx) {
+            let message = match result {
+                Ok(message) => message,
+                Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
+                    io::Error::new(io::ErrorKind::TimedOut, e),
+                )),
+            };
+
+            if let dns::Upstream::DoH { server } = &meta.server
+                && let Err(e) = &message
+                && e.any_is::<http_client::Closed>()
+                && !meta.retried
+            {
+                tracing::debug!(%server, "DoH connection closed, retrying query on a new connection");
+
+                let server = server.clone();
+                let client = self.io.doh_client(server.clone());
+
+                meta.retried = true;
+                self.io
+                    .queue_dns_query(doh::send(client, server, meta.query.clone()), meta);
+
+                continue;
+            }
+
+            self.input.dns_responses.push(dns::RecursiveResponse {
+                server: meta.server,
+                query: meta.query,
+                message,
+                transport: meta.transport,
+                local: meta.local,
+                remote: meta.remote,
+                started_at: meta.started_at,
+                recursion: dns::Recursion::Local,
+            });
+        }
+    }
+
+    fn into_input(self) -> Poll<Input> {
+        let input = self.input;
+
+        if input.device.is_none()
+            && input.network.is_none()
+            && input.tcp_dns_queries.is_empty()
+            && input.udp_dns_queries.is_empty()
+            && input.dns_responses.is_empty()
+            && input.error.is_empty()
+        {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(input)
     }
 }
 
@@ -228,125 +381,23 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    /// Polls all IO sources that are ready.
+    ///
+    /// The TUN device is only read while the UDP sockets have room, and the network only while the TUN device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
-        if let Err(e) = ready!(self.flush(cx)) {
-            return Poll::Ready(Input::error(e));
-        }
+        let mut state = PollState::new(self, cx);
 
-        let mut error = TunnelError::default();
+        state.flush_udp();
+        state.flush_tun();
+        state.poll_nameservers();
+        state.poll_doh_bootstrap();
+        state.poll_network();
+        state.poll_socket_errors();
+        state.poll_device();
+        state.poll_dns_queries();
+        state.poll_dns_responses();
 
-        if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
-            self.nameservers.evaluate();
-        }
-
-        // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
-        let _ = self.nameservers.poll(cx);
-
-        while let Poll::Ready((url, result)) = self.doh_clients_bootstrap.poll_unpin(cx) {
-            match result.map_err(anyhow::Error::new).flatten() {
-                Ok(client) => {
-                    self.doh_clients.insert(url, DohClient::Connected(client));
-                }
-                Err(e) => {
-                    tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
-
-                    self.doh_clients.remove(&url);
-                }
-            }
-        }
-
-        let network = self.sockets.poll_recv_from(cx);
-
-        while let Poll::Ready(e) = self.sockets.poll_error(cx) {
-            error.push(e);
-        }
-
-        let device = self.tun.poll_read(cx);
-
-        let udp_dns_queries = self
-            .udp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
-
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
-
-        let tcp_dns_queries = self
-            .tcp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
-
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
-
-        let mut dns_responses = Vec::new();
-
-        while let Poll::Ready((result, mut meta)) = self.dns_queries.poll_unpin(cx) {
-            let message = match result {
-                Ok(message) => message,
-                Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
-                    io::Error::new(io::ErrorKind::TimedOut, e),
-                )),
-            };
-
-            if let dns::Upstream::DoH { server } = &meta.server
-                && let Err(e) = &message
-                && e.any_is::<http_client::Closed>()
-                && !meta.retried
-            {
-                tracing::debug!(%server, "DoH connection closed, retrying query on a new connection");
-
-                let server = server.clone();
-                let client = self.doh_client(server.clone());
-
-                meta.retried = true;
-                self.queue_dns_query(doh::send(client, server, meta.query.clone()), meta);
-
-                continue;
-            }
-
-            dns_responses.push(dns::RecursiveResponse {
-                server: meta.server,
-                query: meta.query,
-                message,
-                transport: meta.transport,
-                local: meta.local,
-                remote: meta.remote,
-                started_at: meta.started_at,
-                recursion: dns::Recursion::Local,
-            });
-        }
-
-        if device.is_pending()
-            && network.is_pending()
-            && tcp_dns_queries.is_empty()
-            && udp_dns_queries.is_empty()
-            && dns_responses.is_empty()
-            && error.is_empty()
-        {
-            return Poll::Pending;
-        }
-
-        Poll::Ready(Input {
-            device: poll_result_to_option(device, &mut error),
-            network: poll_to_option(network),
-            tcp_dns_queries,
-            udp_dns_queries,
-            dns_responses,
-            error,
-        })
+        state.into_input()
     }
 
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
