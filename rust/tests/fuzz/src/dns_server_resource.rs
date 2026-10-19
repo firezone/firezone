@@ -58,32 +58,20 @@ impl DnsServers {
         ))
     }
 
-    /// Answers the queries received so far, by transport and then by socket.
-    pub(crate) fn poll_answers(
-        &mut self,
-        records: &DnsRecords,
-        now: Instant,
-    ) -> [Vec<(SocketAddr, IpPacket)>; 2] {
-        let udp = self
-            .udp
-            .iter_mut()
-            .flat_map(|(socket, server)| {
-                server.handle_timeout(records);
+    /// Answers the queries received so far.
+    pub(crate) fn poll_answers(&mut self, records: &DnsRecords, now: Instant) -> Vec<IpPacket> {
+        let udp = self.udp.values_mut().flat_map(|server| {
+            server.handle_timeout(records);
 
-                iter::from_fn(|| server.poll_outbound()).map(move |packet| (*socket, packet))
-            })
-            .collect();
-        let tcp = self
-            .tcp
-            .iter_mut()
-            .flat_map(|(socket, server)| {
-                server.handle_timeout(records, now);
+            iter::from_fn(|| server.poll_outbound())
+        });
+        let tcp = self.tcp.values_mut().flat_map(|server| {
+            server.handle_timeout(records, now);
 
-                iter::from_fn(|| server.poll_outbound()).map(move |packet| (*socket, packet))
-            })
-            .collect();
+            iter::from_fn(|| server.poll_outbound())
+        });
 
-        [udp, tcp]
+        udp.chain(tcp).collect()
     }
 }
 

@@ -9,7 +9,6 @@ use super::{
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
-use itertools::Itertools as _;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -98,26 +97,12 @@ impl SimGateway {
         global_dns_records: &DnsRecords,
         now: Instant,
     ) -> Vec<Transmit> {
-        let [own_udp_answers, own_tcp_answers] = self
-            .dns_servers
-            .poll_answers(&self.site_specific_dns_records, now);
-        let [network_udp_answers, network_tcp_answers] =
-            self.network.poll_dns_answers(global_dns_records, now);
-        let by_socket = |a: &(SocketAddr, IpPacket), b: &(SocketAddr, IpPacket)| a.0 <= b.0;
-
-        // DNS answers leave by transport, then by socket, whichever side of the Gateway serves them.
         let packets = iter::empty()
             .chain(
-                own_udp_answers
-                    .into_iter()
-                    .merge_by(network_udp_answers, by_socket),
+                self.dns_servers
+                    .poll_answers(&self.site_specific_dns_records, now),
             )
-            .chain(
-                own_tcp_answers
-                    .into_iter()
-                    .merge_by(network_tcp_answers, by_socket),
-            )
-            .map(|(_, packet)| packet)
+            .chain(self.network.poll_dns_answers(global_dns_records, now))
             .chain(self.network.poll_tcp_servers(now))
             .collect::<Vec<_>>();
 
