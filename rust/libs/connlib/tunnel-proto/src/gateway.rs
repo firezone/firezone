@@ -134,9 +134,10 @@ impl GatewayState {
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let packet = peer
-            .translate_inbound(packet, now)
-            .context("Failed to translate inbound packet")?;
+        let packet = match peer.translate_inbound(packet, now) {
+            Ok(packet) => packet,
+            Err(e) => return Err(e.context("Failed to translate inbound packet")),
+        };
 
         let Some(job) = encrypt_packet(packet, cid, &mut self.node, now)? else {
             return Ok(None);
@@ -161,12 +162,10 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<snownet::Decapsulation>> {
-        let decapsulation = self
-            .node
-            .decapsulate(local, from, packet, now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?;
-
-        Ok(decapsulation)
+        match self.node.decapsulate(local, from, packet, now) {
+            Ok(decapsulation) => Ok(decapsulation),
+            Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
+        }
     }
 
     /// Handles a WireGuard data message decrypted from a [`snownet::Decapsulation`].
@@ -183,11 +182,11 @@ impl GatewayState {
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        let Some((cid, packet)) = self
-            .node
-            .handle_decrypted(packet, now)
-            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?
-        else {
+        let decrypted = match self.node.handle_decrypted(packet, now) {
+            Ok(decrypted) => decrypted,
+            Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
+        };
+        let Some((cid, packet)) = decrypted else {
             return Ok(None);
         };
 
@@ -233,10 +232,12 @@ impl GatewayState {
             return Ok(None);
         }
 
-        match peer
-            .translate_outbound(packet, now)
-            .context("Failed to translate outbound packet")?
-        {
+        let translated = match peer.translate_outbound(packet, now) {
+            Ok(translated) => translated,
+            Err(e) => return Err(e.context("Failed to translate outbound packet")),
+        };
+
+        match translated {
             TranslateOutboundResult::Send(packet) => Ok(Some(packet)),
             TranslateOutboundResult::IcmpError {
                 reply,

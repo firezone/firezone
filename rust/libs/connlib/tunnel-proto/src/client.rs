@@ -746,12 +746,10 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<snownet::Decapsulation>> {
-        let decapsulation = self
-            .node
-            .decapsulate(local, from, packet, now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?;
-
-        Ok(decapsulation)
+        match self.node.decapsulate(local, from, packet, now) {
+            Ok(decapsulation) => Ok(decapsulation),
+            Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
+        }
     }
 
     /// Handles a WireGuard data message decrypted from a [`snownet::Decapsulation`].
@@ -768,11 +766,11 @@ impl ClientState {
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        let Some((pid, packet)) = self
-            .node
-            .handle_decrypted(packet, now)
-            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?
-        else {
+        let decrypted = match self.node.handle_decrypted(packet, now) {
+            Ok(decrypted) => decrypted,
+            Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
+        };
+        let Some((pid, packet)) = decrypted else {
             return Ok(None);
         };
 

@@ -303,10 +303,7 @@ impl ClientTunnel {
                     let mut batch = self.io.encrypt_batch();
 
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        let result = self
-                            .role_state
-                            .handle_tun_input(packet, now)
-                            .context("Failed to handle packet from TUN device");
+                        let result = self.role_state.handle_tun_input(packet, now);
 
                         // Jobs queued by this call were encapsulated before the one it returns.
                         batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
@@ -314,7 +311,9 @@ impl ClientTunnel {
                         match result {
                             Ok(Some(job)) => batch.push(job),
                             Ok(None) => {}
-                            Err(e) => error.push(e),
+                            Err(e) => {
+                                error.push(e.context("Failed to handle packet from TUN device"))
+                            }
                         }
                     }
 
@@ -330,23 +329,20 @@ impl ClientTunnel {
                         decrypts.push(buffer, |datagram| {
                             udp_received.record(datagram.packet);
 
-                            let result = self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local,
-                                    datagram.from,
-                                    datagram.packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local,
-                                    from: datagram.from,
-                                });
+                            let result = self.role_state.handle_network_input(
+                                datagram.local,
+                                datagram.from,
+                                datagram.packet,
+                                now,
+                            );
 
                             match result {
                                 Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
+                                Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                                    local: datagram.local,
+                                    from: datagram.from,
+                                })),
                             };
 
                             None
@@ -358,18 +354,12 @@ impl ClientTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain(..) {
-                        let result = self
-                            .role_state
-                            .handle_decrypted_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .with_context(|| FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            });
+                        let result = self.role_state.handle_decrypted_network_input(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            now,
+                        );
 
                         match result {
                             Ok(Some(packet)) => {
@@ -379,7 +369,10 @@ impl ClientTunnel {
                                 self.io.queue_tun(packet);
                             }
                             Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e),
+                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            })),
                         };
                     }
 
@@ -542,10 +535,7 @@ impl GatewayTunnel {
                     let mut batch = self.io.encrypt_batch();
 
                     for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        let result = self
-                            .role_state
-                            .handle_tun_input(packet, now)
-                            .context("Failed to handle packet from TUN device");
+                        let result = self.role_state.handle_tun_input(packet, now);
 
                         // Jobs queued by this call were encapsulated before the one it returns.
                         batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
@@ -568,7 +558,7 @@ impl GatewayTunnel {
                                     ],
                                 );
 
-                                error.push(e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
@@ -585,23 +575,20 @@ impl GatewayTunnel {
                         decrypts.push(buffer, |datagram| {
                             udp_received.record(datagram.packet);
 
-                            let result = self
-                                .role_state
-                                .handle_network_input(
-                                    datagram.local,
-                                    datagram.from,
-                                    datagram.packet,
-                                    now,
-                                )
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local,
-                                    from: datagram.from,
-                                });
+                            let result = self.role_state.handle_network_input(
+                                datagram.local,
+                                datagram.from,
+                                datagram.packet,
+                                now,
+                            );
 
                             match result {
                                 Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e),
+                                Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                                    local: datagram.local,
+                                    from: datagram.from,
+                                })),
                             };
 
                             None
@@ -613,18 +600,12 @@ impl GatewayTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain(..) {
-                        let result = self
-                            .role_state
-                            .handle_decrypted_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .with_context(|| FailedToHandleNetworkPacket {
-                                local: received.local,
-                                from: received.from,
-                            });
+                        let result = self.role_state.handle_decrypted_network_input(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            now,
+                        );
 
                         match result {
                             Ok(Some(packet)) => {
@@ -634,7 +615,10 @@ impl GatewayTunnel {
                                 self.io.queue_tun(packet);
                             }
                             Ok(None) => self.needs_timeout = true,
-                            Err(e) => error.push(e),
+                            Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                                local: received.local,
+                                from: received.from,
+                            })),
                         };
                     }
 
