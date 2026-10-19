@@ -90,6 +90,18 @@ defmodule PortalWeb.Settings.LogSinksTest do
   end
 
   describe "index" do
+    test "loads the log sinks only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/log_sinks") |> html_response(200)
+      assert static =~ ~s(id="log-sinks-skeleton")
+      refute static =~ "No log sinks yet"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/log_sinks")
+      assert html =~ "No log sinks yet"
+      refute html =~ ~s(id="log-sinks-skeleton")
+    end
+
     test "renders empty state when no log sinks exist", %{
       conn: conn,
       account: account,

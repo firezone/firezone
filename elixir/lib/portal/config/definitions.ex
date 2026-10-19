@@ -845,7 +845,7 @@ defmodule Portal.Config.Definitions do
   @doc "Google Ads import conversion action ID for completed registrations."
   defconfig(:google_ads_registration_conversion_action_id, :string, default: nil)
 
-  @doc "Google Ads import conversion action ID for active Team enrollments."
+  @doc "Google Ads import conversion action ID for active Team and Business enrollments."
   defconfig(:google_ads_subscription_conversion_action_id, :string, default: nil)
 
   @doc "Dedicated Google service account used for Ads conversions."

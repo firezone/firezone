@@ -172,6 +172,23 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "provider listing" do
+    test "loads the providers only after the socket connects", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/authentication") |> html_response(200)
+      assert static =~ ~s(id="providers-skeleton")
+      refute static =~ provider.id
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/authentication")
+      assert html =~ provider.id
+      refute html =~ ~s(id="providers-skeleton")
+    end
+
     test "renders X.509 with a trust-anchor warning when the feature is enabled", %{
       account: account,
       actor: actor,

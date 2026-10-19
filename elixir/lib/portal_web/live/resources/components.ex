@@ -183,7 +183,6 @@ defmodule PortalWeb.Resources.Components do
             <div class="block">
               <div class="w-full font-semibold mb-1 text-xs flex items-center">
                 <Core.icon name="ri-computer-line" class="w-4 h-4 mr-1" /> Device Pool
-                <Core.new_badge class="ml-1.5" />
               </div>
               <div class="w-full text-[10px]">
                 Access other devices directly

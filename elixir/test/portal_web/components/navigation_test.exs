@@ -39,39 +39,19 @@ defmodule PortalWeb.Components.NavigationTest do
     end
   end
 
-  describe "settings_nav trust anchors tab" do
-    test "is shown with a NEW badge", %{conn: conn, account: account, actor: actor} do
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      assert html =~ "Trust Anchors"
-      assert has_element?(lv, "a[href='/#{account.slug}/settings/trust_anchors'] [data-settings-tab-badge]", "NEW")
-    end
-
-    test "device posture carries a NEW badge too", %{conn: conn, account: account, actor: actor} do
-
+  describe "navigation badges" do
+    test "no sidebar item or settings tab carries a badge", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "a[href='/#{account.slug}/settings/device_posture'] [data-settings-tab-badge]", "NEW")
-    end
-  end
-
-  describe "sidebar badges" do
-    test "only Settings and Devices carry a NEW badge", %{conn: conn, account: account, actor: actor} do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      assert has_element?(lv, "a[href='/#{account.slug}/settings/account'] [data-sidebar-badge]", "NEW")
-      assert has_element?(lv, "a[href='/#{account.slug}/devices'] [data-sidebar-badge]", "NEW")
-      refute has_element?(lv, "a[href='/#{account.slug}/resources'] [data-sidebar-badge]")
-      refute has_element?(lv, "a[href='/#{account.slug}/logs/change_logs'] [data-sidebar-badge]")
+      refute has_element?(lv, "[data-sidebar-badge]")
+      refute has_element?(lv, "[data-settings-tab-badge]")
     end
   end
 end

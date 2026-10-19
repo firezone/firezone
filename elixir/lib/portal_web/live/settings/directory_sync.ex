@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     PubSub
   }
 
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -53,7 +54,7 @@ defmodule PortalWeb.Settings.DirectorySync do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
-    {:ok, init(socket, new: true)}
+    {:ok, init_if_connected(socket)}
   end
 
   defp refresh_hook_directory(%{assigns: %{live_action: :hook, directory: directory}} = socket) do
@@ -64,6 +65,14 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp refresh_hook_directory(socket), do: socket
+
+  # The static render shows a skeleton instead, so the directories are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket),
+      do: init(socket, new: true),
+      else: assign(socket, directories: nil, verification_error: nil, open_directory_actions_id: nil)
+  end
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
@@ -616,7 +625,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
               <h2 class="text-xs font-semibold text-heading">Directories</h2>
-              <span class="text-xs text-subtle tabular-nums">
+              <span :if={@directories} class="text-xs text-subtle tabular-nums">
                 {length(@directories)}
               </span>
             </div>
@@ -632,66 +641,69 @@ defmodule PortalWeb.Settings.DirectorySync do
           </div>
 
           <div class="flex-1 overflow-auto">
-            <%= if Enum.empty?(@directories) do %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-loop-left-line" class="w-5 h-5 text-subtle" />
+            <%= cond do %>
+              <% is_nil(@directories) -> %>
+                <SettingsComponents.skeleton id="directories-skeleton" />
+              <% Enum.empty?(@directories) -> %>
+                <div class="flex items-center justify-center h-full">
+                  <div class="flex flex-col items-center gap-3 py-16">
+                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                      <Core.icon name="ri-loop-left-line" class="w-5 h-5 text-subtle" />
+                    </div>
+                    <div class="text-center">
+                      <p class="text-sm font-medium text-heading">No directories yet</p>
+                      <p class="text-xs text-subtle mt-0.5">
+                        Connect a directory to sync actors and groups automatically.
+                      </p>
+                    </div>
+                    <Navigation.link
+                      patch={~p"/#{@account}/settings/directory_sync/new"}
+                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                    >
+                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
+                    </Navigation.link>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No directories yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      Connect a directory to sync actors and groups automatically.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/directory_sync/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
-                  </Navigation.link>
                 </div>
-              </div>
-            <% else %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Directory
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Tenant
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Identities
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Groups
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Full Sync
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Update
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.directory_row
-                    :for={directory <- @directories}
-                    type={directory_type(directory)}
-                    account={@account}
-                    directory={directory}
-                    subject={@subject}
-                    most_recent_job={directory.most_recent_job}
-                    open_directory_actions_id={@open_directory_actions_id}
-                  />
-                </tbody>
-              </table>
+              <% true -> %>
+                <table class="w-full text-sm border-collapse">
+                  <thead class="sticky top-0 z-10 bg-raised">
+                    <tr class="border-b border-border-strong">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                        Directory
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Status
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
+                        Tenant
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Identities
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Groups
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Full Sync
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Update
+                      </th>
+                      <th class="px-6 py-2.5 w-14"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <.directory_row
+                      :for={directory <- @directories}
+                      type={directory_type(directory)}
+                      account={@account}
+                      directory={directory}
+                      subject={@subject}
+                      most_recent_job={directory.most_recent_job}
+                      open_directory_actions_id={@open_directory_actions_id}
+                    />
+                  </tbody>
+                </table>
             <% end %>
           </div>
         </div>

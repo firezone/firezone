@@ -1,6 +1,16 @@
 defmodule PortalWeb.GroupsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Group, Membership, Policy, Repo}
   alias Portal.Changes.Change
 
@@ -33,6 +43,20 @@ defmodule PortalWeb.GroupsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      group_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/groups") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#groups-skeleton")
+      assert Floki.find(static, "#groups-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/groups")
+      assert has_element?(lv, "#groups-rows tr")
+      refute has_element?(lv, "#groups-skeleton")
+    end
+
     test "renders groups page", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -758,7 +782,7 @@ defmodule PortalWeb.GroupsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/groups")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/groups")
 
       assert html =~ "Loading..."
 

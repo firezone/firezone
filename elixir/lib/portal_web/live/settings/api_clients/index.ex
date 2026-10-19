@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     only: [change: 1, put_change: 3, cast: 3, validate_required: 2, validate_length: 3]
 
   alias PortalWeb.Settings.ApiClients.Components, as: ApiClientComponents
+  alias PortalWeb.Settings.Components, as: SettingsComponents
 
   alias Portal.{Actor, APIToken, Authentication}
 
@@ -101,7 +102,10 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+    # The static render shows a skeleton instead, so the tokens are only queried
+    # once, by the connected mount.
+    actors_with_tokens =
+      if connected?(socket), do: Database.list_actors_with_token(socket.assigns.subject)
 
     socket =
       socket
@@ -180,7 +184,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">API Tokens</h2>
-            <span class="text-xs text-subtle tabular-nums">
+            <span :if={@actors_with_tokens} class="text-xs text-subtle tabular-nums">
               {length(@actors_with_tokens)}
             </span>
           </div>
@@ -196,62 +200,65 @@ defmodule PortalWeb.Settings.ApiClients.Index do
         </div>
 
         <div class="flex-1 overflow-auto">
-          <%= if Enum.empty?(@actors_with_tokens) do %>
-            <div class="flex items-center justify-center h-full">
-              <div class="flex flex-col items-center gap-3 py-16">
-                <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <Core.icon name="ri-key-line" class="w-5 h-5 text-subtle" />
+          <%= cond do %>
+            <% is_nil(@actors_with_tokens) -> %>
+              <SettingsComponents.skeleton id="api-tokens-skeleton" />
+            <% Enum.empty?(@actors_with_tokens) -> %>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <Core.icon name="ri-key-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No API tokens yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      No API tokens have been configured.
+                    </p>
+                  </div>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/api_clients/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
+                  </Navigation.link>
                 </div>
-                <div class="text-center">
-                  <p class="text-sm font-medium text-heading">No API tokens yet</p>
-                  <p class="text-xs text-subtle mt-0.5">
-                    No API tokens have been configured.
-                  </p>
-                </div>
-                <Navigation.link
-                  patch={~p"/#{@account}/settings/api_clients/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <Core.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
-                </Navigation.link>
               </div>
-            </div>
-          <% else %>
-            <table class="w-full text-sm border-collapse">
-              <thead class="sticky top-0 z-10 bg-raised">
-                <tr class="border-b border-border-strong">
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
-                    Name
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                    Status
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Created
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Expires
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Last Used
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Last Used IP
-                  </th>
-                  <th class="px-6 py-2.5 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <.api_client_row
-                  :for={{actor, token} <- @actors_with_tokens}
-                  account={@account}
-                  actor={actor}
-                  token={token}
-                  pending_confirm={@pending_confirm}
-                  open_actor_actions_id={@open_actor_actions_id}
-                />
-              </tbody>
-            </table>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
+                      Name
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                      Status
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Created
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Expires
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Last Used
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Last Used IP
+                    </th>
+                    <th class="px-6 py-2.5 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.api_client_row
+                    :for={{actor, token} <- @actors_with_tokens}
+                    account={@account}
+                    actor={actor}
+                    token={token}
+                    pending_confirm={@pending_confirm}
+                    open_actor_actions_id={@open_actor_actions_id}
+                  />
+                </tbody>
+              </table>
           <% end %>
         </div>
       </div>

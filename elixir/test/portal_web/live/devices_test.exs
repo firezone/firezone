@@ -1,6 +1,16 @@
 defmodule PortalWeb.DevicesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Device, Repo}
   alias Portal.Changes.Change
 
@@ -44,6 +54,20 @@ defmodule PortalWeb.DevicesTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      client_fixture(account: account, actor: actor)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/devices") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#devices-skeleton")
+      assert Floki.find(static, "#devices-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/devices")
+      assert has_element?(lv, "#devices-rows tr")
+      refute has_element?(lv, "#devices-skeleton")
+    end
+
     test "renders empty state when no devices exist", %{
       conn: conn,
       account: account,
@@ -171,12 +195,13 @@ defmodule PortalWeb.DevicesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices")
 
-      html =
-        element(
-          lv,
-          "button[phx-click='order_by'][phx-value-table_id='devices'][phx-value-order_by='devices:asc:slug']"
-        )
-        |> render_click()
+      element(
+        lv,
+        "button[phx-click='order_by'][phx-value-table_id='devices'][phx-value-order_by='devices:asc:slug']"
+      )
+      |> render_click()
+
+      html = render_async(lv)
 
       assert html =~ alpha.slug
       assert html =~ omega.slug
@@ -834,7 +859,7 @@ defmodule PortalWeb.DevicesTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/devices")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/devices")
 
       assert html =~ "Loading..."
 
@@ -910,7 +935,7 @@ defmodule PortalWeb.DevicesTest do
       assert has_element?(lv, "#devices-reload-btn")
 
       render_click(lv, "reload", %{"table_id" => "devices"})
-      assert render(lv) =~ "renamed-client"
+      assert render_async(lv) =~ "renamed-client"
     end
 
     test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
