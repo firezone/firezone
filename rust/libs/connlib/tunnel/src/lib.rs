@@ -326,32 +326,31 @@ impl ClientTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in run.inspect(|r| udp_received.record(r.packet)) {
+                    for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        decrypts.push(buffer, |datagram| {
+                            udp_received.record(datagram.packet);
+
                             let result = self
                                 .role_state
                                 .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
+                                    datagram.local,
+                                    datagram.from,
+                                    datagram.packet,
                                     now,
                                 )
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
+                                    local: datagram.local,
+                                    from: datagram.from,
                                 });
 
                             match result {
-                                Ok(Some(job)) => decrypts.push(io::Received {
-                                    local: received.local,
-                                    from: received.from,
-                                    ecn: received.ecn,
-                                    packet: job,
-                                }),
+                                Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
-                        }
+
+                            None
+                        });
                     }
 
                     tick.want_continue();
@@ -582,32 +581,31 @@ impl GatewayTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for run in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in run.inspect(|r| udp_received.record(r.packet)) {
+                    for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        decrypts.push(buffer, |datagram| {
+                            udp_received.record(datagram.packet);
+
                             let result = self
                                 .role_state
                                 .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
+                                    datagram.local,
+                                    datagram.from,
+                                    datagram.packet,
                                     now,
                                 )
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
+                                    local: datagram.local,
+                                    from: datagram.from,
                                 });
 
                             match result {
-                                Ok(Some(job)) => decrypts.push(io::Received {
-                                    local: received.local,
-                                    from: received.from,
-                                    ecn: received.ecn,
-                                    packet: job,
-                                }),
+                                Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
-                        }
+
+                            None
+                        });
                     }
 
                     tick.want_continue();

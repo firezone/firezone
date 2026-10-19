@@ -250,11 +250,14 @@ const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize = 2
 ///
 /// Per address family (hence `2 *`), receive batches can be held in three places at once: up to
 /// [`INBOUND_QUEUE_SIZE`] queued in the channel, up to [`UDP_RECV_BATCH_LIMIT`] drained onto the main
-/// thread, and one being filled by the receive task. Each batch pins
-/// [`socket_factory::MAX_RECV_BATCH_MEMORY`], which on Linux / Android sizes every buffer for a full
-/// 64-datagram GRO batch - the term that dominates here and the reason the depths above are shallow.
+/// thread, whose buffers move into decrypt jobs, and one being filled by the receive task. Each batch
+/// pins [`socket_factory::MAX_RECV_BATCH_MEMORY`], which on Linux / Android sizes every buffer for a
+/// full 64-datagram GRO batch - the term that dominates here and the reason the depths above are
+/// shallow. On top, the jobs of earlier drains may still await decryption
+/// ([`MAX_DECRYPT_BACKLOG_MEMORY`](crate::io::MAX_DECRYPT_BACKLOG_MEMORY)).
 const MAX_UDP_INBOUND_QUEUE_MEMORY: usize =
-    2 * (INBOUND_QUEUE_SIZE + UDP_RECV_BATCH_LIMIT + 1) * socket_factory::MAX_RECV_BATCH_MEMORY;
+    2 * (INBOUND_QUEUE_SIZE + UDP_RECV_BATCH_LIMIT + 1) * socket_factory::MAX_RECV_BATCH_MEMORY
+        + crate::io::MAX_DECRYPT_BACKLOG_MEMORY;
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 const _: () = {

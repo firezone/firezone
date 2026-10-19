@@ -13,7 +13,7 @@ mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use crypto::{DecryptJob, DecryptedPacket, EncryptJob};
+pub use crypto::{Decapsulation, DecryptedPacket, EncryptJob};
 pub use node::{
     ConnectionPath, Credentials, Encapsulation, Event, IceConfig, IceRole, Node, StillConnecting,
     Transmit, UnknownConnection,

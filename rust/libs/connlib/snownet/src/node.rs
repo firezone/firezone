@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::crypto::{DecryptJob, DecryptedPacket, EncryptJob};
+use crate::crypto::{Decapsulation, DecryptedPacket, EncryptJob};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -544,17 +544,18 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
-    ///   Decrypt it and pass the result to [`Node::handle_decrypted`].
+    ///   Decrypt it from `datagram` and pass the result to [`Node::handle_decrypted`].
     pub fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: &[u8],
+        datagram: &[u8],
         now: Instant,
-    ) -> Result<Option<DecryptJob>> {
+    ) -> Result<Option<Decapsulation>> {
         self.last_now = now;
 
-        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+        let (from, packet, relayed) = match self.allocations_try_handle(from, local, datagram, now)
+        {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
         };
@@ -568,16 +569,18 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let job = match self.connections_try_handle(from, destination, packet, now) {
-            ControlFlow::Continue(job) => job,
+        let decapsulation = match self.connections_try_handle(from, destination, packet, now) {
+            ControlFlow::Continue(decapsulation) => decapsulation,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some(job))
+        Ok(Some(
+            decapsulation.with_header_len(datagram.len() - packet.len()),
+        ))
     }
 
-    /// Accepts a packet decrypted from a [`DecryptJob`].
+    /// Accepts a packet decrypted from a [`Decapsulation`].
     ///
     /// # Returns
     ///
@@ -1057,7 +1060,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, DecryptJob> {
+    ) -> ControlFlow<Result<()>, Decapsulation> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(Received::Message(parsed_packet)) => parsed_packet,
             Ok(Received::SendCookieReply(reply)) => {
@@ -1942,7 +1945,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, DecryptJob>
+    ) -> ControlFlow<Result<()>, Decapsulation>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1996,7 +1999,7 @@ where
                     .context("data packet")
                 {
                     Ok(pending) => {
-                        ControlFlow::Continue(DecryptJob::new(self.index, path, pending, datagram))
+                        ControlFlow::Continue(Decapsulation::new(self.index, path, pending))
                     }
                     Err(e) => ControlFlow::Break(Err(e)),
                 }

@@ -2,6 +2,7 @@ use std::{
     collections::VecDeque,
     mem,
     net::SocketAddr,
+    ops::Range,
     pin::Pin,
     sync::mpsc,
     task::{Context, Poll, ready},
@@ -9,22 +10,38 @@ use std::{
 
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::Ecn;
-use snownet::{DecryptJob, DecryptedPacket};
+use snownet::{Decapsulation, DecryptedPacket};
+use socket_factory::{DatagramIn, RecvBuffer};
 use tokio::sync::oneshot;
 
 use super::{next_worker, spawn_workers};
 
 /// How many received packets go to a decrypt worker in one job at most.
+///
+/// A receive buffer holds at most this many datagrams, so every buffer fits into a single job.
 const DECRYPT_BATCH_SIZE: usize = 64;
 
 /// How many jobs may await decryption before we stop reading from the network.
 ///
-/// Each packet holds a copy of its datagram, so this bounds their memory like the UDP socket's queue
-/// bounds that of the received batches.
-const MAX_JOBS_IN_FLIGHT: usize = 4;
+/// Every job pins its receive buffers. Android's are sized for a full GRO batch and its memory
+/// budget leaves no room for the jobs of an earlier read, so it reads again only once those are done.
+const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
+    target_os = "android" => { 1 }
+    _ => { 4 }
+};
+
+/// Worst-case memory pinned by the jobs still awaiting decryption when we read from the network.
+///
+/// A job holds at most one receive buffer per data message.
+pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
+    (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 bufferpool::buffer_pool!(
-    static DECRYPT_JOBS: VecBuf<Received<DecryptJob>> = (DECRYPT_BATCH_SIZE, "decrypt-jobs"),
+    static DECRYPT_BUFFERS: VecBuf<RecvBuffer> = (DECRYPT_BATCH_SIZE, "decrypt-buffers"),
+    batch: 4
+);
+bufferpool::buffer_pool!(
+    static DECRYPT_MESSAGES: VecBuf<Message> = (DECRYPT_BATCH_SIZE, "decrypt-messages"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -42,19 +59,41 @@ pub struct Received<P> {
 
 /// Decrypts WireGuard data messages on worker threads.
 ///
-/// Packets go to the next worker round-robin in jobs of up to [`DECRYPT_BATCH_SIZE`]. The results
-/// come back through a `oneshot` channel per job, which we queue in submission order to accept the
-/// decrypted packets in that order.
+/// Received buffers go to the next worker round-robin in jobs of up to [`DECRYPT_BATCH_SIZE`] data
+/// messages. The results come back through a `oneshot` channel per job, which we queue in
+/// submission order to accept the decrypted packets in that order.
 pub struct Decryptor {
-    workers: Vec<mpsc::Sender<(Jobs, oneshot::Sender<Decrypted>)>>,
+    workers: Vec<mpsc::Sender<(Job, oneshot::Sender<Decrypted>)>>,
     next_worker: usize,
 
     /// The jobs handed to the workers.
     decrypting: VecDeque<oneshot::Receiver<Decrypted>>,
 }
 
-type Jobs = Buffer<VecBuf<Received<DecryptJob>>>;
 type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
+
+/// Receive buffers and the data messages within them to decrypt.
+///
+/// Each buffer holds at least one of the messages.
+struct Job {
+    buffers: Buffer<VecBuf<RecvBuffer>>,
+    messages: Buffer<VecBuf<Message>>,
+}
+
+struct Message {
+    buffer: usize,
+    datagram: Range<usize>,
+    decapsulation: Decapsulation,
+}
+
+impl Job {
+    fn new() -> Self {
+        Self {
+            buffers: DECRYPT_BUFFERS.pull(),
+            messages: DECRYPT_MESSAGES.pull(),
+        }
+    }
+}
 
 impl Decryptor {
     pub fn new(num_workers: usize) -> Self {
@@ -65,15 +104,15 @@ impl Decryptor {
         }
     }
 
-    /// Starts a batch of packets to decrypt, handed to the workers when it is dropped.
+    /// Starts a batch of received buffers to decrypt, handed to the workers when it is dropped.
     pub fn batch(&mut self) -> DecryptBatch<'_> {
         DecryptBatch {
             decryptor: self,
-            jobs: DECRYPT_JOBS.pull(),
+            job: Job::new(),
         }
     }
 
-    /// Whether we may hand more received packets to the workers.
+    /// Whether we may hand more received buffers to the workers.
     pub fn has_room(&self) -> bool {
         self.decrypting.len() < MAX_JOBS_IN_FLIGHT
     }
@@ -95,7 +134,7 @@ impl Decryptor {
         }
     }
 
-    fn submit(&mut self, jobs: Jobs) {
+    fn submit(&mut self, job: Job) {
         let Some(worker) = next_worker(&self.workers, &mut self.next_worker) else {
             tracing::debug!("No decrypt worker running; dropping packets");
             return;
@@ -103,48 +142,79 @@ impl Decryptor {
         let (tx, rx) = oneshot::channel();
 
         // A stopped worker drops the sender, so `poll_decrypted` skips the job.
-        let _ = worker.send((jobs, tx));
+        let _ = worker.send((job, tx));
         self.decrypting.push_back(rx);
     }
 }
 
-/// Packets to decrypt, handed to the workers when dropped.
+/// Received buffers to decrypt, handed to the workers when dropped.
 pub struct DecryptBatch<'a> {
     decryptor: &'a mut Decryptor,
-    jobs: Jobs,
+    job: Job,
 }
 
 impl DecryptBatch<'_> {
-    pub fn push(&mut self, job: Received<DecryptJob>) {
-        self.jobs.push(job);
+    /// Passes each datagram in `buffer` to `decapsulate` and moves the buffer into a job if any of
+    /// them is a data message to decrypt.
+    pub fn push(
+        &mut self,
+        buffer: RecvBuffer,
+        mut decapsulate: impl FnMut(DatagramIn<'_>) -> Option<Decapsulation>,
+    ) {
+        if self.job.messages.len() + buffer.num_datagrams() > DECRYPT_BATCH_SIZE {
+            self.submit();
+        }
 
-        if self.jobs.len() == DECRYPT_BATCH_SIZE {
+        let index = self.job.buffers.len();
+        let num_messages = self.job.messages.len();
+
+        self.job
+            .messages
+            .extend(buffer.datagrams().filter_map(|datagram| {
+                let range = datagram.range.clone();
+
+                Some(Message {
+                    buffer: index,
+                    datagram: range,
+                    decapsulation: decapsulate(datagram)?,
+                })
+            }));
+
+        if self.job.messages.len() > num_messages {
+            self.job.buffers.push(buffer);
+        }
+
+        if self.job.messages.len() == DECRYPT_BATCH_SIZE {
             self.submit();
         }
     }
 
     fn submit(&mut self) {
-        let jobs = mem::replace(&mut self.jobs, DECRYPT_JOBS.pull());
-        self.decryptor.submit(jobs);
+        let job = mem::replace(&mut self.job, Job::new());
+        self.decryptor.submit(job);
     }
 }
 
 impl Drop for DecryptBatch<'_> {
     fn drop(&mut self) {
-        if !self.jobs.is_empty() {
+        if !self.job.messages.is_empty() {
             self.submit();
         }
     }
 }
 
-fn decrypt(jobs: mpsc::Receiver<(Jobs, oneshot::Sender<Decrypted>)>) {
-    for (mut jobs, decrypted) in jobs {
+fn decrypt(jobs: mpsc::Receiver<(Job, oneshot::Sender<Decrypted>)>) {
+    for (mut job, decrypted) in jobs {
         let mut packets = DECRYPTED.pull();
-        packets.extend(jobs.drain(..).map(|job| Received {
-            local: job.local,
-            from: job.from,
-            ecn: job.ecn,
-            packet: job.packet.decrypt(),
+        packets.extend(job.messages.drain(..).map(|message| {
+            let buffer = &job.buffers[message.buffer];
+
+            Received {
+                local: buffer.local(),
+                from: buffer.from(),
+                ecn: buffer.ecn(),
+                packet: message.decapsulation.decrypt(&buffer[message.datagram]),
+            }
         }));
 
         // We stopped if the receiver is gone; the channel for the next job is closed too.

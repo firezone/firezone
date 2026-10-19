@@ -6,7 +6,7 @@ use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -21,7 +21,9 @@ mod pool;
 #[cfg(any(windows, test))]
 mod uro;
 
-pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
+pub use buffer_sizes::{
+    MAX_RECV_BATCH_MEMORY, MAX_RECV_BUFFER_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE,
+};
 
 use pool::{OwnedSocket, Socket, SocketPool};
 
@@ -364,6 +366,8 @@ pub struct DatagramIn<'a> {
     pub from: SocketAddr,
     pub packet: &'a [u8],
     pub ecn: Ecn,
+    /// Where `packet` lies within its [`RecvBuffer`].
+    pub range: Range<usize>,
 }
 
 /// An outbound UDP datagram.
@@ -965,7 +969,7 @@ impl RecvBuffers {
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
 /// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
-/// which segments buffers holding several GRO / URO-coalesced datagrams apart again.
+/// which moves the buffers out as [`RecvBuffer`]s.
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
@@ -976,9 +980,6 @@ pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
     metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
 
     port: u16,
-    drained: bool,
-
-    _total_bytes: usize,
     num_packets: usize,
 }
 
@@ -993,15 +994,12 @@ impl<B> DatagramBatch<B> {
         buffers.truncate(len);
         metas.truncate(len);
 
-        let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
         let num_packets = metas.iter().map(num_segments).sum::<usize>();
 
         Self {
             buffers,
             metas,
             port,
-            drained: false,
-            _total_bytes: total_bytes,
             num_packets,
         }
     }
@@ -1011,10 +1009,6 @@ impl<B> DatagramBatch<B> {
     /// [`DatagramBatch::drain`] may yield fewer datagrams than this: receives with
     /// nonsensical metadata are dropped during iteration. A drained batch reports zero.
     pub fn len(&self) -> usize {
-        if self.drained {
-            return 0;
-        }
-
         self.num_packets
     }
 
@@ -1023,27 +1017,20 @@ impl<B> DatagramBatch<B> {
         self.len() == 0
     }
 
-    /// Removes all datagrams from the batch, in order, grouped into runs of consecutive
-    /// datagrams from the same remote address; draining again yields nothing.
+    /// Removes all receive buffers from the batch, in order; draining again yields nothing.
     ///
-    /// With GRO, a run is typically a single receive buffer; without it, consecutive buffers
-    /// of one sender.
-    ///
-    /// When [`quinn_udp`] returns us the buffers, it will have populated the
-    /// [`quinn_udp::RecvMeta`]s accordingly. Thus, our main job here is to loop over the
-    /// `buffers` and `metas` pair-wise, inspect the `meta` and segment the data within
-    /// the buffer accordingly.
-    pub fn drain(&mut self) -> impl Iterator<Item = impl Iterator<Item = DatagramIn<'_>>>
+    /// Buffers with nonsensical metadata are dropped.
+    pub fn drain(&mut self) -> impl Iterator<Item = RecvBuffer<B>> + '_
     where
         B: Deref<Target = Vec<u8>>,
     {
-        let buf_index = if self.drained { self.buffers.len() } else { 0 };
-        self.drained = true;
+        let port = self.port;
+        self.num_packets = 0;
 
-        Runs {
-            batch: self,
-            buf_index,
-        }
+        self.buffers
+            .drain(..)
+            .zip(self.metas.drain(..))
+            .filter_map(move |(buffer, meta)| RecvBuffer::new(buffer, meta, port))
     }
 }
 
@@ -1056,134 +1043,116 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
 }
 
-/// The iterator behind [`DatagramBatch::drain`].
-struct Runs<'a, B: 'static> {
-    batch: &'a DatagramBatch<B>,
-    buf_index: usize,
+/// One buffer of a [`DatagramBatch`]: one or more datagrams, all from the same remote address.
+pub struct RecvBuffer<B = Buffer<Vec<u8>>> {
+    buffer: B,
+    local: SocketAddr,
+    from: SocketAddr,
+    ecn: Ecn,
+    len: usize,
+    stride: usize,
 }
 
-impl<'a, B> Iterator for Runs<'a, B> {
-    type Item = Run<'a, B>;
+impl<B> RecvBuffer<B>
+where
+    B: Deref<Target = Vec<u8>>,
+{
+    /// Validates what [`quinn_udp`] reported about the buffer.
+    fn new(buffer: B, meta: quinn_udp::RecvMeta, port: u16) -> Option<Self> {
+        if meta.len == 0 {
+            return None;
+        }
 
-    fn next(&mut self) -> Option<Run<'a, B>> {
-        let metas = &self.batch.metas[self.buf_index..];
-        let from = metas.first()?.addr;
-        let len = metas
-            .iter()
-            .position(|m| m.addr != from)
-            .unwrap_or(metas.len());
+        let Some(local_ip) = meta.dst_ip else {
+            tracing::warn!("Skipping packet without local IP");
 
-        let start = self.buf_index;
-        self.buf_index += len;
+            return None;
+        };
 
-        Some(Run {
-            batch: self.batch,
-            buf_index: start,
-            buf_end: self.buf_index,
-            segment_index: 0,
+        if meta.stride > meta.len {
+            tracing::warn!(
+                "stride ({}) is larger than buffer len ({})",
+                meta.stride,
+                meta.len
+            );
+
+            return None;
+        }
+
+        // A zero stride would never advance to the next segment; nothing sane reports one.
+        if meta.stride == 0 {
+            tracing::warn!(len = %meta.len, "Dropping receive with a zero segment size");
+
+            return None;
+        }
+
+        // No Firezone peer sends a datagram this large; the receive is either broken
+        // coalescing (see `uro`) or junk from an unrelated sender.
+        if meta.stride > ip_packet::MAX_FZ_PAYLOAD {
+            tracing::trace!(stride = %meta.stride, len = %meta.len, "Dropping receive with an impossibly large segment size");
+
+            return None;
+        }
+
+        Some(Self {
+            buffer,
+            local: SocketAddr::new(local_ip, port),
+            from: meta.addr,
+            ecn: match meta.ecn {
+                Some(EcnCodepoint::Ce) => Ecn::Ce,
+                Some(EcnCodepoint::Ect0) => Ecn::Ect0,
+                Some(EcnCodepoint::Ect1) => Ecn::Ect1,
+                None => Ecn::NonEct,
+            },
+            len: meta.len,
+            stride: meta.stride,
+        })
+    }
+
+    pub fn local(&self) -> SocketAddr {
+        self.local
+    }
+
+    pub fn from(&self) -> SocketAddr {
+        self.from
+    }
+
+    pub fn ecn(&self) -> Ecn {
+        self.ecn
+    }
+
+    /// How many datagrams the buffer holds.
+    pub fn num_datagrams(&self) -> usize {
+        self.len.div_ceil(self.stride)
+    }
+
+    /// Iterates over the datagrams in the buffer, segmenting GRO / URO-coalesced ones apart again.
+    pub fn datagrams(&self) -> impl Iterator<Item = DatagramIn<'_>> {
+        (0..self.len).step_by(self.stride).map(|start| {
+            let range = start..std::cmp::min(start + self.stride, self.len);
+
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::net::recv", src = %self.from, dst = %self.local, ecn = ?self.ecn, len = %range.len());
+
+            DatagramIn {
+                local: self.local,
+                from: self.from,
+                packet: &self.buffer[range.clone()],
+                ecn: self.ecn,
+                range,
+            }
         })
     }
 }
 
-/// Consecutive receive buffers of one [`DatagramBatch`] from the same remote address.
-struct Run<'a, B: 'static> {
-    batch: &'a DatagramBatch<B>,
-    buf_index: usize,
-    buf_end: usize,
-    segment_index: usize,
-}
-
-impl<'a, B> Iterator for Run<'a, B>
+impl<B> Deref for RecvBuffer<B>
 where
     B: Deref<Target = Vec<u8>>,
 {
-    type Item = DatagramIn<'a>;
+    type Target = [u8];
 
-    fn next(&mut self) -> Option<DatagramIn<'a>> {
-        let batch = self.batch;
-
-        loop {
-            if self.buf_index >= self.buf_end {
-                return None;
-            }
-
-            let buf = &batch.buffers[self.buf_index];
-            let meta = &batch.metas[self.buf_index];
-
-            if meta.len == 0 {
-                self.buf_index += 1;
-                continue;
-            }
-
-            let Some(local_ip) = meta.dst_ip else {
-                tracing::warn!("Skipping packet without local IP");
-
-                self.buf_index += 1;
-                continue;
-            };
-
-            match meta.stride.cmp(&meta.len) {
-                std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
-                std::cmp::Ordering::Greater => {
-                    tracing::warn!(
-                        "stride ({}) is larger than buffer len ({})",
-                        meta.stride,
-                        meta.len
-                    );
-
-                    self.buf_index += 1;
-                    continue;
-                }
-            }
-
-            // A zero stride would never advance past the segment below; nothing sane
-            // reports one, so drop the receive.
-            if meta.stride == 0 && meta.len > 0 {
-                tracing::warn!(len = %meta.len, "Dropping receive with a zero segment size");
-
-                self.buf_index += 1;
-                continue;
-            }
-
-            // No Firezone peer sends a datagram this large; the receive is either broken
-            // coalescing (see `uro`) or junk from an unrelated sender.
-            if meta.stride > ip_packet::MAX_FZ_PAYLOAD {
-                tracing::trace!(stride = %meta.stride, len = %meta.len, "Dropping receive with an impossibly large segment size");
-
-                self.buf_index += 1;
-                continue;
-            }
-
-            if self.segment_index >= meta.len {
-                self.buf_index += 1;
-                self.segment_index = 0;
-                continue;
-            }
-
-            let local = SocketAddr::new(local_ip, batch.port);
-
-            let segment_size = meta.stride;
-
-            #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", num_p = %batch.num_packets, tot_b = %batch._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
-
-            let segment_start = self.segment_index;
-            let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
-
-            self.segment_index += segment_size;
-
-            return Some(DatagramIn {
-                local,
-                from: meta.addr,
-                packet: &buf[segment_start..segment_end],
-                ecn: match meta.ecn {
-                    Some(EcnCodepoint::Ce) => Ecn::Ce,
-                    Some(EcnCodepoint::Ect0) => Ecn::Ect0,
-                    Some(EcnCodepoint::Ect1) => Ecn::Ect1,
-                    None => Ecn::NonEct,
-                },
-            });
-        }
+    fn deref(&self) -> &[u8] {
+        &self.buffer[..self.len]
     }
 }
 
@@ -1230,7 +1199,7 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 88);
+        assert_eq!(size_of::<DatagramBatch>(), 80);
     }
 
     #[test]
@@ -1260,21 +1229,24 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 3);
-        let mut iter = batch.drain().flatten();
 
-        assert_eq!(iter.next().unwrap().packet, b"foobar1");
-        assert_eq!(iter.next().unwrap().packet, b"foobar2");
-        assert_eq!(iter.next().unwrap().packet, b"foobar3");
-        assert_eq!(iter.next().unwrap().packet, b"foobar4");
-        assert_eq!(iter.next().unwrap().packet, b"foobar5");
-        assert_eq!(iter.next().unwrap().packet, b"foo");
-        assert_eq!(iter.next().unwrap().packet, b"baz1");
-        assert_eq!(iter.next().unwrap().packet, b"baz2");
-        assert_eq!(iter.next().unwrap().packet, b"baz3");
-        assert_eq!(iter.next().unwrap().packet, b"baz4");
-        assert_eq!(iter.next().unwrap().packet, b"baz5");
-        assert_eq!(iter.next().unwrap().packet, b"foo");
-        assert!(iter.next().is_none());
+        assert_eq!(
+            packets(&mut batch),
+            [
+                &b"foobar1"[..],
+                b"foobar2",
+                b"foobar3",
+                b"foobar4",
+                b"foobar5",
+                b"foo",
+                b"baz1",
+                b"baz2",
+                b"baz3",
+                b"baz4",
+                b"baz5",
+                b"foo",
+            ]
+        );
     }
 
     #[test]
@@ -1292,14 +1264,14 @@ mod tests {
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 1);
 
-        assert_eq!(batch.drain().flatten().count(), 1);
+        assert_eq!(packets(&mut batch).len(), 1);
 
-        assert_eq!(batch.drain().flatten().count(), 0);
+        assert_eq!(packets(&mut batch).len(), 0);
         assert!(batch.is_empty());
     }
 
     #[test]
-    fn drain_cuts_runs_where_the_remote_address_changes() {
+    fn drain_yields_each_buffer_with_its_sender_and_datagram_ranges() {
         let remote_a = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1000);
         let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
         let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
@@ -1321,17 +1293,25 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 4);
-        let runs = batch
+        let buffers = batch
             .drain()
-            .map(|run| run.map(|d| d.packet.to_vec()).collect::<Vec<_>>())
+            .map(|buffer| {
+                let ranges = buffer
+                    .datagrams()
+                    .map(|d| (d.range.start, d.range.end))
+                    .collect::<Vec<_>>();
+
+                (buffer.from(), buffer.num_datagrams(), ranges)
+            })
             .collect::<Vec<_>>();
 
         assert_eq!(
-            runs,
+            buffers,
             vec![
-                vec![b"foo1".to_vec(), b"foo2".to_vec(), b"foo3".to_vec()],
-                vec![b"bar1".to_vec()],
-                vec![b"foo4".to_vec()],
+                (remote_a, 2, vec![(0, 4), (4, 8)]),
+                (remote_a, 1, vec![(0, 4)]),
+                (remote_b, 1, vec![(0, 4)]),
+                (remote_a, 1, vec![(0, 4)]),
             ]
         );
     }
@@ -1363,10 +1343,8 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
-        let mut iter = batch.drain().flatten();
 
-        assert_eq!(iter.next().unwrap().packet, b"foo");
-        assert!(iter.next().is_none());
+        assert_eq!(packets(&mut batch), [b"foo"]);
     }
 
     /// Both buffers end in a segment shorter than their stride, so counting whole strides
@@ -1411,10 +1389,8 @@ mod tests {
         ]);
 
         let mut batch = DatagramBatch::new(buffers, metas, 0, 2);
-        let mut iter = batch.drain().flatten();
 
-        assert_eq!(iter.next().unwrap().packet, b"foobar1");
-        assert!(iter.next().is_none());
+        assert_eq!(packets(&mut batch), [b"foobar1"]);
     }
 
     #[test]
@@ -1496,6 +1472,18 @@ mod tests {
             err.to_string(),
             "An operation on a socket could not be performed because the system lacked sufficient buffer space or because a queue was full. (os error 10055)"
         );
+    }
+
+    fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
+        batch
+            .drain()
+            .flat_map(|buffer| {
+                buffer
+                    .datagrams()
+                    .map(|d| d.packet.to_vec())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     fn recv_meta(addr: SocketAddr, dst_ip: IpAddr, len: usize, stride: usize) -> RecvMeta {

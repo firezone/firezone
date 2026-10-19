@@ -681,14 +681,19 @@ impl Tunnel {
             .unwrap()
             .encrypt()
             .unwrap();
-        let job = self
+        let decapsulation = self
             .gateway
             .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
         let request = self
             .gateway
-            .handle_decrypted_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, job.decrypt(), self.now)
+            .handle_decrypted_network_input(
+                GATEWAY_SOCKET,
+                CLIENT_SOCKET,
+                decapsulation.decrypt(&datagram.payload),
+                self.now,
+            )
             .unwrap()
             .unwrap();
         let (sport, dport) = match protocol {
@@ -827,22 +832,28 @@ impl Tunnel {
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
         if to == CLIENT_SOCKET
-            && let Ok(Some(job)) = self
+            && let Ok(Some(decapsulation)) = self
                 .client
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ = self
-                .client
-                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
+            let _ = self.client.handle_decrypted_network_input(
+                to,
+                from,
+                decapsulation.decrypt(payload),
+                self.now,
+            );
         }
         if to == GATEWAY_SOCKET
-            && let Ok(Some(job)) = self
+            && let Ok(Some(decapsulation)) = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ = self
-                .gateway
-                .handle_decrypted_network_input(to, from, job.decrypt(), self.now);
+            let _ = self.gateway.handle_decrypted_network_input(
+                to,
+                from,
+                decapsulation.decrypt(payload),
+                self.now,
+            );
         }
     }
 }

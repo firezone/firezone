@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use bufferpool::Buffer;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use sanstun::{Decrypted, PendingDecapsulate, PendingEncapsulate, TunnelId};
 
@@ -103,44 +102,51 @@ impl EncryptJob {
 /// A WireGuard data message that passed the replay check and awaits decryption.
 ///
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
-pub struct DecryptJob {
+#[derive(Debug)]
+pub struct Decapsulation {
     tunnel: TunnelId,
     path: (SocketAddr, SocketAddr),
+    /// The length of the channel-data header in front of the WireGuard message, which takes up the
+    /// rest of the datagram.
+    header_len: usize,
     pending: PendingDecapsulate,
-    message: Buffer<Vec<u8>>,
 }
 
-impl DecryptJob {
+impl Decapsulation {
     pub(crate) fn new(
         tunnel: TunnelId,
         path: (SocketAddr, SocketAddr),
         pending: PendingDecapsulate,
-        message: &[u8],
     ) -> Self {
         Self {
             tunnel,
             path,
+            header_len: 0,
             pending,
-            message: crate::DATAGRAMS.pull_initialised(message),
         }
     }
 
-    /// Returns the WireGuard tunnel the message was sent on.
-    pub fn tunnel_id(&self) -> TunnelId {
-        self.tunnel
+    pub(crate) fn with_header_len(mut self, header_len: usize) -> Self {
+        self.header_len = header_len;
+
+        self
     }
 
-    /// Decrypts the message, to be accepted with [`Node::handle_decrypted`](crate::Node::handle_decrypted).
-    pub fn decrypt(self) -> DecryptedPacket {
+    /// Decrypts the message from `datagram`, the one passed to [`Node::decapsulate`](crate::Node::decapsulate).
+    ///
+    /// Accept the result with [`Node::handle_decrypted`](crate::Node::handle_decrypted).
+    pub fn decrypt(self, datagram: &[u8]) -> DecryptedPacket {
+        let message = datagram.get(self.header_len..).unwrap_or_default();
+
         DecryptedPacket {
             tunnel: self.tunnel,
             path: self.path,
-            decrypted: self.pending.decrypt(&self.message, IpPacketBuf::new()),
+            decrypted: self.pending.decrypt(message, IpPacketBuf::new()),
         }
     }
 }
 
-/// The outcome of a [`DecryptJob`].
+/// The outcome of a [`Decapsulation`].
 pub struct DecryptedPacket {
     pub(crate) tunnel: TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),

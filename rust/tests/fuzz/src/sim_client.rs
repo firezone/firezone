@@ -367,13 +367,17 @@ impl SimClient {
         let Some(packet) = self
             .sut
             .handle_network_input(local, from, &transmit.payload, now)
-            .and_then(|job| {
-                let Some(job) = job else {
+            .and_then(|decapsulation| {
+                let Some(decapsulation) = decapsulation else {
                     return Ok(None);
                 };
 
-                self.sut
-                    .handle_decrypted_network_input(local, from, job.decrypt(), now)
+                self.sut.handle_decrypted_network_input(
+                    local,
+                    from,
+                    decapsulation.decrypt(&transmit.payload),
+                    now,
+                )
             })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()

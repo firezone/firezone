@@ -735,8 +735,8 @@ impl ClientState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecryptJob`].
-    /// Decrypt it and pass the result to [`ClientState::handle_decrypted_network_input`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::Decapsulation`].
+    /// Decrypt it from `packet` and pass the result to [`ClientState::handle_decrypted_network_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
@@ -746,16 +746,16 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<snownet::DecryptJob>> {
-        let job = self
+    ) -> Result<Option<snownet::Decapsulation>> {
+        let decapsulation = self
             .node
             .decapsulate(local, from, packet, now)
             .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?;
 
-        Ok(job)
+        Ok(decapsulation)
     }
 
-    /// Handles a WireGuard data message decrypted from a [`snownet::DecryptJob`].
+    /// Handles a WireGuard data message decrypted from a [`snownet::Decapsulation`].
     ///
     /// `local` and `from` are the addresses the message was received on and from.
     ///
