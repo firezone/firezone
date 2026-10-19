@@ -377,46 +377,38 @@ impl IpPacket {
 
     pub fn source(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
-                self.ipv4_header_unchecked().source(),
-            )),
-            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
-                self.ipv6_header_unchecked().source(),
-            )),
+            IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(12)),
+            IpVersion::V6 => IpAddr::V6(self.ipv6_addr_at(8)),
         }
     }
 
     pub fn destination(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
-                self.ipv4_header_unchecked().destination(),
-            )),
-            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
-                self.ipv6_header_unchecked().destination(),
-            )),
+            IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(16)),
+            IpVersion::V6 => IpAddr::V6(self.ipv6_addr_at(24)),
         }
     }
 
-    /// The source and destination address, read with a single parse of the IP header.
     pub fn source_and_destination(&self) -> (IpAddr, IpAddr) {
-        match self.version {
-            IpVersion::V4 => {
-                let header = self.ipv4_header_unchecked();
+        (self.source(), self.destination())
+    }
 
-                (
-                    IpAddr::V4(header.source().into()),
-                    IpAddr::V4(header.destination().into()),
-                )
-            }
-            IpVersion::V6 => {
-                let header = self.ipv6_header_unchecked();
+    /// Reads the address at `offset` of the IPv4 header, whose length was checked on construction.
+    fn ipv4_addr_at(&self, offset: usize) -> std::net::Ipv4Addr {
+        let octets: [u8; 4] = self.buf[offset..offset + 4]
+            .try_into()
+            .expect("slice has 4 bytes");
 
-                (
-                    IpAddr::V6(header.source().into()),
-                    IpAddr::V6(header.destination().into()),
-                )
-            }
-        }
+        std::net::Ipv4Addr::from(octets)
+    }
+
+    /// Reads the address at `offset` of the IPv6 header, whose length was checked on construction.
+    fn ipv6_addr_at(&self, offset: usize) -> std::net::Ipv6Addr {
+        let octets: [u8; 16] = self.buf[offset..offset + 16]
+            .try_into()
+            .expect("slice has 16 bytes");
+
+        std::net::Ipv6Addr::from(octets)
     }
 
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
