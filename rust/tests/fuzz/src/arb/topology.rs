@@ -753,7 +753,7 @@ fn arb_tcp_services(
 
             let is_unreachable = records
                 .domain_ips_iter(&domain)
-                .any(|ip| sites.values().any(|site| !site.routes.delivers(ip)));
+                .any(|ip| !sites.values().any(|site| site.routes.delivers(ip)));
             let has_ips = records.domain_ips_iter(&domain).next().is_some();
             if is_unreachable || !has_ips {
                 return None;

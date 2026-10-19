@@ -127,30 +127,30 @@ impl SiteNetwork {
         resolved_to: impl Fn(&DomainName, IpAddr) -> bool,
         now: Instant,
     ) -> Delivery {
-        let dst_ip = packet.destination();
+        let request_received = is_request(&packet);
 
-        let icmp_error = match self.routes.route(dst_ip) {
-            RouteType::Deliver => None,
-            RouteType::Unreachable(error) => Some(icmp_error_reply(&packet, error).unwrap()),
+        match self.routes.route(packet.destination()) {
+            RouteType::Deliver => {}
+            RouteType::Unreachable(error) => {
+                return Delivery {
+                    request_received,
+                    reply: Some(icmp_error_reply(&packet, error).unwrap()),
+                };
+            }
             RouteType::Blackhole => {
                 return Delivery {
-                    request_received: is_echo_request(&packet)
-                        || packet.as_udp().is_some_and(|udp| {
-                            !(is_dns_query(&udp) && udp.destination_port() == 53)
-                        }),
+                    request_received,
                     reply: None,
                 };
             }
-        };
+        }
 
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
             return Delivery {
-                request_received: true,
-                reply: Some(
-                    icmp_error.unwrap_or_else(|| icmp_echo_reply(&packet, echo, icmp.payload())),
-                ),
+                request_received,
+                reply: Some(icmp_echo_reply(&packet, echo, icmp.payload())),
             };
         }
 
@@ -158,10 +158,8 @@ impl SiteNetwork {
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
             return Delivery {
-                request_received: true,
-                reply: Some(
-                    icmp_error.unwrap_or_else(|| icmp_echo_reply(&packet, echo, icmp.payload())),
-                ),
+                request_received,
+                reply: Some(icmp_echo_reply(&packet, echo, icmp.payload())),
             };
         }
 
@@ -170,29 +168,22 @@ impl SiteNetwork {
             return Delivery::default();
         }
 
-        // A recursive query to a resolver without a deployed DNS server
-        // answers with an ICMP error. Connlib consumes this internally.
         if let Some(udp) = packet.as_udp()
             && is_dns_query(&udp)
             && udp.destination_port() == 53
         {
-            return Delivery {
-                request_received: false,
-                reply: icmp_error,
-            };
+            return Delivery::default();
         }
 
         if let Some(tcp) = packet.as_tcp() {
-            let socket = SocketAddr::new(dst_ip, tcp.destination_port());
+            let socket = SocketAddr::new(packet.destination(), tcp.destination_port());
             let remote = SocketAddr::new(packet.source(), tcp.source_port());
 
-            if icmp_error.is_none()
-                && let Some(server) = self.tcp_service_for(socket, remote, &resolved_to)
-            {
-                server.handle_inbound(packet.clone());
+            if let Some(server) = self.tcp_service_for(socket, remote, &resolved_to) {
+                server.handle_inbound(packet);
 
                 return Delivery {
-                    request_received: tcp.syn() && !tcp.ack(),
+                    request_received,
                     reply: None,
                 };
             }
@@ -203,14 +194,14 @@ impl SiteNetwork {
                 return Delivery::default();
             }
 
-            if icmp_error.is_none() {
-                self.closed_tcp_ports.handle_inbound(packet);
-                return Delivery::default();
-            }
+            self.closed_tcp_ports.handle_inbound(packet);
+            return Delivery {
+                request_received,
+                reply: None,
+            };
         }
 
-        let request_received = packet.as_udp().is_some();
-        let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) else {
+        let Some(reply) = echo_reply(packet.clone()) else {
             tracing::error!(?packet, "Unhandled packet");
             return Delivery::default();
         };
@@ -283,13 +274,19 @@ pub(crate) enum IcmpError {
     TimeExceeded { code: u8 },
 }
 
-fn is_echo_request(packet: &IpPacket) -> bool {
+/// Returns whether `packet` is a probe's request: an echo request, a UDP datagram other
+/// than a DNS query or a TCP SYN.
+fn is_request(packet: &IpPacket) -> bool {
     packet
         .as_icmpv4()
         .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoRequest(_)))
         || packet
             .as_icmpv6()
             .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoRequest(_)))
+        || packet
+            .as_udp()
+            .is_some_and(|udp| !(is_dns_query(&udp) && udp.destination_port() == 53))
+        || packet.as_tcp().is_some_and(|tcp| tcp.syn() && !tcp.ack())
 }
 
 fn icmp_echo_reply(packet: &IpPacket, echo: IcmpEchoHeader, payload: &[u8]) -> IpPacket {

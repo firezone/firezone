@@ -16,12 +16,12 @@ use super::values::{
 };
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
-use crate::probe::FlowId;
+use crate::probe::{FlowId, Remote};
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
-use crate::transition::{Seq, Transition};
+use crate::transition::{Destination, Seq, Transition};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
@@ -110,7 +110,26 @@ pub(super) fn generate(
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
-    let tcp_flows = state.tcp_flows.keys().copied().collect::<Vec<_>>();
+    // A connect through a Gateway that does not deliver to its name's network leaves no
+    // connection to write to.
+    let tcp_flows = state
+        .tcp_flows
+        .iter()
+        .filter(|(_, flow)| {
+            let (Remote::Gateway(gateway), Destination::DomainName { name, .. }) =
+                (flow.route.remote(), &flow.dst)
+            else {
+                return true;
+            };
+            let routes = &state.gateways[&gateway].inner().routes;
+
+            state
+                .global_dns_records
+                .domain_ips_iter(name)
+                .any(|ip| routes.delivers(ip))
+        })
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
     let accepting_relays = state
@@ -312,14 +331,15 @@ pub(super) fn generate(
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let subnet = g.local_subnet(&domain);
             let mut records = arb_dns_record_set(g, subnet);
-            // Like at the start, a TCP-serving domain never resolves to an unreachable address.
+            // Like at the start, a TCP-serving domain never resolves to an address that no
+            // Gateway delivers to.
             if state.tcp_services.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {
                     record_ip(record).is_some_and(|ip| {
-                        state
+                        !state
                             .gateways
                             .values()
-                            .any(|gateway| !gateway.inner().routes.delivers(ip))
+                            .any(|gateway| gateway.inner().routes.delivers(ip))
                     })
                 }) {}
             }

@@ -814,6 +814,7 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             completed.submitted.packet.destination().is_ipv6(),
             received.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
+            matches!(expected.request, ProbeRequest::Tcp { .. }),
             responds_with_icmp_error,
         );
     }

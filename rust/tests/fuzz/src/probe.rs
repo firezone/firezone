@@ -247,14 +247,19 @@ pub(crate) struct ExpectedProbe {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RemoteResponse {
     Echo,
+    /// A TCP reset.
+    Reset,
     /// An ICMP error, of the given kind if known.
     IcmpError(Option<IcmpError>),
     Nothing,
 }
 
+/// Returns how the remote answers `received_request`, given that its destination answers with
+/// `answer`.
 pub(crate) fn remote_response(
     expected: &ExpectedProbe,
     received_request: &ReceivedRequest,
+    answer: RemoteResponse,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
 ) -> RemoteResponse {
@@ -266,20 +271,20 @@ pub(crate) fn remote_response(
             return RemoteResponse::IcmpError(None);
         }
 
-        RemoteResponse::Echo
+        answer
     };
     let network = |gateway: GatewayId| match ref_gateways[&gateway]
         .routes
         .route(received_request.packet.destination())
     {
-        RouteType::Deliver => RemoteResponse::Echo,
+        RouteType::Deliver => answer,
         RouteType::Unreachable(error) => RemoteResponse::IcmpError(Some(error)),
         RouteType::Blackhole => RemoteResponse::Nothing,
     };
 
     match (&expected.request, received_request.remote) {
         (ProbeRequest::Icmp { .. }, Remote::Gateway(gateway)) => network(gateway),
-        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => RemoteResponse::Echo,
+        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => answer,
         (ProbeRequest::Udp { .. }, Remote::Gateway(gateway)) => network(gateway),
         (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer(client),
         (ProbeRequest::Tcp { .. }, Remote::Gateway(gateway)) => network(gateway),
