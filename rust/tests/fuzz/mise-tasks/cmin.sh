@@ -8,7 +8,6 @@ target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
 build_afl
-collect_findings all
 shopt -s nullglob
 inputs=("corpus/$target"/*)
 if [ "${#inputs[@]}" -eq 0 ]; then

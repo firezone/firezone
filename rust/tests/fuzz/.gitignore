@@ -4,3 +4,4 @@ coverage
 crash-*
 *.profraw
 afl-output
+candidates

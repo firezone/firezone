@@ -20,6 +20,7 @@ Because replay retains process state between inputs, it checks regressions but d
 ## Corpora and coverage
 
 Each target's inputs are committed under `corpus/<target>`; they serve as regression tests and starting points for further discovery.
+Discovery adds an input only when it reaches an edge the committed corpus does not; it never removes committed inputs.
 Minimization retains inputs that contribute edge coverage or fuzzer feedback; differences in execution counts alone do not justify retaining an input.
 AFL edge coverage and IJON feedback guide discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
@@ -28,7 +29,7 @@ Each distinct value recorded at an annotation site is a feature scoped to that s
 Replay evaluates annotations without recording feedback.
 
 Pull-request CI checks that discovery coverage is stable within and across forkservers, replays the committed corpora, and rejects increases in uncovered source regions.
-The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows and minimizes corpora, refreshes coverage ceilings, and retains failing inputs for regression testing.
+The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows corpora, refreshes coverage ceilings, and retains failing inputs for regression testing.
 On the default branch it proposes corpus PRs; dispatching it on another branch pushes results back to that branch.
 Use that workflow when changes require new inputs or coverage baselines, including changes to how the tunnel generator interprets existing inputs.
 
@@ -55,3 +56,9 @@ mise run //rust/tests/fuzz:repro tunnel-proto artifacts/tunnel-proto/crashes-<ha
 ```
 
 `repro` enables debug tracing; set `RUST_LOG=trace` for more detail.
+
+To minimize a corpus by hand, e.g. after a harness rewrite made inputs redundant:
+
+```console
+mise run //rust/tests/fuzz:cmin tunnel-proto
+```

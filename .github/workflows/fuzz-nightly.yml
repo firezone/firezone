@@ -1,13 +1,13 @@
 ---
 name: Fuzz corpora (nightly)
 run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
-# Grows and minimizes every committed fuzz corpus, refreshing the
-# uncovered-region ceilings alongside. The scheduled run works on main and
-# proposes each target's result as its own bot PR; dispatching the workflow on
-# any other branch pushes the result back to that branch instead, e.g. to
-# re-grow the corpus for a PR that changes the harness. A dispatch can also
-# narrow the run to a single target. Pull-request CI only replays committed
-# inputs; coverage discovery happens here.
+# Adds to every committed fuzz corpus the inputs that reach edges it does not,
+# refreshing the uncovered-region ceilings alongside. The scheduled run works
+# on main and proposes each target's result as its own bot PR; dispatching the
+# workflow on any other branch pushes the result back to that branch instead,
+# e.g. to re-grow the corpus for a PR that changes the harness. A dispatch can
+# also narrow the run to a single target. Pull-request CI only replays
+# committed inputs; coverage discovery happens here.
 "on":
   schedule:
     - cron: "0 4 * * *" # daily, 04:00 UTC
@@ -126,10 +126,10 @@ jobs:
         env:
           FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel-proto' && 7200 || 1800 }}
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds "$FUZZ_SECONDS"
-      - name: Minimize the corpus
+      - name: Keep what reaches new edges
         if: ${{ !cancelled() }}
         timeout-minutes: 30
-        run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
+        run: mise run //rust/tests/fuzz:select ${{ matrix.fuzz-target }}
       - name: Measure coverage
         if: ${{ !cancelled() }}
         timeout-minutes: 25
@@ -168,10 +168,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # The download cannot delete what minimization removed, so start from
-      # nothing and let `git add -A` below see the deletions.
-      - name: Remove the committed corpus
-        run: rm -rf "tests/fuzz/corpus/${{ matrix.fuzz-target }}"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: fuzz-${{ matrix.fuzz-target }}
@@ -226,6 +222,6 @@ jobs:
           if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "chore(fuzz): grow the $TARGET corpus" \
-              --body "The nightly fuzz job discovered new coverage for \`$TARGET\` and refreshed its uncovered-region ceiling." \
+              --body "The nightly fuzz job found inputs for \`$TARGET\` that reach edges the committed corpus did not, and refreshed its uncovered-region ceiling." \
               --reviewer firezone/engineering
           fi

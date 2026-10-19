@@ -38,13 +38,14 @@ coverage_sources() {
 
 collect_findings() {
     local input name kind
-    mkdir -p "corpus/${target:?}" "artifacts/$target"
+    mkdir -p "corpus/${target:?}" "candidates/$target" "artifacts/$target"
     shopt -s nullglob
     if [ "${1:-all}" = all ]; then
         for input in "afl-output/$target"/*/queue/id:*; do
             name="$(sha256sum "$input")"
             name="${name%% *}"
-            [ -e "corpus/$target/$name" ] || cp "$input" "corpus/$target/$name"
+            [ -e "corpus/$target/$name" ] || [ -e "candidates/$target/$name" ] ||
+                cp "$input" "candidates/$target/$name"
         done
     fi
     for kind in crashes hangs; do
