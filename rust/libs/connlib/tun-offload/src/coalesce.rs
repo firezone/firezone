@@ -48,16 +48,12 @@ pub enum Protocol {
     Udp,
 }
 
-/// Coalesces compatible IP packets while preserving per-flow ordering.
+/// Coalesces consecutive compatible IP packets, preserving their order.
 pub struct PacketCoalescer {
     /// Queued packets, in write order.
     items: Buffer<VecBuf<CoalescedPacket>>,
-    /// The batches in `items` that may still grow, at most one per connection.
-    ///
-    /// Non-coalescable packets flow through `items` too and close their connection's
-    /// entry: a segment may only merge into the most recent item of its connection, so
-    /// per-flow ordering is preserved by construction.
-    open: Vec<OpenBatch>,
+    /// The last item in `items`, if it may still grow.
+    open: Option<OpenBatch>,
     buffer_pool: &'static BufferPool<Vec<u8>>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
@@ -80,7 +76,7 @@ impl PacketCoalescer {
 
         Self {
             items: COALESCED_ITEMS.pull(),
-            open: Vec::new(),
+            open: None,
             buffer_pool: COALESCED_PACKETS.with_capacity(MAX_COALESCED_PACKET),
             coalesce_tcp,
             coalesce_udp,
@@ -110,54 +106,40 @@ impl PacketCoalescer {
     /// Queues a single packet, coalescing it with already queued ones where possible.
     pub fn enqueue(&mut self, packet: IpPacket) {
         let candidate = Candidate::from_packet(&packet, self.coalesce_tcp, self.coalesce_udp);
-        let open = self
-            .open
-            .iter()
-            .position(|batch| batch.key.same_connection(&packet));
 
-        if let (Some(candidate), Some(index)) = (&candidate, open) {
-            let batch = &mut self.open[index];
-            let item = &mut self.items[batch.item];
+        if let (Some(candidate), Some(batch), Some(item)) =
+            (&candidate, &mut self.open, self.items.last_mut())
+            && batch.key == candidate.key
+            && batch.can_append(candidate, &packet, item.packet(), self.max_packet_len)
+        {
+            batch.append(candidate, &packet, item, self.buffer_pool);
 
-            if batch.key == candidate.key
-                && batch.can_append(candidate, &packet, item.packet(), self.max_packet_len)
-            {
-                batch.append(candidate, &packet, item, self.buffer_pool);
-
-                if !batch.is_ongoing() {
-                    self.open
-                        .swap_remove(index)
-                        .finish(&mut self.items, self.checksum_mode);
-                }
-
-                return;
+            if !batch.is_ongoing() {
+                self.finish_open();
             }
+
+            return;
         }
 
-        if let Some(index) = open {
-            self.open
-                .swap_remove(index)
-                .finish(&mut self.items, self.checksum_mode);
-        }
+        self.finish_open();
 
-        if let Some(candidate) = candidate {
-            let batch = OpenBatch::new(candidate, &packet, self.items.len());
-
-            if batch.is_ongoing() {
-                self.open.push(batch);
-            }
-        }
-
+        self.open = candidate
+            .map(|candidate| OpenBatch::new(candidate, &packet))
+            .filter(OpenBatch::is_ongoing);
         self.items.push(CoalescedPacket(Inner::Packet(packet)));
     }
 
     /// Takes all queued packets, in write order.
     pub fn take(&mut self) -> Buffer<VecBuf<CoalescedPacket>> {
-        for batch in self.open.drain(..) {
-            batch.finish(&mut self.items, self.checksum_mode);
-        }
+        self.finish_open();
 
         mem::replace(&mut self.items, COALESCED_ITEMS.pull())
+    }
+
+    fn finish_open(&mut self) {
+        if let (Some(batch), Some(item)) = (self.open.take(), self.items.last_mut()) {
+            batch.finish(item, self.checksum_mode);
+        }
     }
 }
 
@@ -372,34 +354,11 @@ impl FlowKey {
             IpAddr::V6(_) => IpVersion::V6,
         }
     }
-
-    /// Whether `packet` belongs to the same connection (ignoring the ACK number).
-    fn same_connection(&self, packet: &IpPacket) -> bool {
-        if packet.source() != self.src || packet.destination() != self.dst {
-            return false;
-        }
-
-        if let Some(tcp) = packet.as_tcp() {
-            return self.protocol == IpNumber::TCP
-                && tcp.source_port() == self.sport
-                && tcp.destination_port() == self.dport;
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            return self.protocol == IpNumber::UDP
-                && udp.source_port() == self.sport
-                && udp.destination_port() == self.dport;
-        }
-
-        false
-    }
 }
 
-/// Coalescing state of a batch in [`PacketCoalescer::items`] that may still grow.
+/// Coalescing state of the last item in [`PacketCoalescer::items`] while it may still grow.
 struct OpenBatch {
     key: FlowKey,
-    /// The index of the batch in [`PacketCoalescer::items`].
-    item: usize,
 
     ip_hdr_len: usize,
     l4_hdr_len: usize,
@@ -414,10 +373,9 @@ struct OpenBatch {
 }
 
 impl OpenBatch {
-    fn new(candidate: Candidate, packet: &IpPacket, item: usize) -> Self {
+    fn new(candidate: Candidate, packet: &IpPacket) -> Self {
         Self {
             key: candidate.key,
-            item,
             ip_hdr_len: candidate.ip_hdr_len,
             l4_hdr_len: candidate.l4_hdr_len,
             seg_size: candidate.payload_len,
@@ -428,7 +386,7 @@ impl OpenBatch {
         }
     }
 
-    /// Appends the packet's payload to the batch's `item`.
+    /// Appends the packet's payload to `item`.
     fn append(
         &mut self,
         candidate: &Candidate,
@@ -457,13 +415,13 @@ impl OpenBatch {
         !self.psh && payload_len == self.num_segs * self.seg_size
     }
 
-    /// Fixes up the headers of the batch's item once no more segments are appended.
-    fn finish(self, items: &mut [CoalescedPacket], checksum_mode: ChecksumMode) {
+    /// Fixes up the headers of `item` once no more segments are appended.
+    fn finish(self, item: &mut CoalescedPacket, checksum_mode: ChecksumMode) {
         let Inner::Batch {
             buf,
             num_segments,
             offload_metadata,
-        } = &mut items[self.item].0
+        } = &mut item.0
         else {
             return; // A single packet is passed through unchanged.
         };
@@ -819,21 +777,6 @@ mod tests {
     }
 
     #[test]
-    fn coalesces_interleaved_flows_independently() {
-        let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
-
-        queue.enqueue(tcp4(1000, &[1; 100]));
-        queue.enqueue(tcp4_ports(7000, 8000, 9999, &[9; 100]));
-        queue.enqueue(tcp4(1100, &[2; 100]));
-
-        let out = queue.take();
-
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].num_segments(), 2);
-        assert_eq!(out[1].num_segments(), 1);
-    }
-
-    #[test]
     fn out_of_order_segment_starts_new_batch() {
         let mut queue = PacketCoalescer::new([Protocol::Tcp], ChecksumMode::Complete);
 
@@ -925,15 +868,7 @@ mod tests {
     }
 
     fn tcp4(seq: u32, payload: &[u8]) -> IpPacket {
-        tcp4_ports(5000, 6000, seq, payload)
-    }
-
-    fn tcp4_ports(source: u16, destination: u16, seq: u32, payload: &[u8]) -> IpPacket {
-        ipv4_packet(
-            IpProtocol::TCP,
-            tcp_header(source, destination, seq, false),
-            payload,
-        )
+        ipv4_packet(IpProtocol::TCP, tcp_header(5000, 6000, seq, false), payload)
     }
 
     fn tcp4_psh(seq: u32, payload: &[u8]) -> IpPacket {
