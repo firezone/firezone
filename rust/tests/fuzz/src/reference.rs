@@ -1,5 +1,4 @@
 use super::dns_records::DnsRecords;
-use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
@@ -48,12 +47,11 @@ pub struct ReferenceState {
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
+    /// The names that DNS resource addresses, records and queried domains are derived from.
+    pub(crate) domain_tree: Vec<DomainName>,
 
     /// The ports each DNS Resource domain serves TCP on.
-    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
-
-    /// A subset of all DNS resource records that have been selected to produce an ICMP error.
-    pub(crate) icmp_error_hosts: IcmpErrorHosts,
+    pub(crate) tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
 
     pub(crate) network: RoutingTable,
 
@@ -78,8 +76,8 @@ impl ReferenceState {
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
         global_dns_records: DnsRecords,
-        tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
-        icmp_error_hosts: IcmpErrorHosts,
+        domain_tree: Vec<DomainName>,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         network: RoutingTable,
     ) -> Self {
         Self {
@@ -90,8 +88,8 @@ impl ReferenceState {
             recovering_relays: Default::default(),
             node_may_lack_relays: false,
             global_dns_records,
-            tcp_resources,
-            icmp_error_hosts,
+            domain_tree,
+            tcp_services,
             network,
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
@@ -200,7 +198,6 @@ impl ReferenceState {
             Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
-                let icmp_error_hosts = &self.icmp_error_hosts;
 
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
@@ -208,18 +205,13 @@ impl ReferenceState {
                         .is_site_specific_dns_query(query)
                         .or_else(|| client.dns_query_via_resource(query, upstream_do53))
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
+                    let routes = gateway.map(|gid| &self.gateways[&gid].inner().routes);
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(
-                            query,
-                            gateway,
-                            upstream_do53,
-                            global_dns_records,
-                            icmp_error_hosts,
-                        );
+                        c.on_dns_query(query, gateway, upstream_do53, global_dns_records, routes);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);
@@ -829,7 +821,7 @@ impl ReferenceState {
     fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
         match dst {
             Destination::DomainName { name, .. } => self
-                .tcp_resources
+                .tcp_services
                 .get(name)
                 .is_some_and(|ports| ports.contains(&dport.0)),
             Destination::IpAddr(_) => false,

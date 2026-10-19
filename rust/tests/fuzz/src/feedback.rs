@@ -30,7 +30,7 @@ use crate::{
     probe::{
         DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
         FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionResponse, Remote, Route,
-        SubmittedRequest, remote_responds_with_icmp_error,
+        SubmittedRequest,
     },
     reference::ReferenceState,
     resource::{EditEffect, classify},
@@ -504,6 +504,16 @@ impl Recorder {
                 matches!(query.r_type, dns_types::RecordType::AAAA),
                 matches!(query.r_type, dns_types::RecordType::PTR),
             );
+
+            let matching =
+                reference_client.dns_resources_by_domain(&query.domain, |_| true, |_| true);
+            let sites = matching
+                .iter()
+                .flat_map(|resource| &resource.sites)
+                .map(|site| site.id)
+                .unique()
+                .count();
+            record_value!(((matching.len().min(4) as u16) << 1) | u16::from(sites >= 2));
         }
     }
 }
@@ -779,9 +789,9 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         };
         let remote = completed.route.remote();
-        if !matches!(remote, Remote::Gateway(_)) {
+        let Remote::Gateway(gateway) = remote else {
             continue;
-        }
+        };
         let Some(path) = remote_path_feedback(reference, state, expected.origin, remote) else {
             continue;
         };
@@ -791,12 +801,10 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         }
 
-        let responds_with_icmp_error = remote_responds_with_icmp_error(
-            expected,
-            received,
-            remote,
-            &reference.icmp_error_hosts,
-        );
+        let responds_with_icmp_error = reference.gateways[&gateway]
+            .inner()
+            .routes
+            .is_unreachable(received.packet.destination());
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),
             received.packet.destination().is_ipv6(),

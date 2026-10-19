@@ -311,11 +311,15 @@ pub(super) fn generate(
         K::UpdateDnsRecords => {
             let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
             let mut records = arb_dns_record_set(g);
-            // Like at the start, a TCP-serving domain never resolves to an ICMP-error host.
-            if state.tcp_resources.contains_key(&domain) {
+            // Like at the start, a TCP-serving domain never resolves to an unreachable address.
+            if state.tcp_services.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {
-                    record_ip(record)
-                        .is_some_and(|ip| state.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+                    record_ip(record).is_some_and(|ip| {
+                        state
+                            .gateways
+                            .values()
+                            .any(|gateway| gateway.inner().routes.is_unreachable(ip))
+                    })
                 }) {}
             }
             Transition::UpdateDnsRecords { domain, records }
@@ -373,7 +377,7 @@ fn arb_resource_edit(
     old: Resource,
 ) -> ResourceEdit {
     if g.flip(25) {
-        let new = arb_resource_with_different_type(g, portal, &old);
+        let new = arb_resource_with_different_type(g, portal, &state.domain_tree, &old);
 
         return ResourceEdit { old, new };
     }
@@ -486,6 +490,7 @@ fn arb_different_name(g: &mut Generator, current: &str) -> String {
 fn arb_resource_with_different_type(
     g: &mut Generator,
     portal: &StubPortal,
+    domain_tree: &[DomainName],
     resource: &Resource,
 ) -> Resource {
     #[derive(Clone, Copy)]
@@ -524,7 +529,7 @@ fn arb_resource_with_different_type(
         }),
         ResourceType::Dns => Resource::Dns(DnsResource {
             id,
-            address: arb_dns_resource_address(g),
+            address: arb_dns_resource_address(g, domain_tree),
             name,
             address_description: arb_address_description(g),
             sites: vec![site],

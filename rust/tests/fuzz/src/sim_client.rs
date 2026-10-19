@@ -1,7 +1,6 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     echo::echo_reply,
-    icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{
         CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
         ReceivedResponse, Remote, SubmittedRequest,
@@ -9,6 +8,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    site_network::{IcmpError, icmp_error_reply},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -344,12 +344,7 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn receive(
-        &mut self,
-        transmit: Transmit,
-        icmp_error_hosts: &IcmpErrorHosts,
-        now: Instant,
-    ) -> Option<Transmit> {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
         let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
@@ -361,7 +356,7 @@ impl SimClient {
             return None;
         };
 
-        let transmit = self.on_received_packet(packet, icmp_error_hosts, now)?;
+        let transmit = self.on_received_packet(packet, now)?;
 
         Some(transmit)
     }
@@ -370,7 +365,6 @@ impl SimClient {
     pub(crate) fn on_received_packet(
         &mut self,
         packet: IpPacket,
-        icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
@@ -417,11 +411,14 @@ impl SimClient {
             }
         }
 
+        // A port that nothing listens on is the only error a Client's TUN IP can originate.
+        //
         // Only answers a fresh UDP request from a peer: a port that nothing listens on
         // is meaningless for an ICMP echo, which has no port to be unreachable.
-        let icmp_error = icmp_error_hosts
-            .icmp_error_for_ip(packet.destination())
-            .map(|error| icmp_error_reply(&packet, error).unwrap());
+        let icmp_error = self
+            .malicious_behaviour
+            .send_untracked_icmp_errors
+            .then(|| icmp_error_reply(&packet, IcmpError::Port).unwrap());
 
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53

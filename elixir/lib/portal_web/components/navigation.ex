@@ -288,7 +288,6 @@ defmodule PortalWeb.Components.Navigation do
               current_path={@current_path}
               navigate={~p"/#{@account}/devices"}
               icon="ri-computer-line"
-              badge="NEW"
             >
               Devices
             </.sidebar_item>
@@ -371,7 +370,6 @@ defmodule PortalWeb.Components.Navigation do
           >
             Settings
           </span>
-          <Core.new_badge class="ml-auto" data-sidebar-badge />
         </.link>
       </div>
 
@@ -543,7 +541,6 @@ defmodule PortalWeb.Components.Navigation do
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"
           icon="ri-shield-star-fill"
-          badge="NEW"
         >
           Device Posture
         </.settings_tab>
@@ -576,7 +573,6 @@ defmodule PortalWeb.Components.Navigation do
           navigate={~p"/#{@account}/settings/trust_anchors"}
           tab_path="settings/trust_anchors"
           icon="ri-shield-check-fill"
-          badge="NEW"
         >
           Trust Anchors
         </.settings_tab>

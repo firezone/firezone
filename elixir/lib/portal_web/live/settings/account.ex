@@ -4,13 +4,12 @@ defmodule PortalWeb.Settings.Account do
   alias Portal.Account
   alias Portal.Accounts.Deletion
   alias Portal.Billing
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
   require Logger
 
   def mount(_params, session, socket) do
     account = socket.assigns.account
-    subject = socket.assigns.subject
-    monthly_active_usage = Billing.monthly_active_usage(account)
 
     socket =
       assign(socket,
@@ -24,15 +23,25 @@ defmodule PortalWeb.Settings.Account do
         deletion_feedback_form: nil,
         edit_account_open: false,
         name_form: to_form(Database.change_account_name(account)),
-        admins_count: Database.count_account_admin_users_for_account(subject),
-        service_accounts_count: Database.count_service_accounts_for_account(subject),
-        users_count: Database.count_users_for_account(subject),
-        active_users_count: monthly_active_usage.seats,
-        adhoc_service_accounts_count: monthly_active_usage.adhoc_service_accounts,
-        sites_count: Database.count_groups_for_account(subject)
+        usage: if(connected?(socket), do: load_usage(account, socket.assigns.subject))
       )
 
     {:ok, socket}
+  end
+
+  # The static render shows a skeleton instead, so usage is only counted once,
+  # by the connected mount.
+  defp load_usage(account, subject) do
+    monthly_active_usage = Billing.monthly_active_usage(account)
+
+    %{
+      admins_count: Database.count_account_admin_users_for_account(subject),
+      service_accounts_count: Database.count_service_accounts_for_account(subject),
+      users_count: Database.count_users_for_account(subject),
+      active_users_count: monthly_active_usage.seats,
+      adhoc_service_accounts_count: monthly_active_usage.adhoc_service_accounts,
+      sites_count: Database.count_groups_for_account(subject)
+    }
   end
 
   def render(assigns) do
@@ -265,63 +274,64 @@ defmodule PortalWeb.Settings.Account do
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
             Usage
           </h3>
-          <div class="space-y-4 max-w-2xl">
+          <SettingsComponents.skeleton :if={is_nil(@usage)} id="usage-skeleton" rows={3} class="max-w-2xl" />
+          <div :if={@usage} id="usage" class="space-y-4 max-w-2xl">
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :monthly_active_users_count))}
               label="Seats"
               description="Users and service accounts with a device active in the last month"
-              used={@active_users_count}
+              used={@usage.active_users_count}
               limit={effective_limit(@account, :monthly_active_users_count)}
             />
             <.usage_bar
               :if={(effective_limit(@account, :adhoc_service_accounts_count) || 0) > 0}
               label="Ad hoc Service Accounts"
               description="Active service accounts that do not take a seat"
-              used={@adhoc_service_accounts_count}
+              used={@usage.adhoc_service_accounts_count}
               limit={effective_limit(@account, :adhoc_service_accounts_count)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :users_count))}
               label="Users"
-              used={@users_count}
+              used={@usage.users_count}
             />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :users_count))}
               label="Users"
-              used={@users_count}
+              used={@usage.users_count}
               limit={effective_limit(@account, :users_count)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :service_accounts_count))}
               label="Service Accounts"
-              used={@service_accounts_count}
+              used={@usage.service_accounts_count}
             />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :service_accounts_count))}
               label="Service Accounts"
-              used={@service_accounts_count}
+              used={@usage.service_accounts_count}
               limit={effective_limit(@account, :service_accounts_count)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :account_admin_users_count))}
               label="Admins"
-              used={@admins_count}
+              used={@usage.admins_count}
             />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :account_admin_users_count))}
               label="Admins"
-              used={@admins_count}
+              used={@usage.admins_count}
               limit={effective_limit(@account, :account_admin_users_count)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :sites_count))}
               label="Sites"
-              used={@sites_count}
+              used={@usage.sites_count}
             />
             <.usage_bar
               :if={not is_nil(effective_limit(@account, :sites_count))}
               label="Sites"
-              used={@sites_count}
+              used={@usage.sites_count}
               limit={effective_limit(@account, :sites_count)}
             />
           </div>

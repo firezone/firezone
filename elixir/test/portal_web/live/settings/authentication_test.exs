@@ -8,6 +8,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   import Portal.FeaturesFixtures
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
+  import Portal.PolicyFixtures
   import Portal.TrustAnchorFixtures
 
   alias Portal.EmailOTP
@@ -171,6 +172,23 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "provider listing" do
+    test "loads the providers only after the socket connects", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/authentication") |> html_response(200)
+      assert static =~ ~s(id="providers-skeleton")
+      refute static =~ provider.id
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/authentication")
+      assert html =~ provider.id
+      refute html =~ ~s(id="providers-skeleton")
+    end
+
     test "renders X.509 with a trust-anchor warning when the feature is enabled", %{
       account: account,
       actor: actor,
@@ -1489,6 +1507,63 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       html = render(lv)
       assert html =~ "deleted successfully"
       refute html =~ "Provider To Delete"
+    end
+
+    test "warns how many policies reference the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      other_provider = github_provider_fixture(account: account)
+
+      for operator <- [:is_in, :is_not_in] do
+        policy_fixture(
+          account: account,
+          conditions: [%{property: :auth_provider_id, operator: operator, values: [provider.id]}]
+        )
+      end
+
+      policy_fixture(
+        account: account,
+        conditions: [
+          %{property: :auth_provider_id, operator: :is_in, values: [other_provider.id]}
+        ]
+      )
+
+      policy_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("delete", provider.id)
+
+      assert has_element?(
+               lv,
+               "#provider-#{provider.id}-policy-warning",
+               "2 policies reference this provider and will need to be updated."
+             )
+    end
+
+    test "does not warn when no policy references the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      policy_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("delete", provider.id)
+
+      assert render(lv) =~ "Delete this provider?"
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
     end
 
     test "cannot delete provider user is signed in with", %{

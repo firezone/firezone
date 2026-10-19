@@ -140,12 +140,10 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  To delete an account you need to disable it first by cancelling its subscription in Stripe.
+  Deletes a disabled account at once and queues the cancellation of its Stripe subscriptions.
   """
   def delete_disabled_account(id) do
-    Database.get_disabled_account!(id)
-    |> Database.delete()
-
+    {:ok, _account} = Database.delete_disabled_account(id)
     :ok
   end
 
@@ -337,14 +335,23 @@ defmodule Portal.Ops do
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, Safe}
+    alias Portal.Workers.DeleteSubscription
 
-    def get_disabled_account!(id) do
-      from(a in Account,
-        where: a.id == ^id,
-        where: a.is_disabled == true
-      )
-      |> Safe.unscoped()
-      |> Safe.one!()
+    def delete_disabled_account(id) do
+      Safe.transact(fn ->
+        account =
+          from(a in Account,
+            where: a.id == ^id,
+            where: a.is_disabled == true
+          )
+          |> Safe.unscoped()
+          |> Safe.one!()
+
+        with {:ok, account} <- account |> Safe.unscoped() |> Safe.delete(),
+             {:ok, _job} <- maybe_insert_delete_subscription_job(account) do
+          {:ok, account}
+        end
+      end)
     end
 
     def insert(banner) do
@@ -428,6 +435,19 @@ defmodule Portal.Ops do
 
     defp maybe_filter_account_ids(query, account_ids) when is_list(account_ids) do
       where(query, [a], a.account_id in ^account_ids)
+    end
+
+    defp maybe_insert_delete_subscription_job(%Account{} = account) do
+      customer_id =
+        get_in(account, [Access.key(:metadata), Access.key(:stripe), Access.key(:customer_id)])
+
+      if customer_id do
+        %{"customer_id" => customer_id}
+        |> DeleteSubscription.new()
+        |> Oban.insert()
+      else
+        {:ok, nil}
+      end
     end
   end
 end

@@ -77,6 +77,8 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :account, :any, required: true
   attr :state, :map, required: true
   def postures_section(assigns) do
+    assigns = assign(assigns, :unconnected, Postures.unconnected_providers(assigns.state))
+
     ~H"""
     <div id={@id} class="border-t border-border pt-4">
       <div class="flex items-center justify-between gap-2 mb-3">
@@ -84,7 +86,6 @@ defmodule PortalWeb.Policies.PostureComponents do
           <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Device posture
           </h4>
-          <Core.new_badge data-postures-new-badge />
           <span class="text-[10px] text-subtle">
             (optional)
           </span>
@@ -141,6 +142,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         </Form.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
+        <.unconnected_providers_warning providers={@unconnected} class="mb-3" />
         <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
         <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
@@ -193,7 +195,10 @@ defmodule PortalWeb.Policies.PostureComponents do
               </Core.popover>
             </td>
             <td class="px-3 py-2.5 align-middle">
-              <div class="text-xs font-semibold text-body">{check.label}</div>
+              <div class="flex items-center gap-1.5 text-xs font-semibold text-body">
+                {check.label}
+                <.unavailable_check_icon :if={check.name in @enabled and not Postures.check_available?(@state, check)} />
+              </div>
               <div class="text-xs text-subtle mt-0.5">{check.description}</div>
             </td>
             <td class="px-3 py-2.5 align-middle">
@@ -300,24 +305,34 @@ defmodule PortalWeb.Policies.PostureComponents do
   end
 
   attr :postures, :any, default: nil
+  attr :connected, :list, default: nil, doc: "enabled provider types; nil leaves checks unflagged"
 
   def postures_summary(%{postures: nil} = assigns), do: ~H""
 
   def postures_summary(assigns) do
-    state = Postures.new(:enabled, assigns.postures)
-    wire = state.wire
+    state = Postures.new(:enabled, assigns.postures, connected: assigns.connected || [])
+    flag? = not is_nil(assigns.connected)
 
     checks =
       case Postures.checks(state) do
-        {:ok, names} -> Enum.map(names, &check!/1)
-        :custom -> :custom
+        {:ok, names} ->
+          Enum.map(names, fn name ->
+            check = check!(name)
+            Map.put(check, :unavailable?, flag? and not Postures.check_available?(state, check))
+          end)
+
+        :custom ->
+          :custom
       end
 
-    assigns = assign(assigns, wire: wire, checks: checks)
+    unconnected = if flag?, do: Postures.unconnected_providers(state), else: []
+
+    assigns = assign(assigns, wire: state.wire, checks: checks, unconnected: unconnected)
 
     ~H"""
     <div class="mt-4">
       <%= if @checks == :custom do %>
+        <.unconnected_providers_warning providers={@unconnected} class="mb-2" />
         <JSONView.json_view id="policy-postures-rules" value={@wire} label="Device posture" hint="Custom rules" collapsed />
       <% else %>
         <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
@@ -325,13 +340,41 @@ defmodule PortalWeb.Policies.PostureComponents do
         </h4>
         <ul class="rounded border border-border bg-raised divide-y divide-border">
           <li :for={check <- @checks} class="flex items-center gap-2 px-3 py-2">
-            <Core.icon name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
+            <.unavailable_check_icon :if={check.unavailable?} />
+            <Core.icon :if={not check.unavailable?} name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
             <span class="text-xs font-medium text-heading">{check.label}</span>
             <span class="text-xs text-subtle truncate">{check.description}</span>
           </li>
         </ul>
       <% end %>
     </div>
+    """
+  end
+
+  attr :providers, :list, required: true
+  attr :class, :string, default: nil
+
+  defp unconnected_providers_warning(assigns) do
+    ~H"""
+    <p
+      :if={@providers != []}
+      data-postures-unconnected
+      class={["flex items-start gap-1.5 rounded border border-warning/30 bg-warning-light px-3 py-2 text-xs text-warning", @class]}
+    >
+      <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <span>
+        These rules use {Enum.map_join(@providers, ", ", &provider_label(Atom.to_string(&1)))}, but no enabled provider of
+        {if length(@providers) == 1, do: "that type", else: "those types"} is connected.
+      </span>
+    </p>
+    """
+  end
+
+  defp unavailable_check_icon(assigns) do
+    ~H"""
+    <span data-posture-check-unavailable title="No enabled provider that can answer this check is connected.">
+      <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 text-warning" />
+    </span>
     """
   end
 

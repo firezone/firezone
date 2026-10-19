@@ -5,6 +5,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   require Logger
@@ -102,7 +103,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        feedback_sent?: false,
        feedback_error: nil
      )
-     |> init()}
+     |> init_if_connected()}
   end
 
   def handle_params(_params, _url, %{assigns: %{live_action: :select_type}} = socket) do
@@ -465,10 +466,14 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
-  def handle_event("request_confirm", %{"id" => id, "action" => action}, socket)
-      when action in ["delete"] do
+  def handle_event("request_confirm", %{"id" => id, "action" => "delete"}, socket) do
+    policy_count = referencing_policy_count(id, socket)
+
     {:noreply,
-     assign(socket, pending_confirm: %{id: id, action: action}, open_provider_actions_id: nil)}
+     assign(socket,
+       pending_confirm: %{id: id, action: "delete", policy_count: policy_count},
+       open_provider_actions_id: nil
+     )}
   end
 
   def handle_event("cancel_confirm", _params, socket) do
@@ -683,7 +688,9 @@ defmodule PortalWeb.Settings.DevicePosture do
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
               <h2 class="text-xs font-semibold text-heading">Posture Providers</h2>
-              <span class="text-xs text-subtle tabular-nums">{length(@providers)}</span>
+              <span :if={@providers} class="text-xs text-subtle tabular-nums">
+                {length(@providers)}
+              </span>
             </div>
             <Navigation.link
               patch={~p"/#{@account}/settings/device_posture/new"}
@@ -694,58 +701,61 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
 
           <div class="flex-1 overflow-auto">
-            <%= if Enum.empty?(@providers) do %>
-              <div class="flex items-center justify-center h-full">
-                <div class="flex flex-col items-center gap-3 py-16">
-                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                    <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+            <%= cond do %>
+              <% is_nil(@providers) -> %>
+                <SettingsComponents.skeleton id="providers-skeleton" />
+              <% Enum.empty?(@providers) -> %>
+                <div class="flex items-center justify-center h-full">
+                  <div class="flex flex-col items-center gap-3 py-16">
+                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                      <Core.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+                    </div>
+                    <div class="text-center">
+                      <p class="text-sm font-medium text-heading">No posture providers yet</p>
+                      <p class="text-xs text-subtle mt-0.5">
+                        Add a posture provider to allow device health checks before granting access.
+                      </p>
+                    </div>
+                    <Navigation.link
+                      patch={~p"/#{@account}/settings/device_posture/new"}
+                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                    >
+                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+                    </Navigation.link>
                   </div>
-                  <div class="text-center">
-                    <p class="text-sm font-medium text-heading">No posture providers yet</p>
-                    <p class="text-xs text-subtle mt-0.5">
-                      Add a posture provider to allow device health checks before granting access.
-                    </p>
-                  </div>
-                  <Navigation.link
-                    patch={~p"/#{@account}/settings/device_posture/new"}
-                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                  >
-                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-                  </Navigation.link>
                 </div>
-              </div>
-            <% else %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Provider
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Tenant
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Devices
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.provider_row
-                    :for={provider <- @providers}
-                    account={@account}
-                    provider={provider}
-                    open_actions_id={@open_provider_actions_id}
-                    pending_confirm={@pending_confirm}
-                  />
-                </tbody>
-              </table>
+              <% true -> %>
+                <table class="w-full text-sm border-collapse">
+                  <thead class="sticky top-0 z-10 bg-raised">
+                    <tr class="border-b border-border-strong">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                        Provider
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Status
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
+                        Tenant
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Devices
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Synced
+                      </th>
+                      <th class="px-6 py-2.5 w-14"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <.provider_row
+                      :for={provider <- @providers}
+                      account={@account}
+                      provider={provider}
+                      open_actions_id={@open_provider_actions_id}
+                      pending_confirm={@pending_confirm}
+                    />
+                  </tbody>
+                </table>
             <% end %>
           </div>
         </div>
@@ -1116,7 +1126,8 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_row(assigns) do
     assigns =
       assign(assigns,
-        is_pending_delete: assigns.pending_confirm == %{id: assigns.provider.id, action: "delete"}
+        is_pending_delete: pending_delete?(assigns.provider, assigns.pending_confirm),
+        referencing_policy_count: pending_policy_count(assigns.pending_confirm)
       )
 
     ~H"""
@@ -1144,9 +1155,13 @@ defmodule PortalWeb.Settings.DevicePosture do
       </td>
       <td :if={@is_pending_delete} colspan="5" class="px-6 py-3">
         <div class="flex items-center gap-4">
-          <span class="text-xs text-danger">
-            Delete this provider and all devices synced from it? This cannot be undone.
-          </span>
+          <div class="text-xs text-danger space-y-1">
+            <p>Delete this provider and all devices synced from it? This cannot be undone.</p>
+            <p :if={@referencing_policy_count > 0} id={"provider-#{@provider.id}-policy-warning"}>
+              {@referencing_policy_count} {ngettext("policy uses", "policies use", @referencing_policy_count)}
+              {provider_title(@provider.type)} posture rules and will need to be updated.
+            </p>
+          </div>
           <div class="flex items-center gap-2 ml-auto shrink-0">
             <Form.button phx-click="cancel_confirm" size="xs">
               Cancel
@@ -1604,6 +1619,12 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
   defp typed_client_secret(form), do: get_change(form.source, :client_secret) || ""
 
+  defp pending_delete?(%{id: id}, %{id: id, action: "delete"}), do: true
+  defp pending_delete?(_provider, _pending_confirm), do: false
+
+  defp pending_policy_count(%{policy_count: count}), do: count
+  defp pending_policy_count(_pending_confirm), do: 0
+
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
   defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
@@ -1838,6 +1859,12 @@ defmodule PortalWeb.Settings.DevicePosture do
     end)
   end
 
+  # The static render shows a skeleton instead, so the providers are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket), do: init(socket), else: assign(socket, providers: nil)
+  end
+
   defp init(socket) do
     subject = socket.assigns.subject
     intune_counts = Database.intune_device_counts(subject)
@@ -1931,6 +1958,19 @@ defmodule PortalWeb.Settings.DevicePosture do
       })
     else
       changeset
+    end
+  end
+
+  # Rules name a provider type, not a provider, so they only lose their data once
+  # no enabled provider of that type is left.
+  defp referencing_policy_count(id, socket) do
+    providers = socket.assigns.providers
+
+    with %{type: type} <- Enum.find(providers, &(&1.id == id)),
+         false <- Enum.any?(providers, &(&1.type == type and &1.id != id and not &1.is_disabled)) do
+      Database.count_policies_using_provider_type(type, socket.assigns.subject)
+    else
+      _other -> 0
     end
   end
 
@@ -2283,6 +2323,19 @@ defmodule PortalWeb.Settings.DevicePosture do
       with :ok <- ensure_enabled(subject) do
         changeset |> Safe.scoped(subject) |> Safe.update()
       end
+    end
+
+    def count_policies_using_provider_type(type, subject) do
+      from(p in Portal.Policy,
+        where:
+          fragment(
+            "jsonb_path_exists(?, '$.** \\? (@.field starts with $prefix)', jsonb_build_object('prefix', ?::text))",
+            p.postures,
+            ^"#{type}."
+          )
+      )
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
     end
 
     def delete_provider(provider, subject) do

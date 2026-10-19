@@ -713,10 +713,6 @@ impl StubPortal {
         &self.upstream_doh
     }
 
-    pub(crate) fn resource_selector(&self) -> u32 {
-        self.resource_selector
-    }
-
     pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
         select_by_index(candidates, self.resource_selector).copied()
     }

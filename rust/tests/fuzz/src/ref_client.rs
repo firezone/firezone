@@ -1,7 +1,6 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
-    icmp_error_hosts::IcmpErrorHosts,
     probe::Remote,
     reference::PrivateKey,
     resource::{
@@ -10,6 +9,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
+    site_network::Routes,
     transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
@@ -24,7 +24,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, Reverse},
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -126,8 +126,6 @@ pub struct RefClient {
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     #[debug(skip)]
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
-
-    resource_selector: u32,
 }
 
 impl RefClient {
@@ -144,7 +142,6 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
-        resource_selector: u32,
     ) -> Self {
         Self {
             id,
@@ -155,7 +152,6 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
-            resource_selector,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -790,7 +786,7 @@ impl RefClient {
         gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
         global_dns_records: &DnsRecords,
-        icmp_error_hosts: &IcmpErrorHosts,
+        routes: Option<&Routes>,
     ) {
         if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
@@ -846,7 +842,7 @@ impl RefClient {
                 return;
             }
 
-            if self.resolver_is_unreachable(query, icmp_error_hosts) {
+            if self.resolver_is_unreachable(query, routes) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
                 self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
@@ -908,10 +904,10 @@ impl RefClient {
     }
 
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
-    fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
+    fn resolver_is_unreachable(&self, query: &DnsQuery, routes: Option<&Routes>) -> bool {
         match &query.dns_server {
             dns::Upstream::Do53 { server } => {
-                icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some()
+                routes.is_some_and(|routes| routes.is_unreachable(server.ip()))
             }
             dns::Upstream::DoH { .. } => false,
         }
@@ -1048,6 +1044,7 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
@@ -1059,25 +1056,19 @@ impl RefClient {
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
         );
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| {
-                    dns::Pattern::new(&left.address)
-                        .unwrap()
-                        .cmp(&dns::Pattern::new(&right.address).unwrap())
-                })
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                dns::Pattern::new(&r.address).unwrap(),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
-        let ids = candidates
+
+        candidates
             .iter()
-            .filter(|resource| self.filter_allows(&resource.filters, proto))
-            .map(|resource| resource.id)
-            .collect_vec();
-        let selected = self
-            .select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))?;
-        candidates.into_iter().find(|r| r.id == selected)
+            .find(|resource| self.filter_allows(&resource.filters, proto))
+            .or_else(|| candidates.first())
+            .cloned()
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1091,7 +1082,7 @@ impl RefClient {
             .next()
     }
 
-    fn dns_resources_by_domain(
+    pub(crate) fn dns_resources_by_domain(
         &self,
         domain: &DomainName,
         eligible: impl Fn(&DnsResource) -> bool,
@@ -1119,23 +1110,6 @@ impl RefClient {
                 by_preference.then(by_pattern).then(by_id).reverse()
             })
             .collect()
-    }
-
-    /// Prefers existing connections, then applies the portal's sampled candidate index.
-    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
-        if candidates.is_empty() {
-            return None;
-        }
-
-        candidates
-            .iter()
-            .copied()
-            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
-            .or_else(|| {
-                candidates
-                    .get(self.resource_selector as usize % candidates.len())
-                    .copied()
-            })
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1246,6 +1220,7 @@ impl RefClient {
             .collect()
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn cidr_resource_by_ip_and_proto(
         &self,
         ip: IpAddr,
@@ -1253,19 +1228,19 @@ impl RefClient {
     ) -> Option<ResourceId> {
         let mut candidates =
             self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| right.address.netmask().cmp(&left.address.netmask()))
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                Reverse(r.address.netmask()),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
-        let ids = candidates
+
+        candidates
             .iter()
-            .filter(|resource| self.filter_allows(&resource.filters, proto))
-            .map(|resource| resource.id)
-            .collect_vec();
-        self.select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))
+            .find(|resource| self.filter_allows(&resource.filters, proto))
+            .or_else(|| candidates.first())
+            .map(|r| r.id)
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1501,12 +1476,8 @@ impl RefClient {
             return None;
         }
 
-        let candidates = self
-            .dns_resources_by_domain(&query.domain, |_| true, |_| true)
-            .into_iter()
+        self.dns_resource_by_domain(&query.domain, |_| true, |_| true)
             .map(|r| r.id)
-            .collect_vec();
-        self.select_gateway_resource(&candidates)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
