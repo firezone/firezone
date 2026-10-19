@@ -789,9 +789,9 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         };
         let remote = completed.route.remote();
-        if !matches!(remote, Remote::Gateway(_)) {
+        let Remote::Gateway(gateway) = remote else {
             continue;
-        }
+        };
         let Some(path) = remote_path_feedback(reference, state, expected.origin, remote) else {
             continue;
         };
@@ -801,8 +801,9 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         }
 
-        let responds_with_icmp_error = reference
-            .site_routes
+        let responds_with_icmp_error = reference.gateways[&gateway]
+            .inner()
+            .routes
             .is_unreachable(received.packet.destination());
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),

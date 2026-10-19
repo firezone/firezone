@@ -786,7 +786,7 @@ impl RefClient {
         gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
         global_dns_records: &DnsRecords,
-        site_routes: &Routes,
+        routes: Option<&Routes>,
     ) {
         if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
@@ -842,7 +842,7 @@ impl RefClient {
                 return;
             }
 
-            if self.resolver_is_unreachable(query, site_routes) {
+            if self.resolver_is_unreachable(query, routes) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
                 self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
@@ -904,9 +904,11 @@ impl RefClient {
     }
 
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
-    fn resolver_is_unreachable(&self, query: &DnsQuery, site_routes: &Routes) -> bool {
+    fn resolver_is_unreachable(&self, query: &DnsQuery, routes: Option<&Routes>) -> bool {
         match &query.dns_server {
-            dns::Upstream::Do53 { server } => site_routes.is_unreachable(server.ip()),
+            dns::Upstream::Do53 { server } => {
+                routes.is_some_and(|routes| routes.is_unreachable(server.ip()))
+            }
             dns::Upstream::DoH { .. } => false,
         }
     }

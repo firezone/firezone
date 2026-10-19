@@ -21,6 +21,8 @@ pub struct RefGateway {
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+    /// The routes of the network behind the Gateway.
+    pub(crate) routes: Routes,
 
     site_specific_dns_records: DnsRecords,
 }
@@ -31,12 +33,14 @@ impl RefGateway {
         key: PrivateKey,
         tunnel_ip4: Ipv4Addr,
         tunnel_ip6: Ipv6Addr,
+        routes: Routes,
         site_specific_dns_records: DnsRecords,
     ) -> Self {
         Self {
             key,
             tunnel_ip4,
             tunnel_ip6,
+            routes,
             site_specific_dns_records,
         }
     }
@@ -47,7 +51,6 @@ impl RefGateway {
     pub(crate) fn init(
         self,
         id: GatewayId,
-        routes: Routes,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
         now: Instant,
         utc_now: DateTime<Utc>,
@@ -65,7 +68,7 @@ impl RefGateway {
             v6: self.tunnel_ip6,
         });
 
-        let network = SiteNetwork::new(routes, tcp_services, now);
+        let network = SiteNetwork::new(self.routes, tcp_services, now);
 
         SimGateway::new(id, sut, network, self.site_specific_dns_records)
     }

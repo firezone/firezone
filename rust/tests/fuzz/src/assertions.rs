@@ -5,15 +5,15 @@ use super::{
         Remote, SubmittedRequest, TraceRequirement, remote_responds_with_icmp_error,
     },
     ref_client::RefClient,
+    ref_gateway::RefGateway,
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
-    site_network::Routes,
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::Destination,
 };
-use connlib_model::{ClientId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
@@ -35,11 +35,16 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         .iter()
         .map(|(id, host)| (*id, host.inner()))
         .collect();
+    let all_ref_gateways = ref_state
+        .gateways
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
     assert_probes(
         &ref_state.expected_probes,
         &all_ref_clients,
+        &all_ref_gateways,
         state,
-        &ref_state.site_routes,
     );
     assert_dns_nat(state);
 
@@ -66,8 +71,8 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
 fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
     state: &TunnelTest,
-    site_routes: &Routes,
 ) {
     let observations = state.probe_observations().collect_vec();
 
@@ -173,7 +178,7 @@ fn assert_probes(
                     received_response,
                     expected_remote,
                     ref_clients,
-                    site_routes,
+                    ref_gateways,
                 );
             }
             ExpectedOutcome::Rejected { response, .. } => {
@@ -458,14 +463,14 @@ fn assert_received_response(
     received_response: &ReceivedResponse,
     remote: Remote,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
-    site_routes: &Routes,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
 ) {
     let responds_with_icmp_error = remote_responds_with_icmp_error(
         expected,
         received_request,
         remote,
         ref_clients,
-        site_routes,
+        ref_gateways,
     );
 
     if responds_with_icmp_error {

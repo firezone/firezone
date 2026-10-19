@@ -314,7 +314,12 @@ pub(super) fn generate(
             // Like at the start, a TCP-serving domain never resolves to an unreachable address.
             if state.tcp_resources.contains_key(&domain) {
                 for _ in records.extract_if(.., |record| {
-                    record_ip(record).is_some_and(|ip| state.site_routes.is_unreachable(ip))
+                    record_ip(record).is_some_and(|ip| {
+                        state
+                            .gateways
+                            .values()
+                            .any(|gateway| gateway.inner().routes.is_unreachable(ip))
+                    })
                 }) {}
             }
             Transition::UpdateDnsRecords { domain, records }

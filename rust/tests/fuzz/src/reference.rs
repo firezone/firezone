@@ -3,7 +3,6 @@ use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
-use super::site_network::Routes;
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -54,9 +53,6 @@ pub struct ReferenceState {
     /// The ports each DNS Resource domain serves TCP on.
     pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
 
-    /// The routes of the network behind every site's Gateways.
-    pub(crate) site_routes: Routes,
-
     pub(crate) network: RoutingTable,
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
@@ -82,7 +78,6 @@ impl ReferenceState {
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
         tcp_resources: BTreeMap<DomainName, BTreeSet<u16>>,
-        site_routes: Routes,
         network: RoutingTable,
     ) -> Self {
         Self {
@@ -95,7 +90,6 @@ impl ReferenceState {
             global_dns_records,
             domain_tree,
             tcp_resources,
-            site_routes,
             network,
             expected_probes: Default::default(),
             icmp_flows: Default::default(),
@@ -204,7 +198,6 @@ impl ReferenceState {
             Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
-                let site_routes = &self.site_routes;
 
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
@@ -212,18 +205,13 @@ impl ReferenceState {
                         .is_site_specific_dns_query(query)
                         .or_else(|| client.dns_query_via_resource(query, upstream_do53))
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
+                    let routes = gateway.map(|gid| &self.gateways[&gid].inner().routes);
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(
-                            query,
-                            gateway,
-                            upstream_do53,
-                            global_dns_records,
-                            site_routes,
-                        );
+                        c.on_dns_query(query, gateway, upstream_do53, global_dns_records, routes);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);

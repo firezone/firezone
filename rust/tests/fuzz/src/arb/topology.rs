@@ -38,6 +38,10 @@ pub(super) fn generate(
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let site_routes = arb_site_routes(g, &dns_resource_records, portal.upstream_do53());
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &site_routes);
+    let gateways = gateways
+        .into_iter()
+        .map(|(id, gateway)| (id, gateway(site_routes.clone())))
+        .collect::<BTreeMap<_, _>>();
 
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
@@ -69,7 +73,6 @@ pub(super) fn generate(
         global_dns_records,
         domain_tree,
         tcp_resources,
-        site_routes,
         network,
     )
 }
@@ -381,17 +384,25 @@ fn arb_gateways(
     g: &mut Generator,
     portal: &StubPortal,
     domain_tree: &[DomainName],
-) -> BTreeMap<GatewayId, Host<RefGateway>> {
+) -> BTreeMap<GatewayId, impl FnOnce(Routes) -> Host<RefGateway> + use<>> {
     portal
         .gateway_tunnel_ips()
         .map(|(id, tun4, tun6, site_id)| {
             let site_specific = arb_site_specific_dns_records(g, portal, site_id, domain_tree);
-            let inner = RefGateway::from_parts(g.fresh_private_key(), tun4, tun6, site_specific);
+            let key = g.fresh_private_key();
             let latency = g.latency(200);
             let edge = arb_edge_config(g);
-            let host = Host::new(inner, latency, 52625, edge, g.nat_ip4());
-            let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
-            (id, host)
+            let nat_ip4 = g.nat_ip4();
+            let socket_ip4 = g.socket_ip4();
+            let socket_ip6 = g.socket_ip6();
+
+            let gateway = move |routes| {
+                let inner = RefGateway::from_parts(key, tun4, tun6, routes, site_specific);
+                let host = Host::new(inner, latency, 52625, edge, nat_ip4);
+                with_interface(host, Some(socket_ip4), Some(socket_ip6))
+            };
+
+            (id, gateway)
         })
         .collect::<BTreeMap<_, _>>()
 }

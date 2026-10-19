@@ -116,7 +116,6 @@ impl TunnelTest {
                     |ref_gateway, _, _| {
                         ref_gateway.init(
                             *gid,
-                            ref_state.site_routes.clone(),
                             ref_state.tcp_resources.clone(),
                             flux_capacitor.now(),
                             flux_capacitor.now(),
