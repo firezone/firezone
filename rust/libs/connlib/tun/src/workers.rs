@@ -40,7 +40,10 @@ impl Workers {
         ));
 
         let mut workers = Self {
-            state: Some((OutboundTx(outbound_tx), InboundRx(inbound_rx))),
+            state: Some((
+                OutboundTx(tokio_util::sync::PollSender::new(outbound_tx)),
+                InboundRx(inbound_rx),
+            )),
             send_thread: None,
             recv_thread: None,
         };
@@ -55,10 +58,10 @@ impl Workers {
 }
 
 impl Workers {
-    pub fn sender(&self) -> &OutboundTx {
-        &self
+    pub fn sender(&mut self) -> &mut OutboundTx {
+        &mut self
             .state
-            .as_ref()
+            .as_mut()
             .expect("Worker channels are present until drop")
             .0
     }

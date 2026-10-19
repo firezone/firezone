@@ -5,7 +5,7 @@ use super::probe::{
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
-use dns_types::{DomainName, RecordType};
+use dns_types::{DomainName, RecordType, prelude::*};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools;
@@ -200,6 +200,15 @@ impl ReferenceState {
             Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
+                let gateways = &self.gateways;
+                let resolve = |gateway: Option<GatewayId>, domain: &DomainName| match gateway {
+                    Some(gateway) => gateways[&gateway]
+                        .inner()
+                        .resolve(domain, global_dns_records)
+                        .map(|record| record.rtype())
+                        .collect(),
+                    None => global_dns_records.domain_rtypes(domain),
+                };
 
                 for (client_id, query) in queries {
                     let client = self.clients[client_id].inner();
@@ -207,13 +216,13 @@ impl ReferenceState {
                         .is_site_specific_dns_query(query)
                         .or_else(|| client.dns_query_via_resource(query, upstream_do53))
                         .and_then(|resource| self.select_gateway(portal, *client_id, resource));
-                    let routes = gateway.map(|gid| &self.gateways[&gid].inner().routes);
+                    let routes = gateway.map(|gid| &gateways[&gid].inner().routes);
                     let listing = is_device_listing_query(query).then(|| {
                         portal.browse_device_domain(&query.domain, &client.device_pool_ids())
                     });
 
                     self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(query, gateway, upstream_do53, global_dns_records, routes);
+                        c.on_dns_query(query, gateway, upstream_do53, resolve, routes);
 
                         if let Some(listing) = listing {
                             c.expect_device_listing(query, listing);
@@ -762,13 +771,26 @@ impl ReferenceState {
             client.note_sent(Some(route.remote()), sent_at);
         });
 
-        self.record_expected_probe(
-            id,
-            origin,
-            request,
-            sent_at,
-            ExpectedOutcome::RoundTripCompleted(route),
-        )
+        // Each time the client resolves a domain again, the Gateway does too and stops
+        // translating for an address family the domain no longer has.
+        let outcome = match (route, request.destination()) {
+            (Route::Resource { resource, gateway }, Destination::DomainName { name, .. })
+                if self.clients[&origin]
+                    .inner()
+                    .dns_resource_resolution(resource, name)
+                    .is_some_and(|records| {
+                        !records.contains(&address_record_type(request.source()))
+                    }) =>
+            {
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Unreachable,
+                }
+            }
+            _ => ExpectedOutcome::RoundTripCompleted(route),
+        };
+
+        self.record_expected_probe(id, origin, request, sent_at, outcome)
     }
 
     fn record_probe(
@@ -914,8 +936,15 @@ impl ReferenceState {
             return ExpectedOutcome::Dropped;
         };
         if let Destination::DomainName { .. } = dst {
+            let resolver = self.gateways[&gateway].inner();
+            let records = &self.global_dns_records;
             self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-                client.prepare_dns_resource_connection(resource, &self.global_dns_records)
+                client.prepare_dns_resource_connection(resource, |domain| {
+                    resolver
+                        .resolve(domain, records)
+                        .map(|record| record.rtype())
+                        .collect()
+                })
             });
         }
         let rejection = self.gateway_verdict(portal, origin, gateway, resource, src, dst, protocol);
@@ -1019,14 +1048,9 @@ impl ReferenceState {
         let Destination::DomainName { name, .. } = dst else {
             return None;
         };
-        let required_record = if src.is_ipv4() {
-            RecordType::A
-        } else {
-            RecordType::AAAA
-        };
         let resolves_for_source = client
             .dns_resource_resolution(resource, name)
-            .is_some_and(|records| records.contains(&required_record));
+            .is_some_and(|records| records.contains(&address_record_type(src)));
 
         (!resolves_for_source).then_some(RejectionResponse::Unreachable)
     }
@@ -1655,6 +1679,15 @@ fn pool_filters_allow_icmp_or_udp(filters: &[Filter]) -> bool {
 }
 
 /// The outcome of a TCP segment that the remote end of `route` has no connection for.
+/// The type of the records that hold the addresses a packet from `src` can go to.
+fn address_record_type(src: IpAddr) -> RecordType {
+    if src.is_ipv4() {
+        RecordType::A
+    } else {
+        RecordType::AAAA
+    }
+}
+
 fn reset_by(route: Route) -> ExpectedOutcome {
     let by = match route {
         Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),

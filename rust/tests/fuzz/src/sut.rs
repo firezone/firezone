@@ -1,5 +1,5 @@
 use super::buffered_transmits::BufferedTransmits;
-use super::dns_records::DnsRecords;
+use super::dns_records::{DnsRecords, record_ip};
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
@@ -1009,7 +1009,7 @@ impl TunnelTest {
                     gateway,
                     &self.relays,
                     portal,
-                    &ref_state.global_dns_records,
+                    ref_state,
                     now,
                 );
                 continue 'outer;
@@ -1457,7 +1457,7 @@ impl TunnelTest {
                         gateway,
                         &self.relays,
                         portal,
-                        &ref_state.global_dns_records,
+                        ref_state,
                         now,
                     );
                 }
@@ -1833,7 +1833,7 @@ fn on_gateway_event(
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
     portal: &mut StubPortal,
-    global_dns_records: &DnsRecords,
+    ref_state: &ReferenceState,
     now: Instant,
 ) {
     match event {
@@ -1863,8 +1863,10 @@ fn on_gateway_event(
             let client = r.client();
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().to_vec();
-            let resolved_ips = global_dns_records
-                .domain_ips_iter(&domain)
+            let resolved_ips = ref_state.gateways[&src]
+                .inner()
+                .resolve(&domain, &ref_state.global_dns_records)
+                .filter_map(|record| record_ip(&record))
                 .collect::<Vec<_>>();
 
             gateway.exec_mut(|g| {

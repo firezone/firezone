@@ -1,11 +1,13 @@
 use std::{
+    collections::BTreeMap,
     net::{Ipv4Addr, Ipv6Addr},
     ops::RangeInclusive,
     time::Duration,
 };
 
 use arbitrary::Unstructured;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use dns_types::DomainName;
 use ip_network::{
     Ipv4Network, Ipv6Network,
     iterator::{Ipv4RangeIterator, Ipv6NetworkIterator},
@@ -74,6 +76,11 @@ pub struct Generator<'a> {
     icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
     udp_packets: SmallVec<[(SPort, DPort); 20]>,
     tcp_connections: SmallVec<[(SPort, DPort); 20]>,
+
+    /// The subnet of each regular site that only its own Gateways reach.
+    site_subnets: BTreeMap<SiteId, (Ipv4Network, Ipv6Network)>,
+    /// The site whose subnet each local name resolves into.
+    local_names: BTreeMap<DomainName, SiteId>,
 }
 
 impl<'a> Generator<'a> {
@@ -110,6 +117,8 @@ impl<'a> Generator<'a> {
             icmp_packets: SmallVec::new(),
             udp_packets: SmallVec::new(),
             tcp_connections: SmallVec::new(),
+            site_subnets: BTreeMap::new(),
+            local_names: BTreeMap::new(),
         }
     }
 
@@ -302,6 +311,46 @@ impl<'a> Generator<'a> {
         self.tcp_connections.push(connection);
 
         connection
+    }
+
+    /// Assigns each site its own subnet within the documentation ranges.
+    pub(super) fn allocate_site_subnets(&mut self, sites: &[Site]) {
+        self.site_subnets = sites
+            .iter()
+            .enumerate()
+            .map(|(index, site)| {
+                let index = u8::try_from(index).expect("at most three regular sites");
+                let v4 = Ipv4Network::new(Ipv4Addr::new(192, 0, 2, index * 64), 26).unwrap();
+                let v6 = Ipv6Network::new(
+                    Ipv6Addr::new(0x2001, 0xDB8, u16::from(index), 0, 0, 0, 0, 0),
+                    48,
+                )
+                .unwrap();
+
+                (site.id, (v4, v6))
+            })
+            .collect();
+    }
+
+    pub(super) fn site_subnets(&self) -> &BTreeMap<SiteId, (Ipv4Network, Ipv6Network)> {
+        &self.site_subnets
+    }
+
+    pub(super) fn site_subnet(&self, site: SiteId) -> Option<(Ipv4Network, Ipv6Network)> {
+        self.site_subnets.get(&site).copied()
+    }
+
+    pub(super) fn set_local_names(&mut self, local_names: BTreeMap<DomainName, SiteId>) {
+        self.local_names = local_names;
+    }
+
+    pub(super) fn local_names(&self) -> &BTreeMap<DomainName, SiteId> {
+        &self.local_names
+    }
+
+    /// The subnet `name` resolves into if it is local to a site.
+    pub(super) fn local_subnet(&self, name: &DomainName) -> Option<(Ipv4Network, Ipv6Network)> {
+        self.site_subnet(*self.local_names.get(name)?)
     }
 
     pub(super) fn latency(&mut self, max: u64) -> Duration {

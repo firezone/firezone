@@ -29,13 +29,14 @@ use tunnel_proto::dns;
 use crate::{
     probe::{
         DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
-        FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionResponse, Remote, Route,
-        SubmittedRequest,
+        FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, RejectionResponse, Remote,
+        Route, SubmittedRequest,
     },
     reference::ReferenceState,
     resource::{EditEffect, classify},
     sim_gateway::DnsResolution,
     sim_net::EdgeConfig,
+    site_network::RouteType,
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::{Destination, DnsQuery, DnsTransport, Transition},
@@ -281,6 +282,7 @@ impl Recorder {
     /// Records observed state combinations that should guide future fuzzing.
     pub fn record(&mut self, reference: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
         record_translated_icmp_error_feedback(reference, state);
+        record_site_network_feedback(reference, state);
         record_dns_refresh_feedback(reference, state);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
@@ -801,15 +803,60 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             continue;
         }
 
-        let responds_with_icmp_error = reference.gateways[&gateway]
-            .inner()
-            .routes
-            .is_unreachable(received.packet.destination());
+        let responds_with_icmp_error = matches!(
+            reference.gateways[&gateway]
+                .inner()
+                .routes
+                .route(received.packet.destination()),
+            RouteType::Unreachable(_)
+        );
         record_with_path!(path;
             completed.submitted.packet.destination().is_ipv6(),
             received.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
+            matches!(expected.request, ProbeRequest::Tcp { .. }),
             responds_with_icmp_error,
+        );
+    }
+}
+
+/// Records probes sent through a Gateway that cannot reach or resolve their destination.
+fn record_site_network_feedback(reference: &ReferenceState, state: &TunnelTest) {
+    for expected in reference.expected_probes.values() {
+        let gateway = match expected.outcome {
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }) => gateway,
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                ..
+            } => gateway,
+            ExpectedOutcome::RoundTripCompleted(_)
+            | ExpectedOutcome::Rejected { .. }
+            | ExpectedOutcome::Dropped => continue,
+        };
+        let gateway = reference.gateways[&gateway].inner();
+        let resolves = match expected.request.destination() {
+            Destination::DomainName { name, .. } => gateway
+                .resolve(name, &reference.global_dns_records)
+                .next()
+                .is_some(),
+            Destination::IpAddr(_) => true,
+        };
+        let route = state
+            .probe_trace(expected.id)
+            .received_requests
+            .first()
+            .map(|received| gateway.routes.route(received.packet.destination()));
+
+        record!(
+            matches!(
+                expected.request.destination(),
+                Destination::DomainName { .. }
+            ),
+            resolves,
+            matches!(route, Some(RouteType::Unreachable(_))),
+            matches!(route, Some(RouteType::Blackhole)),
+            matches!(expected.request, ProbeRequest::Udp { .. }),
+            matches!(expected.request, ProbeRequest::Tcp { .. }),
         );
     }
 }
