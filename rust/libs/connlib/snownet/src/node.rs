@@ -21,7 +21,7 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Buffer;
 use core::fmt;
-use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
@@ -1976,7 +1976,7 @@ where
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        decrypted: Decrypted<IpPacketBuf>,
+        decrypted: Decrypted<anyhow::Result<IpPacket>>,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where
@@ -1984,12 +1984,12 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
-            Ok(Committed::Data { buffer, len }) => match IpPacket::new(buffer, len) {
-                Ok(p) => p,
-                Err(e) => {
-                    return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
-                }
-            },
+            Ok(Committed::Data {
+                buffer: Ok(packet), ..
+            }) => packet,
+            Ok(Committed::Data { buffer: Err(e), .. }) => {
+                return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
+            }
             Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
             Err(e) => {
                 return ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet")));

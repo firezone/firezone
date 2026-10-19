@@ -6722,7 +6722,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=pending-raw-keys#338951e533991fc86aa979a7d8846c552fd76a68"
+source = "git+https://github.com/firezone/sanstun?branch=pending-raw-keys#254fd49e41c3509d5492cc3a04ce09135abc5183"
 dependencies = [
  "blake2",
  "chacha20",

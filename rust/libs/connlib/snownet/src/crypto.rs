@@ -141,7 +141,10 @@ impl Decapsulation {
         DecryptedPacket {
             tunnel: self.tunnel,
             path: self.path,
-            decrypted: self.pending.decrypt(message, IpPacketBuf::new()),
+            decrypted: self
+                .pending
+                .decrypt(message, IpPacketBuf::new())
+                .map(IpPacket::new),
         }
     }
 }
@@ -150,5 +153,5 @@ impl Decapsulation {
 pub struct DecryptedPacket {
     pub(crate) tunnel: TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),
-    pub(crate) decrypted: Decrypted<IpPacketBuf>,
+    pub(crate) decrypted: Decrypted<anyhow::Result<IpPacket>>,
 }
