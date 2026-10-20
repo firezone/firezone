@@ -45,7 +45,7 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static OPEN_TRAINS: VecBuf<EncryptTrain> = (8, "open-trains"),
+    static OPEN_TRAINS: VecBuf<EncryptJob> = (8, "open-trains"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -100,7 +100,7 @@ pub struct CryptoWorkers {
 ///
 /// Every worker takes both kinds, so traffic in one direction can use all of them.
 enum Work {
-    Encrypt(EncryptTrain, oneshot::Sender<DatagramOut>),
+    Encrypt(EncryptJob, oneshot::Sender<DatagramOut>),
     Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
 }
 
@@ -173,7 +173,7 @@ pub struct EncryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
     outbound: &'a mut VecDeque<Queued>,
     /// The open train to each destination.
-    open: Buffer<VecBuf<EncryptTrain>>,
+    open: Buffer<VecBuf<EncryptJob>>,
     encrypting_v4: Option<Encrypting>,
     encrypting_v6: Option<Encrypting>,
 }
@@ -190,7 +190,7 @@ impl EncryptBatch<'_> {
             .iter_mut()
             .find(|open| open.train.is_between(src, dst))
         else {
-            self.open.push(EncryptTrain::new(encapsulation, packet));
+            self.open.push(EncryptJob::new(encapsulation, packet));
             return;
         };
 
@@ -202,7 +202,7 @@ impl EncryptBatch<'_> {
             return;
         }
 
-        let closed = mem::replace(open, EncryptTrain::new(encapsulation, packet));
+        let closed = mem::replace(open, EncryptJob::new(encapsulation, packet));
         self.dispatch(closed);
     }
 
@@ -211,9 +211,9 @@ impl EncryptBatch<'_> {
         self.outbound.push_back(transmit.into());
     }
 
-    fn dispatch(&mut self, train: EncryptTrain) {
+    fn dispatch(&mut self, job: EncryptJob) {
         let (tx, rx) = oneshot::channel();
-        let encrypting = match train.train.dst() {
+        let encrypting = match job.train.dst() {
             SocketAddr::V4(_) => &mut self.encrypting_v4,
             SocketAddr::V6(_) => &mut self.encrypting_v6,
         };
@@ -225,7 +225,7 @@ impl EncryptBatch<'_> {
         };
 
         // A stopped worker drops the sender, so the socket skips the train.
-        let _ = worker.send(Work::Encrypt(train, tx));
+        let _ = worker.send(Work::Encrypt(job, tx));
     }
 }
 
@@ -249,12 +249,12 @@ impl Drop for EncryptBatch<'_> {
 }
 
 /// Packets to encrypt into one [`UdpGsoTrain`].
-struct EncryptTrain {
+struct EncryptJob {
     train: UdpGsoTrain,
     packets: Buffer<VecBuf<(Encapsulation, IpPacket)>>,
 }
 
-impl EncryptTrain {
+impl EncryptJob {
     fn new(encapsulation: Encapsulation, packet: IpPacket) -> Self {
         let train = UdpGsoTrain::new(
             encapsulation.src(),
@@ -390,7 +390,7 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
 }
 
 fn encrypt(
-    EncryptTrain { train, mut packets }: EncryptTrain,
+    EncryptJob { train, mut packets }: EncryptJob,
     encrypted: oneshot::Sender<DatagramOut>,
     packet_counter: &Counter<u64>,
 ) {
