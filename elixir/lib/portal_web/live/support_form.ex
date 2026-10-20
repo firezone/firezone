@@ -2,13 +2,13 @@ defmodule PortalWeb.SupportForm do
   use PortalWeb, :live_component
 
   alias __MODULE__.Database
-  alias Portal.Mailer.FeedbackEmail
+  alias Portal.Mailer.InternalEmail
 
   @impl true
   def mount(socket) do
     {:ok,
      socket
-     |> assign(open?: false, error: nil, sent?: false, url: nil, enabled?: FeedbackEmail.enabled?())
+     |> assign(open?: false, error: nil, sent?: false, url: nil, enabled?: InternalEmail.enabled?())
      |> assign_form(%{})
      |> allow_upload(:screenshot,
        accept: ~w(.png .jpg .jpeg .gif .webp),
@@ -205,7 +205,7 @@ defmodule PortalWeb.SupportForm do
          {:ok, attachment} <- attachment(screenshot),
          {:ok, :reserved} <- Database.reserve(subject.account.id) do
       subject
-      |> FeedbackEmail.feedback_email(message, url, attachment)
+      |> InternalEmail.feedback_email(message, url, attachment)
       |> Portal.Mailer.deliver()
     end
   end

@@ -4,6 +4,8 @@ defmodule PortalWeb.Settings.Profile do
   alias Portal.Actor.Preferences
   alias __MODULE__.Database
 
+  @form_channels [:email]
+
   @start_page_options [
     %{value: "sites", label: "Sites", icon: "ri-global-line"},
     %{value: "resources", label: "Resources", icon: "ri-server-line"},
@@ -25,7 +27,9 @@ defmodule PortalWeb.Settings.Profile do
         confirm_disconnect_id: nil,
         expanded_grant_id: nil,
         start_page_options: @start_page_options,
-        form: to_form(build_changeset(actor))
+        form: to_form(build_changeset(actor)),
+        notifications_form: to_form(%{}, as: :notifications),
+        seats_warning_plan?: Portal.Billing.seats_warning_plan?(socket.assigns.account)
       )
 
     {:ok, socket}
@@ -58,6 +62,43 @@ defmodule PortalWeb.Settings.Profile do
               <.start_page_selector field={prefs[:start_page]} options={@start_page_options} />
             </.inputs_for>
           </div>
+        </.form>
+
+        <div class="max-w-2xl flex items-baseline justify-between mt-8 pb-2 border-b border-border text-[10px] font-semibold tracking-widest uppercase text-subtle">
+          <h3>Notification</h3>
+          <span>Email</span>
+        </div>
+
+        <.form
+          for={@notifications_form}
+          phx-change="save_notifications"
+          id="notifications-form"
+          class="max-w-2xl"
+        >
+          <table class="w-full text-sm text-body">
+            <tbody class="divide-y divide-border">
+              <.notification_row
+                notification={:outdated_gateways}
+                preferences={@actor.preferences}
+                label="Gateway Upgrade Available"
+                description="A new Gateway version is available"
+              />
+              <.notification_row
+                notification={:seat_limit_warnings}
+                preferences={@actor.preferences}
+                label="Seat Limit Warnings"
+                description="Your monthly active users near or reach the seats in your subscription"
+                disabled={not @seats_warning_plan?}
+                disabled_reason="Seat count warnings are sent on Business plans only."
+              />
+              <.notification_row
+                notification={:product_announcements}
+                preferences={@actor.preferences}
+                label="Product Announcements"
+                description="A monthly summary of new features and improvements in Firezone"
+              />
+            </tbody>
+          </table>
         </.form>
 
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mt-8 mb-4">
@@ -198,6 +239,45 @@ defmodule PortalWeb.Settings.Profile do
     """
   end
 
+  attr :notification, :atom, required: true
+  attr :preferences, :any, required: true
+  attr :label, :string, required: true
+  attr :description, :string, required: true
+  attr :disabled, :boolean, default: false
+  attr :disabled_reason, :string, default: nil
+
+  defp notification_row(assigns) do
+    assigns =
+      assign(assigns,
+        id: "notifications_#{assigns.notification}_email",
+        name: "notifications[#{assigns.notification}][email]",
+        checked:
+          not assigns.disabled and
+            :email in Preferences.channels(assigns.preferences, assigns.notification)
+      )
+
+    ~H"""
+    <tr>
+      <td class="pr-3 py-2.5 align-middle">
+        <div class="text-xs font-semibold text-body">{@label}</div>
+        <div class="text-xs text-subtle mt-0.5">{@description}</div>
+      </td>
+      <td class="pl-3 py-2.5 align-middle">
+        <span class="flex justify-end">
+          <Core.popover :if={@disabled} placement="left" class="flex">
+            <:target>
+              <Core.toggle id={@id} checked={false} disabled />
+            </:target>
+            <:content>{@disabled_reason}</:content>
+          </Core.popover>
+          <input :if={not @disabled} type="hidden" name={@name} value="false" />
+          <Core.toggle :if={not @disabled} id={@id} name={@name} value="true" checked={@checked} />
+        </span>
+      </td>
+    </tr>
+    """
+  end
+
   defp start_page_selector(assigns) do
     ~H"""
     <div class="px-4 py-3.5">
@@ -236,6 +316,58 @@ defmodule PortalWeb.Settings.Profile do
     """
   end
 
+  # Only the notifications whose channels changed are written, so the others
+  # stay unset and keep following the defaults.
+  defp notifications_changeset(actor, params, seats_warning_plan?) do
+    notifications =
+      if seats_warning_plan? do
+        Preferences.notifications()
+      else
+        Preferences.notifications() -- [:seat_limit_warnings]
+      end
+
+    changes =
+      for notification <- notifications,
+          %{} = channel_params <- [params[Atom.to_string(notification)]],
+          current = Preferences.channels(actor.preferences, notification),
+          channels = apply_channel_params(current, channel_params),
+          channels != current,
+          into: %{},
+          do: {notification, channels}
+
+    if changes == %{} do
+      change(actor)
+    else
+      put_notification_channels(actor, changes)
+    end
+  end
+
+  defp put_notification_channels(actor, changes) do
+    actor
+    |> cast(%{preferences: %{notifications: changes}}, [])
+    |> cast_embed(:preferences,
+      with: fn preferences, attrs ->
+        (preferences || %Preferences{})
+        |> cast(attrs, [])
+        |> cast_embed(:notifications,
+          with: fn notifications, attrs ->
+            cast(notifications || %Preferences.Notifications{}, attrs, Map.keys(changes))
+          end
+        )
+      end
+    )
+  end
+
+  defp apply_channel_params(channels, channel_params) do
+    Enum.reduce(@form_channels, channels, fn channel, channels ->
+      case channel_params[Atom.to_string(channel)] do
+        "true" -> Enum.uniq(channels ++ [channel])
+        "false" -> channels -- [channel]
+        _other -> channels
+      end
+    end)
+  end
+
   defp build_changeset(actor, attrs \\ %{}) do
     actor
     |> cast(attrs, [])
@@ -270,9 +402,19 @@ defmodule PortalWeb.Settings.Profile do
   end
 
   def handle_event("save", %{"actor" => attrs}, socket) do
-    actor = socket.assigns.actor
+    socket.assigns.actor
+    |> build_changeset(attrs)
+    |> save_preferences(socket)
+  end
 
-    case update_preferences(actor, attrs, socket.assigns.subject) do
+  def handle_event("save_notifications", %{"notifications" => params}, socket) do
+    socket.assigns.actor
+    |> notifications_changeset(params, socket.assigns.seats_warning_plan?)
+    |> save_preferences(socket, "Notification preferences saved.")
+  end
+
+  defp save_preferences(changeset, socket, success_message \\ nil) do
+    case Database.update(changeset, socket.assigns.subject) do
       {:ok, updated_actor} ->
         updated_actor = %{
           updated_actor
@@ -280,7 +422,9 @@ defmodule PortalWeb.Settings.Profile do
         }
 
         socket =
-          assign(socket, actor: updated_actor, form: to_form(build_changeset(updated_actor)))
+          socket
+          |> assign(actor: updated_actor, form: to_form(build_changeset(updated_actor)))
+          |> maybe_put_success_flash(success_message)
 
         {:noreply, socket}
 
@@ -289,11 +433,8 @@ defmodule PortalWeb.Settings.Profile do
     end
   end
 
-  defp update_preferences(actor, attrs, subject) do
-    actor
-    |> build_changeset(attrs)
-    |> Database.update(subject)
-  end
+  defp maybe_put_success_flash(socket, nil), do: socket
+  defp maybe_put_success_flash(socket, message), do: put_flash(socket, :success, message)
 
   defmodule Database do
     alias Portal.Safe

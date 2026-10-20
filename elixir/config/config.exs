@@ -634,7 +634,7 @@ config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
 
-config :portal, Portal.Mailer.FeedbackEmail, recipient: nil
+config :portal, Portal.Mailer.InternalEmail, recipient: nil
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
