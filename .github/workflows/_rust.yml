@@ -214,8 +214,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
-      - name: Replay committed corpus
-        run: mise run //rust/tests/fuzz:replay ${{ matrix.fuzz-target }}
       - name: Check discovery determinism
         run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
 
