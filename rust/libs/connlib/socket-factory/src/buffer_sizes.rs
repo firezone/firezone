@@ -36,7 +36,7 @@ pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
             + size_of::<Buffer<Vec<u8>>>()
             + size_of::<quinn_udp::RecvMeta>());
 
-/// Worst-case heap that a single receive buffer ([`RecvBuffer`](crate::RecvBuffer)) pins.
+/// Worst-case heap that a single receive buffer ([`DatagramIn`](crate::DatagramIn)) pins.
 ///
 /// Each buffer is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams
 /// of at most [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer

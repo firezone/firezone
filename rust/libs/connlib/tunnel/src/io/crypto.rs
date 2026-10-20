@@ -13,7 +13,7 @@ use bufferpool::{Buffer, VecBuf};
 use ip_packet::{Ecn, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{Decapsulation, DecryptedPacket, EncryptJob};
-use socket_factory::{DatagramOut, MAX_GSO_SEGMENTS, RecvBuffer, Segment};
+use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, Segment};
 use tokio::sync::oneshot;
 
 use super::UdpGsoTrain;
@@ -49,7 +49,7 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPT_BUFFERS: VecBuf<RecvBuffer> = (DECRYPT_BATCH_SIZE, "decrypt-buffers"),
+    static DECRYPT_BUFFERS: VecBuf<DatagramIn> = (DECRYPT_BATCH_SIZE, "decrypt-buffers"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -260,10 +260,10 @@ impl DecryptBatch<'_> {
     /// them is a data message to decrypt.
     pub fn push(
         &mut self,
-        buffer: RecvBuffer,
-        mut decapsulate: impl FnMut(&RecvBuffer, &[u8]) -> Option<Decapsulation>,
+        buffer: DatagramIn,
+        mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<Decapsulation>,
     ) {
-        if self.job.messages.len() + buffer.num_datagrams() > DECRYPT_BATCH_SIZE {
+        if self.job.messages.len() + buffer.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
 
@@ -316,7 +316,7 @@ impl Drop for DecryptBatch<'_> {
 ///
 /// Each buffer holds at least one of the messages.
 struct Job {
-    buffers: Buffer<VecBuf<RecvBuffer>>,
+    buffers: Buffer<VecBuf<DatagramIn>>,
     messages: Buffer<VecBuf<Message>>,
 }
 
