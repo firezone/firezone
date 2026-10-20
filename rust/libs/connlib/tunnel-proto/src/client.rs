@@ -53,7 +53,6 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
-use sanstun::StaticSecret;
 use secrecy::ExposeSecret as _;
 use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
@@ -1053,7 +1052,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
-            StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
+            sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             client_ice.into(),
             gateway_ice.into(),
             snownet::IceRole::Controlling,
@@ -1174,7 +1173,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
-            StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
+            sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             local_client_ice.into(),
             remote_client_ice.into(),
             ice_role.into(),

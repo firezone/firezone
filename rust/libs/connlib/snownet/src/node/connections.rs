@@ -9,7 +9,6 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
-use sanstun::TunnelId;
 
 use crate::{
     Event,
@@ -28,12 +27,12 @@ pub struct Connections<TId, RId> {
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
 
-    established_by_tunnel_id: HashMap<TunnelId, TId>,
+    established_by_tunnel_id: HashMap<sanstun::TunnelId, TId>,
     established_by_local_ufrag: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_tunnel_ids: HashMap<TunnelId, Instant>,
+    disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant>,
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
@@ -250,7 +249,7 @@ where
 
     pub(crate) fn get_established_mut_by_tunnel_id(
         &mut self,
-        tunnel_id: TunnelId,
+        tunnel_id: sanstun::TunnelId,
         now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let id = *self
@@ -480,8 +479,8 @@ impl UnknownConnection {
     }
 
     fn by_tunnel_id(
-        id: TunnelId,
-        disconnected_tunnel_ids: &HashMap<TunnelId, Instant>,
+        id: sanstun::TunnelId,
+        disconnected_tunnel_ids: &HashMap<sanstun::TunnelId, Instant>,
         now: Instant,
     ) -> Self {
         Self {
@@ -558,7 +557,6 @@ mod tests {
     use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
-    use sanstun::{Interface, PublicKey, StaticSecret, TunnelConfig};
     use zeroize::Zeroizing;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
@@ -703,7 +701,7 @@ mod tests {
 
     fn insert_dummy_connection(
         connections: &mut Connections<u32, u32>,
-    ) -> (u32, TunnelId, PublicKey) {
+    ) -> (u32, sanstun::TunnelId, sanstun::PublicKey) {
         let conn = new_connection(Some(0), [1u8; 32]);
         let id = 1;
         let idx = conn.tunnel.id();
@@ -717,8 +715,8 @@ mod tests {
     fn assert_disconnected(
         connections: &mut Connections<u32, u32>,
         id: u32,
-        idx: TunnelId,
-        key: PublicKey,
+        idx: sanstun::TunnelId,
+        key: sanstun::PublicKey,
         now: Instant,
         is_recently_disconnected: bool,
     ) {
@@ -751,19 +749,20 @@ mod tests {
     }
 
     fn new_connection(relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {
-        let tunnel = Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
-            .new_tunnel(
-                PublicKey::from(key),
-                TunnelConfig::default(),
-                Instant::now(),
-            )
-            .unwrap();
+        let tunnel =
+            sanstun::Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
+                .new_tunnel(
+                    sanstun::PublicKey::from(key),
+                    sanstun::TunnelConfig::default(),
+                    Instant::now(),
+                )
+                .unwrap();
 
         Connection {
             agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
             tunnel,
-            preshared_key: StaticSecret::from(Zeroizing::new([0; 32])),
-            remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            preshared_key: sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+            remote_pub_key: sanstun::PublicKey::from(rand::random::<[u8; 32]>()),
             last_proactive_handshake_sent_at: None,
             relay,
             state: crate::node::ConnectionState::Connecting {

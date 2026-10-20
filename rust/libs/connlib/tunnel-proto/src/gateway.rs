@@ -16,7 +16,6 @@ use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
-use sanstun::{PublicKey, StaticSecret};
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -99,7 +98,7 @@ impl GatewayState {
         self.tun_ip_config
     }
 
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> sanstun::PublicKey {
         self.node.public_key()
     }
 
@@ -316,7 +315,7 @@ impl GatewayState {
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
-            StaticSecret::from(Zeroizing::new(client.preshared_key.expose_secret().0)),
+            sanstun::StaticSecret::from(Zeroizing::new(client.preshared_key.expose_secret().0)),
             gateway_ice.into(),
             client_ice.into(),
             IceRole::Controlled,

@@ -4,8 +4,6 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use sanstun::{Datagram, HandshakeInitiation, HandshakeResponse, Tunnel};
-
 use crate::candidate::Candidate;
 use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
@@ -160,7 +158,7 @@ struct InflightProbe {
 }
 
 struct OutboundInit {
-    bytes: Datagram,
+    bytes: sanstun::Datagram,
     /// Relay pairs the current `bytes` have been fanned out to. Cleared when a
     /// WireGuard re-init replaces `bytes`, so the fresh init reaches every pair.
     fanned: BTreeSet<(SocketAddr, SocketAddr)>,
@@ -174,7 +172,7 @@ struct OutboundInit {
 }
 
 impl OutboundInit {
-    fn new(bytes: Datagram, started_at: Instant) -> Self {
+    fn new(bytes: sanstun::Datagram, started_at: Instant) -> Self {
         Self {
             bytes,
             fanned: BTreeSet::new(),
@@ -186,7 +184,7 @@ impl OutboundInit {
 
 struct ResponderDedup {
     init: InitId,
-    response_bytes: Datagram,
+    response_bytes: sanstun::Datagram,
     cached_at: Instant,
 }
 
@@ -435,7 +433,7 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
-    pub fn send_handshake_initiation(&mut self, init: Datagram, now: Instant) {
+    pub fn send_handshake_initiation(&mut self, init: sanstun::Datagram, now: Instant) {
         self.last_now = Some(now);
 
         // Before the session is confirmed we cannot probe: fan the init out
@@ -487,8 +485,8 @@ impl PathAgent {
     /// accepted is answered with the cached response.
     pub fn handle_handshake_initiation(
         &mut self,
-        tunnel: &mut Tunnel,
-        init: HandshakeInitiation,
+        tunnel: &mut sanstun::Tunnel,
+        init: sanstun::HandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> Result<(), sanstun::Error> {
@@ -570,8 +568,8 @@ impl PathAgent {
     /// confirms the session and its keepalive is queued on `path`.
     pub fn handle_handshake_response(
         &mut self,
-        tunnel: &mut Tunnel,
-        response: HandshakeResponse,
+        tunnel: &mut sanstun::Tunnel,
+        response: sanstun::HandshakeResponse,
         datagram: &[u8],
         path: (SocketAddr, SocketAddr),
         now: Instant,
@@ -606,7 +604,7 @@ impl PathAgent {
         Ok(())
     }
 
-    fn cached_response(&self, init: InitId, now: Instant) -> Option<Datagram> {
+    fn cached_response(&self, init: InitId, now: Instant) -> Option<sanstun::Datagram> {
         let d = self.responder_dedup.as_ref()?;
 
         if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {

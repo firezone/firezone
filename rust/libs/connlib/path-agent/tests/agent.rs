@@ -13,7 +13,6 @@ use path_agent::{
     Candidate, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent, Payload,
     REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
-use sanstun::{Datagram, Interface, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -887,8 +886,8 @@ impl Activity {
 trait AgentExt {
     fn receive(
         &mut self,
-        tunnel: &mut Tunnel,
-        interface: &mut Interface,
+        tunnel: &mut sanstun::Tunnel,
+        interface: &mut sanstun::Interface,
         bytes: &[u8],
         path: Pair,
         now: Instant,
@@ -903,24 +902,26 @@ trait AgentExt {
 impl AgentExt for PathAgent {
     fn receive(
         &mut self,
-        tunnel: &mut Tunnel,
-        interface: &mut Interface,
+        tunnel: &mut sanstun::Tunnel,
+        interface: &mut sanstun::Interface,
         bytes: &[u8],
         path: Pair,
         now: Instant,
     ) -> Result<(), sanstun::Error> {
-        let Ok(Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
+        let Ok(sanstun::Received::Message(packet)) = interface.receive(path.1, bytes, now) else {
             panic!("expected a verified packet");
         };
         match packet {
-            ReceivedMessage::HandshakeInitiation(init) => {
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 self.handle_handshake_initiation(tunnel, init, path, now)
             }
-            ReceivedMessage::HandshakeResponse(response) => {
+            sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 self.handle_handshake_response(tunnel, response, bytes, path, now)
             }
-            ReceivedMessage::CookieReply(reply) => tunnel.handle_cookie_reply(reply, now),
-            ReceivedMessage::TransportData(data) => tunnel.begin_decapsulate(data, now).map(drop),
+            sanstun::ReceivedMessage::CookieReply(reply) => tunnel.handle_cookie_reply(reply, now),
+            sanstun::ReceivedMessage::TransportData(data) => {
+                tunnel.begin_decapsulate(data, now).map(drop)
+            }
         }
     }
 
@@ -1007,7 +1008,7 @@ fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
     let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }
 
-fn handshake_init_bytes() -> Datagram {
+fn handshake_init_bytes() -> sanstun::Datagram {
     Handshake::new(Instant::now()).init
 }
 
@@ -1037,11 +1038,11 @@ fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
 }
 
 struct Handshake {
-    initiator: Tunnel,
-    initiator_interface: Interface,
-    responder: Tunnel,
-    responder_interface: Interface,
-    init: Datagram,
+    initiator: sanstun::Tunnel,
+    initiator_interface: sanstun::Interface,
+    responder: sanstun::Tunnel,
+    responder_interface: sanstun::Interface,
+    init: sanstun::Datagram,
     response: Vec<u8>,
 }
 
@@ -1059,14 +1060,14 @@ impl Handshake {
         let mut initiator = initiator_interface
             .new_tunnel(
                 responder_interface.static_public(),
-                TunnelConfig::default(),
+                sanstun::TunnelConfig::default(),
                 now,
             )
             .unwrap();
         let responder = responder_interface
             .new_tunnel(
                 initiator_interface.static_public(),
-                TunnelConfig::default(),
+                sanstun::TunnelConfig::default(),
                 now,
             )
             .unwrap();
@@ -1084,9 +1085,9 @@ impl Handshake {
     }
 
     fn with_response(mut self, now: Instant) -> Self {
-        let Ok(Received::Message(ReceivedMessage::HandshakeInitiation(init))) = self
-            .responder_interface
-            .receive("127.0.0.1:1".parse().unwrap(), &self.init, now)
+        let Ok(sanstun::Received::Message(sanstun::ReceivedMessage::HandshakeInitiation(init))) =
+            self.responder_interface
+                .receive("127.0.0.1:1".parse().unwrap(), &self.init, now)
         else {
             panic!("expected init");
         };
@@ -1099,18 +1100,20 @@ impl Handshake {
     }
 }
 
-fn interface(now: Instant, seed: u8, static_private: u8) -> Interface {
-    Interface::new(Zeroizing::new([seed; 32]), now, Duration::from_secs(1))
-        .with_static_private(StaticSecret::from(Zeroizing::new([static_private; 32])))
+fn interface(now: Instant, seed: u8, static_private: u8) -> sanstun::Interface {
+    sanstun::Interface::new(Zeroizing::new([seed; 32]), now, Duration::from_secs(1))
+        .with_static_private(sanstun::StaticSecret::from(Zeroizing::new(
+            [static_private; 32],
+        )))
 }
 
 /// Mismatched keypair: every message is rejected.
-fn reject_all() -> Tunnel {
+fn reject_all() -> sanstun::Tunnel {
     let now = Instant::now();
     let peer = interface(now, 98, 4).static_public();
 
     interface(now, 99, 3)
-        .new_tunnel(peer, TunnelConfig::default(), now)
+        .new_tunnel(peer, sanstun::TunnelConfig::default(), now)
         .unwrap()
 }
 
