@@ -199,7 +199,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn poll_network(&mut self) {
-        if !self.io.crypto.has_room() {
+        if !self.io.crypto.has_room_to_decrypt() {
             return;
         }
 

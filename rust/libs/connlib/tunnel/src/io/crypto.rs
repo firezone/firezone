@@ -135,7 +135,7 @@ impl CryptoWorkers {
     }
 
     /// Whether we may hand more received buffers to the workers.
-    pub fn has_room(&self) -> bool {
+    pub fn has_room_to_decrypt(&self) -> bool {
         self.decrypting.len() < MAX_JOBS_IN_FLIGHT
     }
 
