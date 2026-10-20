@@ -69,7 +69,6 @@ for run in 1 2; do
         map="$temporary/maps-$run/$name"
         if [ ! -s "$map" ]; then
             echo "Missing coverage for ${inputs[index]}: input crashed, timed out, or was skipped" >&2
-            timeout 60 "$afl_binary" "$target" --replay "${inputs[index]}" || true
             exit 1
         fi
         # Compare AFL's classified hit counts as well as the actual edge IDs.
