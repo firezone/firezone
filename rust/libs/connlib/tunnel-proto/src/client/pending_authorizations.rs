@@ -1,10 +1,11 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
 use connlib_model::ResourceId;
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use itertools::Itertools as _;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -104,7 +105,7 @@ impl PendingAuthorizations {
                 AuthorizationTarget::Device { addr } => Some(addr),
                 AuthorizationTarget::Resources(_) => None,
             })
-            .collect::<BTreeSet<_>>();
+            .collect::<HashSet<_, FastRandomState>>();
 
         if removed_addrs.is_empty() {
             return;
@@ -183,7 +184,7 @@ impl PendingAuthorizations {
 
 pub struct PendingAuthorization {
     last_request_sent_at: Instant,
-    device_pools: BTreeSet<ResourceId>,
+    device_pools: HashSet<ResourceId, FastRandomState>,
     packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
@@ -199,7 +200,7 @@ impl PendingAuthorization {
     fn new(now: Instant) -> Self {
         Self {
             last_request_sent_at: now,
-            device_pools: BTreeSet::new(),
+            device_pools: HashSet::default(),
             packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-authorization",
