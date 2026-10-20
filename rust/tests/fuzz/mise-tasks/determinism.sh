@@ -51,18 +51,29 @@ for ((sample = 0; sample < samples; sample++)); do
         cp "${inputs[index]}" "$temporary/inputs/$index-$copy"
     done
 done
+# The second forkserver replays every eighth input and the sampled ones with their copies.
+mkdir "$temporary/inputs-2"
+for input in "$temporary/inputs"/*; do
+    name="${input##*/}"
+    index="${name%-*}"
+    if [ "${name##*-}" != 0 ] || ((index % 8 == 0)) || [ -e "$temporary/inputs/$index-1" ]; then
+        ln "$input" "$temporary/inputs-2/$name"
+    fi
+done
 # One showmap per core; each forks its own server from the same binary.
 shards="$(nproc)"
-shard=0
-for input in "$temporary/inputs"/*; do
-    mkdir -p "$temporary/shards/$((shard % shards))"
-    ln "$input" "$temporary/shards/$((shard % shards))/"
-    shard=$((shard + 1))
-done
 
 for run in 1 2; do
+    source="$temporary/inputs"
+    [ "$run" -eq 1 ] || source="$temporary/inputs-2"
+    shard=0
+    for input in "$source"/*; do
+        mkdir -p "$temporary/shards-$run/$((shard % shards))"
+        ln "$input" "$temporary/shards-$run/$((shard % shards))/"
+        shard=$((shard + 1))
+    done
     pids=()
-    for shard in "$temporary"/shards/*; do
+    for shard in "$temporary/shards-$run"/*; do
         # -Z leaves an empty map for any crash or timeout, including an earlier
         # failure that showmap's final-input exit status would otherwise miss.
         AFL_QUIET=1 cargo afl showmap -Z -i "$shard" -o "$temporary/maps-$run-${shard##*/}" \
@@ -80,7 +91,7 @@ for run in 1 2; do
         echo "The tunnel-proto corpus produced no IJON feedback" >&2
         exit 1
     fi
-    for input in "$temporary/inputs"/*; do
+    for input in "$source"/*; do
         name="${input##*/}"
         index="${name%-*}"
         map="$temporary/maps-$run/$name"
@@ -96,4 +107,5 @@ for run in 1 2; do
         fi
     done
 done
-echo "$target: ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each."
+replayed=("$temporary/inputs-2"/*-0)
+echo "$target: ${#inputs[@]} inputs ran; ${#replayed[@]} match across two forkservers; $samples inputs also match across five children each."
