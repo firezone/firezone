@@ -7391,6 +7391,7 @@ dependencies = [
  "bytecodec",
  "bytes",
  "derive_more",
+ "fast-random-state",
  "hex",
  "hex-display",
  "ip-packet",

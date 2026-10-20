@@ -1454,7 +1454,6 @@ impl ClientState {
     }
 
     fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
-        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
         self.gateways_by_site
             .values()
             .flatten()
@@ -2355,7 +2354,6 @@ impl ClientState {
         status: ResourceStatus,
         now: Instant,
     ) {
-        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
         let Some((sid, _)) = self
             .gateways_by_site
             .iter()
