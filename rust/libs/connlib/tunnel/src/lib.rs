@@ -309,23 +309,18 @@ impl ClientTunnel {
 
                 if let Some(mut batches) = network {
                     for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in buffer.datagrams() {
-                            udp_received.record(received.packet);
+                        for packet in buffer.datagrams() {
+                            udp_received.record(packet);
 
                             match self
                                 .role_state
-                                .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
-                                    now,
-                                )
+                                .handle_network_input(buffer.local(), buffer.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
+                                    local: buffer.local(),
+                                    from: buffer.from(),
                                 }) {
                                 Ok(Some(packet)) => {
-                                    let packet = packet.with_ecn_from_transport(received.ecn);
+                                    let packet = packet.with_ecn_from_transport(buffer.ecn());
 
                                     tun_transmitted.record(&packet);
                                     self.io.queue_tun(packet);
@@ -515,23 +510,18 @@ impl GatewayTunnel {
 
                 if let Some(mut batches) = network {
                     for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        for received in buffer.datagrams() {
-                            udp_received.record(received.packet);
+                        for packet in buffer.datagrams() {
+                            udp_received.record(packet);
 
                             match self
                                 .role_state
-                                .handle_network_input(
-                                    received.local,
-                                    received.from,
-                                    received.packet,
-                                    now,
-                                )
+                                .handle_network_input(buffer.local(), buffer.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: received.local,
-                                    from: received.from,
+                                    local: buffer.local(),
+                                    from: buffer.from(),
                                 }) {
                                 Ok(Some(packet)) => {
-                                    let packet = packet.with_ecn_from_transport(received.ecn);
+                                    let packet = packet.with_ecn_from_transport(buffer.ecn());
 
                                     tun_transmitted.record(&packet);
                                     self.io.queue_tun(packet);
