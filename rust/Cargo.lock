@@ -8979,6 +8979,7 @@ dependencies = [
  "dns-types",
  "flow-tracker",
  "ip-packet",
+ "libc",
  "serde_json",
  "snownet",
  "socket-factory",

@@ -58,8 +58,24 @@ const BURST: usize = 10_000;
 
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
-/// Bounded so no UDP receive buffer overflows.
-const IN_FLIGHT: usize = 8_192;
+/// Deep enough that the event loop never drains the pipeline while a stand-in thread wakes up,
+/// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
+/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes. The crypto workers
+/// make the pipeline deeper than that on many-core machines, so Linux, whose benchmark container
+/// raises `rmem_max` to 16 MiB, keeps twice as many in flight.
+const IN_FLIGHT: usize = cfg_select! {
+    target_os = "macos" => { 4_096 }
+    _ => { 8_192 }
+};
+
+/// How many packets the receiving side sends to its peer before a benchmark.
+///
+/// That is one transmit above socket-factory's promotion threshold, so the receiver's socket pool
+/// connects a flow socket to the peer as either side of a real tunnel does within its first
+/// transmits. On macOS, a connected socket receives much more cheaply than the catch-all socket:
+/// too cheaply for an unconnected receiver to keep up with the event loop over loopback.
+#[cfg(target_os = "macos")]
+const FLOW_SOCKET_PACKETS: usize = 16;
 
 /// How often the slowest pipeline stage may park per 1000 packets.
 ///
@@ -79,6 +95,7 @@ criterion::criterion_group! {
 }
 
 fn bench(c: &mut Criterion) {
+    prioritize_stand_in();
     let mut group = c.benchmark_group("event_loop");
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
 
@@ -119,8 +136,22 @@ fn outbound(
 ) {
     let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
-    let (peer, socket) = bind_peer(peer.socket);
-    peer.spawn({
+    let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut peer = peer;
+        let datagrams = peer
+            .state
+            .encapsulate(&peer.reads, FLOW_SOCKET_PACKETS, now, local.socket);
+        for datagram in datagrams {
+            runtime.block_on(socket.send(datagram)).unwrap();
+        }
+
+        assert_eq!(socket.flow_socket_count(), 1);
+    }
+
+    runtime.spawn({
         let arrivals = arrivals.clone();
 
         async move {
@@ -157,6 +188,7 @@ fn inbound(
             let arrivals = arrivals.clone();
 
             move || {
+                prioritize_stand_in();
                 while let Some(batch) = tun_writes.blocking_recv() {
                     arrivals.add(batch.len());
                 }
@@ -164,6 +196,17 @@ fn inbound(
         })
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        let mut received = 0;
+        while received < FLOW_SOCKET_PACKETS {
+            received += runtime.block_on(socket.recv_from()).unwrap().len();
+        }
+    }
 
     let inputs = |packets| {
         peer.state
@@ -517,6 +560,18 @@ fn measure<T>(
     );
 }
 
+/// Raises the scheduling priority of the calling thread on macOS.
+///
+/// The stand-in threads take the place of a kernel TUN device and a remote peer, neither of which
+/// is subject to macOS' quality-of-service scheduling. At the default QoS class, their wake-ups
+/// are delayed enough to starve the event loop between hand-offs.
+fn prioritize_stand_in() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
+    }
+}
+
 /// Returns `count` copies of `packet` in batches.
 fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
     let mut batches = Vec::<PacketBatch>::new();
@@ -539,6 +594,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .thread_name("peer")
+        .on_thread_start(prioritize_stand_in)
         .enable_all()
         .build()
         .unwrap();
