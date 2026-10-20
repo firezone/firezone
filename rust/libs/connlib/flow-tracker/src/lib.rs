@@ -36,7 +36,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
-use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
+use ip_packet::{IcmpError, IpPacket, Protocol, TcpFlags, UnsupportedProtocol};
 use smallvec::{SmallVec, smallvec};
 
 mod token;
@@ -955,44 +955,17 @@ struct InnerFlow {
 impl From<&IpPacket> for InnerFlow {
     fn from(packet: &IpPacket) -> Self {
         let (src_ip, dst_ip) = packet.source_and_destination();
-
-        if let Some(tcp) = packet.as_tcp() {
-            return InnerFlow {
-                src_ip,
-                dst_ip,
-                src_proto: Ok(Protocol::Tcp(tcp.source_port())),
-                dst_proto: Ok(Protocol::Tcp(tcp.destination_port())),
-                tcp_syn: tcp.syn(),
-                tcp_ack: tcp.ack(),
-                tcp_fin: tcp.fin(),
-                tcp_rst: tcp.rst(),
-                payload_len: tcp.payload().len(),
-            };
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            return InnerFlow {
-                src_ip,
-                dst_ip,
-                src_proto: Ok(Protocol::Udp(udp.source_port())),
-                dst_proto: Ok(Protocol::Udp(udp.destination_port())),
-                tcp_syn: false,
-                tcp_ack: false,
-                tcp_fin: false,
-                tcp_rst: false,
-                payload_len: udp.payload().len(),
-            };
-        }
+        let tcp_flags = packet.tcp_flags().unwrap_or_default();
 
         InnerFlow {
             src_ip,
             dst_ip,
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
-            tcp_syn: false,
-            tcp_ack: false,
-            tcp_fin: false,
-            tcp_rst: false,
+            tcp_syn: tcp_flags.contains(TcpFlags::SYN),
+            tcp_ack: tcp_flags.contains(TcpFlags::ACK),
+            tcp_fin: tcp_flags.contains(TcpFlags::FIN),
+            tcp_rst: tcp_flags.contains(TcpFlags::RST),
             payload_len: packet.layer4_payload_len(),
         }
     }
