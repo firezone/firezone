@@ -139,14 +139,14 @@ pub struct ClientState {
     ///
     /// These packets are replayed through normal routing when the connection is established so
     /// their route is validated again and the successful send is included in flow tracking.
-    pending_routed_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_routed_packets: HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 
     /// IP packets whose destination peer was selected by protocol context rather than routing.
     ///
     /// These include peer-to-peer control packets and replies to filtered direct-client traffic.
     /// They retain their selected peer and bypass normal routing when the connection is
     /// established.
-    pending_peer_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_peer_packets: HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 
     dns_resource_nat: DnsResourceNat,
     /// Outbound authorizations received from the portal.
@@ -161,7 +161,7 @@ pub struct ClientState {
     /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site, together with the timestamp when we set it.
-    sites_status: BTreeMap<SiteId, (ResourceStatus, Instant)>,
+    sites_status: HashMap<SiteId, (ResourceStatus, Instant), FastRandomState>,
 
     routing_tables: RoutingTables,
     is_internet_resource_active: bool,
@@ -477,7 +477,7 @@ impl ClientState {
                     .ok()
             })
             .fold(
-                BTreeMap::<_, VecDeque<IpPacket>>::new(),
+                HashMap::<_, VecDeque<IpPacket>, FastRandomState>::default(),
                 |mut map, (gid, resource, domain, packet)| {
                     map.entry((gid, domain, resource))
                         .or_default()
@@ -1454,7 +1454,6 @@ impl ClientState {
     }
 
     fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
-        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
         self.gateways_by_site
             .values()
             .flatten()
@@ -2207,9 +2206,9 @@ impl ClientState {
 
     fn drain_node_events(&mut self, now: Instant) {
         let mut added_ice_candidates =
-            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+            HashMap::<ClientOrGatewayId, BTreeSet<IceCandidate>, FastRandomState>::default();
         let mut removed_ice_candidates =
-            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+            HashMap::<ClientOrGatewayId, BTreeSet<IceCandidate>, FastRandomState>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -2355,7 +2354,6 @@ impl ClientState {
         status: ResourceStatus,
         now: Instant,
     ) {
-        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
         let Some((sid, _)) = self
             .gateways_by_site
             .iter()
@@ -2483,7 +2481,7 @@ impl ClientState {
             .resources_by_id
             .keys()
             .copied()
-            .collect::<BTreeSet<_>>();
+            .collect::<HashSet<_, FastRandomState>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
 
         tracing::debug!(?current_resource_ids, ?new_resource_ids);
@@ -2718,7 +2716,8 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 #[derive(Default)]
 struct OutboundAuthorizations {
     gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
-    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>, FastRandomState>,
+    device_pools:
+        HashMap<ResourceId, HashMap<ClientId, IngestToken, FastRandomState>, FastRandomState>,
 }
 
 struct GatewayAuthorization {
@@ -2844,7 +2843,7 @@ fn encapsulate_and_queue(
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     buffered_transmits: &mut snownet::TransmitBuffer,
-    pending_peer_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_peer_packets: &mut HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 ) {
     if let Err(e) = encapsulate_or_buffer(
         packet,
@@ -2866,7 +2865,7 @@ fn encapsulate_or_buffer(
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     provider: &mut impl snownet::BufferProvider,
-    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_packets: &mut HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 ) -> Result<()> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 

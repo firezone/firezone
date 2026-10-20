@@ -12,6 +12,7 @@ bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
+fast-random-state = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }

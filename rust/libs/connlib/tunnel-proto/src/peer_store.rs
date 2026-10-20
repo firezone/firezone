@@ -1,5 +1,6 @@
 use core::fmt;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use fast_random_state::FastRandomState;
@@ -9,7 +10,7 @@ use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
     id_by_ip: HashMap<IpAddr, TId, FastRandomState>,
-    peer_by_id: BTreeMap<TId, P>,
+    peer_by_id: HashMap<TId, P, FastRandomState>,
 }
 
 impl<TId, P> Default for PeerStore<TId, P> {
@@ -23,13 +24,13 @@ impl<TId, P> Default for PeerStore<TId, P> {
 
 impl<TId, P> PeerStore<TId, P>
 where
-    TId: Ord + Copy + fmt::Debug + fmt::Display,
+    TId: Eq + Hash + Copy + fmt::Debug + fmt::Display,
     P: Peer,
 {
     pub(crate) fn extract_if(&mut self, f: impl Fn(&TId, &mut P) -> bool) -> Vec<(TId, P)> {
         let removed_peers = self
             .peer_by_id
-            .extract_if(.., |id, peer| f(id, peer))
+            .extract_if(|id, peer| f(id, peer))
             .collect::<Vec<_>>();
 
         self.id_by_ip

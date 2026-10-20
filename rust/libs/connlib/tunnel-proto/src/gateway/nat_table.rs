@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use bimap::BiHashMap;
 use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     table: BiHashMap<Inside, Outside, FastRandomState, FastRandomState>,
-    state_by_inside: BTreeMap<Inside, EntryState>,
+    state_by_inside: HashMap<Inside, EntryState, FastRandomState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
     expired: HashSet<Outside, FastRandomState>,
@@ -53,7 +53,7 @@ pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let expired = self.state_by_inside.extract_if(.., |inside, state| {
+        let expired = self.state_by_inside.extract_if(|inside, state| {
             state
                 .remove_at(inside.0)
                 .is_some_and(|remove_at| now >= remove_at)

@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -8,6 +8,7 @@ use std::{
 
 use anyhow::{Context as _, Result, bail};
 use boringtun::noise::Index;
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
 
@@ -24,17 +25,17 @@ use crate::{
 const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
-    established: BTreeMap<TId, Connection<RId>>,
+    established: HashMap<TId, Connection<RId>, FastRandomState>,
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
-    closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
+    closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
-    established_by_wireguard_session_index: BTreeMap<usize, TId>,
-    established_by_local_ufrag: BTreeMap<String, TId>,
+    established_by_wireguard_session_index: HashMap<usize, TId, FastRandomState>,
+    established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
 
-    disconnected_ids: BTreeMap<TId, Instant>,
-    disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_session_indices: BTreeMap<usize, Instant>,
-    disconnected_ufrags: BTreeMap<String, Instant>,
+    disconnected_ids: HashMap<TId, Instant, FastRandomState>,
+    disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
+    disconnected_session_indices: HashMap<usize, Instant, FastRandomState>,
+    disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -424,12 +425,12 @@ where
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
-        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
+        for (id, conn) in self.established.extract_if(|_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
             for (index, _) in self
                 .established_by_wireguard_session_index
-                .extract_if(.., |_, c| *c == id)
+                .extract_if(|_, c| *c == id)
             {
                 self.disconnected_session_indices.insert(index, now);
             }
@@ -467,9 +468,13 @@ pub struct UnknownConnection {
 }
 
 impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
+    fn by_id<TId>(
+        id: TId,
+        disconnected_ids: &HashMap<TId, Instant, FastRandomState>,
+        now: Instant,
+    ) -> Self
     where
-        TId: fmt::Display + Eq + Ord,
+        TId: fmt::Display + Eq + Hash,
     {
         Self {
             id: id.to_string(),
@@ -480,7 +485,11 @@ impl UnknownConnection {
         }
     }
 
-    fn by_index(id: usize, disconnected_indices: &BTreeMap<usize, Instant>, now: Instant) -> Self {
+    fn by_index(
+        id: usize,
+        disconnected_indices: &HashMap<usize, Instant, FastRandomState>,
+        now: Instant,
+    ) -> Self {
         Self {
             id: id.to_string(),
             kind: "index",
@@ -492,7 +501,7 @@ impl UnknownConnection {
 
     fn by_public_key(
         key: [u8; 32],
-        disconnected_public_keys: &BTreeMap<[u8; 32], Instant>,
+        disconnected_public_keys: &HashMap<[u8; 32], Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
@@ -506,7 +515,7 @@ impl UnknownConnection {
 
     fn by_local_ufrag(
         key: &str,
-        disconnected_ufrags: &BTreeMap<String, Instant>,
+        disconnected_ufrags: &HashMap<String, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
