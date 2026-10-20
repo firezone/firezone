@@ -205,11 +205,6 @@ impl EncryptBatch<'_> {
         self.dispatch(closed);
     }
 
-    /// Sends an already encrypted datagram ahead of all trains of this batch.
-    pub fn send(&mut self, transmit: snownet::Transmit) {
-        self.sockets.send_ready(transmit);
-    }
-
     fn dispatch(&mut self, job: EncryptJob) {
         let (tx, rx) = oneshot::channel();
         let pending = match job.train.dst() {

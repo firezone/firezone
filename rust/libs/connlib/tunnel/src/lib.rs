@@ -299,11 +299,6 @@ impl ClientTunnel {
                         }
                     }
 
-                    // Datagrams the state encrypted meanwhile go out ahead of the batch's trains.
-                    while let Some(transmit) = self.role_state.poll_transmit() {
-                        batch.send(transmit);
-                    }
-
                     self.needs_timeout = true;
 
                     tick.want_continue();
@@ -530,11 +525,6 @@ impl GatewayTunnel {
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
-                    }
-
-                    // Datagrams the state encrypted meanwhile go out ahead of the batch's trains.
-                    while let Some(transmit) = self.role_state.poll_transmit() {
-                        batch.send(transmit);
                     }
 
                     self.needs_timeout = true;
