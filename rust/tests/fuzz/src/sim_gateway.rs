@@ -12,7 +12,7 @@ use dns_types::DomainName;
 use ip_packet::IpPacket;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet},
     iter, mem,
     net::{IpAddr, SocketAddr},
     time::Instant,
@@ -38,9 +38,6 @@ pub(crate) struct SimGateway {
     /// The DNS servers on the Gateway's tunnel IPs.
     dns_servers: DnsServers,
     network: SiteNetwork,
-
-    /// Encrypted datagrams not yet handed to the network, in encapsulation order.
-    encrypted: VecDeque<Transmit>,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +71,6 @@ impl SimGateway {
             next_observation_order: 0,
             authorized_resources: Default::default(),
             clients_by_ip: Default::default(),
-            encrypted: VecDeque::new(),
         }
     }
 
@@ -135,30 +131,17 @@ impl SimGateway {
             .collect()
     }
 
-    /// Drive the SUT's TUN -> network path, returning the next encrypted datagram (if any).
-    ///
-    /// Like the event loop, this encrypts the jobs the SUT queued before the one it returns.
+    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
     fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<snownet::Transmit>> {
-        let job = self.sut.handle_tun_input(packet, now)?;
-        self.encrypted.extend(
-            iter::from_fn(|| self.sut.poll_encrypt_job())
-                .chain(job)
-                .filter_map(encrypt),
-        );
+        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
+            return Ok(None);
+        };
 
-        Ok(self.encrypted.pop_front())
-    }
-
-    /// Returns the next datagram the SUT encrypted, in encapsulation order.
-    pub(crate) fn poll_encrypted(&mut self) -> Option<snownet::Transmit> {
-        self.encrypted
-            .extend(iter::from_fn(|| self.sut.poll_encrypt_job()).filter_map(encrypt));
-
-        self.encrypted.pop_front()
+        Ok(encrypt(encapsulation, &packet))
     }
 
     pub(crate) fn deploy_new_dns_servers(

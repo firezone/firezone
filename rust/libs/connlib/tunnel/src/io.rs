@@ -50,6 +50,18 @@ pub(crate) enum Queued {
     Encrypting(IpVersion, Encrypting),
 }
 
+impl From<snownet::Transmit> for Queued {
+    fn from(transmit: snownet::Transmit) -> Self {
+        Self::Datagram(DatagramOut {
+            src: transmit.src,
+            dst: transmit.dst,
+            segment_size: transmit.payload.len(),
+            packet: transmit.payload,
+            ecn: transmit.ecn,
+        })
+    }
+}
+
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -520,13 +532,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
-        self.outbound.push_back(Queued::Datagram(DatagramOut {
-            src: transmit.src,
-            dst: transmit.dst,
-            segment_size: transmit.payload.len(),
-            packet: transmit.payload,
-            ecn: transmit.ecn,
-        }));
+        self.outbound.push_back(transmit.into());
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {

@@ -52,7 +52,7 @@ pub struct GatewayState {
     next_periodic_tick: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
-    encrypt_jobs: VecDeque<snownet::EncryptJob>,
+    buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
@@ -82,7 +82,7 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             portal: Default::default(),
             buffered_events: VecDeque::default(),
-            encrypt_jobs: VecDeque::default(),
+            buffered_transmits: VecDeque::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             tun_ip_config: None,
@@ -112,12 +112,14 @@ impl GatewayState {
     }
 
     /// Handles packets received on the TUN device.
+    ///
+    /// The returned [`snownet::Encapsulation`] is for `packet` as this call leaves it.
     pub fn handle_tun_input(
         &mut self,
-        mut packet: IpPacket,
+        packet: &mut IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::EncryptJob>> {
-        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
+    ) -> Result<Option<snownet::Encapsulation>> {
+        let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -125,26 +127,26 @@ impl GatewayState {
 
         let dst = packet.destination();
 
-        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
+        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(packet));
 
         let (cid, peer) = self
             .peers
             .peer_by_ip_mut(dst)
-            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+            .with_context(|| UnroutablePacket::no_peer_state(packet))?;
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        if let Err(e) = peer.translate_inbound(&mut packet, now) {
+        if let Err(e) = peer.translate_inbound(packet, now) {
             return Err(e.context("Failed to translate inbound packet"));
         }
 
-        let Some(job) = encrypt_packet(packet, cid, &mut self.node, now)? else {
+        let Some(encapsulation) = encapsulate(packet, cid, &mut self.node, now)? else {
             return Ok(None);
         };
 
-        flow_tracker::record_transmit(job.src(), job.dst());
+        flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
 
-        Ok(Some(job))
+        Ok(Some(encapsulation))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -224,8 +226,8 @@ impl GatewayState {
                 return Ok(None);
             };
 
-            if let Some(job) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
-                self.encrypt_jobs.push_back(job);
+            if let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
+                self.buffered_transmits.push_back(transmit);
             }
 
             return Ok(None);
@@ -244,16 +246,16 @@ impl GatewayState {
             } => {
                 flow_tracker::record_icmp_error(&reply);
 
-                if let Some(job) = encrypt_packet(reply, cid, &mut self.node, now)? {
-                    self.encrypt_jobs.push_back(job);
+                if let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? {
+                    self.buffered_transmits.push_back(transmit);
                 }
 
                 if let Some(event) = no_authorization.and_then(|rejection| {
                     self.authorization_rejections
                         .on_rejected(cid, rejection, now)
-                }) && let Some(job) = encrypt_packet(event, cid, &mut self.node, now)?
+                }) && let Some(transmit) = encrypt_packet(event, cid, &mut self.node, now)?
                 {
-                    self.encrypt_jobs.push_back(job);
+                    self.buffered_transmits.push_back(transmit);
                 }
 
                 Ok(None)
@@ -447,8 +449,8 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        if let Some(job) = encrypt_packet(packet, req.client, &mut self.node, now)? {
-            self.encrypt_jobs.push_back(job);
+        if let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? {
+            self.buffered_transmits.push_back(transmit);
         }
 
         Ok(())
@@ -471,9 +473,9 @@ impl GatewayState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        // Keeps the node's jobs ahead of the ones we queue later.
-        self.encrypt_jobs
-            .extend(iter::from_fn(|| self.node.poll_encrypt_job()));
+        // Keeps the node's transmits ahead of the ones we queue later.
+        self.buffered_transmits
+            .extend(iter::from_fn(|| self.node.poll_transmit()));
         self.drain_node_events();
 
         self.flow_tracker.handle_timeout(now);
@@ -564,14 +566,9 @@ impl GatewayState {
     }
 
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
-        self.node.poll_transmit()
-    }
-
-    /// Returns the next packet to encrypt, in the order the packets were encapsulated.
-    pub fn poll_encrypt_job(&mut self) -> Option<snownet::EncryptJob> {
-        self.encrypt_jobs
+        self.buffered_transmits
             .pop_front()
-            .or_else(|| self.node.poll_encrypt_job())
+            .or_else(|| self.node.poll_transmit())
     }
 
     pub fn poll_event(&mut self) -> Option<GatewayEvent> {
@@ -696,16 +693,29 @@ fn encrypt_packet(
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
     now: Instant,
-) -> Result<Option<snownet::EncryptJob>> {
-    match node.encapsulate(cid, &packet, now) {
-        Ok(encapsulation) => Ok(encapsulation.map(|enc| enc.into_job(packet))),
+) -> Result<Option<snownet::Transmit>> {
+    let Some(encapsulation) = encapsulate(&packet, cid, node, now)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(encapsulation.encrypt(&packet)?))
+}
+
+fn encapsulate(
+    packet: &IpPacket,
+    cid: ClientId,
+    node: &mut Node<ClientId, RelayId>,
+    now: Instant,
+) -> Result<Option<snownet::Encapsulation>> {
+    match node.encapsulate(cid, packet, now) {
+        Ok(encapsulation) => Ok(encapsulation),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
             Ok(None)
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            Err(e.context(UnroutablePacket::not_connected(&packet)))
+            Err(e.context(UnroutablePacket::not_connected(packet)))
         }
         Err(e) => Err(e).context("Failed to encapsulate"),
     }

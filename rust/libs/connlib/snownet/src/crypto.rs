@@ -1,35 +1,32 @@
 use std::net::SocketAddr;
 
-use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf};
 
 use crate::node::Transmit;
 
-/// An IP packet to encrypt into a WireGuard data message whose counter is already reserved.
+/// Where to send an outgoing packet, with its WireGuard counter reserved.
 ///
 /// Encrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 #[derive(Debug)]
-pub struct EncryptJob {
+pub struct Encapsulation {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     channel: Option<u16>,
     pending: sanstun::PendingEncapsulate,
-    packet: IpPacket,
 }
 
-impl EncryptJob {
+impl Encapsulation {
     pub(crate) fn new(
         src: Option<SocketAddr>,
         dst: SocketAddr,
         channel: Option<u16>,
         pending: sanstun::PendingEncapsulate,
-        packet: IpPacket,
     ) -> Self {
         Self {
             src,
             dst,
             channel,
             pending,
-            packet,
         }
     }
 
@@ -41,29 +38,19 @@ impl EncryptJob {
         self.dst
     }
 
-    pub fn ecn(&self) -> Ecn {
-        self.packet.ecn()
-    }
-
-    /// Returns the IP packet to be encrypted.
-    pub fn packet(&self) -> &IpPacket {
-        &self.packet
-    }
-
-    /// Returns the length of the datagram written by [`EncryptJob::encrypt_into`].
-    pub fn datagram_len(&self) -> usize {
+    /// Returns the length of the datagram written by [`Encapsulation::encrypt_into`].
+    pub fn datagram_len(&self, packet: &IpPacket) -> usize {
         let channel_data_overhead = match self.channel {
             Some(_) => ip_packet::DATA_CHANNEL_OVERHEAD,
             None => 0,
         };
 
-        channel_data_overhead
-            + self.packet.packet().len().next_multiple_of(16)
-            + ip_packet::WG_OVERHEAD
+        channel_data_overhead + packet.packet().len().next_multiple_of(16) + ip_packet::WG_OVERHEAD
     }
 
-    /// Encrypts the packet into `dst`, which must be [`EncryptJob::datagram_len`] bytes long.
-    pub fn encrypt_into(self, dst: &mut [u8]) -> Result<(), sanstun::Error> {
+    /// Encrypts `packet`, the one passed to [`Node::encapsulate`](crate::Node::encapsulate), into
+    /// `dst`, which must be [`Encapsulation::datagram_len`] bytes long.
+    pub fn encrypt_into(self, packet: &IpPacket, dst: &mut [u8]) -> Result<(), sanstun::Error> {
         let message = match self.channel {
             Some(channel) => {
                 let (header, message) = dst.split_at_mut(ip_packet::DATA_CHANNEL_OVERHEAD);
@@ -74,26 +61,25 @@ impl EncryptJob {
             None => dst,
         };
 
-        self.pending.encrypt(self.packet.packet(), message)?;
+        self.pending.encrypt(packet.packet(), message)?;
 
         Ok(())
     }
 
-    /// Encrypts the packet into a standalone [`Transmit`].
-    pub fn encrypt(self) -> Result<Transmit, sanstun::Error> {
+    /// Encrypts `packet` into a standalone [`Transmit`].
+    pub fn encrypt(self, packet: &IpPacket) -> Result<Transmit, sanstun::Error> {
         let src = self.src;
         let dst = self.dst;
-        let ecn = self.ecn();
 
         let mut payload = crate::DATAGRAMS.pull();
-        payload.resize(self.datagram_len(), 0);
-        self.encrypt_into(&mut payload)?;
+        payload.resize(self.datagram_len(packet), 0);
+        self.encrypt_into(packet, &mut payload)?;
 
         Ok(Transmit {
             src,
             dst,
             payload,
-            ecn,
+            ecn: packet.ecn(),
         })
     }
 }

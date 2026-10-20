@@ -223,12 +223,19 @@ impl State {
     ) -> Vec<DatagramOut> {
         let segments = (0..count)
             .map(|_| {
-                let job = match self {
-                    State::Client(client) => client.handle_tun_input(packet.clone(), now),
-                    State::Gateway(gateway) => gateway.handle_tun_input(packet.clone(), now),
+                let mut packet = packet.clone();
+                let encapsulation = match self {
+                    State::Client(client) => client.handle_tun_input(&mut packet, now),
+                    State::Gateway(gateway) => gateway.handle_tun_input(&mut packet, now),
                 };
 
-                job.unwrap().unwrap().encrypt().unwrap().payload.to_vec()
+                encapsulation
+                    .unwrap()
+                    .unwrap()
+                    .encrypt(&packet)
+                    .unwrap()
+                    .payload
+                    .to_vec()
             })
             .collect::<Vec<_>>();
         let segment_size = segments[0].len();
@@ -674,7 +681,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(tunnel.request(Protocol::Udp), now)
+            .handle_tun_input(&mut tunnel.request(Protocol::Udp), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -690,12 +697,13 @@ impl Tunnel {
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
     fn reply(&mut self, protocol: Protocol) -> IpPacket {
+        let mut request = self.request(protocol);
         let datagram = self
             .client
-            .handle_tun_input(self.request(protocol), self.now)
+            .handle_tun_input(&mut request, self.now)
             .unwrap()
             .unwrap()
-            .encrypt()
+            .encrypt(&request)
             .unwrap();
         let decapsulation = self
             .gateway
@@ -770,14 +778,8 @@ impl Tunnel {
             }
         }
 
-        while let Some(job) = self.client.poll_encrypt_job() {
-            self.route(CLIENT_SOCKET, job.encrypt().unwrap());
-        }
         while let Some(transmit) = self.client.poll_transmit() {
             self.route(CLIENT_SOCKET, transmit);
-        }
-        while let Some(job) = self.gateway.poll_encrypt_job() {
-            self.route(GATEWAY_SOCKET, job.encrypt().unwrap());
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
             self.route(GATEWAY_SOCKET, transmit);
@@ -877,9 +879,9 @@ impl Tunnel {
 /// Resolves the DNS resource through the Client's stub resolver and returns its proxy IP.
 fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
-    let query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
+    let mut query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
 
-    client.handle_tun_input(query, now).unwrap();
+    client.handle_tun_input(&mut query, now).unwrap();
     let response = client.poll_packets().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
 

@@ -10,9 +10,9 @@ use std::{
 };
 
 use bufferpool::{Buffer, VecBuf};
-use ip_packet::{Ecn, IpVersion};
+use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
-use snownet::{Decapsulation, DecryptedPacket, EncryptJob};
+use snownet::{Decapsulation, DecryptedPacket, Encapsulation};
 use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, Segment};
 use tokio::sync::oneshot;
 
@@ -41,7 +41,7 @@ pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 bufferpool::buffer_pool!(
-    static ENCRYPT_JOBS: VecBuf<EncryptJob> = (MAX_GSO_SEGMENTS, "encrypt-jobs"),
+    static ENCRYPT_PACKETS: VecBuf<(Encapsulation, IpPacket)> = (MAX_GSO_SEGMENTS, "encrypt-packets"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -174,20 +174,29 @@ pub struct EncryptBatch<'a> {
 }
 
 impl EncryptBatch<'_> {
-    /// Adds `job` to the open train, handing that train to a worker first if `job` starts a new one.
-    pub fn push(&mut self, job: EncryptJob) {
+    /// Adds `packet` to the open train, handing that train to a worker first if `packet` starts a
+    /// new one.
+    pub fn push(&mut self, encapsulation: Encapsulation, packet: IpPacket) {
         if let Some(open) = self.open.as_mut()
-            && open
-                .train
-                .try_append(job.src(), job.dst(), job.ecn(), job.datagram_len())
+            && open.train.try_append(
+                encapsulation.src(),
+                encapsulation.dst(),
+                packet.ecn(),
+                encapsulation.datagram_len(&packet),
+            )
         {
-            open.jobs.push(job);
+            open.packets.push((encapsulation, packet));
             return;
         }
 
-        if let Some(closed) = self.open.replace(EncryptTrain::new(job)) {
+        if let Some(closed) = self.open.replace(EncryptTrain::new(encapsulation, packet)) {
             self.dispatch(closed);
         }
+    }
+
+    /// Queues an already encrypted datagram ahead of all trains of this batch.
+    pub fn send(&mut self, transmit: snownet::Transmit) {
+        self.outbound.push_back(transmit.into());
     }
 
     fn dispatch(&mut self, train: EncryptTrain) {
@@ -205,14 +214,6 @@ impl EncryptBatch<'_> {
 
         // A stopped worker drops the sender, so the socket skips the train.
         let _ = worker.send(Work::Encrypt(train, tx));
-    }
-}
-
-impl Extend<EncryptJob> for EncryptBatch<'_> {
-    fn extend<T: IntoIterator<Item = EncryptJob>>(&mut self, jobs: T) {
-        for job in jobs {
-            self.push(job);
-        }
     }
 }
 
@@ -234,19 +235,24 @@ impl Drop for EncryptBatch<'_> {
     }
 }
 
-/// Jobs to encrypt into one [`UdpGsoTrain`].
+/// Packets to encrypt into one [`UdpGsoTrain`].
 struct EncryptTrain {
     train: UdpGsoTrain,
-    jobs: Buffer<VecBuf<EncryptJob>>,
+    packets: Buffer<VecBuf<(Encapsulation, IpPacket)>>,
 }
 
 impl EncryptTrain {
-    fn new(job: EncryptJob) -> Self {
-        let train = UdpGsoTrain::new(job.src(), job.dst(), job.ecn(), job.datagram_len());
-        let mut jobs = ENCRYPT_JOBS.pull();
-        jobs.push(job);
+    fn new(encapsulation: Encapsulation, packet: IpPacket) -> Self {
+        let train = UdpGsoTrain::new(
+            encapsulation.src(),
+            encapsulation.dst(),
+            packet.ecn(),
+            encapsulation.datagram_len(&packet),
+        );
+        let mut packets = ENCRYPT_PACKETS.pull();
+        packets.push((encapsulation, packet));
 
-        Self { train, jobs }
+        Self { train, packets }
     }
 }
 
@@ -371,11 +377,11 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
 }
 
 fn encrypt(
-    EncryptTrain { train, mut jobs }: EncryptTrain,
+    EncryptTrain { train, mut packets }: EncryptTrain,
     encrypted: oneshot::Sender<DatagramOut>,
     packet_counter: &Counter<u64>,
 ) {
-    let Some(datagram) = train.encrypt(jobs.drain(..)) else {
+    let Some(datagram) = train.encrypt(packets.drain(..)) else {
         return;
     };
 

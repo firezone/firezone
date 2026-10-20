@@ -169,20 +169,20 @@ impl DnsResourceNat {
 
     /// Handles an outgoing packet for a DNS resource.
     ///
-    /// If the DNS resource NAT is still being created, the packet gets buffered.
-    /// Otherwise, it is returned again.
+    /// Returns whether to send the packet now. If the DNS resource NAT is still being created, a
+    /// copy of the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
         gid: GatewayId,
         domain: &DnsResourceDomain,
         rid: ResourceId,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
-    ) -> Option<IpPacket> {
+    ) -> bool {
         let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
             tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
-            return Some(packet); // Pass-through packet.
+            return true; // Pass-through packet.
         };
 
         match state {
@@ -191,7 +191,7 @@ impl DnsResourceNat {
                 buffered_packets,
                 sent_at,
             } => {
-                buffered_packets.push(packet);
+                buffered_packets.push(packet.clone());
 
                 if should_send_assigned_ips_packet(now, *sent_at) {
                     *sent_at = now;
@@ -203,7 +203,7 @@ impl DnsResourceNat {
                     ));
                 }
 
-                None
+                false
             }
             State::Pending {
                 should_buffer: false,
@@ -220,12 +220,12 @@ impl DnsResourceNat {
                     ));
                 }
 
-                Some(packet)
+                true
             }
             State::Recreating { .. } | State::Confirmed | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
-                Some(packet)
+                true
             }
         }
     }
@@ -420,10 +420,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, packet, Instant::now());
+        let send =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(maybe_packet.is_none());
+        assert!(!send);
     }
 
     #[test]
@@ -445,15 +445,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &example_com(),
-            RID,
-            packet.clone(),
-            Instant::now(),
-        );
+        let send =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(maybe_packet.is_none());
+        assert!(!send);
 
         let packets = dns_resource_nat.on_domain_status(
             GID,
@@ -508,15 +503,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &example_com(),
-            RID,
-            app_packet.clone(),
-            Instant::now(),
-        );
+        let send =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, Instant::now());
 
-        assert!(maybe_packet.is_some_and(|p| p == app_packet));
+        assert!(send);
         assert!(dns_resource_nat.poll_packet().is_some());
     }
 
@@ -601,10 +591,9 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, app_packet, now);
+        let send = dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, now);
 
-        assert!(maybe_packet.is_none());
+        assert!(!send);
         assert!(dns_resource_nat.poll_packet().is_some());
     }
 

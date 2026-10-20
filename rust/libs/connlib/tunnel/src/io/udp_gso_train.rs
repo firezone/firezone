@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 
 use bufferpool::{Buffer, BufferPool};
-use ip_packet::Ecn;
-use snownet::EncryptJob;
+use ip_packet::{Ecn, IpPacket};
+use snownet::Encapsulation;
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
@@ -84,18 +84,21 @@ impl UdpGsoTrain {
         true
     }
 
-    /// Encrypts `jobs`, the ones this train was built from, back-to-back into one datagram.
+    /// Encrypts `packets`, the ones this train was built from, back-to-back into one datagram.
     ///
-    /// Jobs that fail to encrypt are skipped; returns `None` if none are left.
-    pub fn encrypt(self, jobs: impl Iterator<Item = EncryptJob>) -> Option<DatagramOut> {
+    /// Packets that fail to encrypt are skipped; returns `None` if none are left.
+    pub fn encrypt(
+        self,
+        packets: impl Iterator<Item = (Encapsulation, IpPacket)>,
+    ) -> Option<DatagramOut> {
         let mut buffer = gso_buffers(self.len).pull();
         buffer.clear();
 
-        for job in jobs {
+        for (encapsulation, packet) in packets {
             let offset = buffer.len();
-            buffer.resize(offset + job.datagram_len(), 0);
+            buffer.resize(offset + encapsulation.datagram_len(&packet), 0);
 
-            if let Err(e) = job.encrypt_into(&mut buffer[offset..]) {
+            if let Err(e) = encapsulation.encrypt_into(&packet, &mut buffer[offset..]) {
                 tracing::debug!("Failed to encrypt packet: {e}");
                 buffer.truncate(offset);
             }
@@ -112,7 +115,7 @@ impl UdpGsoTrain {
         DatagramOut {
             src: self.connection.src,
             dst: self.connection.dst,
-            // Skipped jobs may leave only the shorter last segment.
+            // Skipped packets may leave only the shorter last segment.
             segment_size: self.segment_size.min(packet.len()),
             packet,
             ecn: self.connection.ecn,

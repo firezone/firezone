@@ -20,7 +20,7 @@ use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    future, iter, mem,
+    future, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -210,13 +210,7 @@ impl ClientTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| {
-                    self.io
-                        .encrypt_batch()
-                        .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-
-                    self.io.flush(cx)
-                }),
+                future::poll_fn(move |cx| self.io.flush(cx)),
             )
             .await
             .context("Failed to flush within 1s")??;
@@ -262,10 +256,6 @@ impl ClientTunnel {
 
             self.io.flush_tun_batch();
 
-            self.io
-                .encrypt_batch()
-                .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io.send_network(trans);
@@ -299,19 +289,19 @@ impl ClientTunnel {
                 if let Some(mut packets) = device {
                     let mut batch = self.io.encrypt_batch();
 
-                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        let result = self.role_state.handle_tun_input(packet, now);
-
-                        // Jobs queued by this call were encapsulated before the one it returns.
-                        batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-
-                        match result {
-                            Ok(Some(job)) => batch.push(job),
+                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                        match self.role_state.handle_tun_input(&mut packet, now) {
+                            Ok(Some(encapsulation)) => batch.push(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 error.push(e.context("Failed to handle packet from TUN device"))
                             }
                         }
+                    }
+
+                    // Datagrams the state encrypted meanwhile go out ahead of the batch's trains.
+                    while let Some(transmit) = self.role_state.poll_transmit() {
+                        batch.send(transmit);
                     }
 
                     self.needs_timeout = true;
@@ -439,13 +429,7 @@ impl GatewayTunnel {
         async move {
             tokio::time::timeout(
                 Duration::from_secs(1),
-                future::poll_fn(move |cx| {
-                    self.io
-                        .encrypt_batch()
-                        .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-
-                    self.io.flush(cx)
-                }),
+                future::poll_fn(move |cx| self.io.flush(cx)),
             )
             .await
             .context("Failed to flush within 1s")??;
@@ -471,10 +455,6 @@ impl GatewayTunnel {
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
-
-            self.io
-                .encrypt_batch()
-                .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -528,14 +508,9 @@ impl GatewayTunnel {
                 if let Some(mut packets) = device {
                     let mut batch = self.io.encrypt_batch();
 
-                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
-                        let result = self.role_state.handle_tun_input(packet, now);
-
-                        // Jobs queued by this call were encapsulated before the one it returns.
-                        batch.extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-
-                        match result {
-                            Ok(Some(job)) => batch.push(job),
+                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                        match self.role_state.handle_tun_input(&mut packet, now) {
+                            Ok(Some(encapsulation)) => batch.push(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
@@ -555,6 +530,11 @@ impl GatewayTunnel {
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
+                    }
+
+                    // Datagrams the state encrypted meanwhile go out ahead of the batch's trains.
+                    while let Some(transmit) = self.role_state.poll_transmit() {
+                        batch.send(transmit);
                     }
 
                     self.needs_timeout = true;

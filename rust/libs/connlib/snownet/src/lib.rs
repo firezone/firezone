@@ -13,10 +13,10 @@ mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use crypto::{Decapsulation, DecryptedPacket, EncryptJob};
+pub use crypto::{Decapsulation, DecryptedPacket, Encapsulation};
 pub use node::{
-    ConnectionPath, Credentials, Encapsulation, Event, IceConfig, IceRole, Node, StillConnecting,
-    Transmit, UnknownConnection,
+    ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
+    UnknownConnection,
 };
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64);

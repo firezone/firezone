@@ -12,7 +12,7 @@ use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
 
 use crate::{
-    EncryptJob, Event,
+    Event,
     node::{
         Connection, ConnectionState, Transmit, allocations::Allocations,
         inflight_stun_requests::InflightStunRequests,
@@ -120,7 +120,6 @@ where
         &mut self,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
-        encrypt_jobs: &mut VecDeque<EncryptJob>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
@@ -135,7 +134,6 @@ where
                 now,
                 allocations,
                 transmits,
-                encrypt_jobs,
                 events,
                 inflight_stun_requests,
             );
@@ -153,7 +151,6 @@ where
                 now,
                 allocations,
                 transmits,
-                encrypt_jobs,
                 &mut VecDeque::new(),
                 inflight_stun_requests,
             );
@@ -162,9 +159,19 @@ where
                 continue;
             };
 
-            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations) {
-                Ok(Some(encapsulation)) => {
-                    encrypt_jobs.push_back(encapsulation.into_job(goodbye.packet.clone()));
+            let encrypted = connection
+                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
+                .and_then(|encapsulation| {
+                    let Some(encapsulation) = encapsulation else {
+                        return Ok(None);
+                    };
+
+                    Ok(Some(encapsulation.encrypt(&goodbye.packet)?))
+                });
+
+            match encrypted {
+                Ok(Some(transmit)) => {
+                    transmits.push_back(transmit);
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
                 }
                 Ok(None) => {
@@ -695,7 +702,6 @@ mod tests {
     ) {
         connections.handle_timeout(
             allocations,
-            &mut VecDeque::new(),
             &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
