@@ -87,7 +87,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
-    /// Packets decrypted from the jobs pushed to an [`Io::decrypt_batch`].
+    /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`].
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
@@ -146,7 +146,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn flush_udp(&mut self) {
-        let poll = self.io.sockets.poll_send_ready(self.cx);
+        let poll = self.io.sockets.poll_flush(self.cx);
 
         self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -398,7 +398,7 @@ impl Io {
     /// Polls all IO sources that are ready.
     ///
     /// The TUN device is only read while nothing waits for room in the UDP sockets and each has
-    /// room for an [`Io::encrypt_batch`], and decrypted packets are only accepted while the TUN
+    /// room for an [`Io::start_encrypt_batch`], and decrypted packets are only accepted while the TUN
     /// device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
         let mut state = PollState::new(self, cx);
@@ -420,7 +420,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.sockets.poll_send_ready(cx)?.is_pending() {
+        if self.sockets.poll_flush(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -467,23 +467,23 @@ impl Io {
     ///
     /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while each UDP socket has room.
-    pub fn encrypt_batch(&mut self) -> EncryptBatch<'_> {
+    pub fn start_encrypt_batch(&mut self) -> EncryptBatch<'_> {
         debug_assert!(
             self.sockets.has_room(),
             "TUN packets are only read while the UDP sockets have room"
         );
 
-        self.crypto.encrypt_batch(&mut self.sockets)
+        self.crypto.start_encrypt_batch(&mut self.sockets)
     }
 
     /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
     /// [`Input::decrypted`].
-    pub fn decrypt_batch(&mut self) -> DecryptBatch<'_> {
-        self.crypto.decrypt_batch()
+    pub fn start_decrypt_batch(&mut self) -> DecryptBatch<'_> {
+        self.crypto.start_decrypt_batch()
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
-        self.sockets.send(transmit);
+        self.sockets.send_ready(transmit);
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {

@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 
 use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::{Encrypting, Sockets};
+use crate::sockets::{PendingDatagrams, Sockets};
 
 /// How many received packets go to a worker in one decrypt job at most.
 ///
@@ -49,7 +49,7 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static ENCRYPTING: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "encrypting"),
+    static PENDING_DATAGRAMS: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "pending-datagrams"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -77,10 +77,10 @@ pub struct Received<P> {
 ///
 /// Jobs of either kind go to the next worker round-robin.
 ///
-/// To encrypt, push packets in the order the state encapsulated them, i.e. reserved their
-/// counters, and their datagrams go out in that order: batches borrow the [`CryptoWorkers`]
-/// mutably, so they never interleave. Each job is one [`UdpGsoTrain`]. Within a batch, trains close
-/// in push order and queue their receivers in that order. When the batch ends, the receivers of
+/// To encrypt, pass packets to [`EncryptBatch::encrypt`] in the order the state encapsulated them,
+/// i.e. reserved their counters, and their datagrams go out in that order: batches borrow the
+/// [`CryptoWorkers`] mutably, so they never interleave. Each job is one [`UdpGsoTrain`]. Within a
+/// batch, trains close in the order of their packets and queue their receivers in that order. When the batch ends, the receivers of
 /// each IP version go to its UDP socket thread as one item. A socket thread sends its items and
 /// their receivers front to back, and a flow has one destination, so all of its datagrams go
 /// through one socket thread.
@@ -116,18 +116,18 @@ impl CryptoWorkers {
     }
 
     /// Starts a batch of packets to encrypt, whose datagrams go to `sockets` when it is dropped.
-    pub fn encrypt_batch<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptBatch<'a> {
+    pub fn start_encrypt_batch<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptBatch<'a> {
         EncryptBatch {
             crypto: self,
             sockets,
             open: OPEN_TRAINS.pull(),
-            encrypting_v4: None,
-            encrypting_v6: None,
+            pending_v4: None,
+            pending_v6: None,
         }
     }
 
     /// Starts a batch of received buffers to decrypt, handed to the workers when it is dropped.
-    pub fn decrypt_batch(&mut self) -> DecryptBatch<'_> {
+    pub fn start_decrypt_batch(&mut self) -> DecryptBatch<'_> {
         DecryptBatch {
             crypto: self,
             job: DecryptJob::new(),
@@ -173,14 +173,14 @@ pub struct EncryptBatch<'a> {
     sockets: &'a mut Sockets,
     /// The open train to each destination.
     open: Buffer<VecBuf<EncryptJob>>,
-    encrypting_v4: Option<Encrypting>,
-    encrypting_v6: Option<Encrypting>,
+    pending_v4: Option<PendingDatagrams>,
+    pending_v6: Option<PendingDatagrams>,
 }
 
 impl EncryptBatch<'_> {
     /// Adds `packet` to the open train to its destination, handing that train to a worker first if
     /// `packet` starts a new one.
-    pub fn push(&mut self, encapsulation: Encapsulation, packet: IpPacket) {
+    pub fn encrypt(&mut self, encapsulation: Encapsulation, packet: IpPacket) {
         let src = encapsulation.src();
         let dst = encapsulation.dst();
 
@@ -207,16 +207,18 @@ impl EncryptBatch<'_> {
 
     /// Sends an already encrypted datagram ahead of all trains of this batch.
     pub fn send(&mut self, transmit: snownet::Transmit) {
-        self.sockets.send(transmit);
+        self.sockets.send_ready(transmit);
     }
 
     fn dispatch(&mut self, job: EncryptJob) {
         let (tx, rx) = oneshot::channel();
-        let encrypting = match job.train.dst() {
-            SocketAddr::V4(_) => &mut self.encrypting_v4,
-            SocketAddr::V6(_) => &mut self.encrypting_v6,
+        let pending = match job.train.dst() {
+            SocketAddr::V4(_) => &mut self.pending_v4,
+            SocketAddr::V6(_) => &mut self.pending_v6,
         };
-        encrypting.get_or_insert_with(|| ENCRYPTING.pull()).push(rx);
+        pending
+            .get_or_insert_with(|| PENDING_DATAGRAMS.pull())
+            .push(rx);
 
         let Some(worker) = self.crypto.next_worker() else {
             tracing::debug!("No encrypt worker running; dropping packets");
@@ -235,12 +237,12 @@ impl Drop for EncryptBatch<'_> {
             self.dispatch(open);
         }
 
-        if let Some(encrypting) = self.encrypting_v4.take() {
-            self.sockets.send_encrypting(IpVersion::V4, encrypting);
+        if let Some(pending) = self.pending_v4.take() {
+            self.sockets.send_pending(IpVersion::V4, pending);
         }
 
-        if let Some(encrypting) = self.encrypting_v6.take() {
-            self.sockets.send_encrypting(IpVersion::V6, encrypting);
+        if let Some(pending) = self.pending_v6.take() {
+            self.sockets.send_pending(IpVersion::V6, pending);
         }
     }
 }
@@ -275,7 +277,7 @@ pub struct DecryptBatch<'a> {
 impl DecryptBatch<'_> {
     /// Passes each segment of `datagram` to `decapsulate` and moves the datagram into a job if any
     /// of them is a data message to decrypt.
-    pub fn push(
+    pub fn decrypt(
         &mut self,
         datagram: DatagramIn,
         mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<Decapsulation>,

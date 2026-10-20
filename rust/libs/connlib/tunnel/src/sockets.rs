@@ -120,7 +120,7 @@ impl Sockets {
 
     /// Sends the items the sockets had no room for, resolving once none are left and every
     /// socket has room for another one.
-    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         while let Some((version, outbound)) = self.overflow.pop_front() {
             let Some(outbound) = self.try_send(version, outbound) else {
                 continue;
@@ -153,7 +153,7 @@ impl Sockets {
     /// Sends a datagram the main thread encrypted, or a control message.
     ///
     /// Failures are returned by [`Sockets::poll_error`].
-    pub fn send(&mut self, transmit: snownet::Transmit) {
+    pub fn send_ready(&mut self, transmit: snownet::Transmit) {
         UdpPacketCounts::transmit(&self.packet_counter).record(&transmit.payload);
 
         let version = match transmit.dst {
@@ -168,18 +168,19 @@ impl Sockets {
             ecn: transmit.ecn,
         };
 
-        self.send_in_order(version, Outbound::Datagram(datagram));
+        self.queue(version, Outbound::Ready(datagram));
     }
 
     /// Sends datagrams that are still being encrypted on the socket for `version`, in order.
     ///
     /// Failures are returned by [`Sockets::poll_error`].
-    pub fn send_encrypting(&mut self, version: IpVersion, encrypting: Encrypting) {
-        self.send_in_order(version, Outbound::Encrypting(encrypting));
+    pub fn send_pending(&mut self, version: IpVersion, datagrams: PendingDatagrams) {
+        self.queue(version, Outbound::Pending(datagrams));
     }
 
-    /// Sends `outbound` right away unless earlier items still wait for room.
-    fn send_in_order(&mut self, version: IpVersion, outbound: Outbound) {
+    /// Queues `outbound` behind the items still waiting for room, sending it right away if there
+    /// are none.
+    fn queue(&mut self, version: IpVersion, outbound: Outbound) {
         if !self.overflow.is_empty() {
             self.overflow.push_back((version, outbound));
             return;
@@ -263,14 +264,14 @@ impl Sockets {
 
 /// What a UDP socket thread sends, in queue order.
 enum Outbound {
-    Datagram(DatagramOut),
-    Encrypting(Encrypting),
+    Ready(DatagramOut),
+    Pending(PendingDatagrams),
 }
 
 /// Datagrams still being encrypted by the crypto workers, in the order to send them.
 ///
 /// A worker drops the sender if there is nothing to send.
-pub(crate) type Encrypting = Buffer<VecBuf<oneshot::Receiver<DatagramOut>>>;
+pub(crate) type PendingDatagrams = Buffer<VecBuf<oneshot::Receiver<DatagramOut>>>;
 
 /// How big the queue for outgoing UDP items and socket errors is at most.
 ///
@@ -465,10 +466,10 @@ impl ThreadedUdpSocket {
 
                                 for outbound in pending_datagrams.drain(..) {
                                     match outbound {
-                                        Outbound::Datagram(datagram) => send(datagram).await?,
-                                        Outbound::Encrypting(mut encrypting) => {
-                                            for encrypting in encrypting.drain(..) {
-                                                let Ok(datagram) = encrypting.await else {
+                                        Outbound::Ready(datagram) => send(datagram).await?,
+                                        Outbound::Pending(mut datagrams) => {
+                                            for datagram in datagrams.drain(..) {
+                                                let Ok(datagram) = datagram.await else {
                                                     continue;
                                                 };
 

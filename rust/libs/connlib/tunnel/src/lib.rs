@@ -287,11 +287,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut batch = self.io.encrypt_batch();
+                    let mut batch = self.io.start_encrypt_batch();
 
                     for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.push(encapsulation, packet),
+                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 error.push(e.context("Failed to handle packet from TUN device"))
@@ -310,10 +310,10 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut decrypts = self.io.decrypt_batch();
+                    let mut decrypts = self.io.start_decrypt_batch();
 
                     for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        decrypts.push(datagram, |datagram, packet| {
+                        decrypts.decrypt(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
@@ -506,11 +506,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut batch = self.io.encrypt_batch();
+                    let mut batch = self.io.start_encrypt_batch();
 
                     for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.push(encapsulation, packet),
+                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
@@ -543,10 +543,10 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut batches) = network {
-                    let mut decrypts = self.io.decrypt_batch();
+                    let mut decrypts = self.io.start_decrypt_batch();
 
                     for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        decrypts.push(datagram, |datagram, packet| {
+                        decrypts.decrypt(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
