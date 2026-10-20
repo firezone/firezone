@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
-use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
@@ -260,8 +260,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status file of its thread.
-    status: PathBuf,
+    /// How often its thread has parked.
+    parks: Arc<AtomicU64>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -280,8 +280,16 @@ impl EventLoop {
             SocketAddr::V6(_) => Err(std::io::ErrorKind::Unsupported.into()),
         });
 
+        let parks = Arc::new(AtomicU64::new(0));
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
+            .on_thread_park({
+                let parks = parks.clone();
+
+                move || {
+                    parks.fetch_add(1, Ordering::Relaxed);
+                }
+            })
             .build()
             .unwrap();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
@@ -305,14 +313,9 @@ impl EventLoop {
             }
         };
 
-        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("event-loop".to_owned())
             .spawn(move || {
-                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
-                status_tx
-                    .send(Path::new("/proc").join(thread_self).join("status"))
-                    .unwrap();
                 // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
                 // are irrelevant here: a lost packet fails the benchmark.
                 runtime.block_on(poll_fn(|cx| {
@@ -330,12 +333,11 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let status = status_rx.recv().unwrap();
 
         (
             Self {
                 thread,
-                status,
+                parks,
                 tun_reads,
             },
             tun_writes,
@@ -344,14 +346,7 @@ impl EventLoop {
 
     /// Returns how often the event loop's thread has parked.
     fn parks(&self) -> u64 {
-        std::fs::read_to_string(&self.status)
-            .unwrap()
-            .lines()
-            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap()
+        self.parks.load(Ordering::Relaxed)
     }
 
     fn stop(self) {
@@ -496,7 +491,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
 const CLIENT_SOCKET: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
 const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), 2222));
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2222));
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
