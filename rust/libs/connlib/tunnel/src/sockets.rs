@@ -144,10 +144,8 @@ impl Sockets {
     /// Whether nothing waits for room and every socket has room for another item.
     pub fn has_room(&self) -> bool {
         self.overflow.is_empty()
-            && [&self.socket_v4, &self.socket_v6]
-                .into_iter()
-                .flatten()
-                .all(ThreadedUdpSocket::has_room)
+            && self.socket_v4.as_ref().is_none_or(|s| s.has_room())
+            && self.socket_v6.as_ref().is_none_or(|s| s.has_room())
     }
 
     /// Sends a datagram the main thread encrypted, or a control message.
@@ -214,12 +212,14 @@ impl Sockets {
             IpVersion::V6 => (self.socket_v6.as_mut(), "IPv6"),
         };
 
-        socket.ok_or_else(|| {
+        let socket = socket.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotConnected,
                 format!("failed to send packets: no {name} socket"),
             )
-        })
+        })?;
+
+        Ok(socket)
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
