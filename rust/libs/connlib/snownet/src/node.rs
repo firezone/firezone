@@ -353,7 +353,7 @@ where
 
         if let Some(existing) = existing {
             let current_local = existing.agent.local_ufrag();
-            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, current_index = ?existing.tunnel.id(), "Replacing existing connection");
+            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, current_index = %existing.tunnel.id(), "Replacing existing connection");
         } else {
             tracing::info!(local = ?local_creds, remote = ?remote_creds, "Creating new connection");
         }
@@ -387,7 +387,7 @@ where
                 return;
             }
         };
-        tracing::debug!(index = ?connection.tunnel.id(), "Created WireGuard tunnel");
+        tracing::debug!(index = %connection.tunnel.id(), "Created WireGuard tunnel");
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
 
@@ -1515,7 +1515,7 @@ where
                 .handle_timeout(&mut self.agent, self.idle_ice_config, now);
 
             if self.candidate_timeout.is_some_and(|timeout| now >= timeout) {
-                tracing::info!(state = %self.state, index = ?self.tunnel.id(), "Connection failed (no candidates received)");
+                tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (no candidates received)");
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -1524,7 +1524,7 @@ where
                 .disconnect_timeout()
                 .is_some_and(|timeout| now >= timeout)
             {
-                tracing::info!(state = %self.state, index = ?self.tunnel.id(), "Connection failed (ICE timeout)");
+                tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (ICE timeout)");
                 self.state = ConnectionState::Failed;
                 return;
             }
@@ -1559,7 +1559,7 @@ where
                     }
                 }
                 sanstun::Event::ConnectionExpired => {
-                    tracing::info!(state = %self.state, index = ?self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
+                    tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
                     self.state = ConnectionState::Failed;
                 }
             }

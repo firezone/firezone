@@ -130,7 +130,7 @@ where
 
         for (cid, connection, goodbye) in self.iter_closing_mut() {
             if now >= goodbye.deadline {
-                tracing::debug!(id = %cid, state = %connection.state, index = ?connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
+                tracing::debug!(id = %cid, state = %connection.state, index = %connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
                 connection.state = ConnectionState::Failed;
                 continue;
             }
@@ -596,7 +596,7 @@ impl UnknownConnection {
         now: Instant,
     ) -> Self {
         Self {
-            id: format!("{id:?}"),
+            id: id.to_string(),
             kind: "tunnel id",
             disconnected_for: disconnected_tunnel_ids
                 .get(&id)
