@@ -3,7 +3,6 @@ use std::{
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
-    ops::Range,
     pin::Pin,
     sync::mpsc,
     task::{Context, Poll, ready},
@@ -14,7 +13,7 @@ use bufferpool::{Buffer, VecBuf};
 use ip_packet::{Ecn, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{Decapsulation, DecryptedPacket, EncryptJob};
-use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, RecvBuffer};
+use socket_factory::{DatagramOut, MAX_GSO_SEGMENTS, RecvBuffer, Segment};
 use tokio::sync::oneshot;
 
 use super::UdpGsoTrain;
@@ -262,7 +261,7 @@ impl DecryptBatch<'_> {
     pub fn push(
         &mut self,
         buffer: RecvBuffer,
-        mut decapsulate: impl FnMut(DatagramIn<'_>) -> Option<Decapsulation>,
+        mut decapsulate: impl FnMut(&RecvBuffer, &[u8]) -> Option<Decapsulation>,
     ) {
         if self.job.messages.len() + buffer.num_datagrams() > DECRYPT_BATCH_SIZE {
             self.submit();
@@ -273,13 +272,11 @@ impl DecryptBatch<'_> {
 
         self.job
             .messages
-            .extend(buffer.datagrams().filter_map(|datagram| {
-                let range = datagram.range.clone();
-
+            .extend(buffer.segments().filter_map(|segment| {
                 Some(Message {
                     buffer: index,
-                    datagram: range,
-                    decapsulation: decapsulate(datagram)?,
+                    segment,
+                    decapsulation: decapsulate(&buffer, &buffer[segment])?,
                 })
             }));
 
@@ -325,7 +322,7 @@ struct Job {
 
 struct Message {
     buffer: usize,
-    datagram: Range<usize>,
+    segment: Segment,
     decapsulation: Decapsulation,
 }
 
@@ -400,7 +397,7 @@ fn decrypt(mut job: Job, decrypted: oneshot::Sender<Decrypted>) {
             local: buffer.local(),
             from: buffer.from(),
             ecn: buffer.ecn(),
-            packet: message.decapsulation.decrypt(&buffer[message.datagram]),
+            packet: message.decapsulation.decrypt(&buffer[message.segment]),
         }
     }));
 

@@ -6,7 +6,7 @@ use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
-use std::ops::{Deref, Range};
+use std::ops::{Deref, Index};
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -359,15 +359,11 @@ impl std::os::fd::AsFd for UdpSocket {
     }
 }
 
-/// An inbound UDP datagram.
-#[derive(Debug)]
-pub struct DatagramIn<'a> {
-    pub local: SocketAddr,
-    pub from: SocketAddr,
-    pub packet: &'a [u8],
-    pub ecn: Ecn,
-    /// Where `packet` lies within its [`RecvBuffer`].
-    pub range: Range<usize>,
+/// Where an inbound UDP datagram lies within its [`RecvBuffer`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Segment {
+    start: usize,
+    end: usize,
 }
 
 /// An outbound UDP datagram.
@@ -1129,32 +1125,31 @@ where
     }
 
     /// Iterates over the datagrams in the buffer, segmenting GRO / URO-coalesced ones apart again.
-    pub fn datagrams(&self) -> impl Iterator<Item = DatagramIn<'_>> {
+    pub fn datagrams(&self) -> impl Iterator<Item = &[u8]> {
+        self.segments().map(|segment| &self[segment])
+    }
+
+    /// Iterates over where each of [`RecvBuffer::datagrams`] lies within the buffer.
+    pub fn segments(&self) -> impl Iterator<Item = Segment> + '_ {
         (0..self.len).step_by(self.stride).map(|start| {
-            let range = start..std::cmp::min(start + self.stride, self.len);
+            let end = std::cmp::min(start + self.stride, self.len);
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", src = %self.from, dst = %self.local, ecn = ?self.ecn, len = %range.len());
+            tracing::trace!(target: "wire::net::recv", src = %self.from, dst = %self.local, ecn = ?self.ecn, len = %(end - start));
 
-            DatagramIn {
-                local: self.local,
-                from: self.from,
-                packet: &self.buffer[range.clone()],
-                ecn: self.ecn,
-                range,
-            }
+            Segment { start, end }
         })
     }
 }
 
-impl<B> Deref for RecvBuffer<B>
+impl<B> Index<Segment> for RecvBuffer<B>
 where
     B: Deref<Target = Vec<u8>>,
 {
-    type Target = [u8];
+    type Output = [u8];
 
-    fn deref(&self) -> &[u8] {
-        &self.buffer[..self.len]
+    fn index(&self, segment: Segment) -> &[u8] {
+        &self.buffer[..self.len][segment.start..segment.end]
     }
 }
 
@@ -1299,8 +1294,8 @@ mod tests {
             .drain()
             .map(|buffer| {
                 let ranges = buffer
-                    .datagrams()
-                    .map(|d| (d.range.start, d.range.end))
+                    .segments()
+                    .map(|segment| (segment.start, segment.end))
                     .collect::<Vec<_>>();
 
                 (buffer.from(), buffer.num_datagrams(), ranges)
@@ -1479,12 +1474,7 @@ mod tests {
     fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
         batch
             .drain()
-            .flat_map(|buffer| {
-                buffer
-                    .datagrams()
-                    .map(|d| d.packet.to_vec())
-                    .collect::<Vec<_>>()
-            })
+            .flat_map(|buffer| buffer.datagrams().map(<[u8]>::to_vec).collect::<Vec<_>>())
             .collect()
     }
 
