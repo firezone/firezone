@@ -25,6 +25,7 @@ rand = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
+fast-random-state = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
