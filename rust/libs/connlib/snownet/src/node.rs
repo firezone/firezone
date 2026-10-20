@@ -1028,13 +1028,13 @@ where
                 .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
             ReceivedMessage::HandshakeResponse(response) => self
                 .connections
-                .get_established_mut_session_index(response.tunnel_id(), now),
+                .get_established_mut_by_tunnel_id(response.tunnel_id(), now),
             ReceivedMessage::CookieReply(reply) => self
                 .connections
-                .get_established_mut_session_index(reply.tunnel_id(), now),
+                .get_established_mut_by_tunnel_id(reply.tunnel_id(), now),
             ReceivedMessage::TransportData(data) => self
                 .connections
-                .get_established_mut_session_index(data.tunnel_id(), now),
+                .get_established_mut_by_tunnel_id(data.tunnel_id(), now),
         };
         let (cid, conn) = match connection {
             Ok(c) => c,

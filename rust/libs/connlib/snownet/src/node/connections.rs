@@ -28,12 +28,12 @@ pub struct Connections<TId, RId> {
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
 
-    established_by_wireguard_session_index: HashMap<TunnelId, TId>,
+    established_by_tunnel_id: HashMap<TunnelId, TId>,
     established_by_local_ufrag: BTreeMap<String, TId>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_session_indices: HashMap<TunnelId, Instant>,
+    disconnected_tunnel_ids: HashMap<TunnelId, Instant>,
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
@@ -42,11 +42,11 @@ impl<TId, RId> Default for Connections<TId, RId> {
         Self {
             established: Default::default(),
             closing: Default::default(),
-            established_by_wireguard_session_index: Default::default(),
+            established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
-            disconnected_session_indices: Default::default(),
+            disconnected_tunnel_ids: Default::default(),
             disconnected_ufrags: Default::default(),
         }
     }
@@ -65,7 +65,7 @@ where
             .remove(id)
             .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
 
-        self.established_by_wireguard_session_index
+        self.established_by_tunnel_id
             .remove(&connection.tunnel.id());
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
@@ -74,7 +74,7 @@ where
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
-        self.disconnected_session_indices
+        self.disconnected_tunnel_ids
             .insert(connection.tunnel.id(), now);
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.disconnected_ufrags.insert(ufrag.to_owned(), now);
@@ -208,15 +208,13 @@ where
         id: TId,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
-        let index = connection.tunnel.id();
+        let tunnel_id = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
-        self.established_by_wireguard_session_index
-            .retain(|_, c| c != &id);
-        self.established_by_wireguard_session_index
-            .insert(index, id);
+        self.established_by_tunnel_id.retain(|_, c| c != &id);
+        self.established_by_tunnel_id.insert(tunnel_id, id);
         if let Some(ufrag) = local_ufrag {
             self.established_by_local_ufrag.insert(ufrag, id);
         }
@@ -250,16 +248,16 @@ where
         self.established.get(id)
     }
 
-    pub(crate) fn get_established_mut_session_index(
+    pub(crate) fn get_established_mut_by_tunnel_id(
         &mut self,
-        index: TunnelId,
+        tunnel_id: TunnelId,
         now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let id = *self
-            .established_by_wireguard_session_index
-            .get(&index)
+            .established_by_tunnel_id
+            .get(&tunnel_id)
             .with_context(|| {
-                UnknownConnection::by_index(index, &self.disconnected_session_indices, now)
+                UnknownConnection::by_tunnel_id(tunnel_id, &self.disconnected_tunnel_ids, now)
             })?;
 
         let connection = self.get_mut_including_closing(&id, now)?;
@@ -358,7 +356,7 @@ where
 
     pub(crate) fn clear(&mut self) {
         self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+        self.established_by_tunnel_id.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -412,12 +410,12 @@ where
                     .min_by_key(|(t, _)| *t),
             )
             .chain(
-                self.disconnected_session_indices
+                self.disconnected_tunnel_ids
                     .values()
                     .map(|t| {
                         (
                             *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected session indices",
+                            "recently disconnected tunnel ids",
                         )
                     })
                     .min_by_key(|(t, _)| *t),
@@ -431,11 +429,8 @@ where
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
-            for (index, _) in self
-                .established_by_wireguard_session_index
-                .extract_if(|_, c| *c == id)
-            {
-                self.disconnected_session_indices.insert(index, now);
+            for (tunnel_id, _) in self.established_by_tunnel_id.extract_if(|_, c| *c == id) {
+                self.disconnected_tunnel_ids.insert(tunnel_id, now);
             }
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
@@ -450,7 +445,7 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_public_keys
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_session_indices
+        self.disconnected_tunnel_ids
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
@@ -484,15 +479,15 @@ impl UnknownConnection {
         }
     }
 
-    fn by_index(
+    fn by_tunnel_id(
         id: TunnelId,
-        disconnected_indices: &HashMap<TunnelId, Instant>,
+        disconnected_tunnel_ids: &HashMap<TunnelId, Instant>,
         now: Instant,
     ) -> Self {
         Self {
             id: format!("{id:?}"),
-            kind: "index",
-            disconnected_for: disconnected_indices
+            kind: "tunnel id",
+            disconnected_for: disconnected_tunnel_ids
                 .get(&id)
                 .map(|disconnected| now.duration_since(*disconnected)),
         }
@@ -738,7 +733,7 @@ mod tests {
 
         // Get by index
         let err = connections
-            .get_established_mut_session_index(idx, now)
+            .get_established_mut_by_tunnel_id(idx, now)
             .unwrap_err()
             .downcast::<UnknownConnection>()
             .unwrap();
