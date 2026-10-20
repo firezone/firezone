@@ -350,6 +350,7 @@ config :portal, Portal.Analytics.PostHog,
   enabled: false,
   host: nil,
   project_api_key: nil,
+  web_external_url: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
 
 config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil

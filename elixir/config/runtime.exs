@@ -769,7 +769,8 @@ if config_env() == :prod do
   config :portal, Portal.Analytics.PostHog,
     enabled: posthog_enabled?,
     host: posthog_host,
-    project_api_key: posthog_project_api_key
+    project_api_key: posthog_project_api_key,
+    web_external_url: web_external_url
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
     config :portal,
