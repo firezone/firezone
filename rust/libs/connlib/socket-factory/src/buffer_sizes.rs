@@ -1,5 +1,4 @@
-use crate::DatagramBatch;
-use bufferpool::Buffer;
+use crate::{DatagramBatch, RecvBuffer};
 use std::mem::size_of;
 use std::time::Duration;
 
@@ -37,7 +36,7 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
 pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
     + quinn_udp::BATCH_SIZE
         * (ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS
-            + size_of::<Buffer<Vec<u8>>>()
+            + size_of::<RecvBuffer>()
             + size_of::<quinn_udp::RecvMeta>());
 
 /// Largest traffic rate in either direction for which we size the UDP socket buffers.

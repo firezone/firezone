@@ -19,4 +19,4 @@ pub use node::{
     Transmit, UnknownConnection,
 };
 
-bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64);
+bufferpool::buffer_pool!(pub static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64, pool: pub Datagrams);

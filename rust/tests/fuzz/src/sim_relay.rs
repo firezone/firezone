@@ -125,7 +125,7 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        mut payload: Buffer<snownet::Datagrams>,
         client: ClientSocket,
         now: Instant,
         now_utc: SystemTime,
@@ -222,7 +222,7 @@ impl SimRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        mut payload: Buffer<snownet::Datagrams>,
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit> {

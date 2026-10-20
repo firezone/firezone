@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, BufferPool, Pool, VecBuf};
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
@@ -359,7 +359,7 @@ impl std::os::fd::AsFd for UdpSocket {
 
 /// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
 /// that all come from the same remote address.
-pub struct DatagramIn<B = Buffer<Vec<u8>>> {
+pub struct DatagramIn<B = RecvBuffer> {
     buffer: B,
     local: SocketAddr,
     from: SocketAddr,
@@ -375,11 +375,11 @@ pub struct Segment {
     end: usize,
 }
 
-/// An outbound UDP datagram.
-pub struct DatagramOut {
+/// An outbound UDP datagram, carrying its payload in a buffer of the pool `P`.
+pub struct DatagramOut<P: Pool<Buf = Vec<u8>>> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Buffer<Vec<u8>>,
+    pub packet: Buffer<P>,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -387,26 +387,24 @@ pub struct DatagramOut {
 /// The most segments one GSO send may carry (`UDP_MAX_SEGMENTS` in `linux/udp.h`; `quinn-udp` reports the same on Linux).
 const MAX_GSO_SEGMENTS: usize = 64;
 
-impl DatagramOut {
-    /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
-    ///
-    /// One send's payload is bounded by the maximum IP packet size less IP/UDP header overhead,
-    /// and by the kernel's segment limit; the result is a whole number of segments.
-    /// Returns zero if not even a single segment fits.
-    ///
-    /// Actual sends are additionally subject to the socket's runtime GSO support and may get
-    /// chunked below this, but never above it.
-    pub fn max_len(dst: SocketAddr, segment_size: usize) -> usize {
-        let header_overhead = match dst {
-            SocketAddr::V4(_) => Ipv4HeaderSlice::MAX_LEN + UdpSlice::HEADER_LEN,
-            SocketAddr::V6(_) => Ipv6HeaderSlice::LEN + UdpSlice::HEADER_LEN,
-        };
+/// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
+///
+/// One send's payload is bounded by the maximum IP packet size less IP/UDP header overhead,
+/// and by the kernel's segment limit; the result is a whole number of segments.
+/// Returns zero if not even a single segment fits.
+///
+/// Actual sends are additionally subject to the socket's runtime GSO support and may get
+/// chunked below this, but never above it.
+pub fn max_datagram_len(dst: SocketAddr, segment_size: usize) -> usize {
+    let header_overhead = match dst {
+        SocketAddr::V4(_) => Ipv4HeaderSlice::MAX_LEN + UdpSlice::HEADER_LEN,
+        SocketAddr::V6(_) => Ipv6HeaderSlice::LEN + UdpSlice::HEADER_LEN,
+    };
 
-        let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size.max(1);
-        let max_segments = std::cmp::min(MAX_GSO_SEGMENTS, max_segments_by_size);
+    let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size.max(1);
+    let max_segments = std::cmp::min(MAX_GSO_SEGMENTS, max_segments_by_size);
 
-        segment_size * max_segments
-    }
+    segment_size * max_segments
 }
 
 impl PerfUdpSocket {
@@ -472,7 +470,10 @@ impl PerfUdpSocket {
         Ok(batch)
     }
 
-    pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
+    pub async fn send<P>(&self, datagram: DatagramOut<P>) -> Result<()>
+    where
+        P: Pool<Buf = Vec<u8>>,
+    {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
@@ -656,7 +657,7 @@ impl PerfUdpSocket {
 
     /// Calculate the chunk size for a given segment size.
     ///
-    /// A chunk is bounded by [`DatagramOut::max_len`] and by the socket's runtime GSO support:
+    /// A chunk is bounded by [`max_datagram_len`] and by the socket's runtime GSO support:
     /// in case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set
     /// `max_gso_segments` to 1.
     ///
@@ -669,7 +670,7 @@ impl PerfUdpSocket {
     ) -> Result<usize> {
         let chunk_size = std::cmp::min(
             segment_size * state.max_gso_segments(),
-            DatagramOut::max_len(dst, segment_size),
+            max_datagram_len(dst, segment_size),
         );
 
         anyhow::ensure!(
@@ -908,7 +909,7 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
 /// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
 /// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBuffers {
-    bytes: &'static BufferPool<Vec<u8>>,
+    bytes: &'static BufferPool<UdpRecvBytes>,
 }
 
 bufferpool::buffer_pool!(
@@ -919,15 +920,19 @@ bufferpool::buffer_pool!(
         target_os = "android" => { 2 }
         // A magazine holds two batches: enough to take back the unused buffers of a receive.
         _ => { quinn_udp::BATCH_SIZE.div_ceil(2) }
-    }
+    },
+    pool: pub UdpRecvBytes
 );
-bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<Buffer<Vec<u8>>> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4);
-bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"), batch: 4);
+bufferpool::buffer_pool!(static UDP_RECV_BUFFERS: VecBuf<RecvBuffer> = (quinn_udp::BATCH_SIZE, "udp-recv-buffers"), batch: 4, pool: pub UdpRecvBuffers);
+bufferpool::buffer_pool!(static UDP_RECV_METAS: VecBuf<quinn_udp::RecvMeta> = (quinn_udp::BATCH_SIZE, "udp-recv-metas"), batch: 4, pool: pub UdpRecvMetas);
+
+/// A buffer the kernel fills with received datagrams.
+pub type RecvBuffer = Buffer<UdpRecvBytes>;
 
 /// The pooled storage for one receive batch: a datagram buffer plus its metadata per slot.
 pub(crate) struct RecvBatch {
-    buffers: Buffer<VecBuf<Buffer<Vec<u8>>>>,
-    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+    buffers: Buffer<UdpRecvBuffers>,
+    metas: Buffer<UdpRecvMetas>,
 }
 
 impl RecvBatch {
@@ -979,22 +984,26 @@ impl RecvBuffers {
 /// which yields each buffer as a [`DatagramIn`] that segments GRO / URO-coalesced
 /// datagrams apart again.
 ///
-/// The batch is generic over its buffer type to allow easier testing without a buffer pool.
-#[derive(Clone, derive_more::Debug)]
-pub struct DatagramBatch<B: 'static = Buffer<Vec<u8>>> {
+/// The batch is generic over the pool of its buffers to allow testing with buffers that are not kernel-filled.
+#[derive(derive_more::Debug)]
+pub struct DatagramBatch<P: Pool = UdpRecvBuffers> {
     #[debug(skip)]
-    buffers: Buffer<VecBuf<B>>,
+    buffers: Buffer<P>,
     #[debug(skip)]
-    metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+    metas: Buffer<UdpRecvMetas>,
 
     port: u16,
     num_packets: usize,
 }
 
-impl<B> DatagramBatch<B> {
+impl<P, B> DatagramBatch<P>
+where
+    P: Pool<Buf = VecBuf<B>>,
+    B: 'static,
+{
     pub(crate) fn new(
-        mut buffers: Buffer<VecBuf<B>>,
-        mut metas: Buffer<VecBuf<quinn_udp::RecvMeta>>,
+        mut buffers: Buffer<P>,
+        mut metas: Buffer<UdpRecvMetas>,
         port: u16,
         len: usize,
     ) -> Self {
@@ -1160,15 +1169,15 @@ mod tests {
         let v6 = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0));
 
         // Full-size segments are byte-bound: (65535 - 68) / 1316 = 49 whole segments over IPv4.
-        assert_eq!(DatagramOut::max_len(v4, 1316), 49 * 1316);
+        assert_eq!(max_datagram_len(v4, 1316), 49 * 1316);
 
         // The IPv4 budget assumes maximal headers (60 bytes incl. options), leaving
         // room for one segment less than IPv6's fixed 40-byte header here.
-        assert_eq!(DatagramOut::max_len(v4, 1023), 63 * 1023);
-        assert_eq!(DatagramOut::max_len(v6, 1023), 64 * 1023);
+        assert_eq!(max_datagram_len(v4, 1023), 63 * 1023);
+        assert_eq!(max_datagram_len(v6, 1023), 64 * 1023);
 
         // Small segments are count-bound at the kernel's segment limit.
-        assert_eq!(DatagramOut::max_len(v4, 100), 64 * 100);
+        assert_eq!(max_datagram_len(v4, 100), 64 * 100);
     }
 
     use super::*;
@@ -1182,8 +1191,7 @@ mod tests {
         }
     }
 
-    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4);
-    bufferpool::buffer_pool!(static DUMMY_METAS: VecBuf<quinn_udp::RecvMeta> = (3, "test"), batch: 4);
+    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4, pool: DummyBuffers);
 
     /// The batch is the item of the channel to the main thread; keeping it small is
     /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
@@ -1192,7 +1200,7 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn batch_is_a_small_channel_item() {
-        assert_eq!(size_of::<DatagramBatch>(), 80);
+        assert_eq!(size_of::<DatagramBatch>(), 64);
     }
 
     #[test]
@@ -1204,7 +1212,7 @@ mod tests {
             DummyBuffer(b"".to_vec()),
         ]);
 
-        let mut metas = DUMMY_METAS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1247,7 +1255,7 @@ mod tests {
         let mut buffers = DUMMY_BUFFERS.pull();
         buffers.extend([DummyBuffer(b"foo".to_vec())]);
 
-        let mut metas = DUMMY_METAS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
         metas.extend([recv_meta(
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
             IpAddr::V4(Ipv4Addr::LOCALHOST),
@@ -1277,7 +1285,7 @@ mod tests {
             DummyBuffer(b"foo4".to_vec()),
         ]);
 
-        let mut metas = DUMMY_METAS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
             recv_meta(remote_a, local, 8, 4),
             recv_meta(remote_a, local, 4, 4),
@@ -1319,7 +1327,7 @@ mod tests {
             DummyBuffer(b"foo        ".to_vec()),
         ]);
 
-        let mut metas = DUMMY_METAS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1365,7 +1373,7 @@ mod tests {
             DummyBuffer(b"foobar1".to_vec()),
         ]);
 
-        let mut metas = DUMMY_METAS.pull();
+        let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
             recv_meta(
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1467,7 +1475,7 @@ mod tests {
         );
     }
 
-    fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
+    fn packets(batch: &mut DatagramBatch<DummyBuffers>) -> Vec<Vec<u8>> {
         batch
             .drain()
             .flat_map(|datagram| {

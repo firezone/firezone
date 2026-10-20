@@ -40,7 +40,7 @@ use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
 
-bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"), batch: 64);
+bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"), batch: 64, pool: pub IpPackets);
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -131,7 +131,7 @@ pub enum Layer4Protocol {
 
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
-    inner: Buffer<Vec<u8>>,
+    inner: Buffer<IpPackets>,
 }
 
 impl Default for IpPacketBuf {
@@ -166,7 +166,7 @@ impl AsMut<[u8]> for IpPacketBuf {
 
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
-    buf: Buffer<Vec<u8>>,
+    buf: Buffer<IpPackets>,
     /// The packet length; `u16` keeps the struct small, which matters wherever packets are moved.
     len: u16,
 
@@ -179,7 +179,7 @@ pub struct IpPacket {
 }
 
 const _: () =
-    assert!(std::mem::size_of::<IpPacket>() == std::mem::size_of::<Buffer<Vec<u8>>>() + 8);
+    assert!(std::mem::size_of::<IpPacket>() == std::mem::size_of::<Buffer<IpPackets>>() + 8);
 
 /// The transport protocol of an [`IpPacket`], determined and validated on creation.
 ///

@@ -3,7 +3,7 @@
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 
-bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (2048, "test"), batch: 64);
+bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (2048, "test"), batch: 64, pool: Packets);
 
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).

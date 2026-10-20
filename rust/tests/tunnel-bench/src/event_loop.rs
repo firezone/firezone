@@ -24,7 +24,9 @@ use dns_types::{Query, RecordType, Response};
 use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
 use snownet::{RelaySocket, Transmit, TransmitBuffer};
-use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{
+    DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket, max_datagram_len,
+};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use tun::{MAX_BATCH_SIZE, PacketBatch};
@@ -65,7 +67,7 @@ const IN_FLIGHT: usize = 2_048;
 /// if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
-bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
+bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2, pool: Datagrams);
 
 criterion::criterion_group! {
     name = benches;
@@ -218,7 +220,7 @@ impl State {
         count: usize,
         now: Instant,
         dst: SocketAddr,
-    ) -> Vec<DatagramOut> {
+    ) -> Vec<DatagramOut<Datagrams>> {
         let mut transmits = TransmitBuffer::default();
         let segments = (0..count)
             .map(|_| {
@@ -237,7 +239,7 @@ impl State {
         let segment_size = segments[0].len();
 
         segments
-            .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
+            .chunks(max_datagram_len(dst, segment_size) / segment_size)
             .map(|segments| {
                 let mut packet = DATAGRAMS.pull();
                 packet.clear();

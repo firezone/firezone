@@ -29,7 +29,7 @@ const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
 
-buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"), batch: 64);
+buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"), batch: 64, pool: BenchPool);
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
@@ -40,12 +40,12 @@ enum Item {
 
 const ITEMS: [Item; 3] = [Item::Pooled, Item::Plain, Item::Alloc];
 
-fn pooled() -> Buffer<Vec<u8>> {
+fn pooled() -> Buffer<BenchPool> {
     POOL.pull()
 }
 
-fn plain() -> [u8; size_of::<Buffer<Vec<u8>>>()] {
-    black_box([0; size_of::<Buffer<Vec<u8>>>()])
+fn plain() -> [u8; size_of::<Buffer<BenchPool>>()] {
+    black_box([0; size_of::<Buffer<BenchPool>>()])
 }
 
 fn alloc() -> Vec<u8> {

@@ -1301,7 +1301,7 @@ pub struct Transmit {
     /// The remote the packet should be sent to.
     pub dst: SocketAddr,
     /// The data that should be sent.
-    pub payload: Buffer<Vec<u8>>,
+    pub payload: Buffer<crate::Datagrams>,
     /// The ECN bits to set for the UDP packet.
     pub ecn: Ecn,
 }

@@ -20,8 +20,8 @@ use ip_packet::checksum;
 /// are 16 bits wide), and so neither can our super packets.
 const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 
-bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"), batch: 4);
-bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer", batch: 2);
+bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"), batch: 4, pool: pub CoalescedItems);
+bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer", batch: 2, pool: CoalescedPackets);
 
 /// The kernel rejects `VIRTIO_NET_HDR_GSO_UDP_L4` writes with more segments than this
 /// (`UDP_MAX_SEGMENTS` in `linux/udp.h`).
@@ -51,14 +51,14 @@ pub enum Protocol {
 /// Coalesces compatible IP packets while preserving per-flow ordering.
 pub struct PacketCoalescer {
     /// Queued packets, in write order.
-    items: Buffer<VecBuf<CoalescedPacket>>,
+    items: Buffer<CoalescedItems>,
     /// The batches in `items` that may still grow, at most one per connection.
     ///
     /// Non-coalescable packets flow through `items` too and close their connection's
     /// entry: a segment may only merge into the most recent item of its connection, so
     /// per-flow ordering is preserved by construction.
     open: Vec<OpenBatch>,
-    buffer_pool: &'static BufferPool<Vec<u8>>,
+    buffer_pool: &'static BufferPool<CoalescedPackets>,
     coalesce_tcp: bool,
     coalesce_udp: bool,
     checksum_mode: ChecksumMode,
@@ -152,7 +152,7 @@ impl PacketCoalescer {
     }
 
     /// Takes all queued packets, in write order.
-    pub fn take(&mut self) -> Buffer<VecBuf<CoalescedPacket>> {
+    pub fn take(&mut self) -> Buffer<CoalescedItems> {
         for batch in self.open.drain(..) {
             batch.finish(&mut self.items, self.checksum_mode);
         }
@@ -169,7 +169,7 @@ enum Inner {
     Packet(IpPacket),
     /// A coalesced batch.
     Batch {
-        buf: Buffer<Vec<u8>>,
+        buf: Buffer<CoalescedPackets>,
         num_segments: usize,
         offload_metadata: Option<OffloadMetadata>,
     },
@@ -214,7 +214,10 @@ impl CoalescedPacket {
     }
 
     /// The coalescing buffer, copying the first packet into one on first use.
-    fn coalesced(&mut self, pool: &'static BufferPool<Vec<u8>>) -> &mut Buffer<Vec<u8>> {
+    fn coalesced(
+        &mut self,
+        pool: &'static BufferPool<CoalescedPackets>,
+    ) -> &mut Buffer<CoalescedPackets> {
         if let Inner::Packet(first) = &self.0 {
             let mut buf = pool.pull();
             buf.clear();
@@ -434,7 +437,7 @@ impl OpenBatch {
         candidate: &Candidate,
         packet: &IpPacket,
         item: &mut CoalescedPacket,
-        pool: &'static BufferPool<Vec<u8>>,
+        pool: &'static BufferPool<CoalescedPackets>,
     ) {
         let bytes = packet.packet();
         let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];

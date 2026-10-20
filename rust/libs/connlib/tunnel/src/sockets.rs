@@ -1,3 +1,4 @@
+use crate::io::GsoBuffers;
 use crate::otel;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bufferpool::{Buffer, VecBuf};
@@ -53,7 +54,8 @@ bufferpool::buffer_pool!(
     /// Dropping the collection after processing returns it to the pool, keeping the
     /// receive path free of allocations.
     static DATAGRAM_BATCHES: VecBuf<DatagramBatch> = (2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"),
-    batch: 4
+    batch: 4,
+    pool: pub DatagramBatches
 );
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
@@ -110,7 +112,7 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> Result<()> {
+    pub fn send(&mut self, datagram: DatagramOut<GsoBuffers>) -> Result<()> {
         let socket = match datagram.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
                 io::Error::new(
@@ -131,7 +133,7 @@ impl Sockets {
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
-    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
+    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<DatagramBatches>> {
         let mut batches = DATAGRAM_BATCHES.pull();
 
         if let Some(socket) = self.socket_v4.as_mut() {
@@ -196,7 +198,7 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// regardless of how full it is. That pool never shrinks, so a send backlog that ever fills these
 /// queues pins this much memory for the rest of the session.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize =
-    2 * QUEUE_SIZE * (size_of::<DatagramOut>() + crate::io::GSO_BUFFER_SIZE);
+    2 * QUEUE_SIZE * (size_of::<DatagramOut<GsoBuffers>>() + crate::io::GSO_BUFFER_SIZE);
 
 /// Worst-case memory pinned by the inbound UDP receive path while in flight.
 ///
@@ -226,7 +228,7 @@ struct ThreadedUdpSocket {
 }
 
 struct Channels {
-    outbound_tx: PollSender<DatagramOut>,
+    outbound_tx: PollSender<DatagramOut<GsoBuffers>>,
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
@@ -423,7 +425,7 @@ impl ThreadedUdpSocket {
         Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, datagram: DatagramOut) -> Result<()> {
+    fn send(&mut self, datagram: DatagramOut<GsoBuffers>) -> Result<()> {
         self.channels_mut()?
             .outbound_tx
             .start_send_unpin(datagram)

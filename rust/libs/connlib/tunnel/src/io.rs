@@ -6,12 +6,16 @@ mod udp_dns;
 mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, GsoBuffers, UdpGsoQueue};
 
-use crate::{TunnelError, dns, packet_counts::UdpPacketCounts, sockets::Sockets};
+use crate::{
+    TunnelError, dns,
+    packet_counts::UdpPacketCounts,
+    sockets::{DatagramBatches, Sockets},
+};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use bufferpool::{Buffer, VecBuf};
+use bufferpool::Buffer;
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -23,7 +27,7 @@ use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, HashMap},
     io,
@@ -84,7 +88,7 @@ enum DohClient {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    pub network: Option<Buffer<DatagramBatches>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_responses: Vec<dns::RecursiveResponse>,

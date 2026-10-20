@@ -33,8 +33,6 @@ use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 
-bufferpool::buffer_pool!(static PAYLOADS: Vec<u8> = (1024, "test"), batch: 64);
-
 /// The actual system-under-test.
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
@@ -1083,7 +1081,7 @@ impl TunnelTest {
                             Transmit {
                                 src: Some(src),
                                 dst,
-                                payload: PAYLOADS.pull_initialised(&payload),
+                                payload: snownet::DATAGRAMS.pull_initialised(&payload),
                                 ecn: Ecn::NonEct,
                             },
                             relay,

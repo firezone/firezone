@@ -30,49 +30,81 @@ use opentelemetry::{KeyValue, metrics::UpDownCounter};
 /// up to two batches idle, so it trades fewer locks against more memory: match it to how many
 /// buffers are pulled together, and keep it small for large buffers.
 ///
+/// `pool` declares the zero-sized type that implements [`Pool`] for the static, which is how the
+/// type of its buffers is spelled; it takes its own visibility.
+///
 /// With a capacity, the static is the pool itself:
 ///
 /// ```
-/// bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (1280, "packets"), batch: 64);
+/// use bufferpool::Buffer;
 ///
-/// let buffer = PACKETS.pull();
+/// bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (1280, "packets"), batch: 64, pool: Packets);
+///
+/// let buffer: Buffer<Packets> = PACKETS.pull();
 /// ```
 ///
 /// Without, the static is a [`ResizableBufferPool`] whose capacity is set at runtime:
 ///
 /// ```
-/// bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8>, "datagrams", batch: 2);
+/// bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8>, "datagrams", batch: 2, pool: Datagrams);
 ///
 /// let pool = DATAGRAMS.with_capacity(64 * 1280);
 /// let buffer = pool.pull();
 /// ```
 #[macro_export]
 macro_rules! buffer_pool {
-    ($(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty = ($capacity:expr, $tag:expr $(,)?), batch: $batch:expr $(,)?) => {
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty = ($capacity:expr, $tag:expr $(,)?), batch: $batch:expr, pool: $pvis:vis $pool:ident $(,)?) => {
         $(#[$attr])*
-        $vis static $name: $crate::BufferPool<$ty> = {
-            ::std::thread_local!(static MAGAZINE: ::std::cell::RefCell<$crate::Magazine<$ty>> = const { ::std::cell::RefCell::new($crate::Magazine::new()) });
+        $vis static $name: $crate::BufferPool<$pool> = {
+            ::std::thread_local!(static MAGAZINE: ::std::cell::RefCell<$crate::Magazine<$pool>> = const { ::std::cell::RefCell::new($crate::Magazine::new()) });
 
             $crate::BufferPool::new($capacity, $batch, $tag, &MAGAZINE)
         };
+
+        $pvis struct $pool;
+
+        impl $crate::Pool for $pool {
+            type Buf = $ty;
+
+            fn get() -> &'static $crate::BufferPool<Self> {
+                &$name
+            }
+        }
     };
-    ($(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty, $tag:expr, batch: $batch:expr $(,)?) => {
+    ($(#[$attr:meta])* $vis:vis static $name:ident: $ty:ty, $tag:expr, batch: $batch:expr, pool: $pvis:vis $pool:ident $(,)?) => {
         $(#[$attr])*
-        $vis static $name: $crate::ResizableBufferPool<$ty> = {
-            ::std::thread_local!(static MAGAZINE: ::std::cell::RefCell<$crate::Magazine<$ty>> = const { ::std::cell::RefCell::new($crate::Magazine::new()) });
+        $vis static $name: $crate::ResizableBufferPool<$pool> = {
+            ::std::thread_local!(static MAGAZINE: ::std::cell::RefCell<$crate::Magazine<$pool>> = const { ::std::cell::RefCell::new($crate::Magazine::new()) });
 
             $crate::ResizableBufferPool::new($batch, $tag, &MAGAZINE)
         };
+
+        $pvis struct $pool;
+
+        impl $crate::Pool for $pool {
+            type Buf = $ty;
+
+            fn get() -> &'static $crate::BufferPool<Self> {
+                $name.pool()
+            }
+        }
     };
+}
+
+/// A `static` pool, named by a zero-sized type so that its buffers need not point at it.
+pub trait Pool: Sized + 'static {
+    type Buf: Buf;
+
+    fn get() -> &'static BufferPool<Self>;
 }
 
 /// A process-wide pool of buffers that are all equal in size, declared with [`buffer_pool!`].
 ///
 /// Each thread keeps up to two batches of buffers in its own magazine and only locks the depot
 /// to refill an empty magazine or to hand back a batch from a full one.
-pub struct BufferPool<B: 'static> {
-    depot: Mutex<Depot<B>>,
-    magazine: &'static LocalKey<RefCell<Magazine<B>>>,
+pub struct BufferPool<P: Pool> {
+    depot: Mutex<Depot<P::Buf>>,
+    magazine: &'static LocalKey<RefCell<Magazine<P>>>,
 
     /// The size every buffer in the pool is allocated with.
     capacity: AtomicUsize,
@@ -83,16 +115,16 @@ pub struct BufferPool<B: 'static> {
     buffer_count: OnceLock<BufferCount>,
 }
 
-impl<B> BufferPool<B>
+impl<P> BufferPool<P>
 where
-    B: Buf,
+    P: Pool,
 {
     #[doc(hidden)]
     pub const fn new(
         capacity: usize,
         batch: usize,
         tag: &'static str,
-        magazine: &'static LocalKey<RefCell<Magazine<B>>>,
+        magazine: &'static LocalKey<RefCell<Magazine<P>>>,
     ) -> Self {
         assert!(batch > 0, "batch must not be empty");
 
@@ -109,17 +141,16 @@ where
         }
     }
 
-    pub fn pull(&'static self) -> Buffer<B> {
+    pub fn pull(&'static self) -> Buffer<P> {
         Buffer {
             inner: Some(self.take()),
-            pool: self,
         }
     }
 
     /// Takes a buffer from this thread's magazine, discarding any of a previous capacity.
     ///
     /// During thread exit, the buffer comes from the depot directly.
-    fn take(&'static self) -> B {
+    fn take(&'static self) -> P::Buf {
         let capacity = self.capacity();
 
         loop {
@@ -133,21 +164,21 @@ where
                 // This however means that getting a buffer can fail which would require us to implement back-pressure.
                 self.buffer_count().add(1, capacity);
 
-                return B::with_capacity(capacity);
+                return P::Buf::with_capacity(capacity);
             };
 
-            if B::capacity(&buffer) == capacity {
+            if P::Buf::capacity(&buffer) == capacity {
                 return buffer;
             }
 
-            self.buffer_count().add(-1, B::capacity(&buffer));
+            self.buffer_count().add(-1, P::Buf::capacity(&buffer));
         }
     }
 
     /// Puts a buffer into this thread's magazine.
     ///
     /// During thread exit, the buffer goes to the depot directly.
-    fn give(&'static self, buffer: B) {
+    fn give(&'static self, buffer: P::Buf) {
         let mut buffer = Some(buffer);
 
         let _ = self.magazine.try_with(|magazine| {
@@ -169,11 +200,12 @@ where
     }
 }
 
-impl<B> BufferPool<B>
+impl<P> BufferPool<P>
 where
-    B: ResizeBuf + DerefMut<Target = [u8]>,
+    P: Pool,
+    P::Buf: ResizeBuf + DerefMut<Target = [u8]>,
 {
-    pub fn pull_initialised(&'static self, data: &[u8]) -> Buffer<B> {
+    pub fn pull_initialised(&'static self, data: &[u8]) -> Buffer<P> {
         let mut buffer = self.pull();
         let len = data.len();
 
@@ -184,23 +216,26 @@ where
     }
 }
 
-impl<B> BufferPool<B> {
+impl<P> BufferPool<P>
+where
+    P: Pool,
+{
     fn capacity(&self) -> usize {
         self.capacity.load(Ordering::Relaxed)
     }
 
     // A magazine's slow path: `#[cold]` keeps it from bloating the inlined pull and drop.
     #[cold]
-    fn trade_empty(&self, empty: Batch<B>) -> Result<Batch<B>, Batch<B>> {
+    fn trade_empty(&self, empty: Batch<P::Buf>) -> Result<Batch<P::Buf>, Batch<P::Buf>> {
         self.depot().trade_empty(empty)
     }
 
     #[cold]
-    fn trade_full(&self, full: Batch<B>) -> Batch<B> {
+    fn trade_full(&self, full: Batch<P::Buf>) -> Batch<P::Buf> {
         self.depot().trade_full(full, self.batch)
     }
 
-    fn depot(&self) -> MutexGuard<'_, Depot<B>> {
+    fn depot(&self) -> MutexGuard<'_, Depot<P::Buf>> {
         self.depot.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -210,27 +245,32 @@ impl<B> BufferPool<B> {
 /// Only the capacity requested most recently keeps its buffers: changing it discards the idle
 /// buffers of the previous one, and buffers of the previous capacity still in use are discarded
 /// once they return.
-pub struct ResizableBufferPool<B: 'static> {
-    pool: BufferPool<B>,
+pub struct ResizableBufferPool<P: Pool> {
+    pool: BufferPool<P>,
 }
 
-impl<B> ResizableBufferPool<B>
+impl<P> ResizableBufferPool<P>
 where
-    B: Buf,
+    P: Pool,
 {
     #[doc(hidden)]
     pub const fn new(
         batch: usize,
         tag: &'static str,
-        magazine: &'static LocalKey<RefCell<Magazine<B>>>,
+        magazine: &'static LocalKey<RefCell<Magazine<P>>>,
     ) -> Self {
         Self {
             pool: BufferPool::new(0, batch, tag, magazine),
         }
     }
 
+    #[doc(hidden)]
+    pub const fn pool(&'static self) -> &'static BufferPool<P> {
+        &self.pool
+    }
+
     /// Returns the pool, changing the capacity of its buffers to `capacity` if necessary.
-    pub fn with_capacity(&'static self, capacity: usize) -> &'static BufferPool<B> {
+    pub fn with_capacity(&'static self, capacity: usize) -> &'static BufferPool<P> {
         let pool = &self.pool;
 
         if pool.capacity() == capacity {
@@ -244,7 +284,7 @@ where
             let idle = std::mem::take(&mut pool.depot().full);
 
             for buffer in idle.into_iter().flat_map(|batch| batch.buffers) {
-                buffer_count.add(-1, B::capacity(&buffer));
+                buffer_count.add(-1, P::Buf::capacity(&buffer));
             }
         }
 
@@ -257,14 +297,15 @@ where
 ///
 /// Buffers still in the magazine when the thread exits are handed back to the pool.
 #[doc(hidden)]
-pub struct Magazine<B: 'static> {
-    loaded: Batch<B>,
-    spare: Batch<B>,
-    /// Where the buffers go when the thread exits; set once the magazine holds any.
-    pool: Option<&'static BufferPool<B>>,
+pub struct Magazine<P: Pool> {
+    loaded: Batch<P::Buf>,
+    spare: Batch<P::Buf>,
 }
 
-impl<B> Magazine<B> {
+impl<P> Magazine<P>
+where
+    P: Pool,
+{
     #[expect(
         clippy::new_without_default,
         reason = "Must be `const` for `thread_local!`"
@@ -273,13 +314,10 @@ impl<B> Magazine<B> {
         Self {
             loaded: Batch::new(),
             spare: Batch::new(),
-            pool: None,
         }
     }
 
-    fn pop(&mut self, pool: &'static BufferPool<B>) -> Option<B> {
-        self.pool = Some(pool);
-
+    fn pop(&mut self, pool: &'static BufferPool<P>) -> Option<P::Buf> {
         if self.loaded.is_empty() {
             if self.spare.is_empty() {
                 let (Ok(batch) | Err(batch)) = pool.trade_empty(std::mem::take(&mut self.loaded));
@@ -293,9 +331,7 @@ impl<B> Magazine<B> {
         self.loaded.pop()
     }
 
-    fn push(&mut self, pool: &'static BufferPool<B>, buffer: B) {
-        self.pool = Some(pool);
-
+    fn push(&mut self, pool: &'static BufferPool<P>, buffer: P::Buf) {
         if self.loaded.len() >= pool.batch {
             if self.spare.len() >= pool.batch {
                 self.spare = pool.trade_full(std::mem::take(&mut self.spare));
@@ -308,18 +344,17 @@ impl<B> Magazine<B> {
     }
 }
 
-impl<B> Drop for Magazine<B> {
+impl<P> Drop for Magazine<P>
+where
+    P: Pool,
+{
     fn drop(&mut self) {
-        let Some(pool) = self.pool else {
-            return;
-        };
-
         for batch in [
             std::mem::take(&mut self.loaded),
             std::mem::take(&mut self.spare),
         ] {
             if !batch.is_empty() {
-                pool.depot().full.push(batch);
+                P::get().depot().full.push(batch);
             }
         }
     }
@@ -424,13 +459,14 @@ impl BufferCount {
     }
 }
 
-pub struct Buffer<B: Buf + 'static> {
-    inner: Option<B>,
-
-    pool: &'static BufferPool<B>,
+pub struct Buffer<P: Pool> {
+    inner: Option<P::Buf>,
 }
 
-impl Buffer<Vec<u8>> {
+impl<P> Buffer<P>
+where
+    P: Pool<Buf = Vec<u8>>,
+{
     /// Shifts the start of the buffer to the right by N bytes, returning the bytes removed from the front of the buffer.
     pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
         let num_to_end = self.split_off(num);
@@ -449,115 +485,123 @@ impl Buffer<Vec<u8>> {
     }
 }
 
-impl<B> Buffer<B>
+impl<P> Buffer<P>
 where
-    B: Buf,
+    P: Pool,
 {
-    fn storage(&self) -> &B {
+    fn storage(&self) -> &P::Buf {
         self.inner
             .as_ref()
             .expect("should always have buffer storage until dropped")
     }
 
-    fn storage_mut(&mut self) -> &mut B {
+    fn storage_mut(&mut self) -> &mut P::Buf {
         self.inner
             .as_mut()
             .expect("should always have buffer storage until dropped")
     }
 }
 
-impl<B> Clone for Buffer<B>
+impl<P> Clone for Buffer<P>
 where
-    B: CloneBuf,
+    P: Pool,
+    P::Buf: CloneBuf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self.pool.take();
+        let mut copy = P::get().take();
 
         self.storage().clone(&mut copy);
 
-        Self {
-            inner: Some(copy),
-            pool: self.pool,
-        }
+        Self { inner: Some(copy) }
     }
 }
 
-impl<B> PartialEq for Buffer<B>
+impl<P> PartialEq for Buffer<P>
 where
-    B: Buf + Deref<Target = [u8]>,
+    P: Pool,
+    P::Buf: Deref<Target = [u8]>,
 {
     fn eq(&self, other: &Self) -> bool {
         self.as_ref() == other.as_ref()
     }
 }
 
-impl<B> Eq for Buffer<B> where B: Buf + Deref<Target = [u8]> {}
-
-impl<B> PartialOrd for Buffer<B>
+impl<P> Eq for Buffer<P>
 where
-    B: Buf + Deref<Target = [u8]>,
+    P: Pool,
+    P::Buf: Deref<Target = [u8]>,
+{
+}
+
+impl<P> PartialOrd for Buffer<P>
+where
+    P: Pool,
+    P::Buf: Deref<Target = [u8]>,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<B> Ord for Buffer<B>
+impl<P> Ord for Buffer<P>
 where
-    B: Buf + Deref<Target = [u8]>,
+    P: Pool,
+    P::Buf: Deref<Target = [u8]>,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_ref().cmp(other.as_ref())
     }
 }
 
-impl<B> std::fmt::Debug for Buffer<B>
+impl<P> std::fmt::Debug for Buffer<P>
 where
-    B: Buf,
+    P: Pool,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("Buffer").finish()
     }
 }
 
-impl<B> Deref for Buffer<B>
+impl<P> Deref for Buffer<P>
 where
-    B: Buf,
+    P: Pool,
 {
-    type Target = B;
+    type Target = P::Buf;
 
     fn deref(&self) -> &Self::Target {
         self.storage()
     }
 }
 
-impl<B> DerefMut for Buffer<B>
+impl<P> DerefMut for Buffer<P>
 where
-    B: Buf,
+    P: Pool,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.storage_mut()
     }
 }
 
-impl<B> Drop for Buffer<B>
+impl<P> Drop for Buffer<P>
 where
-    B: Buf,
+    P: Pool,
 {
     fn drop(&mut self) {
         let mut buffer = self.inner.take().expect("should have storage in `Drop`");
 
         buffer.reset();
 
+        let pool = P::get();
+
         // A buffer of a different capacity is either left over from before a resize or was reallocated.
-        let capacity = B::capacity(&buffer);
-        if capacity != self.pool.capacity() {
-            self.pool.buffer_count().add(-1, capacity);
+        let capacity = P::Buf::capacity(&buffer);
+        if capacity != pool.capacity() {
+            pool.buffer_count().add(-1, capacity);
 
             return;
         }
 
-        self.pool.give(buffer);
+        pool.give(buffer);
     }
 }
 
@@ -768,11 +812,13 @@ mod tests {
     }
 
     /// The whole point of pooling is passing buffers around cheaply: a handle is
-    /// the buffer itself plus a reference to its pool.
+    /// nothing but the buffer itself.
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn handles_are_slim() {
-        assert_eq!(size_of::<Buffer<Vec<u8>>>(), 32);
+        buffer_pool!(static POOL: Vec<u8> = (8, "test"), batch: BATCH_SIZE, pool: TestPool);
+
+        assert_eq!(size_of::<Buffer<TestPool>>(), 24);
     }
 
     #[test]
@@ -847,25 +893,24 @@ mod tests {
 
     #[test]
     fn buffer_dropped_after_the_magazine_returns_to_the_pool() {
-        thread_local!(static HOLDER: RefCell<Option<Buffer<Vec<u8>>>> = const { RefCell::new(None) });
-
-        let pool = test_pool!(8);
+        buffer_pool!(static POOL: Vec<u8> = (8, "test"), batch: BATCH_SIZE, pool: TestPool);
+        thread_local!(static HOLDER: RefCell<Option<Buffer<TestPool>>> = const { RefCell::new(None) });
 
         std::thread::spawn(|| {
             // Initialise the holder before the magazine so it is likely destroyed after it.
             HOLDER.with(|_| {});
-            let buffer = pool.pull();
+            let buffer = POOL.pull();
             HOLDER.with(|h| *h.borrow_mut() = Some(buffer));
         })
         .join()
         .unwrap();
 
-        assert_eq!(depot_len(pool), 1);
+        assert_eq!(depot_len(&POOL), 1);
     }
 
     #[test]
     fn with_capacity_returns_the_same_pool() {
-        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE);
+        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE, pool: TestPool);
 
         let pool = POOL.with_capacity(8);
         let again = POOL.with_capacity(16);
@@ -876,7 +921,7 @@ mod tests {
 
     #[test]
     fn changing_the_capacity_frees_idle_buffers() {
-        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE);
+        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE, pool: TestPool);
         let pool = POOL.with_capacity(8);
 
         let buffers = (0..4 * BATCH_SIZE).map(|_| pool.pull()).collect::<Vec<_>>();
@@ -891,7 +936,7 @@ mod tests {
     #[tokio::test]
     async fn buffer_of_a_previous_capacity_is_discarded_on_return() {
         let (provider, exporter) = init_meter_provider();
-        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE);
+        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE, pool: TestPool);
         let pool = POOL.with_capacity(8);
         record_buffer_count(pool, &provider);
 
@@ -907,7 +952,7 @@ mod tests {
 
     #[test]
     fn magazine_discards_buffers_of_a_previous_capacity() {
-        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE);
+        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE, pool: TestPool);
         let pool = POOL.with_capacity(8);
 
         let buffers = (0..3).map(|_| pool.pull()).collect::<Vec<_>>();
@@ -921,7 +966,7 @@ mod tests {
 
     #[test]
     fn switching_back_to_a_previous_capacity() {
-        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE);
+        buffer_pool!(static POOL: Vec<u8>, "test", batch: BATCH_SIZE, pool: TestPool);
         let pool = POOL.with_capacity(8);
         drop(pool.pull());
 
@@ -939,7 +984,7 @@ mod tests {
 
     #[test]
     fn vec_buf_returns_to_the_pool_empty() {
-        buffer_pool!(static POOL: VecBuf<String> = (4, "test"), batch: BATCH_SIZE);
+        buffer_pool!(static POOL: VecBuf<String> = (4, "test"), batch: BATCH_SIZE, pool: TestPool);
 
         let mut buf = POOL.pull();
         buf.push("hello".to_owned());
@@ -977,7 +1022,7 @@ mod tests {
     /// Declares a new pool, so tests don't share buffers.
     macro_rules! test_pool {
         ($capacity:expr) => {{
-            buffer_pool!(static POOL: Vec<u8> = ($capacity, "test"), batch: BATCH_SIZE);
+            buffer_pool!(static POOL: Vec<u8> = ($capacity, "test"), batch: BATCH_SIZE, pool: TestPool);
 
             &POOL
         }};
@@ -985,7 +1030,7 @@ mod tests {
     use test_pool;
 
     /// The number of buffers in this thread's magazine of `pool`.
-    fn magazine_len(pool: &BufferPool<Vec<u8>>) -> usize {
+    fn magazine_len<P: Pool>(pool: &BufferPool<P>) -> usize {
         pool.magazine.with(|m| {
             let magazine = m.borrow();
 
@@ -994,11 +1039,11 @@ mod tests {
     }
 
     /// The number of buffers in the depot of `pool`.
-    fn depot_len(pool: &BufferPool<Vec<u8>>) -> usize {
+    fn depot_len<P: Pool>(pool: &BufferPool<P>) -> usize {
         pool.depot().full.iter().map(|b| b.buffers.len()).sum()
     }
 
-    fn record_buffer_count(pool: &BufferPool<Vec<u8>>, provider: &SdkMeterProvider) {
+    fn record_buffer_count<P: Pool>(pool: &BufferPool<P>, provider: &SdkMeterProvider) {
         let counter = otel_instruments::buffer_count_with(&provider.meter("connlib"));
 
         assert!(
