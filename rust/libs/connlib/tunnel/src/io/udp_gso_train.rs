@@ -60,6 +60,11 @@ impl UdpGsoTrain {
         self.connection.dst
     }
 
+    /// Whether the train goes from `src` to `dst`.
+    pub fn is_between(&self, src: Option<SocketAddr>, dst: SocketAddr) -> bool {
+        self.connection.src == src && self.connection.dst == dst
+    }
+
     /// Appends a datagram of `len` bytes, unless it has to start a new train.
     pub fn try_append(
         &mut self,

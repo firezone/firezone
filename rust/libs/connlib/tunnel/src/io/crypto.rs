@@ -45,6 +45,10 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
+    static OPEN_TRAINS: VecBuf<EncryptTrain> = (8, "open-trains"),
+    batch: 4
+);
+bufferpool::buffer_pool!(
     static ENCRYPTING: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "encrypting"),
     batch: 4
 );
@@ -117,7 +121,7 @@ impl CryptoWorkers {
         EncryptBatch {
             crypto: self,
             outbound,
-            open: None,
+            open: OPEN_TRAINS.pull(),
             encrypting_v4: None,
             encrypting_v6: None,
         }
@@ -168,30 +172,38 @@ impl CryptoWorkers {
 pub struct EncryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
     outbound: &'a mut VecDeque<Queued>,
-    open: Option<EncryptTrain>,
+    /// The open train to each destination.
+    open: Buffer<VecBuf<EncryptTrain>>,
     encrypting_v4: Option<Encrypting>,
     encrypting_v6: Option<Encrypting>,
 }
 
 impl EncryptBatch<'_> {
-    /// Adds `packet` to the open train, handing that train to a worker first if `packet` starts a
-    /// new one.
+    /// Adds `packet` to the open train to its destination, handing that train to a worker first if
+    /// `packet` starts a new one.
     pub fn push(&mut self, encapsulation: Encapsulation, packet: IpPacket) {
-        if let Some(open) = self.open.as_mut()
-            && open.train.try_append(
-                encapsulation.src(),
-                encapsulation.dst(),
-                packet.ecn(),
-                encapsulation.datagram_len(&packet),
-            )
+        let src = encapsulation.src();
+        let dst = encapsulation.dst();
+
+        let Some(open) = self
+            .open
+            .iter_mut()
+            .find(|open| open.train.is_between(src, dst))
+        else {
+            self.open.push(EncryptTrain::new(encapsulation, packet));
+            return;
+        };
+
+        if open
+            .train
+            .try_append(src, dst, packet.ecn(), encapsulation.datagram_len(&packet))
         {
             open.packets.push((encapsulation, packet));
             return;
         }
 
-        if let Some(closed) = self.open.replace(EncryptTrain::new(encapsulation, packet)) {
-            self.dispatch(closed);
-        }
+        let closed = mem::replace(open, EncryptTrain::new(encapsulation, packet));
+        self.dispatch(closed);
     }
 
     /// Queues an already encrypted datagram ahead of all trains of this batch.
@@ -219,7 +231,8 @@ impl EncryptBatch<'_> {
 
 impl Drop for EncryptBatch<'_> {
     fn drop(&mut self) {
-        if let Some(open) = self.open.take() {
+        // Each destination has one open train, so their order does not matter.
+        while let Some(open) = self.open.pop() {
             self.dispatch(open);
         }
 
