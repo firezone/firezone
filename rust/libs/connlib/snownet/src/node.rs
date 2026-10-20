@@ -21,6 +21,7 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use bufferpool::Buffer;
 use core::fmt;
+use fast_random_state::FastRandomState;
 use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
@@ -31,7 +32,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::hash::Hash;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
@@ -817,7 +818,7 @@ where
         let newly_added_relays = to_add
             .iter()
             .map(|(id, _, _, _, _)| *id)
-            .collect::<BTreeSet<_>>();
+            .collect::<HashSet<_, FastRandomState>>();
 
         // Third, check if other relays are still present.
         for (_, previous_allocation) in self
@@ -895,7 +896,7 @@ where
     /// Tries to handle the packet using one of our [`Allocation`]s.
     ///
     /// This function is in the hot-path of packet processing and thus must be as efficient as possible.
-    /// Even look-ups in [`BTreeMap`](std::collections::BTreeMap)s and linear searches across small lists are expensive at this point.
+    /// Even hash map look-ups and linear searches across small lists are expensive at this point.
     /// Thus, we use the first byte of the message as a heuristic for whether we should attempt to handle it here.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2> for details on de-multiplexing.
@@ -1177,7 +1178,7 @@ fn seed_agent_with_local_candidates<'a, RId>(
     now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
-    RId: Ord + fmt::Display + Copy,
+    RId: Ord + Hash + fmt::Display + Copy,
 {
     selected_relay
         .map(|rid| allocations.candidates_for_relay(&rid))
@@ -1503,7 +1504,7 @@ where
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
-        RId: Copy + Ord + fmt::Display,
+        RId: Copy + Ord + Hash + fmt::Display,
     {
         let due = self.poll_timeout_cache.check(now).is_continue();
         let _guard = due.then(|| tracing::info_span!("handle_timeout", %cid).entered());
@@ -1896,7 +1897,7 @@ where
     ) -> ControlFlow<Result<()>, sanstun::PendingDecapsulate>
     where
         TId: fmt::Display,
-        RId: Ord + fmt::Display + Copy,
+        RId: Ord + Hash + fmt::Display + Copy,
     {
         let path = (destination, from);
 
@@ -2015,7 +2016,7 @@ where
         from: SocketAddr,
     ) -> PeerSocket
     where
-        RId: Ord + fmt::Display + Copy,
+        RId: Ord + Hash + fmt::Display + Copy,
     {
         let source_relay = allocations.get_mut_by_allocation(local).map(|(r, _)| r);
         let dest_is_relay = self.agent.remote_candidate_is_relayed(from);
@@ -2036,7 +2037,7 @@ where
 
     fn reset_for_roam(&mut self, now: Instant)
     where
-        RId: Ord + fmt::Display + Copy,
+        RId: Ord + Hash + fmt::Display + Copy,
     {
         self.agent.rebuild_path(|_| true, now);
     }
@@ -2050,7 +2051,7 @@ where
         now: Instant,
     ) where
         TId: fmt::Display,
-        RId: Ord + fmt::Display + Copy,
+        RId: Ord + Hash + fmt::Display + Copy,
     {
         debug_assert!(
             self.agent.is_iceless(),
@@ -2241,7 +2242,7 @@ fn make_owned_transmit<RId>(
     now: Instant,
 ) -> Option<Transmit>
 where
-    RId: Ord + fmt::Display + Copy,
+    RId: Ord + Hash + fmt::Display + Copy,
 {
     let transmit = match socket {
         PeerSocket::PeerToPeer {

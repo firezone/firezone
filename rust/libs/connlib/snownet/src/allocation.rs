@@ -4,6 +4,7 @@ use crate::{
     node::Transmit,
 };
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
 use is::Candidate;
@@ -12,7 +13,7 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
@@ -89,7 +90,11 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
-    sent_requests: BTreeMap<TransactionId, (SocketAddr, Message<Attribute>, ExponentialBackoff)>,
+    sent_requests: HashMap<
+        TransactionId,
+        (SocketAddr, Message<Attribute>, ExponentialBackoff),
+        FastRandomState,
+    >,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -1555,7 +1560,7 @@ stun_codec::define_attribute_enums!(
 
 #[derive(Debug)]
 struct ChannelBindings {
-    inner: BTreeMap<u16, Channel>,
+    inner: HashMap<u16, Channel, FastRandomState>,
     next_channel: u16,
 }
 

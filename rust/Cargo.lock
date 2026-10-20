@@ -8945,6 +8945,7 @@ dependencies = [
  "dns-types",
  "doh-test-server",
  "eventloop-budget",
+ "fast-random-state",
  "futures",
  "futures-bounded",
  "http-client",

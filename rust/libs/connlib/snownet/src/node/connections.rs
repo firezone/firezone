@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -26,14 +26,14 @@ pub struct Connections<TId, RId> {
     slots: Vec<Option<Entry<TId, RId>>>,
     free_slots: Vec<usize>,
 
-    by_id: BTreeMap<TId, usize>,
+    by_id: HashMap<TId, usize, FastRandomState>,
     by_tunnel_id: HashMap<sanstun::TunnelId, usize, FastRandomState>,
-    by_local_ufrag: BTreeMap<String, usize>,
+    by_local_ufrag: HashMap<String, usize, FastRandomState>,
 
-    disconnected_ids: BTreeMap<TId, Instant>,
-    disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
+    disconnected_ids: HashMap<TId, Instant, FastRandomState>,
+    disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
     disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
-    disconnected_ufrags: BTreeMap<String, Instant>,
+    disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
 struct Entry<TId, RId> {
@@ -407,10 +407,6 @@ where
         self.len() > 0 && self.iter_established().all(|(_, c)| c.agent.is_iceless())
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "The earliest disconnect is the same in any iteration order."
-    )]
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(self.slots.iter_mut().flatten().flat_map(|entry| {
@@ -577,9 +573,13 @@ pub struct UnknownConnection {
 }
 
 impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
+    fn by_id<TId>(
+        id: TId,
+        disconnected_ids: &HashMap<TId, Instant, FastRandomState>,
+        now: Instant,
+    ) -> Self
     where
-        TId: fmt::Display + Eq + Ord,
+        TId: fmt::Display + Eq + Hash,
     {
         Self {
             id: id.to_string(),
@@ -606,7 +606,7 @@ impl UnknownConnection {
 
     fn by_public_key(
         key: [u8; 32],
-        disconnected_public_keys: &BTreeMap<[u8; 32], Instant>,
+        disconnected_public_keys: &HashMap<[u8; 32], Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
@@ -620,7 +620,7 @@ impl UnknownConnection {
 
     fn by_local_ufrag(
         key: &str,
-        disconnected_ufrags: &BTreeMap<String, Instant>,
+        disconnected_ufrags: &HashMap<String, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {

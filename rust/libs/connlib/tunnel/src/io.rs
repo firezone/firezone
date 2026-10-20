@@ -17,6 +17,7 @@ use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
 use crypto::CryptoWorkers;
 use dns_types::DoHUrl;
+use fast_random_state::FastRandomState;
 use futures::{
     FutureExt as _, TryFutureExt as _,
     channel::oneshot,
@@ -28,7 +29,7 @@ use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
@@ -48,8 +49,8 @@ pub struct Io {
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
 
-    udp_dns_server: BTreeMap<SocketAddr, l4_udp_dns_server::Server>,
-    tcp_dns_server: BTreeMap<SocketAddr, l4_tcp_dns_server::Server>,
+    udp_dns_server: HashMap<SocketAddr, l4_udp_dns_server::Server, FastRandomState>,
+    tcp_dns_server: HashMap<SocketAddr, l4_tcp_dns_server::Server, FastRandomState>,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -57,7 +58,7 @@ pub struct Io {
     dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
 
     bootstrap_dns_client: BootstrapDnsClient,
-    doh_clients: BTreeMap<DoHUrl, DohClient>,
+    doh_clients: HashMap<DoHUrl, DohClient, FastRandomState>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
     doh_tls_config: TlsConfig,
 

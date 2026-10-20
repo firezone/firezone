@@ -1,6 +1,8 @@
+use fast_random_state::FastRandomState;
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     fmt,
+    hash::Hash,
     time::{Duration, Instant},
 };
 
@@ -10,12 +12,12 @@ use std::{
 /// so a remote's candidates can overtake the message that creates the connection locally.
 /// They are held here until the connection is created or they expire.
 pub(crate) struct BufferedCandidates<TId> {
-    inner: BTreeMap<TId, Vec<(Instant, String)>>,
+    inner: HashMap<TId, Vec<(Instant, String)>, FastRandomState>,
 }
 
 impl<TId> BufferedCandidates<TId>
 where
-    TId: Copy + Ord + fmt::Display,
+    TId: Copy + Eq + Hash + fmt::Display,
 {
     const TIMEOUT: Duration = Duration::from_secs(10);
     const MAX_PER_CONNECTION: usize = 32;
@@ -77,7 +79,7 @@ where
         }
 
         self.inner
-            .extract_if(.., |_, candidates| candidates.is_empty())
+            .extract_if(|_, candidates| candidates.is_empty())
             .for_each(drop);
     }
 }
@@ -85,7 +87,7 @@ where
 impl<TId> Default for BufferedCandidates<TId> {
     fn default() -> Self {
         Self {
-            inner: BTreeMap::default(),
+            inner: HashMap::default(),
         }
     }
 }
