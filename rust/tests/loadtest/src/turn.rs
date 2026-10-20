@@ -703,8 +703,10 @@ async fn receive(
                     }
                 };
 
-                for datagram in batch.drain() {
-                    record_datagram(&mut stats, &counters, datagram.packet, payload_size);
+                for buffer in batch.drain() {
+                    for datagram in buffer.datagrams() {
+                        record_datagram(&mut stats, &counters, datagram.packet, payload_size);
+                    }
                 }
             }
         }
@@ -1139,12 +1141,14 @@ async fn recv_response(socket: &PerfUdpSocket, server: SocketAddr) -> Result<Vec
     loop {
         let mut batch = socket.recv_from().await?;
 
-        for datagram in batch.drain() {
-            if datagram.from == server {
-                return Ok(datagram.packet.to_vec());
-            }
+        for buffer in batch.drain() {
+            for datagram in buffer.datagrams() {
+                if datagram.from == server {
+                    return Ok(datagram.packet.to_vec());
+                }
 
-            tracing::trace!(from = %datagram.from, "Ignoring datagram from unexpected source");
+                tracing::trace!(from = %datagram.from, "Ignoring datagram from unexpected source");
+            }
         }
     }
 }
