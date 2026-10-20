@@ -356,7 +356,7 @@ config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
 config :portal, Portal.Analytics.PostHog,
   enabled: false,
-  endpoint: "https://e.firezone.dev/i/v0/e/",
+  host: nil,
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
 
@@ -654,7 +654,7 @@ config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
 
-config :portal, Portal.Mailer.FeedbackEmail, recipient: nil
+config :portal, Portal.Mailer.InternalEmail, recipient: nil
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,

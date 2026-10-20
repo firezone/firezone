@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
-use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
@@ -56,8 +56,19 @@ const BURST: usize = 10_000;
 
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
-/// Bounded so no UDP receive buffer overflows.
-const IN_FLIGHT: usize = 2_048;
+/// Deep enough that the event loop never drains the pipeline while a stand-in thread wakes up,
+/// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
+/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes.
+const IN_FLIGHT: usize = 4_096;
+
+/// How many packets the receiving side sends to its peer before a benchmark.
+///
+/// That is one transmit above socket-factory's promotion threshold, so the receiver's socket pool
+/// connects a flow socket to the peer as either side of a real tunnel does within its first
+/// transmits. On macOS, a connected socket receives much more cheaply than the catch-all socket:
+/// too cheaply for an unconnected receiver to keep up with the event loop over loopback.
+#[cfg(target_os = "macos")]
+const FLOW_SOCKET_PACKETS: usize = 16;
 
 /// How often the event loop may park per 1000 packets.
 ///
@@ -115,10 +126,24 @@ fn outbound(
     peer: Side,
     now: Instant,
 ) {
-    let (event_loop, _) = EventLoop::spawn(local.state, local.socket, now);
+    let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
-    let (peer, socket) = bind_peer(peer.socket);
-    peer.spawn({
+    let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut peer = peer;
+        let datagrams = peer
+            .state
+            .encapsulate(&peer.reads, FLOW_SOCKET_PACKETS, now, local.socket);
+        for datagram in datagrams {
+            runtime.block_on(socket.send(datagram)).unwrap();
+        }
+
+        assert_eq!(socket.flow_socket_count(), 1);
+    }
+
+    runtime.spawn({
         let arrivals = arrivals.clone();
 
         async move {
@@ -162,6 +187,17 @@ fn inbound(
         })
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        let mut received = 0;
+        while received < FLOW_SOCKET_PACKETS {
+            received += runtime.block_on(socket.recv_from()).unwrap().len();
+        }
+    }
 
     let inputs = |packets| {
         peer.state
@@ -260,8 +296,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status file of its thread.
-    status: PathBuf,
+    /// How often its thread has parked.
+    parks: Arc<AtomicU64>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -280,8 +316,16 @@ impl EventLoop {
             SocketAddr::V6(_) => Err(std::io::ErrorKind::Unsupported.into()),
         });
 
+        let parks = Arc::new(AtomicU64::new(0));
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
+            .on_thread_park({
+                let parks = parks.clone();
+
+                move || {
+                    parks.fetch_add(1, Ordering::Relaxed);
+                }
+            })
             .build()
             .unwrap();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
@@ -305,14 +349,9 @@ impl EventLoop {
             }
         };
 
-        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("event-loop".to_owned())
             .spawn(move || {
-                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
-                status_tx
-                    .send(Path::new("/proc").join(thread_self).join("status"))
-                    .unwrap();
                 // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
                 // are irrelevant here: a lost packet fails the benchmark.
                 runtime.block_on(poll_fn(|cx| {
@@ -330,12 +369,11 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let status = status_rx.recv().unwrap();
 
         (
             Self {
                 thread,
-                status,
+                parks,
                 tun_reads,
             },
             tun_writes,
@@ -344,14 +382,7 @@ impl EventLoop {
 
     /// Returns how often the event loop's thread has parked.
     fn parks(&self) -> u64 {
-        std::fs::read_to_string(&self.status)
-            .unwrap()
-            .lines()
-            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap()
+        self.parks.load(Ordering::Relaxed)
     }
 
     fn stop(self) {
@@ -366,8 +397,8 @@ struct FakeTun {
 }
 
 impl tun::Tun for FakeTun {
-    fn sender(&self) -> &tun::OutboundTx {
-        &self.writes
+    fn sender(&mut self) -> &mut tun::OutboundTx {
+        &mut self.writes
     }
 
     fn receiver(&mut self) -> &mut tun::InboundRx {
@@ -496,7 +527,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
 const CLIENT_SOCKET: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
 const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), 2222));
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2222));
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);

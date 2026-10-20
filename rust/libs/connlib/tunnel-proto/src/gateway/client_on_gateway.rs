@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
@@ -37,7 +37,7 @@ pub struct ClientOnGateway {
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
-    permanent_translations: BTreeMap<IpAddr, TranslationState>,
+    permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }
@@ -235,7 +235,7 @@ impl ClientOnGateway {
 
         for _ in self
             .permanent_translations
-            .extract_if(.., |_, state| state.resources.is_empty())
+            .extract_if(|_, state| state.resources.is_empty())
         {}
     }
 
@@ -628,7 +628,7 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        domains: HashMap<DomainName, BTreeSet<IpAddr>, FastRandomState>,
         filters: Vec<Filter>,
     },
     Internet,
@@ -638,7 +638,7 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                domains: BTreeMap::default(),
+                domains: HashMap::default(),
                 filters: r.filters,
                 address: r.address,
             },
@@ -730,7 +730,7 @@ impl routing_table::RouteEntry for RouteEntry {
 #[derive(Debug)]
 struct TranslationState {
     /// Which (DNS) resources we belong to.
-    resources: BTreeSet<ResourceId>,
+    resources: HashSet<ResourceId, FastRandomState>,
     /// The IP we have resolved for the domain.
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
@@ -740,7 +740,7 @@ struct TranslationState {
 impl TranslationState {
     fn new(domain: DomainName) -> Self {
         Self {
-            resources: BTreeSet::default(),
+            resources: HashSet::default(),
             resolved_ip: None,
             domain,
         }

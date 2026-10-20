@@ -426,9 +426,14 @@ defmodule Portal.Safe do
   end
 
   # Mutation operations
-  @spec insert(Scoped.t()) ::
+  @spec insert(Scoped.t() | Unscoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Scoped{} = scoped), do: insert(scoped, [])
+  def insert(%Unscoped{} = unscoped), do: insert(unscoped, [])
+
+  @spec insert(Scoped.t() | Unscoped.t() | Portal.Repo, Keyword.t() | Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}, opts) do
     changeset = %{changeset | action: :insert}
     schema = get_schema_module(changeset.data)
 
@@ -439,12 +444,12 @@ defmodule Portal.Safe do
         changeset
         |> put_change(:account_id, subject.account.id)
         |> apply_schema_changeset(schema)
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  def insert(%Scoped{subject: subject, queryable: struct}) when is_struct(struct) do
+  def insert(%Scoped{subject: subject, queryable: struct}, opts) when is_struct(struct) do
     schema = get_schema_module(struct)
 
     with :ok <- permit(:insert, schema, subject) do
@@ -452,28 +457,29 @@ defmodule Portal.Safe do
         emit_subject_message(subject)
 
         %{struct | account_id: subject.account.id}
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}, opts) do
     schema = get_schema_module(changeset.data)
 
     changeset
     |> apply_schema_changeset(schema)
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
 
-  def insert(%Unscoped{queryable: struct}) when is_struct(struct) do
+  def insert(%Unscoped{queryable: struct}, opts) when is_struct(struct) do
     struct
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
+
+  def insert(repo, changeset_or_struct) when repo == Repo, do: insert(repo, changeset_or_struct, [])
 
   @spec insert(Portal.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo do
+  def insert(repo, changeset_or_struct, opts) when repo == Repo do
     case changeset_or_struct do
       %Ecto.Changeset{} = changeset ->
         schema = get_schema_module(changeset.data)

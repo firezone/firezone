@@ -55,12 +55,12 @@ defmodule Portal.Accounts.DeletionTest do
 
   describe "send_deletion_feedback/3" do
     setup do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
       :ok
     end
 
     test "sends nothing when the feedback recipient is not configured" do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: nil)
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: nil)
       account = account_fixture()
       actor = admin_actor_fixture(account: account)
       subject = subject_fixture(account: account, actor: actor)

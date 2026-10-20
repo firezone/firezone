@@ -10,6 +10,7 @@ cd "${APPLE_DIR}"
 
 # Ad-hoc signing with the entitlements dropped: the mocked app touches none of
 # the facilities they gate, and CI has no signing certificate.
+# The build hash is pinned so the screenshots only change when the UI does.
 xcodebuild build-for-testing \
     -project Firezone.xcodeproj \
     -scheme FirezoneUITests \
@@ -24,4 +25,5 @@ xcodebuild build-for-testing \
     CODE_SIGN_ENTITLEMENTS= \
     ENABLE_APP_SANDBOX=NO \
     ENABLE_HARDENED_RUNTIME=NO \
-    ONLY_ACTIVE_ARCH=YES
+    ONLY_ACTIVE_ARCH=YES \
+    GIT_SHA=0000000000000000000000000000000000000000

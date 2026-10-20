@@ -54,6 +54,7 @@ defmodule PortalAPI.Schemas.Account do
                :lock_enabled_at,
                :metadata,
                :meters,
+               :outdated_gateway_last_sent_at,
                :scheduled_deletion_at,
                :seats_limit_exceeded,
                :seats_warning_last_sent_at,

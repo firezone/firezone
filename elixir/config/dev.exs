@@ -98,6 +98,22 @@ posture_sync_dev_crontab =
       ]
   end
 
+# Log PostHog events instead of sending them, e.g. POSTHOG_DEV_SINK=true.
+posthog_dev_sink? = System.get_env("POSTHOG_DEV_SINK") in ~w[1 true]
+
+if posthog_dev_sink? do
+  config :portal, Portal.Analytics.PostHog,
+    enabled: true,
+    host: "https://posthog.invalid",
+    project_api_key: "phc_dev",
+    req_opts: [plug: Portal.Dev.PostHogSink, retry: false]
+end
+
+product_analytics_dev_crontab =
+  if posthog_dev_sink?,
+    do: [{worker_dev_schedule, Portal.Workers.ProductAnalyticsSnapshot}],
+    else: []
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
@@ -155,7 +171,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
        {worker_dev_schedule, Portal.Workers.PartitionLogTables},
        {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
-     ] ++ posture_sync_dev_crontab}
+     ] ++ posture_sync_dev_crontab ++ product_analytics_dev_crontab}
   ],
   queues: [
     default: 10,

@@ -1,5 +1,7 @@
 use connlib_model::IceCandidate;
-use std::collections::{BTreeMap, BTreeSet};
+use fast_random_state::FastRandomState;
+use std::collections::{BTreeSet, HashMap};
+use std::hash::Hash;
 
 /// Tracks whether we currently have a live connection to the portal.
 ///
@@ -18,22 +20,22 @@ pub(crate) enum PortalConnection<Id> {
 /// Candidate changes held back per connection while the portal is disconnected.
 pub(crate) struct HeldCandidates<Id> {
     /// New candidates gathered while disconnected, to signal as added on reconnect.
-    pub(crate) added: BTreeMap<Id, BTreeSet<IceCandidate>>,
+    pub(crate) added: HashMap<Id, BTreeSet<IceCandidate>, FastRandomState>,
     /// Previously-signalled candidates invalidated while disconnected, to signal as
     /// removed on reconnect.
-    pub(crate) removed: BTreeMap<Id, BTreeSet<IceCandidate>>,
+    pub(crate) removed: HashMap<Id, BTreeSet<IceCandidate>, FastRandomState>,
 }
 
 impl<Id> Default for HeldCandidates<Id> {
     fn default() -> Self {
         Self {
-            added: BTreeMap::new(),
-            removed: BTreeMap::new(),
+            added: HashMap::default(),
+            removed: HashMap::default(),
         }
     }
 }
 
-impl<Id: Ord> PortalConnection<Id> {
+impl<Id: Eq + Hash> PortalConnection<Id> {
     pub(crate) fn is_connected(&self) -> bool {
         matches!(self, Self::Connected)
     }
