@@ -56,8 +56,10 @@ const BURST: usize = 10_000;
 
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
-/// Bounded so no UDP receive buffer overflows.
-const IN_FLIGHT: usize = 2_048;
+/// Deep enough that the event loop never drains the pipeline while a stand-in thread wakes up,
+/// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
+/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes.
+const IN_FLIGHT: usize = 4_096;
 
 /// How many packets the receiving side sends to its peer before a benchmark.
 ///
