@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -30,12 +30,12 @@ pub struct Connections<TId, RId> {
     closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
     established_by_wireguard_session_index: HashMap<usize, TId, FastRandomState>,
-    established_by_local_ufrag: BTreeMap<String, TId>,
+    established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
 
-    disconnected_ids: BTreeMap<TId, Instant>,
-    disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
+    disconnected_ids: HashMap<TId, Instant, FastRandomState>,
+    disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
     disconnected_session_indices: HashMap<usize, Instant, FastRandomState>,
-    disconnected_ufrags: BTreeMap<String, Instant>,
+    disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -468,9 +468,13 @@ pub struct UnknownConnection {
 }
 
 impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
+    fn by_id<TId>(
+        id: TId,
+        disconnected_ids: &HashMap<TId, Instant, FastRandomState>,
+        now: Instant,
+    ) -> Self
     where
-        TId: fmt::Display + Eq + Ord,
+        TId: fmt::Display + Eq + Hash,
     {
         Self {
             id: id.to_string(),
@@ -497,7 +501,7 @@ impl UnknownConnection {
 
     fn by_public_key(
         key: [u8; 32],
-        disconnected_public_keys: &BTreeMap<[u8; 32], Instant>,
+        disconnected_public_keys: &HashMap<[u8; 32], Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
@@ -511,7 +515,7 @@ impl UnknownConnection {
 
     fn by_local_ufrag(
         key: &str,
-        disconnected_ufrags: &BTreeMap<String, Instant>,
+        disconnected_ufrags: &HashMap<String, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
