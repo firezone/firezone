@@ -69,7 +69,7 @@ defmodule Portal.Analytics.AccountSnapshot do
         %{
           "event" => "$groupidentify",
           "timestamp" => timestamp,
-          "uuid" => event_uuid([account.id, "$groupidentify", date]),
+          "uuid" => PostHog.event_uuid([account.id, "$groupidentify", date]),
           "properties" => %{
             "distinct_id" => account.id,
             "$process_person_profile" => false,
@@ -81,7 +81,7 @@ defmodule Portal.Analytics.AccountSnapshot do
         %{
           "event" => @snapshot_event,
           "timestamp" => timestamp,
-          "uuid" => event_uuid([account.id, @snapshot_event, date]),
+          "uuid" => PostHog.event_uuid([account.id, @snapshot_event, date]),
           "properties" =>
             Map.merge(properties, %{
               "distinct_id" => account.id,
@@ -213,15 +213,6 @@ defmodule Portal.Analytics.AccountSnapshot do
     |> Enum.filter(fn {_feature, enabled} -> enabled == true end)
     |> Enum.map(fn {feature, _enabled} -> Atom.to_string(feature) end)
     |> Enum.sort()
-  end
-
-  # Deterministic per account and day, so PostHog drops the duplicates when a
-  # failed run is retried.
-  defp event_uuid(parts) do
-    <<a::48, _version::4, b::12, _variant::2, c::62, _rest::binary>> =
-      :crypto.hash(:sha256, Enum.join(parts, ":"))
-
-    Ecto.UUID.load!(<<a::48, 8::4, b::12, 2::2, c::62>>)
   end
 
   defmodule Database do
