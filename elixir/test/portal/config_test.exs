@@ -219,6 +219,28 @@ defmodule Portal.ConfigTest do
              }) == project_api_key
     end
 
+    test "returns nil for a missing or blank PostHog host" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+               "POSTHOG_HOST" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured PostHog host" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+               "POSTHOG_HOST" => "https://posthog.example.com"
+             }) == "https://posthog.example.com"
+    end
+
+    test "rejects a non-HTTPS PostHog host" do
+      assert_raise RuntimeError, ~r/only https schemes are supported/, fn ->
+        env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+          "POSTHOG_HOST" => "http://posthog.example.com"
+        })
+      end
+    end
+
     test "returns config value" do
       assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}

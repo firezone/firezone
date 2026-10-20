@@ -6,7 +6,7 @@ defmodule Portal.Analytics.PostHogTest do
   setup do
     Portal.Config.put_env_override(:portal, PostHog,
       enabled: true,
-      endpoint: "https://posthog.test/i/v0/e/",
+      host: "https://posthog.test",
       project_api_key: "phc_test",
       req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
     )
@@ -31,12 +31,48 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert_receive {:posthog_request, conn, body}
     assert conn.method == "POST"
+    assert conn.host == "posthog.test"
     assert conn.request_path == "/i/v0/e/"
     assert body["api_key"] == "phc_test"
     assert body["event"] == "Portal Attribution Received"
     assert body["properties"]["distinct_id"] == "anonymous-id"
     assert body["properties"]["website_path"] == "/pricing"
     assert body["properties"]["$process_person_profile"] == false
+  end
+
+  test "preserves a path prefix on the configured host" do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: true,
+      host: "https://proxy.test/posthog/",
+      project_api_key: "phc_test",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    test_pid = self()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      send(test_pid, {:posthog_request, conn})
+      Req.Test.json(conn, %{"status" => "ok"})
+    end)
+
+    assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+
+    assert_receive {:posthog_request, conn}
+    assert conn.host == "proxy.test"
+    assert conn.request_path == "/posthog/i/v0/e/"
+  end
+
+  test "does not send events when disabled" do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: false,
+      host: nil,
+      project_api_key: nil,
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("unexpected PostHog request") end)
+
+    assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
   end
 
   test "builds an identify event that aliases the website visitor to the actor" do
