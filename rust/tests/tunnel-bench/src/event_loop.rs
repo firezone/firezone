@@ -88,6 +88,7 @@ criterion::criterion_group! {
 }
 
 fn bench(c: &mut Criterion) {
+    prioritize_stand_in();
     let mut group = c.benchmark_group("event_loop");
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
 
@@ -180,6 +181,7 @@ fn inbound(
             let arrivals = arrivals.clone();
 
             move || {
+                prioritize_stand_in();
                 while let Some(batch) = tun_writes.blocking_recv() {
                     arrivals.add(batch.len());
                 }
@@ -489,6 +491,18 @@ fn measure<T>(
     );
 }
 
+/// Raises the scheduling priority of the calling thread on macOS.
+///
+/// The stand-in threads take the place of a kernel TUN device and a remote peer, neither of which
+/// is subject to macOS' quality-of-service scheduling. At the default QoS class, their wake-ups
+/// are delayed enough to starve the event loop between hand-offs.
+fn prioritize_stand_in() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
+    }
+}
+
 /// Returns `count` copies of `packet` in batches.
 fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
     let mut batches = Vec::<PacketBatch>::new();
@@ -511,6 +525,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .thread_name("peer")
+        .on_thread_start(prioritize_stand_in)
         .enable_all()
         .build()
         .unwrap();
