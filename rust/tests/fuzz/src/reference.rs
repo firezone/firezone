@@ -301,7 +301,7 @@ impl ReferenceState {
                     }
                     ExpectedOutcome::Rejected {
                         by: RejectionRemote::Gateway(_),
-                        response: RejectionResponse::Unreachable,
+                        ..
                     } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused ICMP route must complete a round trip")
@@ -361,7 +361,7 @@ impl ReferenceState {
                     }
                     ExpectedOutcome::Rejected {
                         by: RejectionRemote::Gateway(_),
-                        response: RejectionResponse::Unreachable,
+                        ..
                     } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused UDP route must complete a round trip")
@@ -783,6 +783,27 @@ impl ReferenceState {
                 ExpectedOutcome::Rejected {
                     by: RejectionRemote::Gateway(gateway),
                     response: RejectionResponse::Unreachable,
+                }
+            }
+            // The Gateway filters every packet by the CIDR routes it still authorizes, so a
+            // flow that only another resource's filters let through is rejected once that
+            // resource is gone.
+            (Route::Resource { resource, gateway }, dst)
+                if !self.clients[&origin]
+                    .inner()
+                    .strict_resource_filter_allows(resource, request.protocol())
+                    && !dst.ip_addr().is_some_and(|ip| {
+                        portal.gateway_cidr_authorization_allows(
+                            origin,
+                            gateway,
+                            ip,
+                            request.protocol(),
+                        )
+                    }) =>
+            {
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Prohibited,
                 }
             }
             _ => ExpectedOutcome::RoundTripCompleted(route),
