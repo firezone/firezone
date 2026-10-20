@@ -51,12 +51,29 @@ for ((sample = 0; sample < samples; sample++)); do
         cp "${inputs[index]}" "$temporary/inputs/$index-$copy"
     done
 done
+# One showmap per core; each forks its own server from the same binary.
+shards="$(nproc)"
+shard=0
+for input in "$temporary/inputs"/*; do
+    mkdir -p "$temporary/shards/$((shard % shards))"
+    ln "$input" "$temporary/shards/$((shard % shards))/"
+    shard=$((shard + 1))
+done
 
 for run in 1 2; do
-    # -Z leaves an empty map for any crash or timeout, including an earlier
-    # failure that showmap's final-input exit status would otherwise miss.
-    AFL_QUIET=1 cargo afl showmap -Z -i "$temporary/inputs" \
-        -o "$temporary/maps-$run" -t 10000 -m none -- "$afl_binary" "$target"
+    pids=()
+    for shard in "$temporary"/shards/*; do
+        # -Z leaves an empty map for any crash or timeout, including an earlier
+        # failure that showmap's final-input exit status would otherwise miss.
+        AFL_QUIET=1 cargo afl showmap -Z -i "$shard" -o "$temporary/maps-$run-${shard##*/}" \
+            -t 10000 -m none -- "$afl_binary" "$target" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid"
+    done
+    mkdir "$temporary/maps-$run"
+    mv "$temporary/maps-$run-"*/* "$temporary/maps-$run/"
     if [ "$run" -eq 1 ] && [ -n "$ijon_offset" ] &&
         ! awk -F: -v offset="$ijon_offset" '$1 >= offset { found = 1 } END { exit !found }' \
             "$temporary/maps-$run"/*; then
