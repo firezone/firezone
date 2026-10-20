@@ -6,13 +6,13 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-fast-random-state = { workspace = true }
 bnum = { workspace = true }
 boringtun = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
+fast-random-state = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }
