@@ -73,6 +73,39 @@ defmodule Portal.Analytics.PostHogTest do
     Req.Test.stub(__MODULE__, fn _conn -> flunk("unexpected PostHog request") end)
 
     assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+    assert :ok = PostHog.batch([%{"event" => "Account Snapshot", "properties" => %{}}])
+  end
+
+  test "posts batches to the configured batch endpoint" do
+    test_pid = self()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:posthog_request, conn, JSON.decode!(body)})
+      Req.Test.json(conn, %{"status" => "Ok"})
+    end)
+
+    event = %{"event" => "Account Snapshot", "properties" => %{"distinct_id" => "account-id"}}
+
+    assert :ok = PostHog.batch([event])
+
+    assert_receive {:posthog_request, conn, body}
+    assert conn.host == "posthog.test"
+    assert conn.request_path == "/batch/"
+    assert body == %{"api_key" => "phc_test", "batch" => [event]}
+  end
+
+  test "does not send empty batches" do
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("unexpected PostHog request") end)
+
+    assert :ok = PostHog.batch([])
+  end
+
+  test "returns an error when PostHog rejects a batch" do
+    Req.Test.expect(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 400, "") end)
+
+    assert {:error, {:http_status, 400}} =
+             PostHog.batch([%{"event" => "Account Snapshot", "properties" => %{}}])
   end
 
   test "builds an identify event that aliases the website visitor to the actor" do

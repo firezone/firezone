@@ -402,6 +402,18 @@ if config_env() == :prod do
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
   ]
 
+  posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
+  posthog_host = env_var_to_config(:posthog_host)
+  posthog_enabled? = not is_nil(posthog_project_api_key) and not is_nil(posthog_host)
+
+  oban_crontab =
+    if posthog_enabled? do
+      # Send the product analytics snapshot daily
+      oban_crontab ++ [{"0 6 * * *", Portal.Workers.ProductAnalyticsSnapshot}]
+    else
+      oban_crontab
+    end
+
   config :portal, Oban,
     notifier: Oban.Notifiers.PG,
     peer: Oban.Peers.Database,
@@ -754,11 +766,8 @@ if config_env() == :prod do
     from_email: env_var_to_config(:sign_up_follow_up_from_email),
     bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
 
-  posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
-  posthog_host = env_var_to_config(:posthog_host)
-
   config :portal, Portal.Analytics.PostHog,
-    enabled: not is_nil(posthog_project_api_key) and not is_nil(posthog_host),
+    enabled: posthog_enabled?,
     host: posthog_host,
     project_api_key: posthog_project_api_key
 
