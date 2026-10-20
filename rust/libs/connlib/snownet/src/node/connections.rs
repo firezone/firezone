@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -7,6 +7,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
 
@@ -23,17 +24,17 @@ use crate::{
 const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
-    established: BTreeMap<TId, Connection<RId>>,
+    established: HashMap<TId, Connection<RId>, FastRandomState>,
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
-    closing: BTreeMap<TId, (Connection<RId>, Goodbye)>,
+    closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
-    established_by_tunnel_id: HashMap<sanstun::TunnelId, TId>,
-    established_by_local_ufrag: BTreeMap<String, TId>,
+    established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
+    established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
 
-    disconnected_ids: BTreeMap<TId, Instant>,
-    disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant>,
-    disconnected_ufrags: BTreeMap<String, Instant>,
+    disconnected_ids: HashMap<TId, Instant, FastRandomState>,
+    disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
+    disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
+    disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -366,10 +367,6 @@ where
         !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "The earliest disconnect is the same in any iteration order."
-    )]
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
@@ -425,7 +422,7 @@ where
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
-        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
+        for (id, conn) in self.established.extract_if(|_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
             for (tunnel_id, _) in self.established_by_tunnel_id.extract_if(|_, c| *c == id) {
@@ -465,9 +462,13 @@ pub struct UnknownConnection {
 }
 
 impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
+    fn by_id<TId>(
+        id: TId,
+        disconnected_ids: &HashMap<TId, Instant, FastRandomState>,
+        now: Instant,
+    ) -> Self
     where
-        TId: fmt::Display + Eq + Ord,
+        TId: fmt::Display + Eq + Hash,
     {
         Self {
             id: id.to_string(),
@@ -480,7 +481,7 @@ impl UnknownConnection {
 
     fn by_tunnel_id(
         id: sanstun::TunnelId,
-        disconnected_tunnel_ids: &HashMap<sanstun::TunnelId, Instant>,
+        disconnected_tunnel_ids: &HashMap<sanstun::TunnelId, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
@@ -494,7 +495,7 @@ impl UnknownConnection {
 
     fn by_public_key(
         key: [u8; 32],
-        disconnected_public_keys: &BTreeMap<[u8; 32], Instant>,
+        disconnected_public_keys: &HashMap<[u8; 32], Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
@@ -508,7 +509,7 @@ impl UnknownConnection {
 
     fn by_local_ufrag(
         key: &str,
-        disconnected_ufrags: &BTreeMap<String, Instant>,
+        disconnected_ufrags: &HashMap<String, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {

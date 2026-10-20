@@ -13,6 +13,9 @@ defmodule Portal.Application do
     # Attach Oban Sentry reporter
     Portal.Telemetry.Reporter.Oban.attach()
 
+    # Send portal page views and actions to PostHog (a no-op unless it's configured)
+    :ok = PortalWeb.Analytics.attach()
+
     # OpenTelemetry setup
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])

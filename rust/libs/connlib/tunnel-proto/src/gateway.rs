@@ -15,10 +15,11 @@ use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kin
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -487,8 +488,10 @@ impl GatewayState {
     }
 
     fn drain_node_events(&mut self) {
-        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
-        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
+        let mut added_ice_candidates =
+            HashMap::<ClientId, BTreeSet<IceCandidate>, FastRandomState>::default();
+        let mut removed_ice_candidates =
+            HashMap::<ClientId, BTreeSet<IceCandidate>, FastRandomState>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
