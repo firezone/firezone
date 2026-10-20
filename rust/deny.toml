@@ -108,8 +108,11 @@ ignore = [
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
 
-    # `basic-toml` is unmaintained; it only comes in via `uniffi`'s bindings generator.
+    # `basic-toml` only parses askama's config at build time, via `uniffi_bindgen`.
     "RUSTSEC-2026-0374",
+
+    # `webpki-roots` 0.26 is a shim over the patched 1.x; `tokio-tungstenite` (via `axum`) still depends on it.
+    "RUSTSEC-2026-0381",
 
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
