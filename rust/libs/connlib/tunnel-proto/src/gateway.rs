@@ -13,7 +13,6 @@ use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
-use boringtun::x25519::{self, PublicKey};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
@@ -25,6 +24,7 @@ use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
 
@@ -99,7 +99,7 @@ impl GatewayState {
         self.tun_ip_config
     }
 
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> sanstun::PublicKey {
         self.node.public_key()
     }
 
@@ -316,7 +316,7 @@ impl GatewayState {
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
-            x25519::StaticSecret::from(client.preshared_key.expose_secret().0),
+            sanstun::StaticSecret::from(Zeroizing::new(client.preshared_key.expose_secret().0)),
             gateway_ice.into(),
             client_ice.into(),
             IceRole::Controlled,

@@ -5,7 +5,6 @@
 use std::ops::ControlFlow;
 use std::time::Instant;
 
-use boringtun::noise::Tunn;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
@@ -180,19 +179,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_network<'b>(
-        &mut self,
-        tunnel: &mut Tunn,
-        bytes: &'b [u8],
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) -> ControlFlow<(), &'b [u8]> {
-        match self {
-            Self::Ice(_) => ControlFlow::Continue(bytes),
-            Self::Path(agent) => agent.handle_inbound_network(tunnel, bytes, path, now),
-        }
-    }
-
     pub(crate) fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
@@ -240,21 +226,9 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        if let Self::Path(path) = self {
-            path.handle_outbound(bytes, now);
-        }
-    }
-
     pub(crate) fn confirm_session(&mut self, now: Instant) {
         if let Self::Path(path) = self {
             path.confirm_session(now);
-        }
-    }
-
-    pub(crate) fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, now);
         }
     }
 

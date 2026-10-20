@@ -1655,7 +1655,7 @@ pub(crate) struct PrivateKey(pub [u8; 32]);
 
 impl From<PrivateKey> for StaticSecret {
     fn from(key: PrivateKey) -> Self {
-        StaticSecret::from(key.0)
+        StaticSecret::from(zeroize::Zeroizing::new(key.0))
     }
 }
 

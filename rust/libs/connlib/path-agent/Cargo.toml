@@ -5,6 +5,9 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-boringtun = { workspace = true }
 ip-packet = { workspace = true }
+sanstun = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+zeroize = { workspace = true }

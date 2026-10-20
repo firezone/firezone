@@ -7,7 +7,6 @@ use std::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use boringtun::noise::Index;
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
@@ -29,12 +28,12 @@ pub struct Connections<TId, RId> {
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
-    established_by_wireguard_session_index: HashMap<usize, TId, FastRandomState>,
+    established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
 
     disconnected_ids: HashMap<TId, Instant, FastRandomState>,
     disconnected_public_keys: HashMap<[u8; 32], Instant, FastRandomState>,
-    disconnected_session_indices: HashMap<usize, Instant, FastRandomState>,
+    disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
     disconnected_ufrags: HashMap<String, Instant, FastRandomState>,
 }
 
@@ -43,11 +42,11 @@ impl<TId, RId> Default for Connections<TId, RId> {
         Self {
             established: Default::default(),
             closing: Default::default(),
-            established_by_wireguard_session_index: Default::default(),
+            established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
-            disconnected_session_indices: Default::default(),
+            disconnected_tunnel_ids: Default::default(),
             disconnected_ufrags: Default::default(),
         }
     }
@@ -66,8 +65,8 @@ where
             .remove(id)
             .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
 
-        self.established_by_wireguard_session_index
-            .remove(&connection.index.global());
+        self.established_by_tunnel_id
+            .remove(&connection.tunnel.id());
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.established_by_local_ufrag.remove(ufrag);
         }
@@ -75,8 +74,8 @@ where
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
-        self.disconnected_session_indices
-            .insert(connection.index.global(), now);
+        self.disconnected_tunnel_ids
+            .insert(connection.tunnel.id(), now);
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.disconnected_ufrags.insert(ufrag.to_owned(), now);
         }
@@ -143,7 +142,7 @@ where
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
             if now >= goodbye.deadline {
-                tracing::debug!(id = %cid, state = %connection.state, index = %connection.index.global(), "Connection closed proactively (failed to send goodbye in time)");
+                tracing::debug!(id = %cid, state = %connection.state, index = %connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
                 connection.state = ConnectionState::Failed;
                 continue;
             }
@@ -207,17 +206,15 @@ where
     pub(crate) fn insert_established(
         &mut self,
         id: TId,
-        index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
+        let tunnel_id = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
         let existing = self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
-        self.established_by_wireguard_session_index
-            .retain(|_, c| c != &id);
-        self.established_by_wireguard_session_index
-            .insert(index.global(), id);
+        self.established_by_tunnel_id.retain(|_, c| c != &id);
+        self.established_by_tunnel_id.insert(tunnel_id, id);
         if let Some(ufrag) = local_ufrag {
             self.established_by_local_ufrag.insert(ufrag, id);
         }
@@ -251,16 +248,16 @@ where
         self.established.get(id)
     }
 
-    pub(crate) fn get_established_mut_session_index(
+    pub(crate) fn get_established_mut_by_tunnel_id(
         &mut self,
-        index: Index,
+        tunnel_id: sanstun::TunnelId,
         now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let id = *self
-            .established_by_wireguard_session_index
-            .get(&index.global())
+            .established_by_tunnel_id
+            .get(&tunnel_id)
             .with_context(|| {
-                UnknownConnection::by_index(index.global(), &self.disconnected_session_indices, now)
+                UnknownConnection::by_tunnel_id(tunnel_id, &self.disconnected_tunnel_ids, now)
             })?;
 
         let connection = self.get_mut_including_closing(&id, now)?;
@@ -359,7 +356,7 @@ where
 
     pub(crate) fn clear(&mut self) {
         self.established.clear();
-        self.established_by_wireguard_session_index.clear();
+        self.established_by_tunnel_id.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
@@ -409,12 +406,12 @@ where
                     .min_by_key(|(t, _)| *t),
             )
             .chain(
-                self.disconnected_session_indices
+                self.disconnected_tunnel_ids
                     .values()
                     .map(|t| {
                         (
                             *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected session indices",
+                            "recently disconnected tunnel ids",
                         )
                     })
                     .min_by_key(|(t, _)| *t),
@@ -428,11 +425,8 @@ where
         for (id, conn) in self.established.extract_if(|_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
-            for (index, _) in self
-                .established_by_wireguard_session_index
-                .extract_if(|_, c| *c == id)
-            {
-                self.disconnected_session_indices.insert(index, now);
+            for (tunnel_id, _) in self.established_by_tunnel_id.extract_if(|_, c| *c == id) {
+                self.disconnected_tunnel_ids.insert(tunnel_id, now);
             }
             self.disconnected_public_keys
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
@@ -447,7 +441,7 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_public_keys
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_session_indices
+        self.disconnected_tunnel_ids
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
@@ -485,15 +479,15 @@ impl UnknownConnection {
         }
     }
 
-    fn by_index(
-        id: usize,
-        disconnected_indices: &HashMap<usize, Instant, FastRandomState>,
+    fn by_tunnel_id(
+        id: sanstun::TunnelId,
+        disconnected_tunnel_ids: &HashMap<sanstun::TunnelId, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
             id: id.to_string(),
-            kind: "index",
-            disconnected_for: disconnected_indices
+            kind: "tunnel id",
+            disconnected_for: disconnected_tunnel_ids
                 .get(&id)
                 .map(|disconnected| now.duration_since(*disconnected)),
         }
@@ -561,13 +555,10 @@ fn into_u256(key: [u8; 32]) -> bnum::Uint<32> {
 
 #[cfg(test)]
 mod tests {
-    use boringtun::{
-        noise::Tunn,
-        x25519::{PublicKey, StaticSecret},
-    };
     use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
+    use zeroize::Zeroizing;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
 
@@ -640,8 +631,8 @@ mod tests {
         let mut allocations: Allocations<u32> = Allocations::for_test();
         let now = Instant::now();
 
-        let conn = new_connection(12345, Some(1), [1u8; 32]);
-        connections.insert_established(1, conn.index, conn);
+        let conn = new_connection(Some(1), [1u8; 32]);
+        connections.insert_established(1, conn);
 
         connections.clear_relays(std::iter::once(1u32));
 
@@ -661,9 +652,9 @@ mod tests {
         let mut allocations: Allocations<u32> = Allocations::for_test();
         let now = Instant::now();
 
-        let mut conn = new_connection(12345, Some(1), [1u8; 32]);
+        let mut conn = new_connection(Some(1), [1u8; 32]);
         conn.agent = crate::agent::Agent::path();
-        connections.insert_established(1, conn.index, conn);
+        connections.insert_established(1, conn);
 
         connections.reset_for_roam(now);
 
@@ -709,12 +700,14 @@ mod tests {
         );
     }
 
-    fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
-        let conn = new_connection(12345, Some(0), [1u8; 32]);
+    fn insert_dummy_connection(
+        connections: &mut Connections<u32, u32>,
+    ) -> (u32, sanstun::TunnelId, sanstun::PublicKey) {
+        let conn = new_connection(Some(0), [1u8; 32]);
         let id = 1;
-        let idx = conn.index;
+        let idx = conn.tunnel.id();
         let key = conn.tunnel.remote_static_public();
-        connections.insert_established(id, conn.index, conn);
+        connections.insert_established(id, conn);
 
         (id, idx, key)
     }
@@ -723,8 +716,8 @@ mod tests {
     fn assert_disconnected(
         connections: &mut Connections<u32, u32>,
         id: u32,
-        idx: Index,
-        key: PublicKey,
+        idx: sanstun::TunnelId,
+        key: sanstun::PublicKey,
         now: Instant,
         is_recently_disconnected: bool,
     ) {
@@ -739,7 +732,7 @@ mod tests {
 
         // Get by index
         let err = connections
-            .get_established_mut_session_index(idx, now)
+            .get_established_mut_by_tunnel_id(idx, now)
             .unwrap_err()
             .downcast::<UnknownConnection>()
             .unwrap();
@@ -756,26 +749,21 @@ mod tests {
         assert_eq!(err.recently_disconnected(), is_recently_disconnected);
     }
 
-    fn new_connection(idx: u32, relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {
-        let private = StaticSecret::random_from_rng(&mut rand::rng());
-        let new_local = Index::new_local(idx);
+    fn new_connection(relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {
+        let tunnel =
+            sanstun::Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
+                .new_tunnel(
+                    sanstun::PublicKey::from(key),
+                    sanstun::TunnelConfig::default(),
+                    Instant::now(),
+                )
+                .unwrap();
 
         Connection {
             agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
-            index: new_local,
-            tunnel: Tunn::new_at(
-                private,
-                PublicKey::from(key),
-                None,
-                None,
-                new_local,
-                None,
-                0,
-                Instant::now(),
-                Instant::now(),
-                Duration::ZERO,
-            ),
-            remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            tunnel,
+            preshared_key: sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+            remote_pub_key: sanstun::PublicKey::from(rand::random::<[u8; 32]>()),
             last_proactive_handshake_sent_at: None,
             relay,
             state: crate::node::ConnectionState::Connecting {
@@ -785,7 +773,6 @@ mod tests {
             intent_sent_at: Instant::now(),
             candidate_timeout: None,
             first_handshake_completed_at: None,
-            buffer: Default::default(),
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),

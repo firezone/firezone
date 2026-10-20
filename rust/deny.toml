@@ -249,20 +249,21 @@ deny = [
 skip = [
     "base64",
     "bitflags",
-    "block-buffer", # boringtun 0.7 pulls the RC crypto stack (curve25519-dalek 5.0-rc, blake2 0.11-rc) on RustCrypto's 0.12 `block-buffer`; the rest of the tree is on 0.10.
+    "block-buffer", # sanstun pulls RustCrypto's newer crypto stack (curve25519-dalek 5, blake2 0.11, chacha20 0.10) on 0.12 `block-buffer`; the rest of the tree is on 0.10.
     "cargo-platform",
     "cargo_metadata",
-    "chacha20", # boringtun pulls chacha20 0.9 via chacha20poly1305 0.10.1; hickory 0.26 pulls 0.10 via rand 0.10.
+    "cipher", # See `block-buffer`: chacha20 0.10 uses 0.5; aes and cbc (via dbus-secret-service) are on 0.4.
     "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
-    "cpufeatures", # Same root cause as `chacha20` — pulled in via chacha20 0.10 from hickory 0.26.
-    "crypto-common", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.2 vs 0.1 elsewhere).
-    "digest", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.11 vs 0.10 elsewhere).
+    "cpufeatures", # See `block-buffer`: chacha20 0.10, sha2 0.11 and curve25519-dalek 5 use 0.3; aes and sha1 are on 0.2.
+    "crypto-common", # See `block-buffer`: pulled by sanstun's crypto crates (0.2 vs 0.1 elsewhere).
+    "digest", # See `block-buffer`: pulled by sanstun's crypto crates (0.11 vs 0.10 elsewhere).
     "dirs", # tauri 2.12 is on dirs 7; native-dialog 0.9 and the workspace are still on 6.
     "getrandom",
     "hashbrown",
     "heck",
-    "hmac", # See `block-buffer`: pulled by boringtun 0.7's RC crypto crates (0.13 vs 0.12 elsewhere).
+    "hmac", # See `block-buffer`: pulled by sanstun's crypto crates (0.13 vs 0.12 elsewhere).
     "indexmap",
+    "inout", # See `block-buffer`: cipher 0.5 (chacha20 0.10) uses 0.2; cipher 0.4 (aes, cbc) uses 0.1.
     "itertools", # ingot-macros 0.2 uses itertools 0.15; our crates are on 0.14. Build-time only, as ingot-macros is a proc-macro.
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
