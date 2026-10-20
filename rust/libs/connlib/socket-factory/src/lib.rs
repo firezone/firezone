@@ -983,12 +983,10 @@ impl RecvBuffers {
 /// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
 /// which yields each buffer as a [`DatagramIn`] that segments GRO / URO-coalesced
 /// datagrams apart again.
-///
-/// The batch is generic over the pool of its buffers to allow testing with buffers that are not kernel-filled.
 #[derive(derive_more::Debug)]
-pub struct DatagramBatch<P: Pool = UdpRecvBuffers> {
+pub struct DatagramBatch {
     #[debug(skip)]
-    buffers: Buffer<P>,
+    buffers: Buffer<UdpRecvBuffers>,
     #[debug(skip)]
     metas: Buffer<UdpRecvMetas>,
 
@@ -996,13 +994,9 @@ pub struct DatagramBatch<P: Pool = UdpRecvBuffers> {
     num_packets: usize,
 }
 
-impl<P, B> DatagramBatch<P>
-where
-    P: Pool<Buf = VecBuf<B>>,
-    B: 'static,
-{
+impl DatagramBatch {
     pub(crate) fn new(
-        mut buffers: Buffer<P>,
+        mut buffers: Buffer<UdpRecvBuffers>,
         mut metas: Buffer<UdpRecvMetas>,
         port: u16,
         len: usize,
@@ -1037,10 +1031,7 @@ where
     /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// Datagrams with nonsensical metadata are dropped.
-    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<B>> + '_
-    where
-        B: Deref<Target = Vec<u8>>,
-    {
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         let port = self.port;
         self.num_packets = 0;
 
@@ -1182,16 +1173,11 @@ mod tests {
 
     use super::*;
 
-    #[derive(derive_more::Deref)]
-    struct DummyBuffer(Vec<u8>);
-
-    impl Clone for DummyBuffer {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
+    fn recv_buffer(bytes: &[u8]) -> RecvBuffer {
+        UDP_RECV_BYTES
+            .with_capacity(ip_packet::MAX_FZ_PAYLOAD)
+            .pull_initialised(bytes)
     }
-
-    bufferpool::buffer_pool!(static DUMMY_BUFFERS: VecBuf<DummyBuffer> = (3, "test"), batch: 4, pool: DummyBuffers);
 
     /// The batch is the item of the channel to the main thread; keeping it small is
     /// the whole point of storing its buffers in pooled `Vec`s rather than inline. tokio
@@ -1205,11 +1191,11 @@ mod tests {
 
     #[test]
     fn drain_segments_buffers_correctly() {
-        let mut buffers = DUMMY_BUFFERS.pull();
+        let mut buffers = UDP_RECV_BUFFERS.pull();
         buffers.extend([
-            DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
-            DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
-            DummyBuffer(b"".to_vec()),
+            recv_buffer(b"foobar1foobar2foobar3foobar4foobar5foo                 "),
+            recv_buffer(b"baz1baz2baz3baz4baz5foo       "),
+            recv_buffer(b""),
         ]);
 
         let mut metas = UDP_RECV_METAS.pull();
@@ -1252,8 +1238,8 @@ mod tests {
 
     #[test]
     fn drained_batch_yields_nothing() {
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([DummyBuffer(b"foo".to_vec())]);
+        let mut buffers = UDP_RECV_BUFFERS.pull();
+        buffers.extend([recv_buffer(b"foo")]);
 
         let mut metas = UDP_RECV_METAS.pull();
         metas.extend([recv_meta(
@@ -1277,12 +1263,12 @@ mod tests {
         let remote_b = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 2000);
         let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-        let mut buffers = DUMMY_BUFFERS.pull();
+        let mut buffers = UDP_RECV_BUFFERS.pull();
         buffers.extend([
-            DummyBuffer(b"foo1foo2".to_vec()),
-            DummyBuffer(b"foo3".to_vec()),
-            DummyBuffer(b"bar1".to_vec()),
-            DummyBuffer(b"foo4".to_vec()),
+            recv_buffer(b"foo1foo2"),
+            recv_buffer(b"foo3"),
+            recv_buffer(b"bar1"),
+            recv_buffer(b"foo4"),
         ]);
 
         let mut metas = UDP_RECV_METAS.pull();
@@ -1321,11 +1307,8 @@ mod tests {
     /// is dropped and iteration moves on to the next buffer.
     #[test]
     fn zero_stride_buffer_is_skipped() {
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(b"garbage    ".to_vec()),
-            DummyBuffer(b"foo        ".to_vec()),
-        ]);
+        let mut buffers = UDP_RECV_BUFFERS.pull();
+        buffers.extend([recv_buffer(b"garbage    "), recv_buffer(b"foo        ")]);
 
         let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
@@ -1367,11 +1350,8 @@ mod tests {
     fn drain_drops_segments_larger_than_max_fz_payload() {
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
-        let mut buffers = DUMMY_BUFFERS.pull();
-        buffers.extend([
-            DummyBuffer(vec![0; oversized]),
-            DummyBuffer(b"foobar1".to_vec()),
-        ]);
+        let mut buffers = UDP_RECV_BUFFERS.pull();
+        buffers.extend([recv_buffer(&vec![0; oversized]), recv_buffer(b"foobar1")]);
 
         let mut metas = UDP_RECV_METAS.pull();
         metas.extend([
@@ -1475,7 +1455,7 @@ mod tests {
         );
     }
 
-    fn packets(batch: &mut DatagramBatch<DummyBuffers>) -> Vec<Vec<u8>> {
+    fn packets(batch: &mut DatagramBatch) -> Vec<Vec<u8>> {
         batch
             .drain()
             .flat_map(|datagram| {
