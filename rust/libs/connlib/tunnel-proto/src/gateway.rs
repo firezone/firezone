@@ -114,7 +114,7 @@ impl GatewayState {
     /// Handles packets received on the TUN device.
     pub fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::EncryptJob>> {
         let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
@@ -134,10 +134,9 @@ impl GatewayState {
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let packet = match peer.translate_inbound(packet, now) {
-            Ok(packet) => packet,
-            Err(e) => return Err(e.context("Failed to translate inbound packet")),
-        };
+        if let Err(e) = peer.translate_inbound(&mut packet, now) {
+            return Err(e.context("Failed to translate inbound packet"));
+        }
 
         let Some(job) = encrypt_packet(packet, cid, &mut self.node, now)? else {
             return Ok(None);
