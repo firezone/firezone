@@ -96,8 +96,8 @@ pub struct CryptoWorkers {
 ///
 /// Every worker takes both kinds, so traffic in one direction can use all of them.
 enum Work {
-    Encrypt(Train, oneshot::Sender<DatagramOut>),
-    Decrypt(Job, oneshot::Sender<Decrypted>),
+    Encrypt(EncryptTrain, oneshot::Sender<DatagramOut>),
+    Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
 }
 
 type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
@@ -127,7 +127,7 @@ impl CryptoWorkers {
     pub fn decrypt_batch(&mut self) -> DecryptBatch<'_> {
         DecryptBatch {
             crypto: self,
-            job: Job::new(),
+            job: DecryptJob::new(),
         }
     }
 
@@ -168,7 +168,7 @@ impl CryptoWorkers {
 pub struct EncryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
     outbound: &'a mut VecDeque<Queued>,
-    open: Option<Train>,
+    open: Option<EncryptTrain>,
     encrypting_v4: Option<Encrypting>,
     encrypting_v6: Option<Encrypting>,
 }
@@ -185,12 +185,12 @@ impl EncryptBatch<'_> {
             return;
         }
 
-        if let Some(closed) = self.open.replace(Train::new(job)) {
+        if let Some(closed) = self.open.replace(EncryptTrain::new(job)) {
             self.dispatch(closed);
         }
     }
 
-    fn dispatch(&mut self, train: Train) {
+    fn dispatch(&mut self, train: EncryptTrain) {
         let (tx, rx) = oneshot::channel();
         let encrypting = match train.train.dst() {
             SocketAddr::V4(_) => &mut self.encrypting_v4,
@@ -234,12 +234,13 @@ impl Drop for EncryptBatch<'_> {
     }
 }
 
-struct Train {
+/// Jobs to encrypt into one [`UdpGsoTrain`].
+struct EncryptTrain {
     train: UdpGsoTrain,
     jobs: Buffer<VecBuf<EncryptJob>>,
 }
 
-impl Train {
+impl EncryptTrain {
     fn new(job: EncryptJob) -> Self {
         let train = UdpGsoTrain::new(job.src(), job.dst(), job.ecn(), job.datagram_len());
         let mut jobs = ENCRYPT_JOBS.pull();
@@ -252,7 +253,7 @@ impl Train {
 /// Received buffers to decrypt, handed to the workers when dropped.
 pub struct DecryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
-    job: Job,
+    job: DecryptJob,
 }
 
 impl DecryptBatch<'_> {
@@ -290,7 +291,7 @@ impl DecryptBatch<'_> {
     }
 
     fn submit(&mut self) {
-        let job = mem::replace(&mut self.job, Job::new());
+        let job = mem::replace(&mut self.job, DecryptJob::new());
 
         let Some(worker) = self.crypto.next_worker() else {
             tracing::debug!("No decrypt worker running; dropping packets");
@@ -315,7 +316,7 @@ impl Drop for DecryptBatch<'_> {
 /// Receive buffers and the data messages within them to decrypt.
 ///
 /// Each buffer holds at least one of the messages.
-struct Job {
+struct DecryptJob {
     buffers: Buffer<VecBuf<DatagramIn>>,
     messages: Buffer<VecBuf<Message>>,
 }
@@ -326,7 +327,7 @@ struct Message {
     decapsulation: Decapsulation,
 }
 
-impl Job {
+impl DecryptJob {
     fn new() -> Self {
         Self {
             buffers: DECRYPT_BUFFERS.pull(),
@@ -370,7 +371,7 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
 }
 
 fn encrypt(
-    Train { train, mut jobs }: Train,
+    EncryptTrain { train, mut jobs }: EncryptTrain,
     encrypted: oneshot::Sender<DatagramOut>,
     packet_counter: &Counter<u64>,
 ) {
@@ -388,7 +389,7 @@ fn encrypt(
     let _ = encrypted.send(datagram);
 }
 
-fn decrypt(mut job: Job, decrypted: oneshot::Sender<Decrypted>) {
+fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<Decrypted>) {
     let mut packets = DECRYPTED.pull();
     packets.extend(job.messages.drain(..).map(|message| {
         let buffer = &job.buffers[message.buffer];
