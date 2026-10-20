@@ -167,15 +167,18 @@ impl AsMut<[u8]> for IpPacketBuf {
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
     buf: Buffer<Vec<u8>>,
-    len: usize,
+    /// The packet length; `u16` keeps the struct small, which matters wherever packets are moved.
+    len: u16,
 
     /// Offset of the transport-layer header within the buffer.
     ///
     /// For IPv6, this includes any extension headers.
-    ip_header_length: usize,
+    ip_header_length: u16,
     transport: Transport,
     version: IpVersion,
 }
+
+const _: () = assert!(std::mem::size_of::<IpPacket>() == 40);
 
 /// The transport protocol of an [`IpPacket`], determined and validated on creation.
 ///
@@ -259,6 +262,14 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
+    fn len(&self) -> usize {
+        usize::from(self.len)
+    }
+
+    fn ip_header_length(&self) -> usize {
+        usize::from(self.ip_header_length)
+    }
+
     /// Parses and validates the IP packet at the start of the first `len` bytes of `buf`.
     ///
     /// The packet's length comes from its IP header; anything after it within
@@ -365,8 +376,8 @@ impl IpPacket {
 
         Ok(Self {
             buf: buf.inner,
-            len,
-            ip_header_length,
+            len: u16::try_from(len)?,
+            ip_header_length: u16::try_from(ip_header_length)?,
             transport,
             version,
         })
@@ -621,7 +632,8 @@ impl IpPacket {
     fn ipv4_header_mut_unchecked(&mut self) -> ValidIpv4<&mut [u8]> {
         debug_assert!(matches!(self.version, IpVersion::V4));
 
-        let (header, _, _) = ValidIpv4::parse(&mut self.buf[..self.len]).unwrap();
+        let len = self.len();
+        let (header, _, _) = ValidIpv4::parse(&mut self.buf[..len]).unwrap();
 
         header
     }
@@ -645,7 +657,8 @@ impl IpPacket {
     fn ipv6_header_mut_unchecked(&mut self) -> ValidIpv6<&mut [u8]> {
         debug_assert!(matches!(self.version, IpVersion::V6));
 
-        let (header, _, _) = ValidIpv6::parse(&mut self.buf[..self.len]).unwrap();
+        let len = self.len();
+        let (header, _, _) = ValidIpv6::parse(&mut self.buf[..len]).unwrap();
 
         header
     }
@@ -655,7 +668,7 @@ impl IpPacket {
             return;
         }
 
-        let checksum = checksum::ipv4_header_checksum(&self.packet()[..self.ip_header_length]);
+        let checksum = checksum::ipv4_header_checksum(&self.packet()[..self.ip_header_length()]);
 
         self.ipv4_header_mut_unchecked().set_checksum(checksum);
     }
@@ -737,7 +750,7 @@ impl IpPacket {
         }
 
         Ok(checksum::ipv4_header_checksum(
-            &self.packet()[..self.ip_header_length],
+            &self.packet()[..self.ip_header_length()],
         ))
     }
 
@@ -1137,15 +1150,17 @@ impl IpPacket {
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf[..self.len]
+        &self.buf[..self.len()]
     }
 
     pub fn payload(&self) -> &[u8] {
-        &self.buf[self.ip_header_length..self.len]
+        &self.buf[self.ip_header_length()..self.len()]
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.ip_header_length..self.len]
+        let (start, end) = (self.ip_header_length(), self.len());
+
+        &mut self.buf[start..end]
     }
 }
 
