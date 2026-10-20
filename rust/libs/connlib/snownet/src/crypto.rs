@@ -103,8 +103,6 @@ impl EncryptJob {
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 #[derive(Debug)]
 pub struct Decapsulation {
-    /// The slot of the connection in the node's connection table.
-    slot: usize,
     tunnel: sanstun::TunnelId,
     path: (SocketAddr, SocketAddr),
     /// The length of the channel-data header in front of the WireGuard message, which takes up the
@@ -115,13 +113,11 @@ pub struct Decapsulation {
 
 impl Decapsulation {
     pub(crate) fn new(
-        slot: usize,
         tunnel: sanstun::TunnelId,
         path: (SocketAddr, SocketAddr),
         pending: sanstun::PendingDecapsulate,
     ) -> Self {
         Self {
-            slot,
             tunnel,
             path,
             header_len: 0,
@@ -142,7 +138,6 @@ impl Decapsulation {
         let message = datagram.get(self.header_len..).unwrap_or_default();
 
         DecryptedPacket {
-            slot: self.slot,
             tunnel: self.tunnel,
             path: self.path,
             decrypted: self
@@ -155,7 +150,6 @@ impl Decapsulation {
 
 /// The outcome of a [`Decapsulation`].
 pub struct DecryptedPacket {
-    pub(crate) slot: usize,
     pub(crate) tunnel: sanstun::TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),
     pub(crate) decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,

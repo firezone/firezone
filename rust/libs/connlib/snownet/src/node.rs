@@ -591,16 +591,17 @@ where
         self.last_now = now;
 
         let DecryptedPacket {
-            slot,
             tunnel,
             path,
             decrypted,
         } = packet;
 
-        let (cid, conn) = self.connections.get_mut_by_slot(slot, tunnel, now)?;
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_by_tunnel_id(tunnel, now)?;
 
         let control_flow = conn.commit_decrypted(cid, path, decrypted, now);
-        let is_closing = self.connections.is_closing(slot);
+        let is_closing = self.connections.is_closing(&cid);
 
         let packet = match control_flow {
             ControlFlow::Continue(_) if is_closing => return Ok(None),
@@ -1083,11 +1084,10 @@ where
                 .connections
                 .get_established_mut_by_tunnel_id(data.tunnel_id(), now),
         };
-        let (cid, slot, conn) = match connection {
+        let (cid, conn) = match connection {
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
-        let tunnel = conn.tunnel.id();
 
         let control_flow = conn.decapsulate(
             cid,
@@ -1100,7 +1100,7 @@ where
             now,
         );
 
-        if self.connections.is_closing(slot) && control_flow.is_continue() {
+        if self.connections.is_closing(&cid) && control_flow.is_continue() {
             return ControlFlow::Break(Ok(()));
         }
 
@@ -1109,12 +1109,7 @@ where
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
-            ControlFlow::Continue(pending) => ControlFlow::Continue(Decapsulation::new(
-                slot,
-                tunnel,
-                (destination, from),
-                pending,
-            )),
+            ControlFlow::Continue(decapsulation) => ControlFlow::Continue(decapsulation),
         }
     }
 
@@ -1894,7 +1889,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, sanstun::PendingDecapsulate>
+    ) -> ControlFlow<Result<()>, Decapsulation>
     where
         TId: fmt::Display,
         RId: Ord + Hash + fmt::Display + Copy,
@@ -1939,7 +1934,9 @@ where
             ),
             sanstun::ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => ControlFlow::Continue(pending),
+                    Ok(pending) => {
+                        ControlFlow::Continue(Decapsulation::new(self.tunnel.id(), path, pending))
+                    }
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }
