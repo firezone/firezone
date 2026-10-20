@@ -357,7 +357,7 @@ impl std::os::fd::AsFd for UdpSocket {
     }
 }
 
-/// Where an inbound UDP datagram lies within its [`RecvBuffer`].
+/// Where a segment lies within its [`DatagramIn`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     start: usize,
@@ -965,7 +965,7 @@ impl RecvBuffers {
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
 /// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
-/// which moves the buffers out as [`RecvBuffer`]s.
+/// which moves the buffers out as [`DatagramIn`]s.
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
@@ -1016,7 +1016,7 @@ impl<B> DatagramBatch<B> {
     /// Removes all receive buffers from the batch, in order; draining again yields nothing.
     ///
     /// Buffers with nonsensical metadata are dropped.
-    pub fn drain(&mut self) -> impl Iterator<Item = RecvBuffer<B>> + '_
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<B>> + '_
     where
         B: Deref<Target = Vec<u8>>,
     {
@@ -1026,7 +1026,7 @@ impl<B> DatagramBatch<B> {
         self.buffers
             .drain(..)
             .zip(self.metas.drain(..))
-            .filter_map(move |(buffer, meta)| RecvBuffer::new(buffer, meta, port))
+            .filter_map(move |(buffer, meta)| DatagramIn::new(buffer, meta, port))
     }
 }
 
@@ -1039,8 +1039,9 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
 }
 
-/// One buffer of a [`DatagramBatch`]: one or more datagrams, all from the same remote address.
-pub struct RecvBuffer<B = Buffer<Vec<u8>>> {
+/// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
+/// that all come from the same remote address.
+pub struct DatagramIn<B = Buffer<Vec<u8>>> {
     buffer: B,
     local: SocketAddr,
     from: SocketAddr,
@@ -1049,7 +1050,7 @@ pub struct RecvBuffer<B = Buffer<Vec<u8>>> {
     stride: usize,
 }
 
-impl<B> RecvBuffer<B>
+impl<B> DatagramIn<B>
 where
     B: Deref<Target = Vec<u8>>,
 {
@@ -1117,17 +1118,17 @@ where
         self.ecn
     }
 
-    /// How many datagrams the buffer holds.
-    pub fn num_datagrams(&self) -> usize {
+    /// How many segments the datagram holds.
+    pub fn num_segments(&self) -> usize {
         self.len.div_ceil(self.stride)
     }
 
-    /// Iterates over the datagrams in the buffer, segmenting GRO / URO-coalesced ones apart again.
+    /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
     pub fn datagrams(&self) -> impl Iterator<Item = &[u8]> {
         self.segments().map(|segment| &self[segment])
     }
 
-    /// Iterates over where each of [`RecvBuffer::datagrams`] lies within the buffer.
+    /// Iterates over where each of [`DatagramIn::datagrams`] lies within the buffer.
     pub fn segments(&self) -> impl Iterator<Item = Segment> + '_ {
         (0..self.len).step_by(self.stride).map(|start| {
             let end = std::cmp::min(start + self.stride, self.len);
@@ -1140,7 +1141,7 @@ where
     }
 }
 
-impl<B> Index<Segment> for RecvBuffer<B>
+impl<B> Index<Segment> for DatagramIn<B>
 where
     B: Deref<Target = Vec<u8>>,
 {
@@ -1296,7 +1297,7 @@ mod tests {
                     .map(|segment| (segment.start, segment.end))
                     .collect::<Vec<_>>();
 
-                (buffer.from(), buffer.num_datagrams(), ranges)
+                (buffer.from(), buffer.num_segments(), ranges)
             })
             .collect::<Vec<_>>();
 
