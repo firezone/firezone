@@ -1,8 +1,10 @@
 use crate::otel;
+use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bufferpool::{Buffer, VecBuf};
-use futures::{SinkExt, ready};
+use futures::ready;
 use ip_packet::IpVersion;
+use opentelemetry::metrics::Counter;
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -15,7 +17,8 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::{self, error::TrySendError};
+use tokio::sync::oneshot;
 use tokio_util::sync::PollSender;
 
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
@@ -65,19 +68,32 @@ const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
     SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
 
-#[derive(Default)]
 pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
+    /// Items a socket had no room for, followed by all items sent after them.
+    overflow: VecDeque<(IpVersion, Outbound)>,
     /// Bind and send failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     errors: VecDeque<anyhow::Error>,
+    packet_counter: Counter<u64>,
 }
 
 impl Sockets {
+    pub fn new(packet_counter: Counter<u64>) -> Self {
+        Self {
+            socket_v4: None,
+            socket_v6: None,
+            overflow: VecDeque::new(),
+            errors: VecDeque::new(),
+            packet_counter,
+        }
+    }
+
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
         self.socket_v4 = None;
         self.socket_v6 = None;
+        self.overflow.clear();
 
         self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
@@ -102,49 +118,92 @@ impl Sockets {
         }
     }
 
+    /// Sends the items the sockets had no room for, resolving once none are left and every
+    /// socket has room for another one.
     pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        while let Some((version, outbound)) = self.overflow.pop_front() {
+            let Some(outbound) = self.try_send(version, outbound) else {
+                continue;
+            };
+
+            self.overflow.push_front((version, outbound));
+            ready!(self.socket_mut(version)?.poll_has_room(cx))?;
+        }
+
         if let Some(socket) = self.socket_v4.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
+            ready!(socket.poll_has_room(cx))?;
         }
 
         if let Some(socket) = self.socket_v6.as_mut() {
-            ready!(socket.poll_send_ready(cx))?;
+            ready!(socket.poll_has_room(cx))?;
         }
 
         Poll::Ready(Ok(()))
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> Result<()> {
-        let socket = match datagram.dst {
-            SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    format!("failed send packet to {dst}: no IPv4 socket"),
-                )
-            })?,
-            SocketAddr::V6(dst) => self.socket_v6.as_mut().ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    format!("failed send packet to {dst}: no IPv6 socket"),
-                )
-            })?,
-        };
-        socket.send(Outbound::Datagram(datagram))?;
-
-        Ok(())
+    /// Whether nothing waits for room and every socket has room for another item.
+    pub fn has_room(&self) -> bool {
+        self.overflow.is_empty()
+            && [&self.socket_v4, &self.socket_v6]
+                .into_iter()
+                .flatten()
+                .all(ThreadedUdpSocket::has_room)
     }
 
-    /// Queues datagrams that are still being encrypted on the socket for `version`, in order.
+    /// Sends a datagram the main thread encrypted, or a control message.
     ///
-    /// Call [`Sockets::poll_send_ready`] first. Failures are returned by [`Sockets::poll_error`].
+    /// Failures are returned by [`Sockets::poll_error`].
+    pub fn send(&mut self, transmit: snownet::Transmit) {
+        UdpPacketCounts::transmit(&self.packet_counter).record(&transmit.payload);
+
+        let version = match transmit.dst {
+            SocketAddr::V4(_) => IpVersion::V4,
+            SocketAddr::V6(_) => IpVersion::V6,
+        };
+        let datagram = DatagramOut {
+            src: transmit.src,
+            dst: transmit.dst,
+            segment_size: transmit.payload.len(),
+            packet: transmit.payload,
+            ecn: transmit.ecn,
+        };
+
+        self.send_in_order(version, Outbound::Datagram(datagram));
+    }
+
+    /// Sends datagrams that are still being encrypted on the socket for `version`, in order.
+    ///
+    /// Failures are returned by [`Sockets::poll_error`].
     pub fn send_encrypting(&mut self, version: IpVersion, encrypting: Encrypting) {
+        self.send_in_order(version, Outbound::Encrypting(encrypting));
+    }
+
+    /// Sends `outbound` right away unless earlier items still wait for room.
+    fn send_in_order(&mut self, version: IpVersion, outbound: Outbound) {
+        if !self.overflow.is_empty() {
+            self.overflow.push_back((version, outbound));
+            return;
+        }
+
+        if let Some(outbound) = self.try_send(version, outbound) {
+            self.overflow.push_back((version, outbound));
+        }
+    }
+
+    /// Sends `outbound` to the socket for `version`, returning it if that socket has no room.
+    fn try_send(&mut self, version: IpVersion, outbound: Outbound) -> Option<Outbound> {
         let result = self
             .socket_mut(version)
             .map_err(anyhow::Error::new)
-            .and_then(|socket| socket.send(Outbound::Encrypting(encrypting)));
+            .and_then(|socket| socket.try_send(outbound));
 
-        if let Err(e) = result {
-            self.errors.push_back(e);
+        match result {
+            Ok(full) => full,
+            Err(e) => {
+                self.errors.push_back(e);
+
+                None
+            }
         }
     }
 
@@ -203,7 +262,7 @@ impl Sockets {
 }
 
 /// What a UDP socket thread sends, in queue order.
-pub(crate) enum Outbound {
+enum Outbound {
     Datagram(DatagramOut),
     Encrypting(Encrypting),
 }
@@ -234,10 +293,11 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// Worst-case memory pinned by the outbound UDP send path while in flight.
 ///
 /// Per address family (hence `2 *`), items can be held in two places at once: up to [`QUEUE_SIZE`]
-/// in the channel, counting the one an open encrypt batch has reserved, and up to
-/// [`UDP_SEND_BATCH_LIMIT`] drained by the send task. An item carries at most one TUN batch of
-/// packets, so at most as many trains, each with a [`DatagramOut`]. A train's GSO buffer is at most
-/// 2 KiB or twice its length, so at most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
+/// in the channel or waiting for room in it, since the TUN device is only read while the channel
+/// has room and nothing waits for it, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
+/// An item carries at most one TUN batch of packets, so at most as many trains, each with a
+/// [`DatagramOut`]. A train's GSO buffer is at most 2 KiB or twice its length, so at most twice
+/// [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
 ///
 /// Every size class pools its buffers separately, so backlogs of differently sized trains can
 /// leave more than this pooled.
@@ -277,7 +337,9 @@ struct ThreadedUdpSocket {
 }
 
 struct Channels {
-    outbound_tx: PollSender<Outbound>,
+    outbound_tx: mpsc::Sender<Outbound>,
+    /// Reserves a slot in the outbound channel only to wait for room once it is full.
+    outbound_reserve: PollSender<Outbound>,
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
@@ -479,27 +541,50 @@ impl ThreadedUdpSocket {
             thread_name,
             join_handle,
             channels: Some(Channels {
-                outbound_tx: PollSender::new(outbound_tx),
+                outbound_reserve: PollSender::new(outbound_tx.clone()),
+                outbound_tx,
                 inbound_rx,
                 error_rx,
             }),
         })
     }
 
-    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        ready!(self.channels_mut()?.outbound_tx.poll_ready_unpin(cx))
-            .map_err(|_| UdpSocketThreadStopped)?;
+    /// Whether the outbound channel has room for another item.
+    ///
+    /// Only the main thread sends into the channel, so the room can only grow until it does.
+    fn has_room(&self) -> bool {
+        self.channels
+            .as_ref()
+            .is_some_and(|channels| channels.outbound_tx.capacity() > 0)
+    }
+
+    /// Resolves once the outbound channel has room for another item.
+    ///
+    /// Only a full channel reserves a slot, to be woken once the socket thread frees one. The slot
+    /// is released again right away, for [`ThreadedUdpSocket::try_send`] to take.
+    fn poll_has_room(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        let has_room = self.has_room();
+        let channels = self.channels_mut()?;
+
+        if !has_room {
+            ready!(channels.outbound_reserve.poll_reserve(cx))
+                .map_err(|_| UdpSocketThreadStopped)?;
+        }
+
+        channels.outbound_reserve.abort_send();
 
         Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, outbound: Outbound) -> Result<()> {
-        self.channels_mut()?
-            .outbound_tx
-            .start_send_unpin(outbound)
-            .map_err(|_| UdpSocketThreadStopped)?;
+    /// Sends `outbound` to the socket thread, returning it if the channel is full.
+    fn try_send(&mut self, outbound: Outbound) -> Result<Option<Outbound>> {
+        let full = match self.channels_mut()?.outbound_tx.try_send(outbound) {
+            Ok(()) => None,
+            Err(TrySendError::Full(outbound)) => Some(outbound),
+            Err(TrySendError::Closed(_)) => return Err(UdpSocketThreadStopped.into()),
+        };
 
-        Ok(())
+        Ok(full)
     }
 
     /// Appends the batches received from the socket thread to `batches`, at most

@@ -16,9 +16,9 @@ use snownet::{Decapsulation, DecryptedPacket, Encapsulation};
 use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, Segment};
 use tokio::sync::oneshot;
 
-use super::{Queued, UdpGsoTrain};
+use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::Encrypting;
+use crate::sockets::{Encrypting, Sockets};
 
 /// How many received packets go to a worker in one decrypt job at most.
 ///
@@ -115,12 +115,11 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts a batch of packets to encrypt, whose datagrams are queued in `outbound` when it is
-    /// dropped.
-    pub fn encrypt_batch<'a>(&'a mut self, outbound: &'a mut VecDeque<Queued>) -> EncryptBatch<'a> {
+    /// Starts a batch of packets to encrypt, whose datagrams go to `sockets` when it is dropped.
+    pub fn encrypt_batch<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptBatch<'a> {
         EncryptBatch {
             crypto: self,
-            outbound,
+            sockets,
             open: OPEN_TRAINS.pull(),
             encrypting_v4: None,
             encrypting_v6: None,
@@ -168,10 +167,10 @@ impl CryptoWorkers {
     }
 }
 
-/// Packets to encrypt, queued for the UDP sockets when dropped.
+/// Packets to encrypt, sent to the UDP sockets when dropped.
 pub struct EncryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
-    outbound: &'a mut VecDeque<Queued>,
+    sockets: &'a mut Sockets,
     /// The open train to each destination.
     open: Buffer<VecBuf<EncryptJob>>,
     encrypting_v4: Option<Encrypting>,
@@ -206,9 +205,9 @@ impl EncryptBatch<'_> {
         self.dispatch(closed);
     }
 
-    /// Queues an already encrypted datagram ahead of all trains of this batch.
+    /// Sends an already encrypted datagram ahead of all trains of this batch.
     pub fn send(&mut self, transmit: snownet::Transmit) {
-        self.outbound.push_back(transmit.into());
+        self.sockets.send(transmit);
     }
 
     fn dispatch(&mut self, job: EncryptJob) {
@@ -237,13 +236,11 @@ impl Drop for EncryptBatch<'_> {
         }
 
         if let Some(encrypting) = self.encrypting_v4.take() {
-            self.outbound
-                .push_back(Queued::Encrypting(IpVersion::V4, encrypting));
+            self.sockets.send_encrypting(IpVersion::V4, encrypting);
         }
 
         if let Some(encrypting) = self.encrypting_v6.take() {
-            self.outbound
-                .push_back(Queued::Encrypting(IpVersion::V6, encrypting));
+            self.sockets.send_encrypting(IpVersion::V6, encrypting);
         }
     }
 }

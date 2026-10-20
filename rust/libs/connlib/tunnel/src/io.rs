@@ -11,11 +11,7 @@ pub use crypto::{DecryptBatch, EncryptBatch, Received};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
-use crate::{
-    TunnelError, dns,
-    packet_counts::UdpPacketCounts,
-    sockets::{Encrypting, Sockets},
-};
+use crate::{TunnelError, dns, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -29,45 +25,23 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
-use ip_packet::{IpPacket, IpVersion};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tun::Tun;
-
-/// What the UDP sockets send once they have room, in queue order.
-pub(crate) enum Queued {
-    /// A control message or a packet encrypted on the main thread, e.g. a handshake or keepalive.
-    Datagram(DatagramOut),
-    /// The datagrams of one [`EncryptBatch`] for the socket of this IP version.
-    Encrypting(IpVersion, Encrypting),
-}
-
-impl From<snownet::Transmit> for Queued {
-    fn from(transmit: snownet::Transmit) -> Self {
-        Self::Datagram(DatagramOut {
-            src: transmit.src,
-            dst: transmit.dst,
-            segment_size: transmit.payload.len(),
-            packet: transmit.payload,
-            ecn: transmit.ecn,
-        })
-    }
-}
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    /// What the UDP sockets send once they have room.
-    outbound: VecDeque<Queued>,
     crypto: CryptoWorkers,
 
     nameservers: NameserverSet,
@@ -87,7 +61,6 @@ pub struct Io {
     doh_tls_config: TlsConfig,
 
     tun: Device,
-    packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,7 +146,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn flush_udp(&mut self) {
-        let poll = self.io.flush_network(self.cx);
+        let poll = self.io.sockets.poll_send_ready(self.cx);
 
         self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -332,9 +305,9 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
         let packet_counter = otel_instruments::network_packets();
+        let mut sockets = Sockets::new(packet_counter.clone());
+        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
             sockets,
@@ -361,12 +334,10 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            outbound: VecDeque::new(),
-            crypto: CryptoWorkers::new(packet_counter.clone()),
+            crypto: CryptoWorkers::new(packet_counter),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter,
         }
     }
 
@@ -426,7 +397,7 @@ impl Io {
 
     /// Polls all IO sources that are ready.
     ///
-    /// The TUN device is only read once the queued UDP sends are flushed and each UDP socket has
+    /// The TUN device is only read while nothing waits for room in the UDP sockets and each has
     /// room for an [`Io::encrypt_batch`], and decrypted packets are only accepted while the TUN
     /// device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
@@ -449,7 +420,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_network(cx)?.is_pending() {
+        if self.sockets.poll_send_ready(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -459,31 +430,6 @@ impl Io {
 
         if any_pending {
             return Poll::Pending;
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Sends the queued UDP items, resolving once each UDP socket has room for another one.
-    fn flush_network(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
-
-        loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
-
-            match self.outbound.pop_front() {
-                Some(Queued::Datagram(datagram)) => {
-                    for segment in datagram.packet.chunks(datagram.segment_size) {
-                        transmitted.record(segment);
-                    }
-
-                    self.sockets.send(datagram)?;
-                }
-                Some(Queued::Encrypting(version, encrypting)) => {
-                    self.sockets.send_encrypting(version, encrypting);
-                }
-                None => break,
-            }
         }
 
         Poll::Ready(Ok(()))
@@ -506,7 +452,6 @@ impl Io {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
-        self.outbound.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
@@ -520,9 +465,15 @@ impl Io {
 
     /// Starts a batch of encapsulated packets to encrypt off the main thread.
     ///
-    /// Its datagrams are queued for the UDP sockets when it is dropped and sent by [`Io::poll`].
+    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// [`Io::poll`] read from the TUN device, which it does only while each UDP socket has room.
     pub fn encrypt_batch(&mut self) -> EncryptBatch<'_> {
-        self.crypto.encrypt_batch(&mut self.outbound)
+        debug_assert!(
+            self.sockets.has_room(),
+            "TUN packets are only read while the UDP sockets have room"
+        );
+
+        self.crypto.encrypt_batch(&mut self.sockets)
     }
 
     /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
@@ -532,7 +483,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
-        self.outbound.push_back(transmit.into());
+        self.sockets.send(transmit);
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
