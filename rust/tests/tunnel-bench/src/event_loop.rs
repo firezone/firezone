@@ -59,6 +59,15 @@ const BURST: usize = 10_000;
 /// Bounded so no UDP receive buffer overflows.
 const IN_FLIGHT: usize = 2_048;
 
+/// How many packets the receiving side sends to its peer before a benchmark.
+///
+/// That is one transmit above socket-factory's promotion threshold, so the receiver's socket pool
+/// connects a flow socket to the peer as either side of a real tunnel does within its first
+/// transmits. On macOS, a connected socket receives much more cheaply than the catch-all socket:
+/// too cheaply for an unconnected receiver to keep up with the event loop over loopback.
+#[cfg(target_os = "macos")]
+const FLOW_SOCKET_PACKETS: usize = 16;
+
 /// How often the event loop may park per 1000 packets.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
@@ -117,8 +126,22 @@ fn outbound(
 ) {
     let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
-    let (peer, socket) = bind_peer(peer.socket);
-    peer.spawn({
+    let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut peer = peer;
+        let datagrams = peer
+            .state
+            .encapsulate(&peer.reads, FLOW_SOCKET_PACKETS, now, local.socket);
+        for datagram in datagrams {
+            runtime.block_on(socket.send(datagram)).unwrap();
+        }
+
+        assert_eq!(socket.flow_socket_count(), 1);
+    }
+
+    runtime.spawn({
         let arrivals = arrivals.clone();
 
         async move {
@@ -162,6 +185,17 @@ fn inbound(
         })
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        let mut received = 0;
+        while received < FLOW_SOCKET_PACKETS {
+            received += runtime.block_on(socket.recv_from()).unwrap().len();
+        }
+    }
 
     let inputs = |packets| {
         peer.state
