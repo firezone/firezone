@@ -52,9 +52,9 @@ async fn sends_and_receives_a_datagram() {
     peer.send_to(b"world", from).await.unwrap();
 
     let mut batch = socket.recv_from().await.unwrap();
-    let buffer = batch.drain().next().unwrap();
-    let packet = buffer.datagrams().next().unwrap();
+    let datagram = batch.drain().next().unwrap();
+    let segment = datagram.segments().next().unwrap();
 
-    assert_eq!(packet, b"world");
-    assert_eq!(buffer.from(), peer_addr);
+    assert_eq!(&datagram[segment], b"world");
+    assert_eq!(datagram.from(), peer_addr);
 }

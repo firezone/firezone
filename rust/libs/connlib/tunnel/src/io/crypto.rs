@@ -256,14 +256,14 @@ pub struct DecryptBatch<'a> {
 }
 
 impl DecryptBatch<'_> {
-    /// Passes each datagram in `buffer` to `decapsulate` and moves the buffer into a job if any of
-    /// them is a data message to decrypt.
+    /// Passes each segment of `datagram` to `decapsulate` and moves the datagram into a job if any
+    /// of them is a data message to decrypt.
     pub fn push(
         &mut self,
-        buffer: DatagramIn,
+        datagram: DatagramIn,
         mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<Decapsulation>,
     ) {
-        if self.job.messages.len() + buffer.num_segments() > DECRYPT_BATCH_SIZE {
+        if self.job.messages.len() + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
 
@@ -272,16 +272,16 @@ impl DecryptBatch<'_> {
 
         self.job
             .messages
-            .extend(buffer.segments().filter_map(|segment| {
+            .extend(datagram.segments().filter_map(|segment| {
                 Some(Message {
                     buffer: index,
                     segment,
-                    decapsulation: decapsulate(&buffer, &buffer[segment])?,
+                    decapsulation: decapsulate(&datagram, &datagram[segment])?,
                 })
             }));
 
         if self.job.messages.len() > num_messages {
-            self.job.buffers.push(buffer);
+            self.job.buffers.push(datagram);
         }
 
         if self.job.messages.len() == DECRYPT_BATCH_SIZE {

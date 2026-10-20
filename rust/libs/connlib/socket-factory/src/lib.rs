@@ -1128,11 +1128,6 @@ where
     }
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
-    pub fn datagrams(&self) -> impl Iterator<Item = &[u8]> {
-        self.segments().map(|segment| &self[segment])
-    }
-
-    /// Iterates over where each of [`DatagramIn::datagrams`] lies within the buffer.
     pub fn segments(&self) -> impl Iterator<Item = Segment> + '_ {
         (0..self.len).step_by(self.stride).map(|start| {
             let end = std::cmp::min(start + self.stride, self.len);
@@ -1477,7 +1472,12 @@ mod tests {
     fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
         batch
             .drain()
-            .flat_map(|buffer| buffer.datagrams().map(<[u8]>::to_vec).collect::<Vec<_>>())
+            .flat_map(|datagram| {
+                datagram
+                    .segments()
+                    .map(|segment| datagram[segment].to_vec())
+                    .collect::<Vec<_>>()
+            })
             .collect()
     }
 

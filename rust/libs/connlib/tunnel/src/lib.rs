@@ -325,13 +325,13 @@ impl ClientTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        decrypts.push(buffer, |buffer, packet| {
+                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        decrypts.push(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
-                                buffer.local(),
-                                buffer.from(),
+                                datagram.local(),
+                                datagram.from(),
                                 packet,
                                 now,
                             );
@@ -340,8 +340,8 @@ impl ClientTunnel {
                                 Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                    local: buffer.local(),
-                                    from: buffer.from(),
+                                    local: datagram.local(),
+                                    from: datagram.from(),
                                 })),
                             };
 
@@ -571,13 +571,13 @@ impl GatewayTunnel {
                 if let Some(mut batches) = network {
                     let mut decrypts = self.io.decrypt_batch();
 
-                    for buffer in batches.iter_mut().flat_map(|batch| batch.drain()) {
-                        decrypts.push(buffer, |buffer, packet| {
+                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                        decrypts.push(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
-                                buffer.local(),
-                                buffer.from(),
+                                datagram.local(),
+                                datagram.from(),
                                 packet,
                                 now,
                             );
@@ -586,8 +586,8 @@ impl GatewayTunnel {
                                 Ok(Some(decapsulation)) => return Some(decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
-                                    local: buffer.local(),
-                                    from: buffer.from(),
+                                    local: datagram.local(),
+                                    from: datagram.from(),
                                 })),
                             };
 
