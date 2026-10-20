@@ -6,14 +6,14 @@ defmodule PortalWeb.SupportFormTest do
   import Swoosh.TestAssertions
 
   setup %{conn: conn} = context do
-    Portal.Config.put_env_override(Portal.Mailer.FeedbackEmail,
+    Portal.Config.put_env_override(Portal.Mailer.InternalEmail,
       recipient: Map.get(context, :recipient, "support@firezone.dev")
     )
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
     {:ok, view, _} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
     url = "https://app.firezone.dev/#{account.slug}/actors?search=test&sort=name#details"
-    if Portal.Mailer.FeedbackEmail.enabled?() do
+    if Portal.Mailer.InternalEmail.enabled?() do
       view |> element("#support-link") |> render_hook("open", %{url: url})
     end
     %{view: view, account: account, actor: actor, url: url}

@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
@@ -256,8 +257,10 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status files of its thread and of the tunnel's crypto workers and UDP threads.
-    statuses: Vec<PathBuf>,
+    /// How often its thread has parked.
+    parks: Arc<AtomicU64>,
+    /// The `/proc` status files of the tunnel's crypto workers and UDP threads, on Linux only.
+    stages: Vec<PathBuf>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -276,8 +279,16 @@ impl EventLoop {
             SocketAddr::V6(_) => Err(std::io::ErrorKind::Unsupported.into()),
         });
 
+        let parks = Arc::new(AtomicU64::new(0));
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
+            .on_thread_park({
+                let parks = parks.clone();
+
+                move || {
+                    parks.fetch_add(1, Ordering::Relaxed);
+                }
+            })
             .build()
             .unwrap();
         let threads_before = threads();
@@ -302,14 +313,9 @@ impl EventLoop {
             }
         };
 
-        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("event-loop".to_owned())
             .spawn(move || {
-                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
-                status_tx
-                    .send(Path::new("/proc").join(thread_self).join("status"))
-                    .unwrap();
                 // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
                 // are irrelevant here: a lost packet fails the benchmark.
                 runtime.block_on(poll_fn(|cx| {
@@ -333,15 +339,14 @@ impl EventLoop {
                 !threads_before.contains_key(tid)
                     && (comm.starts_with("wg-") || comm.starts_with("UDP "))
             })
-            .map(|(tid, _)| Path::new("/proc/self/task").join(tid).join("status"));
-        let statuses = std::iter::once(status_rx.recv().unwrap())
-            .chain(stages)
+            .map(|(tid, _)| Path::new("/proc/self/task").join(tid).join("status"))
             .collect();
 
         (
             Self {
                 thread,
-                statuses,
+                parks,
+                stages,
                 tun_reads,
             },
             tun_writes,
@@ -352,20 +357,21 @@ impl EventLoop {
     ///
     /// A stage whose thread has exited, like a UDP socket that failed to bind, reports `None`.
     fn parks(&self) -> Vec<Option<u64>> {
-        self.statuses
-            .iter()
-            .map(|status| {
-                let status = std::fs::read_to_string(status).ok()?;
-                let parks = status
-                    .lines()
-                    .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-                    .unwrap()
-                    .trim()
-                    .parse()
-                    .unwrap();
+        let stages = self.stages.iter().map(|status| {
+            let status = std::fs::read_to_string(status).ok()?;
+            let parks = status
+                .lines()
+                .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
 
-                Some(parks)
-            })
+            Some(parks)
+        });
+
+        std::iter::once(Some(self.parks.load(Ordering::Relaxed)))
+            .chain(stages)
             .collect()
     }
 
@@ -394,8 +400,12 @@ impl tun::Tun for FakeTun {
     }
 }
 
-/// Returns the name of each of this process's threads, by thread ID.
+/// Returns the name of each of this process's threads, by thread ID; empty where `/proc` is missing.
 fn threads() -> BTreeMap<String, String> {
+    if !cfg!(target_os = "linux") {
+        return BTreeMap::new();
+    }
+
     std::fs::read_dir("/proc/self/task")
         .unwrap()
         .map(|entry| {
@@ -538,7 +548,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
 const CLIENT_SOCKET: SocketAddr =
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
 const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), 2222));
+    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2222));
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);

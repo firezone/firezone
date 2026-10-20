@@ -1,5 +1,8 @@
-defmodule Portal.Mailer.FeedbackEmail do
-  @moduledoc false
+defmodule Portal.Mailer.InternalEmail do
+  @moduledoc """
+  Emails to the Firezone team rather than to customers, sent to the
+  `FEEDBACK_EMAIL_RECIPIENT` address.
+  """
 
   import Portal.Mailer
   import Swoosh.Email
@@ -61,6 +64,27 @@ defmodule Portal.Mailer.FeedbackEmail do
     Actor: #{subject.actor.name} <#{subject.actor.email}>
 
     #{feedback}
+    """)
+  end
+
+  def seats_overage_email(%Portal.Account{} = account, active_users_count) do
+    limit = account.limits.monthly_active_users_count
+
+    default_email()
+    |> to(recipient())
+    |> subject("Enterprise seat overage: #{account.name}")
+    |> with_account_id(account.id)
+    |> text_body("""
+    Enterprise seat overage
+
+    Account: #{account.name} (#{account.id})
+    Slug: #{account.slug}
+
+    Monthly active users: #{active_users_count}
+    Seats in subscription: #{limit}
+    Seats over: #{active_users_count - limit}
+
+    Users are not blocked. This email repeats every 30 days while the account is over.
     """)
   end
 
