@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -18,7 +18,9 @@ use crate::{dns, unique_packet_buffer::UniquePacketBuffer};
 /// authorization is granted.
 #[derive(Default)]
 pub struct PendingAuthorizations {
-    inner: BTreeMap<AuthorizationTarget, PendingAuthorization>,
+    inner: HashMap<AuthorizationTarget, PendingAuthorization, FastRandomState>,
+    /// The position the next new entry gets, so removed entries come back in creation order.
+    next_position: u64,
 
     authorization_requests: VecDeque<AuthorizationRequest>,
 }
@@ -97,7 +99,7 @@ impl PendingAuthorizations {
     pub fn remove_device_authorizations_for_pool(&mut self, pool: ResourceId) {
         let removed_addrs = self
             .inner
-            .extract_if(.., |target, pending| {
+            .extract_if(|target, pending| {
                 matches!(target, AuthorizationTarget::Device { .. })
                     && pending.device_pools.contains(&pool)
             })
@@ -138,13 +140,15 @@ impl PendingAuthorizations {
         self.authorization_requests.pop_front()
     }
 
+    /// Removes the entries matching `f`, oldest first, so their buffered packets go out in arrival order.
     fn remove_matching<'a>(
         &'a mut self,
         mut f: impl FnMut(&AuthorizationTarget) -> bool + 'a,
     ) -> impl Iterator<Item = PendingAuthorization> + 'a {
         self.inner
-            .extract_if(.., move |target, _| f(target))
+            .extract_if(move |target, _| f(target))
             .map(|(_, pending)| pending)
+            .sorted_by_key(|pending| pending.position)
     }
 
     fn upsert(
@@ -157,8 +161,11 @@ impl PendingAuthorizations {
         let trigger_name = trigger.name();
 
         let pending = self.inner.entry(target).or_insert_with(|| {
+            let position = self.next_position;
+            self.next_position += 1;
+
             // Insert with a negative time to ensure we instantly send a request.
-            PendingAuthorization::new(now - Duration::from_secs(10))
+            PendingAuthorization::new(now - Duration::from_secs(10), position)
         });
 
         if let AuthorizationRequest::Device { pools, .. } = &request {
@@ -184,6 +191,7 @@ impl PendingAuthorizations {
 
 pub struct PendingAuthorization {
     last_request_sent_at: Instant,
+    position: u64,
     device_pools: HashSet<ResourceId, FastRandomState>,
     packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
@@ -197,9 +205,10 @@ impl PendingAuthorization {
     /// Thus, we may receive a fair few packets before we can send them.
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new(now: Instant) -> Self {
+    fn new(now: Instant, position: u64) -> Self {
         Self {
             last_request_sent_at: now,
+            position,
             device_pools: HashSet::default(),
             packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
