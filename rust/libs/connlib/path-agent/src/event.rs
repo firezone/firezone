@@ -1,7 +1,5 @@
 use std::net::SocketAddr;
 
-use sanstun::Datagram;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transmit {
     pub local: SocketAddr,
@@ -11,7 +9,7 @@ pub struct Transmit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
-    Ciphertext(Datagram),
+    Ciphertext(sanstun::Datagram),
     Plaintext(Box<ip_packet::IpPacket>),
 }
 

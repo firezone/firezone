@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
-use sanstun::{Decrypted, PendingDecapsulate, PendingEncapsulate, TunnelId};
 
 use crate::node::Transmit;
 
@@ -13,7 +12,7 @@ pub struct EncryptJob {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     channel: Option<u16>,
-    pending: PendingEncapsulate,
+    pending: sanstun::PendingEncapsulate,
     packet: IpPacket,
 }
 
@@ -22,7 +21,7 @@ impl EncryptJob {
         src: Option<SocketAddr>,
         dst: SocketAddr,
         channel: Option<u16>,
-        pending: PendingEncapsulate,
+        pending: sanstun::PendingEncapsulate,
         packet: IpPacket,
     ) -> Self {
         Self {
@@ -106,20 +105,20 @@ impl EncryptJob {
 pub struct Decapsulation {
     /// The slot of the connection in the node's connection table.
     slot: usize,
-    tunnel: TunnelId,
+    tunnel: sanstun::TunnelId,
     path: (SocketAddr, SocketAddr),
     /// The length of the channel-data header in front of the WireGuard message, which takes up the
     /// rest of the datagram.
     header_len: usize,
-    pending: PendingDecapsulate,
+    pending: sanstun::PendingDecapsulate,
 }
 
 impl Decapsulation {
     pub(crate) fn new(
         slot: usize,
-        tunnel: TunnelId,
+        tunnel: sanstun::TunnelId,
         path: (SocketAddr, SocketAddr),
-        pending: PendingDecapsulate,
+        pending: sanstun::PendingDecapsulate,
     ) -> Self {
         Self {
             slot,
@@ -157,7 +156,7 @@ impl Decapsulation {
 /// The outcome of a [`Decapsulation`].
 pub struct DecryptedPacket {
     pub(crate) slot: usize,
-    pub(crate) tunnel: TunnelId,
+    pub(crate) tunnel: sanstun::TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),
-    pub(crate) decrypted: Decrypted<anyhow::Result<IpPacket>>,
+    pub(crate) decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,
 }

@@ -30,10 +30,6 @@ use opentelemetry::metrics::Gauge;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
-use sanstun::{
-    Committed, Datagram, Decrypted, Interface, PendingDecapsulate, PendingEncapsulate,
-    PresharedKey, PublicKey, Received, ReceivedMessage, StaticSecret, Tunnel, TunnelConfig,
-};
 use smallvec::SmallVec;
 use std::collections::BTreeSet;
 use std::hash::Hash;
@@ -86,7 +82,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 ///
 /// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
 pub struct Node<TId, RId> {
-    interface: Interface,
+    interface: sanstun::Interface,
 
     buffered_transmits: VecDeque<Transmit>,
     encrypt_jobs: VecDeque<EncryptJob>,
@@ -264,7 +260,7 @@ where
     }
 
     /// Returns the public key of the remote on the connection to `cid`.
-    pub fn remote_public_key(&self, cid: &TId) -> Option<PublicKey> {
+    pub fn remote_public_key(&self, cid: &TId) -> Option<sanstun::PublicKey> {
         self.connections
             .get_established(cid)
             .map(|c| c.remote_pub_key)
@@ -287,8 +283,8 @@ where
     pub fn upsert_connection(
         &mut self,
         cid: TId,
-        remote: PublicKey,
-        preshared_key: StaticSecret,
+        remote: sanstun::PublicKey,
+        preshared_key: sanstun::StaticSecret,
         local_creds: Credentials,
         remote_creds: Credentials,
         ice_role: IceRole,
@@ -462,11 +458,11 @@ where
         self.handle_timeout(now);
     }
 
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_key(&self) -> sanstun::PublicKey {
         self.interface.static_public()
     }
 
-    pub fn connection_id(&self, key: PublicKey, now: Instant) -> Option<TId> {
+    pub fn connection_id(&self, key: sanstun::PublicKey, now: Instant) -> Option<TId> {
         self.connections.iter_established().find_map(|(id, c)| {
             (c.remote_pub_key == key && c.tunnel.time_since_last_handshake(now).is_some())
                 .then_some(id)
@@ -839,8 +835,8 @@ where
     fn init_connection(
         &mut self,
         mut agent: Agent,
-        remote: PublicKey,
-        preshared_key: StaticSecret,
+        remote: sanstun::PublicKey,
+        preshared_key: sanstun::StaticSecret,
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
         intent_sent_at: Instant,
@@ -848,9 +844,9 @@ where
     ) -> Result<Connection<RId>, sanstun::Error> {
         agent.handle_timeout(now);
 
-        let config = TunnelConfig::default().with_preshared_key(PresharedKey::from(
-            Zeroizing::new(*preshared_key.as_bytes()),
-        ));
+        let config = sanstun::TunnelConfig::default().with_preshared_key(
+            sanstun::PresharedKey::from(Zeroizing::new(*preshared_key.as_bytes())),
+        );
         let mut tunnel = self.interface.new_tunnel(remote, config, now)?;
         // With classic ICE, a 90s rekey-attempt time is bad UX: ICE can think
         // the pair is fine while WireGuard is desynced and stuck, so we shorten
@@ -1050,8 +1046,8 @@ where
         now: Instant,
     ) -> ControlFlow<Result<()>, Decapsulation> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
-            Ok(Received::Message(parsed_packet)) => parsed_packet,
-            Ok(Received::SendCookieReply(reply)) => {
+            Ok(sanstun::Received::Message(parsed_packet)) => parsed_packet,
+            Ok(sanstun::Received::SendCookieReply(reply)) => {
                 tracing::debug!(%from, "Replying with cookie under load");
 
                 self.reply_on_arrival_path(destination, from, &reply, now);
@@ -1073,18 +1069,18 @@ where
 
         let connection = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
-            ReceivedMessage::HandshakeInitiation(init) => self
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => self
                 .connections
                 .get_established_mut_by_public_key(init.peer_static_public().to_bytes(), now),
-            ReceivedMessage::HandshakeResponse(response) => self
+            sanstun::ReceivedMessage::HandshakeResponse(response) => self
                 .connections
-                .get_established_mut_session_index(response.tunnel_id(), now),
-            ReceivedMessage::CookieReply(reply) => self
+                .get_established_mut_by_tunnel_id(response.tunnel_id(), now),
+            sanstun::ReceivedMessage::CookieReply(reply) => self
                 .connections
-                .get_established_mut_session_index(reply.tunnel_id(), now),
-            ReceivedMessage::TransportData(data) => self
+                .get_established_mut_by_tunnel_id(reply.tunnel_id(), now),
+            sanstun::ReceivedMessage::TransportData(data) => self
                 .connections
-                .get_established_mut_session_index(data.tunnel_id(), now),
+                .get_established_mut_by_tunnel_id(data.tunnel_id(), now),
         };
         let (cid, slot, conn) = match connection {
             Ok(c) => c,
@@ -1384,7 +1380,7 @@ pub struct Encapsulation {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     channel: Option<u16>,
-    pending: PendingEncapsulate,
+    pending: sanstun::PendingEncapsulate,
 }
 
 impl Encapsulation {
@@ -1399,10 +1395,10 @@ struct Connection<RId> {
     agent: Agent,
 
     #[debug(skip)]
-    tunnel: Tunnel,
+    tunnel: sanstun::Tunnel,
     #[debug(skip)]
-    preshared_key: StaticSecret,
-    remote_pub_key: PublicKey,
+    preshared_key: sanstun::StaticSecret,
+    remote_pub_key: sanstun::PublicKey,
 
     last_proactive_handshake_sent_at: Option<Instant>,
 
@@ -1892,12 +1888,12 @@ where
         cid: TId,
         from: SocketAddr,
         destination: SocketAddr,
-        packet: ReceivedMessage,
+        packet: sanstun::ReceivedMessage,
         datagram: &[u8],
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, PendingDecapsulate>
+    ) -> ControlFlow<Result<()>, sanstun::PendingDecapsulate>
     where
         TId: fmt::Display,
         RId: Ord + fmt::Display + Copy,
@@ -1905,7 +1901,7 @@ where
         let path = (destination, from);
 
         match packet {
-            ReceivedMessage::HandshakeInitiation(init) => {
+            sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
@@ -1918,7 +1914,7 @@ where
 
                 ControlFlow::Break(result.context("handshake packet"))
             }
-            ReceivedMessage::HandshakeResponse(response) => {
+            sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => agent.handle_handshake_response(
                         &mut self.tunnel,
@@ -1935,12 +1931,12 @@ where
 
                 ControlFlow::Break(result.context("handshake packet"))
             }
-            ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
+            sanstun::ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
                 self.tunnel
                     .handle_cookie_reply(reply, now)
                     .context("cookie reply"),
             ),
-            ReceivedMessage::TransportData(data) => {
+            sanstun::ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
                     Ok(pending) => ControlFlow::Continue(pending),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
@@ -1953,7 +1949,7 @@ where
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        decrypted: Decrypted<anyhow::Result<IpPacket>>,
+        decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where
@@ -1961,13 +1957,13 @@ where
         RId: Ord + fmt::Display + Copy,
     {
         let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
-            Ok(Committed::Data {
+            Ok(sanstun::Committed::Data {
                 buffer: Ok(packet), ..
             }) => packet,
-            Ok(Committed::Data { buffer: Err(e), .. }) => {
+            Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => {
                 return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
             }
-            Ok(Committed::Keepalive) => return ControlFlow::Break(Ok(())),
+            Ok(sanstun::Committed::Keepalive) => return ControlFlow::Break(Ok(())),
             Err(e) => {
                 return ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet")));
             }
@@ -1984,7 +1980,7 @@ where
     fn buffer_or_send<TId>(
         &mut self,
         cid: &TId,
-        message: Datagram,
+        message: sanstun::Datagram,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
@@ -2229,11 +2225,11 @@ where
     }
 }
 
-fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> Interface {
+fn new_interface(rng: &mut impl Rng, now: Instant, unix_ts: Duration) -> sanstun::Interface {
     let mut seed = Zeroizing::new([0u8; 32]);
     rng.fill_bytes(&mut seed[..]);
 
-    Interface::new(seed, now, unix_ts).with_handshake_limit(HANDSHAKE_RATE_LIMIT)
+    sanstun::Interface::new(seed, now, unix_ts).with_handshake_limit(HANDSHAKE_RATE_LIMIT)
 }
 
 #[must_use]

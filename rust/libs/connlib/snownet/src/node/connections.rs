@@ -10,7 +10,6 @@ use anyhow::{Context as _, Result, bail};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
-use sanstun::TunnelId;
 
 use crate::{
     EncryptJob, Event,
@@ -28,12 +27,12 @@ pub struct Connections<TId, RId> {
     free_slots: Vec<usize>,
 
     by_id: BTreeMap<TId, usize>,
-    by_wireguard_session_index: HashMap<TunnelId, usize, FastRandomState>,
+    by_tunnel_id: HashMap<sanstun::TunnelId, usize, FastRandomState>,
     by_local_ufrag: BTreeMap<String, usize>,
 
     disconnected_ids: BTreeMap<TId, Instant>,
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
-    disconnected_session_indices: HashMap<TunnelId, Instant, FastRandomState>,
+    disconnected_tunnel_ids: HashMap<sanstun::TunnelId, Instant, FastRandomState>,
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
@@ -50,11 +49,11 @@ impl<TId, RId> Default for Connections<TId, RId> {
             slots: Default::default(),
             free_slots: Default::default(),
             by_id: Default::default(),
-            by_wireguard_session_index: Default::default(),
+            by_tunnel_id: Default::default(),
             by_local_ufrag: Default::default(),
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
-            disconnected_session_indices: Default::default(),
+            disconnected_tunnel_ids: Default::default(),
             disconnected_ufrags: Default::default(),
         }
     }
@@ -198,7 +197,7 @@ where
             self.free_slot(previous);
         }
 
-        let index = connection.tunnel.id();
+        let tunnel_id = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(ToOwned::to_owned);
         let entry = Entry {
             id,
@@ -220,7 +219,7 @@ where
         };
 
         self.by_id.insert(id, slot);
-        self.by_wireguard_session_index.insert(index, slot);
+        self.by_tunnel_id.insert(tunnel_id, slot);
         if let Some(ufrag) = local_ufrag {
             self.by_local_ufrag.insert(ufrag, slot);
         }
@@ -263,36 +262,36 @@ where
         Some(&entry.connection)
     }
 
-    /// Returns the connection in `slot` if it still has the session index `index`.
+    /// Returns the connection in `slot` if it still has the tunnel ID `tunnel_id`.
     pub(crate) fn get_mut_by_slot(
         &mut self,
         slot: usize,
-        index: TunnelId,
+        tunnel_id: sanstun::TunnelId,
         now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let entry = self
             .slots
             .get_mut(slot)
             .and_then(Option::as_mut)
-            .filter(|entry| entry.connection.tunnel.id() == index)
+            .filter(|entry| entry.connection.tunnel.id() == tunnel_id)
             .with_context(|| {
-                UnknownConnection::by_index(index, &self.disconnected_session_indices, now)
+                UnknownConnection::by_tunnel_id(tunnel_id, &self.disconnected_tunnel_ids, now)
             })?;
 
         Ok((entry.id, &mut entry.connection))
     }
 
-    pub(crate) fn get_established_mut_session_index(
+    pub(crate) fn get_established_mut_by_tunnel_id(
         &mut self,
-        index: TunnelId,
+        tunnel_id: sanstun::TunnelId,
         now: Instant,
     ) -> Result<(TId, usize, &mut Connection<RId>)> {
         let (slot, entry) = self
-            .by_wireguard_session_index
-            .get(&index)
+            .by_tunnel_id
+            .get(&tunnel_id)
             .and_then(|&slot| Some((slot, self.slots.get_mut(slot)?.as_mut()?)))
             .with_context(|| {
-                UnknownConnection::by_index(index, &self.disconnected_session_indices, now)
+                UnknownConnection::by_tunnel_id(tunnel_id, &self.disconnected_tunnel_ids, now)
             })?;
 
         Ok((entry.id, slot, &mut entry.connection))
@@ -396,7 +395,7 @@ where
         self.slots.clear();
         self.free_slots.clear();
         self.by_id.clear();
-        self.by_wireguard_session_index.clear();
+        self.by_tunnel_id.clear();
         self.by_local_ufrag.clear();
     }
 
@@ -453,12 +452,12 @@ where
                     .min_by_key(|(t, _)| *t),
             )
             .chain(
-                self.disconnected_session_indices
+                self.disconnected_tunnel_ids
                     .values()
                     .map(|t| {
                         (
                             *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected session indices",
+                            "recently disconnected tunnel ids",
                         )
                     })
                     .min_by_key(|(t, _)| *t),
@@ -480,7 +479,7 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_public_keys
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_session_indices
+        self.disconnected_tunnel_ids
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
@@ -511,7 +510,7 @@ where
         self.disconnected_ids.insert(removed.id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
-        self.disconnected_session_indices
+        self.disconnected_tunnel_ids
             .insert(connection.tunnel.id(), now);
         if let Some(ufrag) = connection.agent.local_ufrag() {
             self.disconnected_ufrags.insert(ufrag.to_owned(), now);
@@ -525,8 +524,7 @@ where
         self.free_slots.push(slot);
 
         self.by_id.remove(&removed.id);
-        self.by_wireguard_session_index
-            .remove(&removed.connection.tunnel.id());
+        self.by_tunnel_id.remove(&removed.connection.tunnel.id());
         if let Some(ufrag) = removed.connection.agent.local_ufrag() {
             self.by_local_ufrag.remove(ufrag);
         }
@@ -592,15 +590,15 @@ impl UnknownConnection {
         }
     }
 
-    fn by_index(
-        id: TunnelId,
-        disconnected_indices: &HashMap<TunnelId, Instant, FastRandomState>,
+    fn by_tunnel_id(
+        id: sanstun::TunnelId,
+        disconnected_tunnel_ids: &HashMap<sanstun::TunnelId, Instant, FastRandomState>,
         now: Instant,
     ) -> Self {
         Self {
             id: format!("{id:?}"),
-            kind: "index",
-            disconnected_for: disconnected_indices
+            kind: "tunnel id",
+            disconnected_for: disconnected_tunnel_ids
                 .get(&id)
                 .map(|disconnected| now.duration_since(*disconnected)),
         }
@@ -671,7 +669,6 @@ mod tests {
     use is::IceAgent;
     use rand::random;
     use ringbuffer::AllocRingBuffer;
-    use sanstun::{Interface, PublicKey, StaticSecret, TunnelConfig};
     use zeroize::Zeroizing;
 
     use std::net::{Ipv4Addr, SocketAddrV4};
@@ -725,12 +722,12 @@ mod tests {
 
     #[test]
     #[expect(clippy::disallowed_methods, reason = "This is a test.")]
-    fn reused_slot_rejects_stale_session_index() {
+    fn reused_slot_rejects_stale_tunnel_id() {
         let mut connections = Connections::default();
         let now = Instant::now();
         let (id, idx, _) = insert_dummy_connection(&mut connections);
         let (_, slot, _) = connections
-            .get_established_mut_session_index(idx, now)
+            .get_established_mut_by_tunnel_id(idx, now)
             .unwrap();
 
         connections.remove_established(&id, now);
@@ -842,7 +839,7 @@ mod tests {
 
     fn insert_dummy_connection(
         connections: &mut Connections<u32, u32>,
-    ) -> (u32, TunnelId, PublicKey) {
+    ) -> (u32, sanstun::TunnelId, sanstun::PublicKey) {
         let conn = new_connection(Some(0), [1u8; 32]);
         let id = 1;
         let idx = conn.tunnel.id();
@@ -856,8 +853,8 @@ mod tests {
     fn assert_disconnected(
         connections: &mut Connections<u32, u32>,
         id: u32,
-        idx: TunnelId,
-        key: PublicKey,
+        idx: sanstun::TunnelId,
+        key: sanstun::PublicKey,
         now: Instant,
         is_recently_disconnected: bool,
     ) {
@@ -872,7 +869,7 @@ mod tests {
 
         // Get by index
         let err = connections
-            .get_established_mut_session_index(idx, now)
+            .get_established_mut_by_tunnel_id(idx, now)
             .unwrap_err()
             .downcast::<UnknownConnection>()
             .unwrap();
@@ -890,19 +887,20 @@ mod tests {
     }
 
     fn new_connection(relay: Option<u32>, key: [u8; 32]) -> Connection<u32> {
-        let tunnel = Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
-            .new_tunnel(
-                PublicKey::from(key),
-                TunnelConfig::default(),
-                Instant::now(),
-            )
-            .unwrap();
+        let tunnel =
+            sanstun::Interface::new(Zeroizing::new(random()), Instant::now(), Duration::ZERO)
+                .new_tunnel(
+                    sanstun::PublicKey::from(key),
+                    sanstun::TunnelConfig::default(),
+                    Instant::now(),
+                )
+                .unwrap();
 
         Connection {
             agent: crate::agent::Agent::ice(IceAgent::new(is::IceCreds::new())),
             tunnel,
-            preshared_key: StaticSecret::from(Zeroizing::new([0; 32])),
-            remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            preshared_key: sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
+            remote_pub_key: sanstun::PublicKey::from(rand::random::<[u8; 32]>()),
             last_proactive_handshake_sent_at: None,
             relay,
             state: crate::node::ConnectionState::Connecting {
