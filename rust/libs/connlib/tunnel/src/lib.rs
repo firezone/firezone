@@ -23,7 +23,7 @@ use std::{
     future, iter, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
@@ -211,7 +211,6 @@ impl ClientTunnel {
             tokio::time::timeout(
                 Duration::from_secs(1),
                 future::poll_fn(move |cx| {
-                    ready!(self.io.poll_send_ready(cx))?;
                     self.io
                         .encrypt_batch()
                         .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
@@ -263,11 +262,9 @@ impl ClientTunnel {
 
             self.io.flush_tun_batch();
 
-            if let Poll::Ready(Ok(())) = self.io.poll_send_ready(cx) {
-                self.io
-                    .encrypt_batch()
-                    .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-            }
+            self.io
+                .encrypt_batch()
+                .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -443,7 +440,6 @@ impl GatewayTunnel {
             tokio::time::timeout(
                 Duration::from_secs(1),
                 future::poll_fn(move |cx| {
-                    ready!(self.io.poll_send_ready(cx))?;
                     self.io
                         .encrypt_batch()
                         .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
@@ -476,11 +472,9 @@ impl GatewayTunnel {
                 return Poll::Ready(Ok(other));
             }
 
-            if let Poll::Ready(Ok(())) = self.io.poll_send_ready(cx) {
-                self.io
-                    .encrypt_batch()
-                    .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
-            }
+            self.io
+                .encrypt_batch()
+                .extend(iter::from_fn(|| self.role_state.poll_encrypt_job()));
 
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {

@@ -16,9 +16,9 @@ use snownet::{Decapsulation, DecryptedPacket, EncryptJob};
 use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, Segment};
 use tokio::sync::oneshot;
 
-use super::UdpGsoTrain;
+use super::{Queued, UdpGsoTrain};
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::{Encrypting, Sockets};
+use crate::sockets::Encrypting;
 
 /// How many received packets go to a worker in one decrypt job at most.
 ///
@@ -111,14 +111,12 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts a batch of packets to encrypt, whose datagrams are queued on `sockets` when it is
+    /// Starts a batch of packets to encrypt, whose datagrams are queued in `outbound` when it is
     /// dropped.
-    ///
-    /// Each UDP socket must have room for one more item.
-    pub fn encrypt_batch<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptBatch<'a> {
+    pub fn encrypt_batch<'a>(&'a mut self, outbound: &'a mut VecDeque<Queued>) -> EncryptBatch<'a> {
         EncryptBatch {
             crypto: self,
-            sockets,
+            outbound,
             open: None,
             encrypting_v4: None,
             encrypting_v6: None,
@@ -166,10 +164,10 @@ impl CryptoWorkers {
     }
 }
 
-/// Packets to encrypt, sent to the UDP sockets when dropped.
+/// Packets to encrypt, queued for the UDP sockets when dropped.
 pub struct EncryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
-    sockets: &'a mut Sockets,
+    outbound: &'a mut VecDeque<Queued>,
     open: Option<Train>,
     encrypting_v4: Option<Encrypting>,
     encrypting_v6: Option<Encrypting>,
@@ -225,11 +223,13 @@ impl Drop for EncryptBatch<'_> {
         }
 
         if let Some(encrypting) = self.encrypting_v4.take() {
-            self.sockets.send_encrypting(IpVersion::V4, encrypting);
+            self.outbound
+                .push_back(Queued::Encrypting(IpVersion::V4, encrypting));
         }
 
         if let Some(encrypting) = self.encrypting_v6.take() {
-            self.sockets.send_encrypting(IpVersion::V6, encrypting);
+            self.outbound
+                .push_back(Queued::Encrypting(IpVersion::V6, encrypting));
         }
     }
 }
