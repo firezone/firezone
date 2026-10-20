@@ -357,6 +357,17 @@ impl std::os::fd::AsFd for UdpSocket {
     }
 }
 
+/// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
+/// that all come from the same remote address.
+pub struct DatagramIn<B = Buffer<Vec<u8>>> {
+    buffer: B,
+    local: SocketAddr,
+    from: SocketAddr,
+    ecn: Ecn,
+    len: usize,
+    stride: usize,
+}
+
 /// Where a segment lies within its [`DatagramIn`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
@@ -965,7 +976,8 @@ impl RecvBuffers {
 /// The datagrams stay in the receive buffers the kernel filled; the buffers and metas
 /// live in pooled, heap-allocated `Vec`s (see `RecvBuffers`), so moving a batch only
 /// copies a couple of pointers. Callers consume a batch with [`DatagramBatch::drain`],
-/// which moves the buffers out as [`DatagramIn`]s.
+/// which yields each buffer as a [`DatagramIn`] that segments GRO / URO-coalesced
+/// datagrams apart again.
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
@@ -1013,9 +1025,9 @@ impl<B> DatagramBatch<B> {
         self.len() == 0
     }
 
-    /// Removes all receive buffers from the batch, in order; draining again yields nothing.
+    /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
-    /// Buffers with nonsensical metadata are dropped.
+    /// Datagrams with nonsensical metadata are dropped.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<B>> + '_
     where
         B: Deref<Target = Vec<u8>>,
@@ -1037,17 +1049,6 @@ impl<B> DatagramBatch<B> {
 /// the last of which may be short.
 fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
-}
-
-/// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
-/// that all come from the same remote address.
-pub struct DatagramIn<B = Buffer<Vec<u8>>> {
-    buffer: B,
-    local: SocketAddr,
-    from: SocketAddr,
-    ecn: Ecn,
-    len: usize,
-    stride: usize,
 }
 
 impl<B> DatagramIn<B>
@@ -1076,7 +1077,8 @@ where
             return None;
         }
 
-        // A zero stride would never advance to the next segment; nothing sane reports one.
+        // A zero stride would never advance past the first segment; nothing sane
+        // reports one, so drop the receive.
         if meta.stride == 0 {
             tracing::warn!(len = %meta.len, "Dropping receive with a zero segment size");
 
