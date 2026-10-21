@@ -292,7 +292,7 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::new(otel_instruments::network_packets());
+        let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {

@@ -115,16 +115,18 @@ pub(crate) struct Sockets {
     packet_counter: Counter<u64>,
 }
 
-impl Sockets {
-    pub fn new(packet_counter: Counter<u64>) -> Self {
+impl Default for Sockets {
+    fn default() -> Self {
         Self {
             socket_v4: None,
             socket_v6: None,
             bind_errors: VecDeque::new(),
-            packet_counter,
+            packet_counter: otel_instruments::network_packets(),
         }
     }
+}
 
+impl Sockets {
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
         self.socket_v4 = None;
         self.socket_v6 = None;
