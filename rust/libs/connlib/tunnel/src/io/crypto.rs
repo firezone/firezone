@@ -76,18 +76,6 @@ pub struct DecryptedDatagram {
 /// Encrypts and decrypts WireGuard data messages on worker threads.
 ///
 /// Jobs of either kind go to the next worker round-robin.
-///
-/// To encrypt, pass packets to [`EncryptBatch::encrypt`] in the order the state encapsulated them,
-/// i.e. reserved their counters, and their datagrams go out in that order: batches borrow the
-/// [`CryptoWorkers`] mutably, so they never interleave. Each job is one [`UdpGsoTrain`]. Within a
-/// batch, trains close in the order of their packets and queue their receivers in that order. When the batch ends, the receivers of
-/// each IP version go to its UDP socket thread as one item. A socket thread sends its items and
-/// their receivers front to back, and a flow has one destination, so all of its datagrams go
-/// through one socket thread.
-///
-/// To decrypt, received buffers go to the workers in jobs of up to [`DECRYPT_BATCH_SIZE`] data
-/// messages. The results come back through a `oneshot` channel per job, which [`Decrypting`]
-/// queues in submission order to accept the decrypted packets in that order.
 pub struct CryptoWorkers {
     workers: Vec<mpsc::Sender<Work>>,
     next_worker: usize,
