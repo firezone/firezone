@@ -31,7 +31,6 @@ fn gso_buffers(len: usize) -> &'static BufferPool<Vec<u8>> {
 
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
-#[derive(Debug, Clone, Copy)]
 pub struct UdpGsoTrain {
     connection: Connection,
     /// The GSO segment size: the length of the first datagram.
@@ -128,7 +127,7 @@ impl UdpGsoTrain {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq)]
 struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,

@@ -88,7 +88,6 @@ impl PendingEncapsulate {
 /// A WireGuard data message that passed the replay check and awaits decryption.
 ///
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
-#[derive(Debug)]
 pub struct PendingDecapsulate {
     tunnel: sanstun::TunnelId,
     path: (SocketAddr, SocketAddr),

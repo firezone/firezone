@@ -1748,9 +1748,6 @@ impl ClientState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        // Keeps the node's transmits ahead of the ones we queue later.
-        self.buffered_transmits
-            .extend(iter::from_fn(|| self.node.poll_transmit()));
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
@@ -2453,7 +2450,6 @@ impl ClientState {
         tracing::info!("Resetting network state ({reason})");
 
         self.node.reset(now);
-        self.buffered_transmits.clear();
         self.drain_node_events(now);
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

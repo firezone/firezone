@@ -473,9 +473,6 @@ impl GatewayState {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        // Keeps the node's transmits ahead of the ones we queue later.
-        self.buffered_transmits
-            .extend(iter::from_fn(|| self.node.poll_transmit()));
         self.drain_node_events();
 
         self.flow_tracker.handle_timeout(now);

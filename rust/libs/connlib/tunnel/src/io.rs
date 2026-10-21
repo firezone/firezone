@@ -473,11 +473,6 @@ impl Io {
     /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while each UDP socket has room.
     pub fn start_encrypt_batch(&mut self) -> EncryptBatch<'_> {
-        debug_assert!(
-            self.sockets.has_room(),
-            "TUN packets are only read while the UDP sockets have room"
-        );
-
         self.crypto.start_encrypt_batch(&mut self.sockets)
     }
 

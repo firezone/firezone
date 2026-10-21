@@ -151,13 +151,6 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    /// Whether nothing waits for room and every socket has room for another item.
-    pub fn has_room(&self) -> bool {
-        self.overflow.is_empty()
-            && self.socket_v4.as_ref().is_none_or(|s| s.has_room())
-            && self.socket_v6.as_ref().is_none_or(|s| s.has_room())
-    }
-
     /// Sends a datagram the main thread encrypted, or a control message.
     ///
     /// Failures are returned by [`Sockets::poll_error`].
