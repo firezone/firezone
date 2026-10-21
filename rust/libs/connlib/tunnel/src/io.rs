@@ -309,8 +309,7 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let packet_counter = otel_instruments::network_packets();
-        let mut sockets = Sockets::new(packet_counter.clone());
+        let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
@@ -338,7 +337,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            crypto: CryptoWorkers::new(packet_counter),
+            crypto: CryptoWorkers::new(otel_instruments::network_packets()),
             decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
