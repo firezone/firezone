@@ -300,7 +300,7 @@ enum Outbound {
 /// Datagrams still being encrypted by the crypto workers, in the order to send them.
 ///
 /// A worker drops the sender if there is nothing to send.
-pub(crate) type PendingDatagrams = Buffer<VecBuf<oneshot::Receiver<DatagramOut>>>;
+pub(crate) type PendingDatagrams = Vec<oneshot::Receiver<DatagramOut>>;
 
 /// How big the queue for outgoing UDP items and socket errors is at most.
 ///
