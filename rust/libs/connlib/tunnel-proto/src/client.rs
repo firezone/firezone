@@ -573,8 +573,9 @@ impl ClientState {
         );
 
         // DNS packets to our sentinel resolvers never become flows.
-        if self.try_handle_dns(packet, now).is_break() {
-            return Ok(None);
+        match self.try_handle_dns(packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return Ok(None),
         }
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
@@ -691,18 +692,15 @@ impl ClientState {
                 if let Some(domain) = &route.domain {
                     flow_tracker::record_domain(domain.name().clone());
 
-                    if self
-                        .dns_resource_nat
-                        .handle_outgoing(
-                            authorization.gateway_id,
-                            domain,
-                            route.resource_id,
-                            packet,
-                            now,
-                        )
-                        .is_break()
-                    {
-                        return Ok(None);
+                    match self.dns_resource_nat.handle_outgoing(
+                        authorization.gateway_id,
+                        domain,
+                        route.resource_id,
+                        packet,
+                        now,
+                    ) {
+                        ControlFlow::Continue(()) => {}
+                        ControlFlow::Break(()) => return Ok(None),
                     }
                 }
 
