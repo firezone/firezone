@@ -13,6 +13,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("io.sentry.android.gradle")
     id("com.diffplug.spotless")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
@@ -381,6 +382,22 @@ dependencies {
 
 roborazzi {
     outputDir.set(layout.projectDirectory.dir("../screenshots"))
+}
+
+// Only here for the R8 mapping, which the release job uploads. Everything else the plugin does is off.
+sentry {
+    org = "firezone-inc"
+    projectName = "android-client"
+    autoUploadProguardMapping =
+        providers
+            .environmentVariable("SENTRY_UPLOAD_MAPPING")
+            .map { it == "true" }
+            .orElse(false)
+    autoInstallation { enabled = false }
+    tracingInstrumentation { enabled = false }
+    runtimeOptimizations { enabled = false }
+    includeDependenciesReport = false
+    telemetry = false
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
