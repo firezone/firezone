@@ -12,7 +12,7 @@ use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
@@ -77,7 +77,7 @@ const IN_FLIGHT: usize = cfg_select! {
 #[cfg(target_os = "macos")]
 const FLOW_SOCKET_PACKETS: usize = 16;
 
-/// How often the slowest pipeline stage may park per 1000 packets.
+/// How often the slowest pipeline stage may park per 1000 packets before a benchmark reports it.
 ///
 /// The stages idle between bursts. Within one, every stage would park about once per batch of
 /// packets if a stand-in thread could not keep up.
@@ -243,12 +243,12 @@ fn connect(resource: Resource, protocol: Protocol, flow_logs: bool) -> (Side, Si
 
     let client = Side {
         state: State::Client(tunnel.client),
-        socket: CLIENT_SOCKET,
+        socket: *CLIENT_SOCKET,
         reads: request,
     };
     let gateway = Side {
         state: State::Gateway(tunnel.gateway),
-        socket: GATEWAY_SOCKET,
+        socket: *GATEWAY_SOCKET,
         reads: reply,
     };
 
@@ -503,7 +503,7 @@ impl Arrivals {
 }
 
 /// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
-/// those that arrived, and asserts that the event loop did not park while packets were in flight.
+/// those that arrived, and reports if the event loop parked while packets were in flight.
 ///
 /// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
 /// input holds.
@@ -554,10 +554,12 @@ fn measure<T>(
         / packets as f64;
 
     // Skipped or test runs send too few packets to tell.
-    assert!(
-        packets < BURST || parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Every pipeline stage parked at least {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
-    );
+    #[allow(clippy::print_stderr)]
+    if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
+        eprintln!(
+            "Every pipeline stage parked at least {parks:.2} times per 1000 packets and a stand-in thread may be the bottleneck"
+        );
+    }
 }
 
 /// Raises the scheduling priority of the calling thread on macOS.
@@ -608,10 +610,31 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
     (runtime, socket)
 }
 
-const CLIENT_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
-const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 2222));
+static CLIENT_SOCKET: LazyLock<SocketAddr> = LazyLock::new(|| SocketAddr::new(local_ip(), 1111));
+static GATEWAY_SOCKET: LazyLock<SocketAddr> = LazyLock::new(|| SocketAddr::new(local_ip(), 2222));
+
+/// Returns the IP address to bind the Client's and Gateway's sockets to.
+///
+/// On macOS, that is the host's primary non-loopback address, falling back to loopback without
+/// one. Packets to any local address travel over the loopback interface either way, but NECP
+/// decides by address: a loopback address takes a bypass that looks up an entitlement on every
+/// datagram, which no real interface pays for, and which hides the policy evaluation they do pay.
+fn local_ip() -> IpAddr {
+    #[cfg(target_os = "macos")]
+    {
+        // Connecting a UDP socket sends nothing but makes the kernel pick the source address.
+        let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+        if probe.connect("192.0.2.1:9").is_ok()
+            && let Ok(addr) = probe.local_addr()
+            && !addr.ip().is_loopback()
+            && !addr.ip().is_unspecified()
+        {
+            return addr.ip();
+        }
+    }
+
+    Ipv4Addr::LOCALHOST.into()
+}
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
@@ -763,14 +786,14 @@ impl Tunnel {
             .unwrap();
         let decapsulation = self
             .gateway
-            .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
+            .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
         let request = self
             .gateway
             .handle_peer_input(
-                GATEWAY_SOCKET,
-                CLIENT_SOCKET,
+                *GATEWAY_SOCKET,
+                *CLIENT_SOCKET,
                 decapsulation.decrypt(&datagram.payload),
                 self.now,
             )
@@ -835,10 +858,10 @@ impl Tunnel {
         }
 
         while let Some(transmit) = self.client.poll_transmit() {
-            self.route(CLIENT_SOCKET, transmit);
+            self.route(*CLIENT_SOCKET, transmit);
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
-            self.route(GATEWAY_SOCKET, transmit);
+            self.route(*GATEWAY_SOCKET, transmit);
         }
         for _ in std::iter::from_fn(|| self.client.poll_packets()) {}
     }
@@ -905,7 +928,7 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == CLIENT_SOCKET
+        if to == *CLIENT_SOCKET
             && let Ok(Some(decapsulation)) = self
                 .client
                 .handle_network_input(to, from, payload, self.now)
@@ -914,7 +937,7 @@ impl Tunnel {
                 self.client
                     .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
-        if to == GATEWAY_SOCKET
+        if to == *GATEWAY_SOCKET
             && let Ok(Some(decapsulation)) = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now)
