@@ -938,8 +938,23 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
-        let active_socket = self.active_socket.as_mut()?;
         let payload_length = buffer.len() - 4;
+        let (channel_number, socket) = self.channel_to_peer(peer, now)?;
+
+        crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            payload_length,
+        );
+
+        Some(EncodeOk { socket })
+    }
+
+    /// Returns the channel number for sending data to `peer` and the relay socket to send it to.
+    ///
+    /// Binds a new channel if there is none yet.
+    fn channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<(u16, SocketAddr)> {
+        let active_socket = self.active_socket.as_mut()?;
 
         let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
         let inflight_channel_to_peer = self.channel_bindings.inflight_channel_to_peer(peer, now);
@@ -957,17 +972,10 @@ impl Allocation {
                 return None;
             }
         };
-        crate::channel_data::encode_header_to_slice(
-            &mut buffer[..4],
-            channel_number,
-            payload_length,
-        );
 
         active_socket.reset(now);
 
-        Some(EncodeOk {
-            socket: active_socket.addr,
-        })
+        Some((channel_number, active_socket.addr))
     }
 
     /// Whether this [`Allocation`] can be freed.
