@@ -312,22 +312,24 @@ impl ClientTunnel {
 
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];
+
                             udp_received.record(packet);
 
-                            let result = self.role_state.handle_network_input(
-                                datagram.local(),
-                                datagram.from(),
-                                packet,
-                                now,
-                            );
-
-                            match result {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                            match self
+                                .role_state
+                                .handle_network_input(
+                                    datagram.local(),
+                                    datagram.from(),
+                                    packet,
+                                    now,
+                                )
+                                .with_context(|| FailedToHandleNetworkPacket {
                                     local: datagram.local(),
                                     from: datagram.from(),
-                                })),
+                                }) {
+                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error.push(e),
                             };
                         }
                     }
@@ -541,22 +543,24 @@ impl GatewayTunnel {
 
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];
+
                             udp_received.record(packet);
 
-                            let result = self.role_state.handle_network_input(
-                                datagram.local(),
-                                datagram.from(),
-                                packet,
-                                now,
-                            );
-
-                            match result {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
-                                Ok(None) => self.needs_timeout = true,
-                                Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
+                            match self
+                                .role_state
+                                .handle_network_input(
+                                    datagram.local(),
+                                    datagram.from(),
+                                    packet,
+                                    now,
+                                )
+                                .with_context(|| FailedToHandleNetworkPacket {
                                     local: datagram.local(),
                                     from: datagram.from(),
-                                })),
+                                }) {
+                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
+                                Ok(None) => self.needs_timeout = true,
+                                Err(e) => error.push(e),
                             };
                         }
                     }
