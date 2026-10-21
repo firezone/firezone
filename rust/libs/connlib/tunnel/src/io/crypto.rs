@@ -1,15 +1,14 @@
 use std::{
-    collections::VecDeque,
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
-    pin::Pin,
     sync::mpsc,
     task::{Context, Poll, ready},
     thread,
 };
 
 use bufferpool::{Buffer, VecBuf};
+use futures::{StreamExt as _, stream::FuturesOrdered};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
@@ -310,7 +309,7 @@ impl Drop for DecryptBatch<'_> {
 /// The decrypt jobs handed to the workers, in submission order.
 #[derive(Default)]
 pub struct Decrypting {
-    jobs: VecDeque<oneshot::Receiver<Decrypted>>,
+    jobs: FuturesOrdered<oneshot::Receiver<Decrypted>>,
 }
 
 impl Decrypting {
@@ -326,12 +325,9 @@ impl Decrypting {
     /// Returns the next batch of decrypted packets, in the order they were received.
     pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Decrypted> {
         loop {
-            let Some(decrypted) = self.jobs.front_mut() else {
+            let Some(result) = ready!(self.jobs.poll_next_unpin(cx)) else {
                 return Poll::Pending;
             };
-            let result = ready!(Pin::new(decrypted).poll(cx));
-
-            self.jobs.pop_front();
 
             match result {
                 Ok(decrypted) => return Poll::Ready(decrypted),
