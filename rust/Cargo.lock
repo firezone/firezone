@@ -8979,6 +8979,7 @@ dependencies = [
  "flow-tracker",
  "ip-packet",
  "libc",
+ "mimalloc",
  "serde_json",
  "snownet",
  "socket-factory",
