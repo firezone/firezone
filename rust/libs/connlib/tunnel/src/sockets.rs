@@ -3,7 +3,6 @@ use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bufferpool::{Buffer, VecBuf};
 use futures::ready;
-use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
 use socket_factory::{
     DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
@@ -76,12 +75,30 @@ impl ReceivedDatagrams {
     }
 }
 
+/// Room for one datagram in a UDP socket's channel, reserved by [`Sockets::poll_reserve`].
+pub(crate) struct SendPermit<'a> {
+    permit: mpsc::Permit<'a, DatagramOut>,
+    packet_counter: &'a Counter<u64>,
+}
+
+impl SendPermit<'_> {
+    pub fn send(self, datagram: DatagramOut) {
+        let mut transmitted = UdpPacketCounts::transmit(self.packet_counter);
+        for segment in datagram.packet.chunks(datagram.segment_size) {
+            transmitted.record(segment);
+        }
+        drop(transmitted);
+
+        self.permit.send(datagram);
+    }
+}
+
 pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
-    /// Bind and send failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
-    errors: VecDeque<anyhow::Error>,
+    /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
+    bind_errors: VecDeque<anyhow::Error>,
     packet_counter: Counter<u64>,
 }
 
@@ -90,7 +107,7 @@ impl Sockets {
         Self {
             socket_v4: None,
             socket_v6: None,
-            errors: VecDeque::new(),
+            bind_errors: VecDeque::new(),
             packet_counter,
         }
     }
@@ -113,7 +130,7 @@ impl Sockets {
             Err(e) => {
                 // A family we cannot bind is survivable on its own - the other one carries the
                 // session - so the event-loop decides what a failure means instead of us.
-                self.errors.push_back(
+                self.bind_errors.push_back(
                     anyhow::Error::new(e).context(format!("Failed to bind UDP socket on {addr}")),
                 );
 
@@ -122,73 +139,29 @@ impl Sockets {
         }
     }
 
-    /// Resolves once every socket has room for another datagram.
-    pub fn poll_has_room(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        if let Some(socket) = self.socket_v4.as_mut() {
-            ready!(socket.poll_has_room(cx))?;
-        }
-
-        if let Some(socket) = self.socket_v6.as_mut() {
-            ready!(socket.poll_has_room(cx))?;
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Sends a datagram on the socket for its destination.
-    ///
-    /// Send only once [`Sockets::poll_has_room`] resolved; a datagram the socket has no room for
-    /// is dropped. Failures are returned by [`Sockets::poll_error`].
-    pub fn send(&mut self, datagram: DatagramOut) {
-        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
-        for segment in datagram.packet.chunks(datagram.segment_size) {
-            transmitted.record(segment);
-        }
-        drop(transmitted);
-
-        let version = match datagram.dst {
-            SocketAddr::V4(_) => IpVersion::V4,
-            SocketAddr::V6(_) => IpVersion::V6,
+    /// Resolves once the socket for `dst` has room for another datagram, reserving it.
+    pub fn poll_reserve(
+        &mut self,
+        cx: &mut Context<'_>,
+        dst: SocketAddr,
+    ) -> Poll<Result<SendPermit<'_>>> {
+        let (socket, name) = match dst {
+            SocketAddr::V4(_) => (self.socket_v4.as_mut(), "IPv4"),
+            SocketAddr::V6(_) => (self.socket_v6.as_mut(), "IPv6"),
         };
-
-        if self.try_send(version, datagram).is_some() {
-            self.errors.push_back(anyhow::anyhow!(
-                "UDP socket has no room for another datagram"
-            ));
-        }
-    }
-
-    /// Sends `datagram` to the socket for `version`, returning it if that socket has no room.
-    fn try_send(&mut self, version: IpVersion, datagram: DatagramOut) -> Option<DatagramOut> {
-        let result = self
-            .socket_mut(version)
-            .map_err(anyhow::Error::new)
-            .and_then(|socket| socket.try_send(datagram));
-
-        match result {
-            Ok(full) => full,
-            Err(e) => {
-                self.errors.push_back(e);
-
-                None
-            }
-        }
-    }
-
-    fn socket_mut(&mut self, version: IpVersion) -> io::Result<&mut ThreadedUdpSocket> {
-        let (socket, name) = match version {
-            IpVersion::V4 => (self.socket_v4.as_mut(), "IPv4"),
-            IpVersion::V6 => (self.socket_v6.as_mut(), "IPv6"),
-        };
-
         let socket = socket.ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::NotConnected,
-                format!("failed to send packets: no {name} socket"),
+                format!("failed to send packet to {dst}: no {name} socket"),
             )
         })?;
 
-        Ok(socket)
+        let permit = ready!(socket.poll_reserve(cx))?;
+
+        Poll::Ready(Ok(SendPermit {
+            permit,
+            packet_counter: &self.packet_counter,
+        }))
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
@@ -211,7 +184,7 @@ impl Sockets {
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
-        if let Some(error) = self.errors.pop_front() {
+        if let Some(error) = self.bind_errors.pop_front() {
             return Poll::Ready(error);
         }
 
@@ -480,42 +453,29 @@ impl ThreadedUdpSocket {
         })
     }
 
-    /// Whether the outbound channel has room for another datagram.
+    /// Reserves room in the outbound channel for another datagram.
     ///
-    /// Only the main thread sends into the channel, so the room can only grow until it does.
-    fn has_room(&self) -> bool {
-        self.channels
-            .as_ref()
-            .is_some_and(|channels| channels.outbound_tx.capacity() > 0)
-    }
-
-    /// Resolves once the outbound channel has room for another datagram.
-    ///
-    /// Only a full channel reserves a slot, to be woken once the socket thread frees one. The slot
-    /// is released again right away, for [`ThreadedUdpSocket::try_send`] to take.
-    fn poll_has_room(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let has_room = self.has_room();
+    /// Only a full channel reserves a slot through the [`PollSender`], to be woken once the socket
+    /// thread frees one. That slot is released again right away, for `try_reserve` to take.
+    fn poll_reserve(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<mpsc::Permit<'_, DatagramOut>>> {
         let channels = self.channels_mut()?;
 
-        if !has_room {
+        loop {
+            match channels.outbound_tx.try_reserve() {
+                Ok(permit) => return Poll::Ready(Ok(permit)),
+                Err(TrySendError::Full(())) => {}
+                Err(TrySendError::Closed(())) => {
+                    return Poll::Ready(Err(UdpSocketThreadStopped.into()));
+                }
+            }
+
             ready!(channels.outbound_reserve.poll_reserve(cx))
                 .map_err(|_| UdpSocketThreadStopped)?;
+            channels.outbound_reserve.abort_send();
         }
-
-        channels.outbound_reserve.abort_send();
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Sends `datagram` to the socket thread, returning it if the channel is full.
-    fn try_send(&mut self, datagram: DatagramOut) -> Result<Option<DatagramOut>> {
-        let full = match self.channels_mut()?.outbound_tx.try_send(datagram) {
-            Ok(()) => None,
-            Err(TrySendError::Full(datagram)) => Some(datagram),
-            Err(TrySendError::Closed(_)) => return Err(UdpSocketThreadStopped.into()),
-        };
-
-        Ok(full)
     }
 
     /// Appends the batches received from the socket thread to `batches`, at most

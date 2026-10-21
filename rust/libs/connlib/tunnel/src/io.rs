@@ -420,16 +420,15 @@ impl Io {
     }
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
+        while let Some(dst) = self.gso_queue.next_dst() {
+            let permit = ready!(self.sockets.poll_reserve(cx, dst));
 
-        loop {
-            ready!(self.sockets.poll_has_room(cx)?);
-
-            let Some(datagram) = datagrams.next() else {
+            let Some(datagram) = self.gso_queue.datagrams().next() else {
                 break;
             };
 
-            self.sockets.send(datagram);
+            // A datagram we cannot reserve room for is dropped.
+            permit?.send(datagram);
         }
 
         Poll::Ready(Ok(()))
