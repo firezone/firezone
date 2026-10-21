@@ -52,6 +52,14 @@ impl UdpGsoQueue {
         reservation.commit();
     }
 
+    /// The destination of the next datagram [`UdpGsoQueue::datagrams`] yields.
+    pub fn next_dst(&self) -> Option<SocketAddr> {
+        self.batches
+            .iter()
+            .find(|batch| !batch.buffer.is_empty())
+            .map(|batch| batch.connection.dst)
+    }
+
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
         DrainDatagramsIter { queue: self }
     }

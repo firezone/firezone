@@ -10,7 +10,6 @@ pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
 use crate::{
     TunnelError, dns,
-    packet_counts::UdpPacketCounts,
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::{ErrorExt, Result};
@@ -60,7 +59,6 @@ pub struct Io {
     doh_tls_config: TlsConfig,
 
     tun: Device,
-    packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -326,7 +324,6 @@ impl Io {
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
@@ -423,21 +420,15 @@ impl Io {
     }
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
-        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
+        while let Some(dst) = self.gso_queue.next_dst() {
+            let permit = ready!(self.sockets.poll_reserve(cx, dst));
 
-        loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
-
-            let Some(datagram) = datagrams.next() else {
+            let Some(datagram) = self.gso_queue.datagrams().next() else {
                 break;
             };
 
-            for segment in datagram.packet.chunks(datagram.segment_size) {
-                transmitted.record(segment);
-            }
-
-            self.sockets.send(datagram)?;
+            // A datagram we cannot reserve room for is dropped.
+            permit?.send(datagram);
         }
 
         Poll::Ready(Ok(()))
