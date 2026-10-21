@@ -9,6 +9,7 @@ use super::{
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     site_network::{IcmpError, icmp_error_reply},
+    sut::encrypt,
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use anyhow::Result;
@@ -75,9 +76,6 @@ pub(crate) struct SimClient {
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
-
-    /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimClient {
@@ -109,7 +107,6 @@ impl SimClient {
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
             tcp_client: crate::tcp::Client::new(now, os),
             dns_resource_record_cache: Default::default(),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -310,19 +307,17 @@ impl SimClient {
         self.encapsulate(packet, now)
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
     fn handle_tun_input(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(&mut packet, now, &mut self.transmit_buffer)?;
+        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
+            return Ok(None);
+        };
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(encrypt(encapsulation, &packet))
     }
 
     /// Returns the next packet the simulated applications send and the probe it submits, if any.
@@ -346,9 +341,22 @@ impl SimClient {
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+        let (local, from) = (transmit.dst, transmit.src.unwrap());
         let Some(packet) = self
             .sut
-            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .handle_network_input(local, from, &transmit.payload, now)
+            .and_then(|decapsulation| {
+                let Some(decapsulation) = decapsulation else {
+                    return Ok(None);
+                };
+
+                self.sut.handle_peer_input(
+                    local,
+                    from,
+                    decapsulation.decrypt(&transmit.payload),
+                    now,
+                )
+            })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
             .flatten()

@@ -1,12 +1,15 @@
+mod crypto;
 mod device;
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
-mod udp_gso_queue;
+mod udp_gso_train;
 
+pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
+pub use crypto::{CryptoWorkersStopped, DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
+pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
@@ -14,6 +17,7 @@ use crate::{
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
+use crypto::{CryptoWorkers, Decrypting};
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -23,7 +27,7 @@ use futures::{
 };
 use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -31,7 +35,7 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 use tun::Tun;
@@ -40,7 +44,8 @@ use tun::Tun;
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: UdpGsoQueue,
+    crypto: CryptoWorkers,
+    decrypting: Decrypting,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -59,7 +64,6 @@ pub struct Io {
     doh_tls_config: TlsConfig,
 
     tun: Device,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +90,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
+    pub decrypted: Option<DecryptedIpPackets>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
@@ -133,6 +138,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             input: Input {
                 device: None,
                 network: None,
+                decrypted: None,
                 tcp_dns_queries: Vec::new(),
                 udp_dns_queries: Vec::new(),
                 dns_responses: Vec::new(),
@@ -142,7 +148,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     }
 
     fn flush_udp(&mut self) {
-        let poll = self.io.flush_gso_queue(self.cx);
+        let poll = self.io.sockets.poll_flush(self.cx);
 
         self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
@@ -184,8 +190,16 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         }
     }
 
-    fn poll_network(&mut self) {
+    fn poll_decrypted(&mut self) {
         if !self.tun_has_room {
+            return;
+        }
+
+        self.input.decrypted = poll_to_option(self.io.decrypting.poll_next(self.cx));
+    }
+
+    fn poll_network(&mut self) {
+        if !self.io.decrypting.has_room() {
             return;
         }
 
@@ -195,6 +209,12 @@ impl<'a, 'cx> PollState<'a, 'cx> {
     fn poll_socket_errors(&mut self) {
         while let Poll::Ready(e) = self.io.sockets.poll_error(self.cx) {
             self.input.error.push(e);
+        }
+    }
+
+    fn poll_crypto_workers(&mut self) {
+        if self.io.crypto.is_stopped() {
+            self.input.error.push(CryptoWorkersStopped);
         }
     }
 
@@ -268,6 +288,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
 
         if input.device.is_none()
             && input.network.is_none()
+            && input.decrypted.is_none()
             && input.tcp_dns_queries.is_empty()
             && input.udp_dns_queries.is_empty()
             && input.dns_responses.is_empty()
@@ -320,11 +341,11 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            gso_queue: UdpGsoQueue::new(),
+            crypto: CryptoWorkers::new(),
+            decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -384,7 +405,8 @@ impl Io {
 
     /// Polls all IO sources that are ready.
     ///
-    /// The TUN device is only read while the UDP sockets have room, and the network only while the TUN device has room.
+    /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted
+    /// packets are only accepted while the TUN device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
         let mut state = PollState::new(self, cx);
 
@@ -392,8 +414,10 @@ impl Io {
         state.flush_tun();
         state.poll_nameservers();
         state.poll_doh_bootstrap();
+        state.poll_decrypted();
         state.poll_network();
         state.poll_socket_errors();
+        state.poll_crypto_workers();
         state.poll_device();
         state.poll_dns_queries();
         state.poll_dns_responses();
@@ -404,7 +428,7 @@ impl Io {
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx)?.is_pending() {
+        if self.sockets.poll_flush(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -414,21 +438,6 @@ impl Io {
 
         if any_pending {
             return Poll::Pending;
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
-    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        while let Some(dst) = self.gso_queue.next_dst() {
-            let permit = ready!(self.sockets.poll_reserve(cx, dst));
-
-            let Some(datagram) = self.gso_queue.datagrams().next() else {
-                break;
-            };
-
-            // A datagram we cannot reserve room for is dropped.
-            permit?.send(datagram);
         }
 
         Poll::Ready(Ok(()))
@@ -451,7 +460,6 @@ impl Io {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
-        self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
@@ -463,19 +471,25 @@ impl Io {
         }
     }
 
-    /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut UdpGsoQueue {
-        &mut self.gso_queue
+    /// Starts a batch of encapsulated packets to encrypt off the main thread.
+    ///
+    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
+    /// UDP sockets.
+    pub fn start_encrypt_batch(&mut self, num_packets: usize) -> EncryptBatch<'_> {
+        self.crypto
+            .start_encrypt_batch(&mut self.sockets, num_packets)
     }
 
-    pub fn send_network(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-    ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+    /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
+    /// [`Input::decrypted`].
+    pub fn start_decrypt_batch(&mut self, num_packets: usize) -> DecryptBatch<'_> {
+        self.crypto
+            .start_decrypt_batch(&mut self.decrypting, num_packets)
+    }
+
+    pub fn send_network(&mut self, transmit: snownet::Transmit) {
+        self.sockets.send_ready(transmit);
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
@@ -611,10 +625,6 @@ impl Io {
             .get_mut(&from)
             .ok_or(io::Error::other("No DNS server"))?
             .send_response(to, message)
-    }
-
-    pub(crate) fn inc_dropped_packet(&self, attrs: &[opentelemetry::KeyValue]) {
-        self.dropped_packets.add(1, attrs);
     }
 
     fn queue_dns_query(

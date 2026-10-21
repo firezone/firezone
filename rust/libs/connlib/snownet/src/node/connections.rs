@@ -13,9 +13,8 @@ use is::stun::{StunMessage, TransId};
 
 use crate::{
     Event,
-    buffer::TransmitBuffer,
     node::{
-        Connection, ConnectionState, allocations::Allocations,
+        Connection, ConnectionState, Transmit, allocations::Allocations,
         inflight_stun_requests::InflightStunRequests,
     },
 };
@@ -120,7 +119,7 @@ where
     pub(crate) fn handle_timeout(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
@@ -160,9 +159,21 @@ where
                 continue;
             };
 
-            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits)
-            {
-                Ok(Some(_)) => {
+            let encrypted = connection
+                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
+                .and_then(|encapsulation| {
+                    let Some(encapsulation) = encapsulation else {
+                        return Ok(None);
+                    };
+
+                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+
+                    Ok(Some(transmit))
+                });
+
+            match encrypted {
+                Ok(Some(transmit)) => {
+                    transmits.push_back(transmit);
                     tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
                 }
                 Ok(None) => {
@@ -693,7 +704,7 @@ mod tests {
     ) {
         connections.handle_timeout(
             allocations,
-            &mut TransmitBuffer::new(),
+            &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
             now,

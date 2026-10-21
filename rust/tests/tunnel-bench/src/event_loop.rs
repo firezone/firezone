@@ -23,7 +23,7 @@ use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
-use snownet::{RelaySocket, Transmit, TransmitBuffer};
+use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
@@ -58,8 +58,13 @@ const BURST: usize = 10_000;
 ///
 /// Deep enough that the event loop never drains the pipeline while a stand-in thread wakes up,
 /// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
-/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes.
-const IN_FLIGHT: usize = 4_096;
+/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes. The crypto workers
+/// make the pipeline deeper than that on many-core machines, so Linux, whose benchmark container
+/// raises `rmem_max` to 16 MiB, keeps twice as many in flight.
+const IN_FLIGHT: usize = cfg_select! {
+    target_os = "macos" => { 4_096 }
+    _ => { 8_192 }
+};
 
 /// How many packets the receiving side sends to its peer before a benchmark.
 ///
@@ -257,20 +262,21 @@ impl State {
         now: Instant,
         dst: SocketAddr,
     ) -> Vec<DatagramOut> {
-        let mut transmits = TransmitBuffer::default();
         let segments = (0..count)
             .map(|_| {
                 let mut packet = packet.clone();
-                match self {
-                    State::Client(client) => client
-                        .handle_tun_input(&mut packet, now, &mut transmits)
-                        .unwrap(),
-                    State::Gateway(gateway) => gateway
-                        .handle_tun_input(&mut packet, now, &mut transmits)
-                        .unwrap(),
-                }
+                let encapsulation = match self {
+                    State::Client(client) => client.handle_tun_input(&mut packet, now),
+                    State::Gateway(gateway) => gateway.handle_tun_input(&mut packet, now),
+                };
 
-                transmits.poll_transmit().unwrap().payload.to_vec()
+                encapsulation
+                    .unwrap()
+                    .unwrap()
+                    .encrypt(&packet)
+                    .unwrap()
+                    .payload
+                    .to_vec()
             })
             .collect::<Vec<_>>();
         let segment_size = segments[0].len();
@@ -692,11 +698,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(
-                &mut tunnel.request(Protocol::Udp),
-                now,
-                &mut TransmitBuffer::default(),
-            )
+            .handle_tun_input(&mut tunnel.request(Protocol::Udp), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -712,14 +714,27 @@ impl Tunnel {
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
     fn reply(&mut self, protocol: Protocol) -> IpPacket {
-        let mut transmits = TransmitBuffer::default();
-        self.client
-            .handle_tun_input(&mut self.request(protocol), self.now, &mut transmits)
+        let mut request = self.request(protocol);
+        let datagram = self
+            .client
+            .handle_tun_input(&mut request, self.now)
+            .unwrap()
+            .unwrap()
+            .encrypt(&request)
             .unwrap();
-        let datagram = transmits.poll_transmit().unwrap();
-        let request = self
+        let decapsulation = self
             .gateway
             .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
+            .unwrap()
+            .unwrap();
+        let request = self
+            .gateway
+            .handle_peer_input(
+                *GATEWAY_SOCKET,
+                *CLIENT_SOCKET,
+                decapsulation.decrypt(&datagram.payload),
+                self.now,
+            )
             .unwrap()
             .unwrap();
         let (sport, dport) = match protocol {
@@ -851,15 +866,23 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == *CLIENT_SOCKET {
-            let _ = self
+        if to == *CLIENT_SOCKET
+            && let Ok(Some(decapsulation)) = self
                 .client
-                .handle_network_input(to, from, payload, self.now);
+                .handle_network_input(to, from, payload, self.now)
+        {
+            let _ =
+                self.client
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
-        if to == *GATEWAY_SOCKET {
-            let _ = self
+        if to == *GATEWAY_SOCKET
+            && let Ok(Some(decapsulation)) = self
                 .gateway
-                .handle_network_input(to, from, payload, self.now);
+                .handle_network_input(to, from, payload, self.now)
+        {
+            let _ =
+                self.gateway
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
     }
 }
@@ -869,9 +892,7 @@ fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
     let mut query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
 
-    client
-        .handle_tun_input(&mut query, now, &mut TransmitBuffer::default())
-        .unwrap();
+    client.handle_tun_input(&mut query, now).unwrap();
     let response = client.poll_packets().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
 

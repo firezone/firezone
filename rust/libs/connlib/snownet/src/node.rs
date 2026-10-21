@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
+use crate::crypto::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -22,7 +22,7 @@ use anyhow::{Context, Result, anyhow};
 use bufferpool::Buffer;
 use core::fmt;
 use fast_random_state::FastRandomState;
-use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use ip_packet::{Ecn, IpPacket};
 use is::stun::{StunMessage, StunPacket};
 use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
@@ -58,7 +58,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
 /// Instead, you need to call one of the following functions:
 ///
-/// - [`Node::decapsulate`] for handling incoming network traffic
+/// - [`Node::begin_decapsulate`] for handling incoming network traffic
 /// - [`Node::encapsulate`] for handling outgoing network traffic
 /// - [`Node::handle_timeout`] for waking the [`Node`]
 ///
@@ -84,7 +84,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 pub struct Node<TId, RId> {
     interface: sanstun::Interface,
 
-    buffered_transmits: TransmitBuffer,
+    buffered_transmits: VecDeque<Transmit>,
 
     allocations: Allocations<RId>,
 
@@ -184,7 +184,7 @@ where
         Self {
             rng,
             interface,
-            buffered_transmits: TransmitBuffer::default(),
+            buffered_transmits: VecDeque::default(),
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
@@ -536,18 +536,19 @@ where
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
-    /// - `Ok(Some)` if the packet was an encrypted wireguard packet from a peer.
-    ///   The `Option` contains the connection on which the packet was decrypted.
-    pub fn decapsulate(
+    /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
+    ///   Decrypt it from `datagram` and pass the result to [`Node::commit_decrypted`].
+    pub fn begin_decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: &[u8],
+        datagram: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<Option<PendingDecapsulate>> {
         self.last_now = now;
 
-        let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
+        let (from, offset, relayed) = match self.allocations_try_handle(from, local, datagram, now)
+        {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
         };
@@ -555,22 +556,59 @@ where
         // For our agents, it is important what the initial "destination" of the packet was.
         let destination = relayed.map(|s| s.address()).unwrap_or(local);
 
-        match self.agents_try_handle(from, destination, packet, now) {
+        match self.agents_try_handle(from, destination, &datagram[offset..], now) {
             ControlFlow::Continue(()) => {}
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let (id, packet) = match self.connections_try_handle(from, destination, packet, now) {
-            ControlFlow::Continue(c) => c,
+        let pending = match self.connections_try_handle(from, destination, datagram, offset, now) {
+            ControlFlow::Continue(pending) => pending,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some((id, packet)))
+        Ok(Some(pending))
     }
 
-    /// Encapsulate an outgoing IP packet, writing it directly into `provider` to avoid a copy.
+    /// Commits a packet decrypted from a [`PendingDecapsulate`].
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
+    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    pub fn commit_decrypted(
+        &mut self,
+        packet: DecryptedIpPacket,
+        now: Instant,
+    ) -> Result<Option<(TId, IpPacket)>> {
+        self.last_now = now;
+
+        let DecryptedIpPacket {
+            tunnel,
+            src,
+            dst,
+            decrypted,
+        } = packet;
+
+        let (cid, conn) = self
+            .connections
+            .get_established_mut_by_tunnel_id(tunnel, now)?;
+
+        let control_flow = conn.commit_decrypted(cid, (dst, src), decrypted, now);
+        let is_closing = self.connections.is_closing(&cid);
+
+        let packet = match control_flow {
+            ControlFlow::Continue(_) if is_closing => return Ok(None),
+            ControlFlow::Continue(packet) => packet,
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e.context(format!("cid={cid}"))),
+        };
+
+        Ok(Some((cid, packet)))
+    }
+
+    /// Encapsulate an outgoing IP packet.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
@@ -580,18 +618,17 @@ where
         cid: TId,
         packet: &IpPacket,
         now: Instant,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>> {
+    ) -> Result<Option<PendingEncapsulate>> {
         self.last_now = now;
 
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
-        let info = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations, provider)
+        let pending = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
-        Ok(info)
+        Ok(pending)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -695,7 +732,7 @@ where
             return Some(transmit);
         }
 
-        let transmit = self.buffered_transmits.poll_transmit()?;
+        let transmit = self.buffered_transmits.pop_front()?;
 
         tracing::trace!(?transmit);
 
@@ -854,13 +891,13 @@ where
     /// This heuristic might fail because we are also handling wireguard packets.
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
-    fn allocations_try_handle<'p>(
+    fn allocations_try_handle(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
-        packet: &'p [u8],
+        packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+    ) -> ControlFlow<(), (SocketAddr, usize, Option<Socket>)> {
         if from.port() != 3478 {
             // Relays always send & receive from port 3478.
             //
@@ -877,7 +914,7 @@ where
             // previously had an allocation on a certain relay:
             // 1. If we previously had an allocation, we need to stop processing the packet.
             // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
-            return ControlFlow::Continue((from, packet, None));
+            return ControlFlow::Continue((from, 0, None));
         }
 
         match packet.first().copied() {
@@ -885,7 +922,7 @@ where
             Some(0..=3) => {
                 let Ok(Ok(message)) = allocation::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    return ControlFlow::Continue((from, 0, None));
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -900,7 +937,7 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, packet, None));
+                        return ControlFlow::Continue((from, 0, None));
                     }
                 };
 
@@ -917,7 +954,7 @@ where
             Some(64..=79) => {
                 let Ok(cd) = crate::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    return ControlFlow::Continue((from, 0, None));
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -931,11 +968,11 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, packet, None));
+                        return ControlFlow::Continue((from, 0, None));
                     }
                 };
 
-                let Some((from, packet, socket)) = allocation.decapsulate(from, cd, now) else {
+                let Some((from, socket)) = allocation.decapsulate(from, cd, now) else {
                     tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
                     return ControlFlow::Break(()); // Stop processing the packet.
@@ -943,10 +980,10 @@ where
 
                 // Successfully handled the packet and decapsulated the channel data message.
                 // Continue processing with the _unwrapped_ packet.
-                ControlFlow::Continue((from, packet, Some(socket)))
+                ControlFlow::Continue((from, crate::channel_data::HEADER_LEN, Some(socket)))
             }
             // Byte is in a different range? Move on with processing the packet.
-            Some(_) | None => ControlFlow::Continue((from, packet, None)),
+            Some(_) | None => ControlFlow::Continue((from, 0, None)),
         }
     }
 
@@ -993,9 +1030,12 @@ where
         &mut self,
         from: SocketAddr,
         destination: SocketAddr,
-        packet: &[u8],
+        datagram: &[u8],
+        offset: usize,
         now: Instant,
-    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, PendingDecapsulate> {
+        let packet = &datagram[offset..];
+
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(sanstun::Received::Message(parsed_packet)) => parsed_packet,
             Ok(sanstun::Received::SendCookieReply(reply)) => {
@@ -1043,7 +1083,8 @@ where
             from,
             destination,
             parsed_packet,
-            packet,
+            datagram,
+            offset,
             &mut self.allocations,
             &mut self.buffered_transmits,
             now,
@@ -1053,9 +1094,13 @@ where
             return ControlFlow::Break(Ok(()));
         }
 
-        control_flow
-            .map_continue(|c| (cid, c))
-            .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
+        match control_flow {
+            ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
+            ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
+            ControlFlow::Break(Err(e)) => {
+                ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
+            }
+        }
     }
 
     /// Sends `message` back to `remote` on the path a packet from it arrived on at `local`.
@@ -1067,7 +1112,7 @@ where
         now: Instant,
     ) {
         let Some((_, allocation)) = self.allocations.get_mut_by_allocation(local) else {
-            self.buffered_transmits.push(Transmit {
+            self.buffered_transmits.push_back(Transmit {
                 src: Some(local),
                 dst: remote,
                 payload: crate::DATAGRAMS.pull_initialised(message),
@@ -1082,7 +1127,7 @@ where
             return;
         };
 
-        self.buffered_transmits.push(Transmit {
+        self.buffered_transmits.push_back(Transmit {
             src: None,
             dst: encode_ok.socket,
             payload: crate::DATAGRAMS.pull_initialised(&channel_data),
@@ -1316,12 +1361,6 @@ impl fmt::Debug for Transmit {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EncapsulateInfo {
-    pub src: Option<SocketAddr>,
-    pub dst: SocketAddr,
-}
-
 #[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: Agent,
@@ -1429,7 +1468,7 @@ where
         cid: TId,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
@@ -1639,11 +1678,16 @@ where
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
-                        transmits.push(transmit);
+                        transmits.push_back(transmit);
                     }
                 }
                 path_agent::Payload::Plaintext(ref ip) => {
-                    let _ = self.encapsulate(cid, peer_socket, ip, now, allocations, transmits);
+                    if let Ok(Some(encapsulation)) =
+                        self.encapsulate(cid, peer_socket, ip, now, allocations)
+                        && let Ok(transmit) = encapsulation.encrypt(ip)
+                    {
+                        transmits.push_back(transmit);
+                    }
                 }
             }
         }
@@ -1665,7 +1709,7 @@ where
             // Check if `is` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                transmits.push(Transmit {
+                transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
                     payload: crate::DATAGRAMS.pull_initialised(&stun_packet_bytes),
@@ -1685,7 +1729,7 @@ where
                 continue;
             };
 
-            transmits.push(Transmit {
+            transmits.push_back(Transmit {
                 src: None,
                 dst: encode_ok.socket,
                 payload: crate::DATAGRAMS.pull_initialised(&data_channel_packet),
@@ -1698,7 +1742,7 @@ where
         &mut self,
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         pending_events: &mut VecDeque<Event<TId, RId>>,
         cid: TId,
         now: Instant,
@@ -1751,7 +1795,7 @@ where
         }
     }
 
-    /// Encapsulate `packet` directly into the buffer handed out by `provider`, avoiding a copy.
+    /// Reserves the WireGuard counter for `packet` and decides where to send it.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
@@ -1759,19 +1803,16 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-        provider: &mut impl BufferProvider,
-    ) -> Result<Option<EncapsulateInfo>>
+    ) -> Result<Option<PendingEncapsulate>>
     where
         TId: fmt::Display,
     {
         self.state
             .on_outgoing(cid, &mut self.agent, self.default_ice_config, packet, now);
 
-        let ecn = packet.ecn();
-
-        let (src, dst, packet_start, relay) = match socket {
+        let (src, dst, relay) = match socket {
             PeerSocket::PeerToPeer { source, dest } | PeerSocket::PeerToRelay { source, dest } => {
-                (Some(source), dest, 0, None)
+                (Some(source), dest, None)
             }
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let relay_id = self.relay.context("No relay selected")?;
@@ -1782,41 +1823,26 @@ where
                     .active_socket()
                     .with_context(|| format!("No active socket for relay {relay_id}"))?;
 
-                (
-                    None,
-                    dst,
-                    ip_packet::DATA_CHANNEL_OVERHEAD,
-                    Some((peer, allocation)),
-                )
+                (None, dst, Some((peer, allocation)))
             }
         };
 
-        let reserve_len =
-            packet_start + packet.packet().len().next_multiple_of(16) + ip_packet::WG_OVERHEAD;
-        let mut reservation = provider.reserve(src, dst, ecn, reserve_len);
+        let pending = self.tunnel.begin_encapsulate(now)?;
 
-        // On `Err`, `reservation` is dropped without committing and rolls back automatically.
-        let len = self
-            .tunnel
-            .begin_encapsulate(now)?
-            .encrypt(packet.packet(), &mut reservation.buffer()[packet_start..])?
-            .len();
-        debug_assert_eq!(packet_start + len, reserve_len);
+        let channel = match relay {
+            Some((peer, allocation)) => {
+                // A missing channel is an expected part of channel setup (`channel_to_peer` logs
+                // it and queues a binding), so drop the packet instead of surfacing an error.
+                let Some((channel, _)) = allocation.channel_to_peer(peer, now) else {
+                    return Ok(None);
+                };
 
-        if let Some((peer, allocation)) = relay {
-            // A missing channel is an expected part of channel setup (`encode_channel_data_header`
-            // logs it and queues a binding), so drop the packet instead of surfacing an error.
-            if allocation
-                .encode_channel_data_header(peer, reservation.buffer(), now)
-                .is_none()
-            {
-                return Ok(None);
+                Some(channel)
             }
-        }
+            None => None,
+        };
 
-        reservation.commit();
-
-        Ok(Some(EncapsulateInfo { src, dst }))
+        Ok(Some(PendingEncapsulate::new(src, dst, channel, pending)))
     }
 
     #[expect(
@@ -1830,17 +1856,18 @@ where
         destination: SocketAddr,
         packet: sanstun::ReceivedMessage,
         datagram: &[u8],
+        offset: usize,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> ControlFlow<Result<()>, PendingDecapsulate>
     where
         TId: fmt::Display,
         RId: Ord + Hash + fmt::Display + Copy,
     {
         let path = (destination, from);
 
-        let pending = match packet {
+        match packet {
             sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => {
@@ -1852,14 +1879,14 @@ where
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
-                return ControlFlow::Break(result.context("handshake packet"));
+                ControlFlow::Break(result.context("handshake packet"))
             }
             sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => agent.handle_handshake_response(
                         &mut self.tunnel,
                         response,
-                        datagram,
+                        &datagram[offset..],
                         path,
                         now,
                     ),
@@ -1869,55 +1896,58 @@ where
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
-                return ControlFlow::Break(result.context("handshake packet"));
+                ControlFlow::Break(result.context("handshake packet"))
             }
-            sanstun::ReceivedMessage::CookieReply(reply) => {
-                return ControlFlow::Break(
-                    self.tunnel
-                        .handle_cookie_reply(reply, now)
-                        .context("cookie reply"),
-                );
-            }
+            sanstun::ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
+                self.tunnel
+                    .handle_cookie_reply(reply, now)
+                    .context("cookie reply"),
+            ),
             sanstun::ReceivedMessage::TransportData(data) => {
-                match self
-                    .tunnel
-                    .begin_decapsulate(data, now)
-                    .context("data packet")
-                {
-                    Ok(pending) => pending,
-                    Err(e) => return ControlFlow::Break(Err(e)),
+                match self.tunnel.begin_decapsulate(data, now) {
+                    Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
+                        self.tunnel.id(),
+                        from,
+                        destination,
+                        offset,
+                        pending,
+                    )),
+                    Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }
-        };
-
-        let decrypted = pending.decrypt(datagram, IpPacketBuf::new());
-
-        let control_flow = match self
-            .tunnel
-            .commit_decapsulate(decrypted, now)
-            .context("data packet")
-        {
-            Ok(sanstun::Committed::Data { buffer, len }) => {
-                match IpPacket::new(buffer, len).context("Failed to parse IP packet") {
-                    Ok(p) => ControlFlow::Continue(p),
-                    Err(e) => ControlFlow::Break(Err(e)),
-                }
-            }
-            Ok(sanstun::Committed::Keepalive) => ControlFlow::Break(Ok(())),
-            Err(e) => ControlFlow::Break(Err(e)),
-        };
-
-        match control_flow {
-            ControlFlow::Continue(packet) => {
-                self.state
-                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
-
-                self.agent
-                    .handle_inbound_tun(packet, path, now)
-                    .map_break(Ok)
-            }
-            ControlFlow::Break(b) => ControlFlow::Break(b),
         }
+    }
+
+    fn commit_decrypted<TId>(
+        &mut self,
+        cid: TId,
+        path: (SocketAddr, SocketAddr),
+        decrypted: sanstun::Decrypted<Result<IpPacket>>,
+        now: Instant,
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+        RId: Ord + fmt::Display + Copy,
+    {
+        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
+            Ok(sanstun::Committed::Data {
+                buffer: Ok(packet), ..
+            }) => packet,
+            Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => {
+                return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
+            }
+            Ok(sanstun::Committed::Keepalive) => return ControlFlow::Break(Ok(())),
+            Err(e) => {
+                return ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet")));
+            }
+        };
+
+        self.state
+            .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+
+        self.agent
+            .handle_inbound_tun(packet, path, now)
+            .map_break(Ok)
     }
 
     fn buffer_or_send<TId>(
@@ -1925,7 +1955,7 @@ where
         cid: &TId,
         message: sanstun::Datagram,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
         TId: fmt::Display,
@@ -2013,7 +2043,7 @@ where
     fn initiate_wg_session(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
         RId: Copy,
@@ -2045,7 +2075,7 @@ where
         self.last_proactive_handshake_sent_at = Some(now);
 
         if let Some(transmit) = make_owned_transmit(self.relay, socket, &bytes, allocations, now) {
-            transmits.push(transmit);
+            transmits.push_back(transmit);
         }
     }
 

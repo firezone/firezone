@@ -52,7 +52,7 @@ pub struct GatewayState {
     next_periodic_tick: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
-    buffered_transmits: snownet::TransmitBuffer,
+    buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
@@ -82,7 +82,7 @@ impl GatewayState {
             node: Node::new(seed, now, unix_ts),
             portal: Default::default(),
             buffered_events: VecDeque::default(),
-            buffered_transmits: snownet::TransmitBuffer::default(),
+            buffered_transmits: VecDeque::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             tun_ip_config: None,
@@ -112,12 +112,13 @@ impl GatewayState {
     }
 
     /// Handles packets received on the TUN device.
+    ///
+    /// The returned [`snownet::PendingEncapsulate`] is for `packet` as this call leaves it.
     pub fn handle_tun_input(
         &mut self,
         packet: &mut IpPacket,
         now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
+    ) -> Result<Option<snownet::PendingEncapsulate>> {
         let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -139,18 +140,19 @@ impl GatewayState {
             return Err(e.context("Failed to translate inbound packet"));
         }
 
-        let Some(info) = encapsulate(packet, cid, &mut self.node, provider, now)? else {
-            return Ok(());
+        let Some(encapsulation) = encapsulate(packet, cid, &mut self.node, now)? else {
+            return Ok(None);
         };
 
-        flow_tracker::record_transmit(info.src, info.dst);
+        flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
 
-        Ok(())
+        Ok(Some(encapsulation))
     }
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
+    /// Decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
@@ -160,14 +162,32 @@ impl GatewayState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
+    ) -> Result<Option<snownet::PendingDecapsulate>> {
+        match self.node.begin_decapsulate(local, from, packet, now) {
+            Ok(decapsulation) => Ok(decapsulation),
+            Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
+        }
+    }
+
+    /// Handles a WireGuard data message decrypted from a [`snownet::PendingDecapsulate`].
+    ///
+    /// `local` and `from` are the addresses the message was received on and from.
+    ///
+    /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
+    pub fn handle_peer_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: snownet::DecryptedIpPacket,
+        now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        let Some((cid, packet)) = self
-            .node
-            .decapsulate(local, from, packet, now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
-        else {
+        let decrypted = match self.node.commit_decrypted(packet, now) {
+            Ok(decrypted) => decrypted,
+            Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
+        };
+        let Some((cid, packet)) = decrypted else {
             return Ok(None);
         };
 
@@ -206,21 +226,19 @@ impl GatewayState {
                 return Ok(None);
             };
 
-            encrypt_packet(
-                immediate_response,
-                cid,
-                &mut self.node,
-                &mut self.buffered_transmits,
-                now,
-            )?;
+            if let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
+                self.buffered_transmits.push_back(transmit);
+            }
 
             return Ok(None);
         }
 
-        match peer
-            .translate_outbound(packet, now)
-            .context("Failed to translate outbound packet")?
-        {
+        let translated = match peer.translate_outbound(packet, now) {
+            Ok(translated) => translated,
+            Err(e) => return Err(e.context("Failed to translate outbound packet")),
+        };
+
+        match translated {
             TranslateOutboundResult::Send(packet) => Ok(Some(packet)),
             TranslateOutboundResult::IcmpError {
                 reply,
@@ -228,25 +246,16 @@ impl GatewayState {
             } => {
                 flow_tracker::record_icmp_error(&reply);
 
-                encrypt_packet(
-                    reply,
-                    cid,
-                    &mut self.node,
-                    &mut self.buffered_transmits,
-                    now,
-                )?;
+                if let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? {
+                    self.buffered_transmits.push_back(transmit);
+                }
 
                 if let Some(event) = no_authorization.and_then(|rejection| {
                     self.authorization_rejections
                         .on_rejected(cid, rejection, now)
-                }) {
-                    encrypt_packet(
-                        event,
-                        cid,
-                        &mut self.node,
-                        &mut self.buffered_transmits,
-                        now,
-                    )?;
+                }) && let Some(transmit) = encrypt_packet(event, cid, &mut self.node, now)?
+                {
+                    self.buffered_transmits.push_back(transmit);
                 }
 
                 Ok(None)
@@ -440,13 +449,9 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        encrypt_packet(
-            packet,
-            req.client,
-            &mut self.node,
-            &mut self.buffered_transmits,
-            now,
-        )?;
+        if let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? {
+            self.buffered_transmits.push_back(transmit);
+        }
 
         Ok(())
     }
@@ -557,9 +562,15 @@ impl GatewayState {
         }
     }
 
+    /// How many transmits the state itself has queued for [`Self::poll_transmit`].
+    #[cfg(debug_assertions)]
+    pub fn num_buffered_transmits(&self) -> usize {
+        self.buffered_transmits.len()
+    }
+
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .poll_transmit()
+            .pop_front()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -684,21 +695,23 @@ fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
-    provider: &mut impl snownet::BufferProvider,
     now: Instant,
-) -> Result<Option<snownet::EncapsulateInfo>> {
-    encapsulate(&packet, cid, node, provider, now)
+) -> Result<Option<snownet::Transmit>> {
+    let Some(encapsulation) = encapsulate(&packet, cid, node, now)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(encapsulation.encrypt(&packet)?))
 }
 
 fn encapsulate(
     packet: &IpPacket,
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
-    provider: &mut impl snownet::BufferProvider,
     now: Instant,
-) -> Result<Option<snownet::EncapsulateInfo>> {
-    match node.encapsulate(cid, packet, now, provider) {
-        Ok(info) => Ok(info),
+) -> Result<Option<snownet::PendingEncapsulate>> {
+    match node.encapsulate(cid, packet, now) {
+        Ok(encapsulation) => Ok(encapsulation),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
