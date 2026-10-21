@@ -305,6 +305,14 @@ defmodule PortalAPI.ResourceController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete Resource",
+    description: """
+    Deletes a Resource. Deleting is not blocked when Policies still use the \
+    Resource.
+
+    Every Policy for the Resource is deleted with it, and Clients lose access \
+    to the Resource right away. Use `GET /policies?resource_id=...` first to \
+    see which Policies will be deleted. The Internet Resource cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,

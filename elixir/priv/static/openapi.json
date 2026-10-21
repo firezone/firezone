@@ -6530,6 +6530,12 @@
       "Membership": {
         "description": "Membership",
         "properties": {
+          "email": {
+            "description": "Actor Email",
+            "example": "john.doe@example.com",
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "description": "Actor ID",
             "example": "7cb89288-1fb3-433e-a522-2d087e45988d",
@@ -6554,6 +6560,7 @@
           }
         },
         "required": [
+          "email",
           "id",
           "name",
           "type"
@@ -10440,6 +10447,12 @@
             "format": "date-time",
             "type": "string"
           },
+          "is_built_in": {
+            "description": "Whether this is the built-in Everyone Group. It includes every user and admin Actor implicitly, has no explicit memberships, and cannot be updated or deleted.",
+            "example": false,
+            "readOnly": true,
+            "type": "boolean"
+          },
           "name": {
             "description": "Group Name",
             "example": "Engineering",
@@ -10465,6 +10478,7 @@
           "id",
           "idp_id",
           "inserted_at",
+          "is_built_in",
           "name",
           "synced_at",
           "updated_at"
@@ -11183,6 +11197,13 @@
             "nullable": true,
             "type": "string"
           },
+          "group_name": {
+            "description": "Name of the Group. Null when group_id is null.",
+            "example": "Engineering",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
           "id": {
             "description": "Policy ID",
             "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -11251,6 +11272,12 @@
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
             "format": "uuid",
             "type": "string"
+          },
+          "resource_name": {
+            "description": "Name of the Resource",
+            "example": "Internal Wiki",
+            "readOnly": true,
+            "type": "string"
           }
         },
         "required": [
@@ -11258,10 +11285,12 @@
           "description",
           "flow_log_uploads_enabled",
           "group_id",
+          "group_name",
           "id",
           "is_disabled",
           "postures",
-          "resource_id"
+          "resource_id",
+          "resource_name"
         ],
         "title": "Policy",
         "type": "object"
@@ -17507,6 +17536,7 @@
     "/sites/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Site. Deleting is not blocked when the Site still has Gateways or Resources.\n\nThe Site's Gateways, Gateway tokens, and Resources are deleted with it. Every Policy for those Resources is deleted too, and Clients lose access to them right away. The system-managed Internet Site cannot be deleted.\n",
         "operationId": "PortalAPI.SiteController.delete",
         "parameters": [
           {
@@ -20357,6 +20387,7 @@
     "/groups/{group_id}/memberships": {
       "get": {
         "callbacks": {},
+        "description": "Lists the Actors in a Group.\n\nThe built-in Everyone Group has no explicit memberships. For it, this lists every user and admin Actor in the account, which is who the Group grants access to. Service accounts and API clients are never members of the Everyone Group.\n",
         "operationId": "PortalAPI.MembershipController.index",
         "parameters": [
           {
@@ -21462,6 +21493,7 @@
     "/resources/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Resource. Deleting is not blocked when Policies still use the Resource.\n\nEvery Policy for the Resource is deleted with it, and Clients lose access to the Resource right away. Use `GET /policies?resource_id=...` first to see which Policies will be deleted. The Internet Resource cannot be deleted.\n",
         "operationId": "PortalAPI.ResourceController.delete",
         "parameters": [
           {
@@ -24358,6 +24390,7 @@
     "/groups/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Group and its memberships.\n\nPolicies that grant the Group are kept, but their `group_id` becomes null and they grant no access. A Policy for a synced Group is linked again automatically if the Group reappears on a later directory sync. The built-in Everyone Group cannot be deleted.\n",
         "operationId": "PortalAPI.GroupController.delete",
         "parameters": [
           {
@@ -24470,6 +24503,7 @@
       },
       "get": {
         "callbacks": {},
+        "description": "Shows a Group, including the built-in Everyone Group that `GET /groups` leaves out. Policies can grant the Everyone Group, so its ID can appear in Policy responses.\n",
         "operationId": "PortalAPI.GroupController.show",
         "parameters": [
           {

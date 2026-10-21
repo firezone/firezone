@@ -60,6 +60,11 @@ defmodule PortalAPI.GroupController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Group",
+    description: """
+    Shows a Group, including the built-in Everyone Group that `GET /groups` \
+    leaves out. Policies can grant the Everyone Group, so its ID can appear in \
+    Policy responses.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -183,10 +188,18 @@ defmodule PortalAPI.GroupController do
 
   # coveralls-ignore-stop
 
+  defp validate_group_updatable(%Group{type: :managed}),
+    do: {:error, :forbidden, reason: "Cannot update the built-in Everyone Group"}
+
   defp validate_group_updatable(%Group{idp_id: idp_id}) when not is_nil(idp_id),
     do: {:error, :forbidden, reason: "Cannot update a synced Group"}
 
   defp validate_group_updatable(_group), do: :ok
+
+  defp validate_group_deletable(%Group{type: :managed}),
+    do: {:error, :forbidden, reason: "Cannot delete the built-in Everyone Group"}
+
+  defp validate_group_deletable(_group), do: :ok
 
   defp do_update_group_changeset(%Group{type: :static, idp_id: nil} = group, attrs) do
     group
@@ -197,6 +210,14 @@ defmodule PortalAPI.GroupController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Group",
+    description: """
+    Deletes a Group and its memberships.
+
+    Policies that grant the Group are kept, but their `group_id` becomes null \
+    and they grant no access. A Policy for a synced Group is linked again \
+    automatically if the Group reappears on a later directory sync. The \
+    built-in Everyone Group cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -207,7 +228,13 @@ defmodule PortalAPI.GroupController do
     ],
     responses:
       [ok: {"Group Response", "application/json", PortalAPI.Schemas.Group.Response}] ++
-        ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :forbidden,
+          :not_found,
+          :too_many_requests
+        ])
 
   # coveralls-ignore-stop
 
@@ -216,6 +243,7 @@ defmodule PortalAPI.GroupController do
     subject = conn.assigns.subject
 
     with {:ok, group} <- Database.fetch_group(id, subject),
+         :ok <- validate_group_deletable(group),
          {:ok, group} <- Database.delete_group(group, subject) do
       json(conn, JSON.encode(group))
     else
@@ -246,8 +274,7 @@ defmodule PortalAPI.GroupController do
       result =
         from(g in Group,
           as: :groups,
-          where: g.id == ^id,
-          where: g.type != :managed
+          where: g.id == ^id
         )
         |> join(:left, [groups: g], gss in Portal.GroupSyncState,
           on: gss.group_id == g.id and gss.account_id == g.account_id,

@@ -247,6 +247,7 @@ defmodule PortalAPI.PolicyController do
 
     def list_policies(subject, opts \\ []) do
       from(p in Policy, as: :policies)
+      |> with_names()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -280,7 +281,8 @@ defmodule PortalAPI.PolicyController do
 
     def fetch_policy(id, subject) do
       result =
-        from(p in Policy, where: p.id == ^id)
+        from(p in Policy, as: :policies, where: p.id == ^id)
+        |> with_names()
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -297,6 +299,7 @@ defmodule PortalAPI.PolicyController do
       |> Policy.default_flow_log_uploads_for_internet_resource(attrs, subject)
       |> Safe.scoped(subject)
       |> Safe.update()
+      |> preload_names()
     end
 
     def validate_internet_resource_policy(attrs, %Authentication.Subject{} = subject) do
@@ -335,6 +338,7 @@ defmodule PortalAPI.PolicyController do
 
       Safe.scoped(changeset, subject)
       |> Safe.insert()
+      |> preload_names()
     end
 
     defp populate_group_idp_id(changeset, subject) do
@@ -385,5 +389,25 @@ defmodule PortalAPI.PolicyController do
         {:policies, :asc, :id}
       ]
     end
+
+    defp with_names(queryable) do
+      queryable
+      |> join(:left, [policies: p], g in Portal.Group,
+        on: g.id == p.group_id and g.account_id == p.account_id,
+        as: :group
+      )
+      |> join(:inner, [policies: p], r in Portal.Resource,
+        on: r.id == p.resource_id and r.account_id == p.account_id,
+        as: :resource
+      )
+      |> preload([group: g, resource: r], group: g, resource: r)
+    end
+
+    defp preload_names({:ok, policy}) do
+      names = [:group, :resource]
+      {:ok, policy |> Ecto.reset_fields(names) |> Safe.preload(names)}
+    end
+
+    defp preload_names(error), do: error
   end
 end
