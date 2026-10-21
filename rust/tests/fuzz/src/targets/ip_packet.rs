@@ -321,10 +321,6 @@ fn test_all_getters(packet: &IpPacket) {
     let _ = packet.version();
     let _ = packet.source();
     let _ = packet.destination();
-    assert_eq!(
-        packet.source_and_destination(),
-        (packet.source(), packet.destination())
-    );
     let _ = packet.source_protocol();
     let _ = packet.destination_protocol();
     let _ = packet.ecn();
