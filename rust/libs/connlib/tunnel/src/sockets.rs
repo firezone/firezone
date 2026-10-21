@@ -482,6 +482,7 @@ impl ThreadedUdpSocket {
         }
 
         let outbound_tx = &channels.outbound_tx;
+        // This allocates but we only get here when the socket is already full so we will have to suspend anyway.
         let waiting_for_room = channels
             .waiting_for_room
             .get_or_insert_with(|| outbound_tx.clone().reserve_owned().boxed());
