@@ -12,29 +12,38 @@ pub trait Prefetch {
     fn prefetch(&self);
 }
 
+impl Prefetch for [u8] {
+    fn prefetch(&self) {
+        prefetch_line(self.as_ptr());
+    }
+}
+
 /// Hints the CPU to fetch the cache line at `ptr`.
 ///
 /// A prefetch never faults, so `ptr` need not be valid.
 #[inline]
 pub fn prefetch_line<T>(ptr: *const T) {
-    // SAFETY: `sse` is part of the x86_64 baseline and a prefetch never faults.
-    #[cfg(target_arch = "x86_64")]
-    unsafe {
-        std::arch::x86_64::_mm_prefetch::<{ std::arch::x86_64::_MM_HINT_T0 }>(ptr.cast());
+    std::cfg_select! {
+        target_arch = "x86_64" => {
+            // SAFETY: `sse` is part of the x86_64 baseline and a prefetch never faults.
+            unsafe {
+                std::arch::x86_64::_mm_prefetch::<{ std::arch::x86_64::_MM_HINT_T0 }>(ptr.cast());
+            }
+        }
+        target_arch = "aarch64" => {
+            // SAFETY: a prefetch never faults and touches no register the compiler relies on.
+            unsafe {
+                std::arch::asm!(
+                    "prfm pldl1keep, [{ptr}]",
+                    ptr = in(reg) ptr,
+                    options(nostack, preserves_flags, readonly)
+                );
+            }
+        }
+        _ => {
+            let _ = ptr;
+        }
     }
-
-    // SAFETY: a prefetch never faults and touches no register the compiler relies on.
-    #[cfg(target_arch = "aarch64")]
-    unsafe {
-        std::arch::asm!(
-            "prfm pldl1keep, [{ptr}]",
-            ptr = in(reg) ptr,
-            options(nostack, preserves_flags, readonly)
-        );
-    }
-
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    let _ = ptr;
 }
 
 pub trait IteratorExt: Iterator + Sized {

@@ -449,18 +449,17 @@ fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
 
     let packets = messages
         .into_iter()
-        .prefetching_with(|message| {
-            prefetch::prefetch_line(buffers[message.buffer][message.segment].as_ptr());
-        })
         .map(|message| {
             let buffer = &buffers[message.buffer];
 
-            DecryptedDatagram {
-                local: buffer.local(),
-                from: buffer.from(),
-                ecn: buffer.ecn(),
-                packet: message.decapsulation.decrypt(&buffer[message.segment]),
-            }
+            (message.decapsulation, buffer, &buffer[message.segment])
+        })
+        .prefetching_with(|(_, _, ciphertext)| ciphertext.prefetch())
+        .map(|(decapsulation, buffer, ciphertext)| DecryptedDatagram {
+            local: buffer.local(),
+            from: buffer.from(),
+            ecn: buffer.ecn(),
+            packet: decapsulation.decrypt(ciphertext),
         })
         .collect();
 
