@@ -2460,6 +2460,7 @@ impl ClientState {
     }
 
     /// How many transmits the state itself has queued for [`Self::poll_transmit`].
+    #[cfg(debug_assertions)]
     pub fn num_buffered_transmits(&self) -> usize {
         self.buffered_transmits.len()
     }

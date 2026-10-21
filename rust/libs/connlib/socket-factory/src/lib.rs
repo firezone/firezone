@@ -1129,14 +1129,9 @@ where
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
     pub fn segments(&self) -> impl Iterator<Item = Segment> + use<B> {
-        let Self {
-            len,
-            stride,
-            from,
-            local,
-            ecn,
-            ..
-        } = *self;
+        let Self { len, stride, .. } = *self;
+        #[cfg(debug_assertions)]
+        let (from, local, ecn) = (self.from, self.local, self.ecn);
 
         (0..len).step_by(stride).map(move |start| {
             let end = std::cmp::min(start + stride, len);
