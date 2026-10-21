@@ -6,7 +6,7 @@ defmodule PortalAPI.Schemas.Group do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Group, internal: [:account_id, :nested_group_idp_ids, :type]}
+             for: Portal.Group, internal: [:account_id, :nested_group_idp_ids]}
     OpenApiSpex.schema(%{
       title: "Group",
       description: "Group",
@@ -51,13 +51,15 @@ defmodule PortalAPI.Schemas.Group do
           description: "Last sync timestamp for synced groups",
           nullable: true
         },
-        is_built_in: %Schema{
-          example: false,
-          type: :boolean,
+        type: %Schema{
+          example: "static",
+          type: :string,
+          enum: ["managed", "static"],
           readOnly: true,
           description:
-            "Whether this is the built-in Everyone Group. It includes every user and admin " <>
-              "Actor implicitly, has no explicit memberships, and cannot be updated or deleted."
+            "`managed` for the built-in Everyone Group, which includes every user and admin " <>
+              "Actor implicitly, has no explicit memberships, and cannot be updated or deleted. " <>
+              "`static` for every other Group."
         },
         inserted_at: %Schema{
           example: "2024-01-15T10:30:00Z",
@@ -79,17 +81,17 @@ defmodule PortalAPI.Schemas.Group do
         :id,
         :idp_id,
         :inserted_at,
-        :is_built_in,
         :name,
         :synced_at,
+        :type,
         :updated_at
       ]
     })
 
-    def map(%Portal.Group{sync_state: %Portal.GroupSyncState{synced_at: synced_at}} = group, _map),
-      do: %{synced_at: synced_at, is_built_in: group.type == :managed}
+    def map(%Portal.Group{sync_state: %Portal.GroupSyncState{synced_at: synced_at}}, _map),
+      do: %{synced_at: synced_at}
 
-    def map(%Portal.Group{} = group, _map), do: %{synced_at: nil, is_built_in: group.type == :managed}
+    def map(%Portal.Group{}, _map), do: %{synced_at: nil}
   end
 
   defmodule CreateRequest do

@@ -10447,12 +10447,6 @@
             "format": "date-time",
             "type": "string"
           },
-          "is_built_in": {
-            "description": "Whether this is the built-in Everyone Group. It includes every user and admin Actor implicitly, has no explicit memberships, and cannot be updated or deleted.",
-            "example": false,
-            "readOnly": true,
-            "type": "boolean"
-          },
           "name": {
             "description": "Group Name",
             "example": "Engineering",
@@ -10462,6 +10456,16 @@
             "description": "Last sync timestamp for synced groups",
             "format": "date-time",
             "nullable": true,
+            "type": "string"
+          },
+          "type": {
+            "description": "`managed` for the built-in Everyone Group, which includes every user and admin Actor implicitly, has no explicit memberships, and cannot be updated or deleted. `static` for every other Group.",
+            "enum": [
+              "managed",
+              "static"
+            ],
+            "example": "static",
+            "readOnly": true,
             "type": "string"
           },
           "updated_at": {
@@ -10478,9 +10482,9 @@
           "id",
           "idp_id",
           "inserted_at",
-          "is_built_in",
           "name",
           "synced_at",
+          "type",
           "updated_at"
         ],
         "title": "Group",
@@ -24503,7 +24507,6 @@
       },
       "get": {
         "callbacks": {},
-        "description": "Shows a Group, including the built-in Everyone Group that `GET /groups` leaves out. Policies can grant the Everyone Group, so its ID can appear in Policy responses.\n",
         "operationId": "PortalAPI.GroupController.show",
         "parameters": [
           {

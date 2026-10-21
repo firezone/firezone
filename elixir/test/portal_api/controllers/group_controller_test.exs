@@ -57,6 +57,22 @@ defmodule PortalAPI.GroupControllerTest do
       assert equal_ids?(data_ids, group_ids)
     end
 
+    test "lists the built-in Everyone group", %{conn: conn, account: account, actor: actor} do
+      everyone = managed_group_fixture(account: account, name: "Everyone")
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      assert data |> Enum.map(&{&1["id"], &1["type"]}) |> Enum.sort() ==
+               Enum.sort([{everyone.id, "managed"}, {group.id, "static"}])
+    end
+
     test "lists groups with limit", %{conn: conn, account: account, actor: actor} do
       groups = for _ <- 1..3, do: group_fixture(account: account)
 
@@ -199,7 +215,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => nil,
                  "idp_id" => nil,
                  "synced_at" => nil,
-                 "is_built_in" => false,
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
@@ -230,7 +246,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => group.directory_id,
                  "idp_id" => group.idp_id,
                  "synced_at" => DateTime.to_iso8601(sync_state.synced_at),
-                 "is_built_in" => false,
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
@@ -250,7 +266,7 @@ defmodule PortalAPI.GroupControllerTest do
                "data" => %{
                  "id" => id,
                  "name" => "Everyone",
-                 "is_built_in" => true
+                 "type" => "managed"
                }
              } = json_response(conn, 200)
 
@@ -516,7 +532,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => nil,
                  "idp_id" => nil,
                  "synced_at" => nil,
-                 "is_built_in" => false,
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }

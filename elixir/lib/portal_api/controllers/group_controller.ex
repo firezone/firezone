@@ -60,11 +60,6 @@ defmodule PortalAPI.GroupController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show Group",
-    description: """
-    Shows a Group, including the built-in Everyone Group that `GET /groups` \
-    leaves out. Policies can grant the Everyone Group, so its ID can appear in \
-    Policy responses.
-    """,
     parameters: [
       id: [
         in: :path,
@@ -257,10 +252,6 @@ defmodule PortalAPI.GroupController do
 
     def list_groups(subject, opts \\ []) do
       from(g in Group, as: :groups)
-      |> where(
-        [groups: g],
-        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-      )
       |> join(:left, [groups: g], gss in Portal.GroupSyncState,
         on: gss.group_id == g.id and gss.account_id == g.account_id,
         as: :sync_state
