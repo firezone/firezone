@@ -41,27 +41,27 @@ pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 bufferpool::buffer_pool!(
-    static ENCRYPT_PACKETS: VecBuf<(PendingEncapsulate, IpPacket)> = (MAX_GSO_SEGMENTS, "encrypt-packets"),
+    static TRAIN_PACKETS: VecBuf<(PendingEncapsulate, IpPacket)> = (MAX_GSO_SEGMENTS, "train-packets"),
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static OPEN_TRAINS: VecBuf<EncryptJob> = (8, "open-trains"),
+    static ENCRYPT_BATCH_TRAINS: VecBuf<EncryptJob> = (8, "encrypt-batch-trains"),
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static PENDING_DATAGRAMS: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "pending-datagrams"),
+    static PENDING_DATAGRAM_RECEIVERS: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "pending-datagram-receivers"),
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPT_BUFFERS: VecBuf<DatagramIn> = (DECRYPT_BATCH_SIZE, "decrypt-buffers"),
+    static DECRYPT_JOB_BUFFERS: VecBuf<DatagramIn> = (DECRYPT_BATCH_SIZE, "decrypt-job-buffers"),
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPT_MESSAGES: VecBuf<Message> = (DECRYPT_BATCH_SIZE, "decrypt-messages"),
+    static DECRYPT_JOB_MESSAGES: VecBuf<Message> = (DECRYPT_BATCH_SIZE, "decrypt-job-messages"),
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPTED: VecBuf<DecryptedDatagram> = (DECRYPT_BATCH_SIZE, "decrypted"),
+    static DECRYPTED_DATAGRAMS: VecBuf<DecryptedDatagram> = (DECRYPT_BATCH_SIZE, "decrypted-datagrams"),
     batch: 4
 );
 
@@ -124,7 +124,7 @@ impl CryptoWorkers {
         EncryptBatch {
             crypto: self,
             sockets,
-            open: OPEN_TRAINS.pull(),
+            open: ENCRYPT_BATCH_TRAINS.pull(),
             pending_v4: None,
             pending_v6: None,
         }
@@ -215,7 +215,7 @@ impl EncryptBatch<'_> {
             SocketAddr::V6(_) => &mut self.pending_v6,
         };
         pending
-            .get_or_insert_with(|| PENDING_DATAGRAMS.pull())
+            .get_or_insert_with(|| PENDING_DATAGRAM_RECEIVERS.pull())
             .push(rx);
 
         // A stopped worker drops the sender, so the socket skips the train.
@@ -255,7 +255,7 @@ impl EncryptJob {
             packet.ecn(),
             encapsulation.datagram_len(&packet),
         );
-        let mut packets = ENCRYPT_PACKETS.pull();
+        let mut packets = TRAIN_PACKETS.pull();
         packets.push((encapsulation, packet));
 
         Self { train, packets }
@@ -389,8 +389,8 @@ struct Message {
 impl DecryptJob {
     fn new() -> Self {
         Self {
-            buffers: DECRYPT_BUFFERS.pull(),
-            messages: DECRYPT_MESSAGES.pull(),
+            buffers: DECRYPT_JOB_BUFFERS.pull(),
+            messages: DECRYPT_JOB_MESSAGES.pull(),
         }
     }
 }
@@ -449,7 +449,7 @@ fn encrypt(
 }
 
 fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
-    let mut packets = DECRYPTED.pull();
+    let mut packets = DECRYPTED_DATAGRAMS.pull();
     packets.extend(job.messages.drain(..).map(|message| {
         let buffer = &job.buffers[message.buffer];
 
