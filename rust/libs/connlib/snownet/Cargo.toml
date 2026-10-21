@@ -22,9 +22,9 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 path-agent = { workspace = true }
+prefetch = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }
-prefetch = { workspace = true }
 sanstun = { workspace = true }
 smallvec = { workspace = true }
 str0m-proto = { workspace = true }
