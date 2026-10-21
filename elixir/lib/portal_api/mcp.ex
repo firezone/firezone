@@ -132,7 +132,8 @@ defmodule PortalAPI.MCP do
     return only the named fields of each record; use it to keep large pages small.
 
     Before writing a Policy's `postures` expression, call `list_posture_fields` \
-    for the grammar and the fields it can test.
+    for the grammar and the fields it can test. Posture provider and posture \
+    device tools take a `type`, such as `intune` or `sentinelone`.
 
     On HTTP 429, wait at least `retry_after_seconds` from the error body before \
     retrying. The same delay appears in the error message and `Retry-After` \

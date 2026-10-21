@@ -32,7 +32,7 @@ defmodule PortalAPI.MCP.ToolsTest do
           |> length() == 1
       end)
 
-    assert length(tools) == length(operations) - aliased
+    assert length(flatten(tools)) == length(operations) - aliased
   end
 
   test "names are unique, lowercase, and underscore separated", %{tools: tools} do
@@ -179,23 +179,44 @@ defmodule PortalAPI.MCP.ToolsTest do
     end
   end
 
-  test "posture provider writes are flagged as device trust changes", %{tools: tools} do
-    for type <- ~w[intune iru defender santa sentinelone sophos],
-        name <- ["update_#{type}_posture_provider", "delete_#{type}_posture_provider"] do
+  test "posture provider and device operations share one tool per operation", %{tools: tools} do
+    types = ~w[defender intune iru santa sentinelone sophos]
+
+    for name <- ~w[list_posture_providers get_posture_provider update_posture_provider
+                   delete_posture_provider list_posture_devices get_posture_device] do
       tool = fetch(tools, name)
+
       assert tool.entity == :posture_providers
-      assert tool.description =~ "Security-sensitive"
-      assert_annotations(tools, name, true, true)
+      assert tool.variants |> Map.keys() |> Enum.sort() == types
+      assert tool.input_schema["properties"]["type"]["enum"] |> Enum.sort() == types
+      assert "type" in tool.input_schema["required"]
     end
 
-    properties =
-      get_in(fetch(tools, "update_iru_posture_provider").input_schema, [
-        "properties",
-        "iru_posture_provider",
-        "properties"
-      ])
+    refute Enum.any?(tools, &String.contains?(&1.name, "iru"))
+  end
 
+  test "maps grouped arguments to each type's own names", %{tools: tools} do
+    update = fetch(tools, "update_posture_provider")
+
+    assert {%Tool{path_template: "/iru_posture_providers/{id}"}, names} = update.variants["iru"]
+    assert names["posture_provider"] == "iru_posture_provider"
+    assert names["id"] == "id"
+    assert update.input_schema["required"] |> Enum.sort() == ["id", "posture_provider", "type"]
+
+    properties = update.input_schema["properties"]["posture_provider"]["properties"]
     assert Map.keys(properties) |> Enum.sort() == ["is_disabled", "name"]
+
+    assert {%Tool{path_template: "/sentinelone_devices/{sentinelone_agent}"}, names} =
+             fetch(tools, "get_posture_device").variants["sentinelone"]
+
+    assert names["id"] == "sentinelone_agent"
+  end
+
+  test "posture provider writes are flagged as device trust changes", %{tools: tools} do
+    for name <- ~w[update_posture_provider delete_posture_provider] do
+      assert fetch(tools, name).description =~ "Security-sensitive"
+      assert_annotations(tools, name, true, true)
+    end
   end
 
   test "list_posture_fields carries the posture grammar", %{tools: tools} do
@@ -214,11 +235,11 @@ defmodule PortalAPI.MCP.ToolsTest do
       fields = tool.input_schema["properties"]["fields"]
 
       assert fields["type"] == "array"
-      assert "last_seen_at" in fields["items"]["enum"]
-      assert fields["items"]["enum"] == tool.response_fields
+      assert fields["items"] == %{"type" => "string"}
+      assert "last_seen_at" in tool.response_fields
     end
 
-    for tool <- tools, tool.method != :get do
+    for tool <- flatten(tools), tool.method != :get do
       assert is_nil(tool.response_fields)
       refute Map.has_key?(tool.input_schema["properties"], "fields")
     end
@@ -227,15 +248,22 @@ defmodule PortalAPI.MCP.ToolsTest do
   test "keeps the whole tool list small enough to load on every session", %{tools: tools} do
     size = tools |> Enum.map(&Tool.to_definition/1) |> Jason.encode!() |> byte_size()
 
-    assert size < 200_000
+    assert size < 110_000
   end
 
-  test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do
+  test "descriptions carry the summary and the body notes", %{tools: tools} do
     description = fetch(tools, "create_resource").description
 
     assert description =~ "Create Resource"
     assert description =~ "device_pool"
-    assert description =~ "POST /resources"
+    refute description =~ "POST /resources"
+  end
+
+  defp flatten(tools) do
+    Enum.flat_map(tools, fn
+      %Tool{variants: nil} = tool -> [tool]
+      %Tool{variants: variants} -> Enum.map(Map.values(variants), &elem(&1, 0))
+    end)
   end
 
   defp fetch(tools, name) do

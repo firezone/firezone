@@ -916,6 +916,123 @@ defmodule PortalAPI.MCPControllerTest do
     end
   end
 
+  describe "posture provider tools" do
+    import Portal.DevicePostureFixtures
+    import Portal.IruFixtures
+    import Portal.SentinelOneFixtures
+
+    setup do
+      account = device_posture_account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "lists the providers of the requested type", %{conn: conn, account: account, actor: actor} do
+      provider = iru_posture_provider_fixture(account: account)
+      _other_type = sentinelone_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_posture_providers", %{"type" => "iru", "fields" => ["name"]})
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => [data]}}} =
+               json_response(conn, 200)
+
+      assert data == %{"id" => provider.id, "name" => provider.posture_provider.name}
+    end
+
+    test "updates a provider through the type's own REST operation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = iru_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor, ~w[posture_providers:read posture_providers:write])
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => provider.id,
+          "posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} =
+               json_response(conn, 200)
+
+      assert data["name"] == "Renamed"
+      assert Portal.Repo.get_by!(Portal.PostureProvider, id: provider.id).name == "Renamed"
+    end
+
+    test "requires the posture providers write scope to update", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = iru_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => provider.id,
+          "posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"error" => %{"message" => message}} = json_response(conn, 403)
+      assert message =~ "posture_providers:write"
+    end
+
+    test "maps id to the SentinelOne agent UUID", %{conn: conn, account: account, actor: actor} do
+      device = sentinelone_device_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("get_posture_device", %{"type" => "sentinelone", "id" => device.uuid})
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} =
+               json_response(conn, 200)
+
+      assert data["uuid"] == device.uuid
+    end
+
+    test "returns a tool error for a missing or unknown type", %{conn: conn, actor: actor} do
+      for {arguments, expected} <- [
+            {%{}, "missing required argument(s): type"},
+            {%{"type" => "kolide"}, "`type` must be one of: defender, intune, iru, santa, sentinelone, sophos"}
+          ] do
+        response =
+          conn
+          |> authorize_mcp_conn(actor)
+          |> call_tool("list_posture_providers", arguments)
+          |> json_response(200)
+
+        assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+        assert text == expected
+      end
+    end
+
+    test "rejects a type's own argument names", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor, ~w[posture_providers:read posture_providers:write])
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => Ecto.UUID.generate(),
+          "iru_posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ "unknown argument(s): iru_posture_provider"
+      assert text =~ "posture_provider"
+    end
+  end
+
   describe "policy postures" do
     import Portal.DevicePostureFixtures
     import Portal.GroupFixtures

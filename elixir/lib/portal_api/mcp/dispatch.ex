@@ -32,6 +32,20 @@ defmodule PortalAPI.MCP.Dispatch do
   Returns the inner response's status, decoded JSON body and audited outer conn, or
   `{:error, reason}` when the arguments cannot be turned into a request.
   """
+  def call(%Tool{variants: variants}, arguments, %Plug.Conn{} = conn)
+      when is_map(variants) and is_map(arguments) do
+    case Map.pop(arguments, "type") do
+      {type, arguments} when is_map_key(variants, type) ->
+        call_variant(Map.fetch!(variants, type), arguments, conn)
+
+      {nil, _arguments} ->
+        {:error, "missing required argument(s): type"}
+
+      {_type, _arguments} ->
+        {:error, "`type` must be one of: #{variants |> Map.keys() |> Enum.sort() |> Enum.join(", ")}"}
+    end
+  end
+
   def call(%Tool{} = tool, arguments, %Plug.Conn{} = conn) when is_map(arguments) do
     {fields, arguments} = pop_fields(tool, arguments)
 
@@ -49,6 +63,24 @@ defmodule PortalAPI.MCP.Dispatch do
         body = response.resp_body |> decode_body() |> select_fields(response.status, fields)
         {:ok, response.status, body, conn}
       end
+    end
+  end
+
+  defp call_variant({variant, names}, arguments, conn) do
+    with :ok <- validate_grouped_arguments(names, arguments) do
+      call(variant, Map.new(arguments, fn {name, value} -> {Map.fetch!(names, name), value} end), conn)
+    end
+  end
+
+  defp validate_grouped_arguments(names, arguments) do
+    case arguments |> Map.keys() |> Enum.reject(&Map.has_key?(names, &1)) |> Enum.sort() do
+      [] ->
+        :ok
+
+      unknown ->
+        {:error,
+         "unknown argument(s): #{Enum.join(unknown, ", ")}. " <>
+           "Accepted arguments are: #{["type" | Map.keys(names)] |> Enum.sort() |> Enum.join(", ")}"}
     end
   end
 
