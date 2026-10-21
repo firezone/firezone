@@ -58,8 +58,7 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     let task = async {
-        let mut batch = socket.recv_from().await.unwrap();
-        batch.drain().next().unwrap();
+        socket.recv_from().await.unwrap().drain().next().unwrap();
     };
 
     tokio::time::timeout(Duration::from_secs(10), task)
