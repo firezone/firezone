@@ -48,6 +48,41 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
 
   end
 
+  defmodule UpdateRequest do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "DefenderPostureProviderUpdateRequest",
+      description:
+        "PUT/PATCH body for updating a Defender posture provider. All fields are optional; " <>
+          "omitted fields keep their current value.",
+      type: :object,
+      properties: %{
+        defender_posture_provider: %Schema{
+          type: :object,
+          properties: %{
+            name: %Schema{
+              type: :string,
+              minLength: 1,
+              maxLength: 255,
+              example: "Microsoft Defender for Endpoint",
+              description: "Name shown to admins, unique across the account's posture providers"
+            },
+            is_disabled: %Schema{
+              type: :boolean,
+              example: false,
+              description:
+                "Whether the provider is disabled. A provider can be enabled only while it is verified."
+            }
+          },
+          additionalProperties: false
+        }
+      },
+      required: [:defender_posture_provider]
+    })
+  end
+
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema

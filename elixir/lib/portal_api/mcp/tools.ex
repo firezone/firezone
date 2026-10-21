@@ -71,7 +71,19 @@ defmodule PortalAPI.MCP.Tools do
     {:put, "/groups/{id}"} => {true, true},
     {:delete, "/groups/{id}"} => {true, true},
     {:put, "/groups/{group_id}/memberships"} => {true, true},
-    {:patch, "/groups/{group_id}/memberships"} => {true, true}
+    {:patch, "/groups/{group_id}/memberships"} => {true, true},
+    {:put, "/intune_posture_providers/{id}"} => {true, true},
+    {:delete, "/intune_posture_providers/{id}"} => {true, true},
+    {:put, "/iru_posture_providers/{id}"} => {true, true},
+    {:delete, "/iru_posture_providers/{id}"} => {true, true},
+    {:put, "/defender_posture_providers/{id}"} => {true, true},
+    {:delete, "/defender_posture_providers/{id}"} => {true, true},
+    {:put, "/santa_posture_providers/{id}"} => {true, true},
+    {:delete, "/santa_posture_providers/{id}"} => {true, true},
+    {:put, "/sentinelone_posture_providers/{id}"} => {true, true},
+    {:delete, "/sentinelone_posture_providers/{id}"} => {true, true},
+    {:put, "/sophos_posture_providers/{id}"} => {true, true},
+    {:delete, "/sophos_posture_providers/{id}"} => {true, true}
   }
 
   def start_link(opts \\ []) do
