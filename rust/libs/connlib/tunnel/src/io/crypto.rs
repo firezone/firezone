@@ -2,6 +2,7 @@ use std::{
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
+    ops::Deref,
     sync::mpsc,
     task::{Context, Poll, ready},
     thread,
@@ -257,37 +258,21 @@ pub struct DecryptBatch<'a> {
     job: DecryptJob,
 }
 
-impl DecryptBatch<'_> {
-    /// Passes each segment of `datagram` to `decapsulate` and moves the datagram into a job if any
-    /// of them is a data message to decrypt.
-    pub fn decrypt(
-        &mut self,
-        datagram: DatagramIn,
-        mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<PendingDecapsulate>,
-    ) {
+impl<'a> DecryptBatch<'a> {
+    /// Adds a received datagram, to mark which of its segments to decrypt.
+    pub fn add(&mut self, datagram: DatagramIn) -> DatagramToDecrypt<'_, 'a> {
         if self.job.messages.len() + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
 
         let index = self.job.buffers.len();
         let num_messages = self.job.messages.len();
+        self.job.buffers.push(datagram);
 
-        self.job
-            .messages
-            .extend(datagram.segments().filter_map(|segment| {
-                Some(Message {
-                    buffer: index,
-                    segment,
-                    decapsulation: decapsulate(&datagram, &datagram[segment])?,
-                })
-            }));
-
-        if self.job.messages.len() > num_messages {
-            self.job.buffers.push(datagram);
-        }
-
-        if self.job.messages.len() == DECRYPT_BATCH_SIZE {
-            self.submit();
+        DatagramToDecrypt {
+            batch: self,
+            index,
+            num_messages,
         }
     }
 
@@ -310,6 +295,45 @@ impl Drop for DecryptBatch<'_> {
     fn drop(&mut self) {
         if !self.job.messages.is_empty() {
             self.submit();
+        }
+    }
+}
+
+/// A datagram of a [`DecryptBatch`], kept in its job only if a segment of it is to be decrypted.
+pub struct DatagramToDecrypt<'b, 'a> {
+    batch: &'b mut DecryptBatch<'a>,
+    index: usize,
+    num_messages: usize,
+}
+
+impl DatagramToDecrypt<'_, '_> {
+    pub fn decrypt(&mut self, segment: Segment, decapsulation: PendingDecapsulate) {
+        self.batch.job.messages.push(Message {
+            buffer: self.index,
+            segment,
+            decapsulation,
+        });
+    }
+}
+
+impl Deref for DatagramToDecrypt<'_, '_> {
+    type Target = DatagramIn;
+
+    fn deref(&self) -> &DatagramIn {
+        &self.batch.job.buffers[self.index]
+    }
+}
+
+impl Drop for DatagramToDecrypt<'_, '_> {
+    fn drop(&mut self) {
+        let job = &mut self.batch.job;
+
+        if job.messages.len() == self.num_messages {
+            job.buffers.pop();
+        }
+
+        if job.messages.len() == DECRYPT_BATCH_SIZE {
+            self.batch.submit();
         }
     }
 }

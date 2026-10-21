@@ -1128,12 +1128,21 @@ where
     }
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
-    pub fn segments(&self) -> impl Iterator<Item = Segment> + '_ {
-        (0..self.len).step_by(self.stride).map(|start| {
-            let end = std::cmp::min(start + self.stride, self.len);
+    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<B> {
+        let Self {
+            len,
+            stride,
+            from,
+            local,
+            ecn,
+            ..
+        } = *self;
+
+        (0..len).step_by(stride).map(move |start| {
+            let end = std::cmp::min(start + stride, len);
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", src = %self.from, dst = %self.local, ecn = ?self.ecn, len = %(end - start));
+            tracing::trace!(target: "wire::net::recv", src = %from, dst = %local, ecn = ?ecn, len = %(end - start));
 
             Segment { start, end }
         })

@@ -308,7 +308,10 @@ impl ClientTunnel {
                     let mut decrypts = self.io.start_decrypt_batch();
 
                     for datagram in datagrams.drain() {
-                        decrypts.decrypt(datagram, |datagram, packet| {
+                        let mut datagram = decrypts.add(datagram);
+
+                        for segment in datagram.segments() {
+                            let packet = &datagram[segment];
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
@@ -319,16 +322,14 @@ impl ClientTunnel {
                             );
 
                             match result {
-                                Ok(Some(decapsulation)) => return Some(decapsulation),
+                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
                                     local: datagram.local(),
                                     from: datagram.from(),
                                 })),
                             };
-
-                            None
-                        });
+                        }
                     }
 
                     tick.want_continue();
@@ -536,7 +537,10 @@ impl GatewayTunnel {
                     let mut decrypts = self.io.start_decrypt_batch();
 
                     for datagram in datagrams.drain() {
-                        decrypts.decrypt(datagram, |datagram, packet| {
+                        let mut datagram = decrypts.add(datagram);
+
+                        for segment in datagram.segments() {
+                            let packet = &datagram[segment];
                             udp_received.record(packet);
 
                             let result = self.role_state.handle_network_input(
@@ -547,16 +551,14 @@ impl GatewayTunnel {
                             );
 
                             match result {
-                                Ok(Some(decapsulation)) => return Some(decapsulation),
+                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
                                     local: datagram.local(),
                                     from: datagram.from(),
                                 })),
                             };
-
-                            None
-                        });
+                        }
                     }
 
                     tick.want_continue();
