@@ -139,3 +139,11 @@ pub struct DecryptedIpPacket {
     pub(crate) dst: SocketAddr,
     pub(crate) decrypted: sanstun::Decrypted<Result<IpPacket>>,
 }
+
+impl prefetch::Prefetch for DecryptedIpPacket {
+    fn prefetch(&self) {
+        if let Some(Ok(packet)) = self.decrypted.plaintext() {
+            packet.prefetch();
+        }
+    }
+}

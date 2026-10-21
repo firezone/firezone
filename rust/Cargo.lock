@@ -4154,6 +4154,7 @@ dependencies = [
  "divan",
  "incremental-inet-checksum",
  "ingot",
+ "prefetch",
  "proptest",
  "test-case",
  "test-strategy",
@@ -6022,6 +6023,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "prefetch"
+version = "0.1.0"
+
+[[package]]
 name = "prefix-trie"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6722,7 +6727,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=main#11573c9a64e21a0322b39d2effd5a40672278b18"
+source = "git+https://github.com/firezone/sanstun?branch=main#a9550b80d063fc65ead9246766d8f3984b4a9143"
 dependencies = [
  "blake2",
  "chacha20",
@@ -7350,6 +7355,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "path-agent",
+ "prefetch",
  "rand 0.10.3",
  "ringbuffer",
  "sanstun",
@@ -8956,6 +8962,7 @@ dependencies = [
  "logging",
  "opentelemetry",
  "otel-instruments",
+ "prefetch",
  "rand 0.10.3",
  "snownet",
  "socket-factory",
