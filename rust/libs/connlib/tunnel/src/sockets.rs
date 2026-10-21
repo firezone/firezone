@@ -103,7 +103,8 @@ pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
-    /// Items a socket had no room for, followed by all items sent after them.
+    /// Items waiting for room in their socket's channel. Once one waits, every later item queues
+    /// behind it, so items go out in the order they were sent.
     overflow: VecDeque<(IpVersion, Outbound)>,
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
@@ -151,8 +152,7 @@ impl Sockets {
         }
     }
 
-    /// Sends the items the sockets had no room for, resolving once none are left and every
-    /// socket has room for another one.
+    /// Sends the items waiting for room, resolving once none are left.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         while let Some((version, _)) = self.overflow.front() {
             let (socket, name) = match version {
@@ -174,15 +174,6 @@ impl Sockets {
 
             // An item we cannot reserve room for is dropped.
             reserved?.send(outbound);
-        }
-
-        // The reserved room is released again right away, for the next item to take.
-        if let Some(socket) = self.socket_v4.as_mut() {
-            ready!(socket.poll_reserve(cx))?;
-        }
-
-        if let Some(socket) = self.socket_v6.as_mut() {
-            ready!(socket.poll_reserve(cx))?;
         }
 
         Poll::Ready(Ok(()))
@@ -305,9 +296,9 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 
 /// Worst-case memory pinned by the outbound UDP send path while in flight.
 ///
-/// Per address family (hence `2 *`), items can be held in two places at once: up to [`QUEUE_SIZE`]
-/// in the channel or waiting for room in it, since the TUN device is only read while the channel
-/// has room and nothing waits for it, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
+/// Per address family (hence `2 *`), items can be held in three places at once: up to
+/// [`QUEUE_SIZE`] in the channel, one waiting for room in it, since the TUN device is only read
+/// while nothing waits, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
 /// An item carries at most one TUN batch of packets, so at most as many trains, each with a
 /// [`DatagramOut`]. A train's GSO buffer is at most 2 KiB or twice its length, so at most twice
 /// [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
@@ -315,7 +306,7 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// Every size class pools its buffers separately, so backlogs of differently sized trains can
 /// leave more than this pooled.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize = 2
-    * (QUEUE_SIZE + UDP_SEND_BATCH_LIMIT)
+    * (QUEUE_SIZE + 1 + UDP_SEND_BATCH_LIMIT)
     * tun::MAX_BATCH_SIZE
     * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD);
 

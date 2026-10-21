@@ -399,9 +399,8 @@ impl Io {
 
     /// Polls all IO sources that are ready.
     ///
-    /// The TUN device is only read while nothing waits for room in the UDP sockets and each has
-    /// room for an [`Io::start_encrypt_batch`], and decrypted packets are only accepted while the TUN
-    /// device has room.
+    /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted
+    /// packets are only accepted while the TUN device has room.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
         let mut state = PollState::new(self, cx);
 
@@ -468,7 +467,8 @@ impl Io {
     /// Starts a batch of encapsulated packets to encrypt off the main thread.
     ///
     /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
-    /// [`Io::poll`] read from the TUN device, which it does only while each UDP socket has room.
+    /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
+    /// UDP sockets.
     pub fn start_encrypt_batch(&mut self) -> EncryptBatch<'_> {
         self.crypto.start_encrypt_batch(&mut self.sockets)
     }
