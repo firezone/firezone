@@ -967,7 +967,7 @@ struct InnerFlow {
 }
 
 impl From<&IpPacket> for InnerFlow {
-    #[inline]
+    #[inline(always)]
     fn from(packet: &IpPacket) -> Self {
         let tcp_flags = packet.tcp_flags().unwrap_or_default();
 
