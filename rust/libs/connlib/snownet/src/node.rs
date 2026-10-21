@@ -1916,7 +1916,7 @@ where
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,
+        decrypted: sanstun::Decrypted<Result<IpPacket>>,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
     where

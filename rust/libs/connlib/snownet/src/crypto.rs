@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use anyhow::Result;
 use ip_packet::{IpPacket, IpPacketBuf};
 
 use crate::node::Transmit;
@@ -138,5 +139,5 @@ impl PendingDecapsulate {
 pub struct DecryptedIpPacket {
     pub(crate) tunnel: sanstun::TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),
-    pub(crate) decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,
+    pub(crate) decrypted: sanstun::Decrypted<Result<IpPacket>>,
 }
