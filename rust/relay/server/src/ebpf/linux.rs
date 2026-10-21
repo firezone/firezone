@@ -48,7 +48,8 @@ impl Program {
             "/ebpf-turn-router-main"
         )))?;
         let logger = EbpfLogger::init(&mut ebpf)?;
-        let mut logger = AsyncFd::with_interest(logger, Interest::READABLE)?;
+        // SAFETY: `EbpfLogger` owns its descriptor, so it stays open as long as we hold it.
+        let mut logger = unsafe { AsyncFd::register_with_interest(logger, Interest::READABLE)? };
         tokio::task::spawn(async move {
             loop {
                 let mut guard = match logger.readable_mut().await {
@@ -94,7 +95,8 @@ impl Program {
         {
             // open a separate perf buffer for each cpu
             let stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
-            let mut fd = AsyncFd::new(stats_array_buf)?;
+            // SAFETY: `PerfEventArrayBuffer` owns its descriptor, so it stays open as long as we hold it.
+            let mut fd = unsafe { AsyncFd::register(stats_array_buf)? };
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 

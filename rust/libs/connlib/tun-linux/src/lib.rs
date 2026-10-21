@@ -99,7 +99,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
+            // SAFETY: `Io::new` hands us an `OwnedFd` that stays open as long as we hold it.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(tun_fd.fd, Interest::WRITABLE)
+                    .map_err(io::Error::from)?
+            };
 
             let mut coalescer = if tun_fd.offloads {
                 PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
@@ -218,7 +222,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
+            // SAFETY: `Io::new` hands us an `OwnedFd` that stays open as long as we hold it.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(tun_fd.fd, Interest::READABLE)
+                    .map_err(io::Error::from)?
+            };
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
             let mut batch = PacketBatch::default();
             let mut overflow = VecDeque::new();

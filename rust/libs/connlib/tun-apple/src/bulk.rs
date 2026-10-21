@@ -50,7 +50,8 @@ pub fn send(
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, Interest::WRITABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe { AsyncFd::register_with_interest(fd, Interest::WRITABLE)? };
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
@@ -129,7 +130,8 @@ pub fn recv(
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE)? };
 
             let mut bufs: Vec<IpPacketBuf> =
                 (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
