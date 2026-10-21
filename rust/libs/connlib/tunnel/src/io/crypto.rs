@@ -82,8 +82,6 @@ pub struct CryptoWorkers {
 }
 
 /// A job for a crypto worker.
-///
-/// Every worker takes both kinds, so traffic in one direction can use all of them.
 enum Work {
     Encrypt(EncryptJob, oneshot::Sender<DatagramOut>),
     Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
