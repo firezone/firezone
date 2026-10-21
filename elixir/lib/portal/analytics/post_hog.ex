@@ -42,9 +42,7 @@ defmodule Portal.Analytics.PostHog do
         "account_id" => account.id,
         "account_name" => account.name,
         "account_slug" => account.slug,
-        "actor_type" => actor.type,
-        "email" => actor.email,
-        "name" => actor.name
+        "actor_type" => actor.type
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
