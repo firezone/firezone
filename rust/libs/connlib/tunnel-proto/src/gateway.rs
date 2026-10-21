@@ -152,7 +152,7 @@ impl GatewayState {
     /// Handles UDP packets received on the network interface.
     ///
     /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::Decapsulation`].
-    /// Decrypt it from `packet` and pass the result to [`GatewayState::handle_decrypted_network_input`].
+    /// Decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
@@ -174,7 +174,7 @@ impl GatewayState {
     /// `local` and `from` are the addresses the message was received on and from.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
-    pub fn handle_decrypted_network_input(
+    pub fn handle_peer_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,

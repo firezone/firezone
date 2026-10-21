@@ -768,7 +768,7 @@ impl Tunnel {
             .unwrap();
         let request = self
             .gateway
-            .handle_decrypted_network_input(
+            .handle_peer_input(
                 GATEWAY_SOCKET,
                 CLIENT_SOCKET,
                 decapsulation.decrypt(&datagram.payload),
@@ -910,24 +910,18 @@ impl Tunnel {
                 .client
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ = self.client.handle_decrypted_network_input(
-                to,
-                from,
-                decapsulation.decrypt(payload),
-                self.now,
-            );
+            let _ =
+                self.client
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
         if to == GATEWAY_SOCKET
             && let Ok(Some(decapsulation)) = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ = self.gateway.handle_decrypted_network_input(
-                to,
-                from,
-                decapsulation.decrypt(payload),
-                self.now,
-            );
+            let _ =
+                self.gateway
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
     }
 }

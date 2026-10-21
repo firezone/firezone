@@ -84,7 +84,7 @@ impl SimGateway {
                     return Ok(None);
                 };
 
-                self.sut.handle_decrypted_network_input(
+                self.sut.handle_peer_input(
                     local,
                     from,
                     decapsulation.decrypt(&transmit.payload),
