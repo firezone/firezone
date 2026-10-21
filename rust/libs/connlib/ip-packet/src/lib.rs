@@ -388,17 +388,6 @@ impl IpPacket {
         self.version
     }
 
-    /// Hints the CPU to fetch the start of the packet, which another thread may have written.
-    pub fn prefetch(&self) {
-        // SAFETY: `sse` is part of the x86_64 baseline and a prefetch never faults.
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            std::arch::x86_64::_mm_prefetch::<{ std::arch::x86_64::_MM_HINT_T0 }>(
-                self.buf.as_ptr().cast(),
-            );
-        }
-    }
-
     pub fn source(&self) -> IpAddr {
         match self.version {
             IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(12)),
