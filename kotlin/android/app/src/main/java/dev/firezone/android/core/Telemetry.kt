@@ -26,6 +26,7 @@ object Telemetry {
             options.dist = distributionType(context)
             options.logs.isEnabled = true
         }
+        Sentry.setAttribute("process", "app")
     }
 
     fun setFirezoneId(id: String?) {
@@ -43,16 +44,16 @@ object Telemetry {
         val slug = accountSlug
 
         if (id != null && slug != null) {
-            Log.setUser(id, slug)
             val user =
                 User().apply {
                     this.id = id
                     this.data = mapOf("account_slug" to slug)
                 }
             Sentry.setUser(user)
+            Sentry.setAttribute("user.account_slug", slug)
         } else {
-            Log.clearUser()
             Sentry.setUser(null)
+            Sentry.removeAttribute("user.account_slug")
         }
     }
 
@@ -65,7 +66,6 @@ object Telemetry {
             }
 
         if (environment != null) {
-            Log.setEnvironment(environment)
             Sentry.getCurrentScopes().options.environment = environment
         } else {
             Sentry.close()
