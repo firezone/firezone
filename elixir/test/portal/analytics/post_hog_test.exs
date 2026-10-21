@@ -189,8 +189,9 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert properties["$anon_distinct_id"] == attribution["distinct_id"]
     assert properties["$process_person_profile"] == true
-    assert properties["$set"]["email"] == actor.email
     assert properties["$set"]["account_id"] == account.id
+    refute Map.has_key?(properties["$set"], "email")
+    refute Map.has_key?(properties["$set"], "name")
     assert properties["$set_once"]["initial_website_path"] == "/pricing"
   end
 end
