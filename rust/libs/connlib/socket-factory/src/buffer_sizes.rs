@@ -28,16 +28,19 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
 
 /// Worst-case heap that a single received batch ([`DatagramBatch`]) pins.
 ///
-/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Each buffer
-/// is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams of at most
-/// [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer is 64x the
-/// size of the datagram it might actually carry. That factor dominates this figure even on Windows,
-/// where Quinn currently leaves URO disabled but allocates URO-capable buffers.
+/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata.
 pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
     + quinn_udp::BATCH_SIZE
-        * (ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS
-            + size_of::<RecvBuffer>()
-            + size_of::<quinn_udp::RecvMeta>());
+        * (MAX_RECV_BUFFER_MEMORY + size_of::<RecvBuffer>() + size_of::<quinn_udp::RecvMeta>());
+
+/// Worst-case heap that a single receive buffer ([`DatagramIn`](crate::DatagramIn)) pins.
+///
+/// Each buffer is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams
+/// of at most [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer
+/// is 64x the size of the datagram it might actually carry. That factor dominates the memory of the
+/// receive path even on Windows, where Quinn currently leaves URO disabled but allocates URO-capable
+/// buffers.
+pub const MAX_RECV_BUFFER_MEMORY: usize = ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS;
 
 /// Largest traffic rate in either direction for which we size the UDP socket buffers.
 const MAX_EXPECTED_UDP_BITS_PER_SECOND: u64 = 10_000_000_000;

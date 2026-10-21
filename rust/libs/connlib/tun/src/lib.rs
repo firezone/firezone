@@ -99,7 +99,7 @@ impl PacketBatch {
     }
 
     /// Removes all packets from the batch, in order.
-    pub fn drain(&mut self) -> impl Iterator<Item = IpPacket> + '_ {
+    pub fn drain(&mut self) -> impl ExactSizeIterator<Item = IpPacket> + '_ {
         self.inner.drain(..)
     }
 }

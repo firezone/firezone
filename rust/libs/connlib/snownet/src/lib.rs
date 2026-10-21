@@ -6,17 +6,17 @@
 mod agent;
 mod allocation;
 mod backoff;
-mod buffer;
 mod candidate;
 mod channel_data;
+mod crypto;
 mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use buffer::{BufferProvider, Reservation, TransmitBuffer};
+pub use crypto::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
 pub use node::{
-    ConnectionPath, Credentials, EncapsulateInfo, Event, IceConfig, IceRole, Node, StillConnecting,
-    Transmit, UnknownConnection,
+    ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
+    UnknownConnection,
 };
 
 bufferpool::buffer_pool!(pub static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64, pool: pub Datagrams);

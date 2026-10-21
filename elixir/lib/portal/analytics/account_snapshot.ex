@@ -4,9 +4,9 @@ defmodule Portal.Analytics.AccountSnapshot do
 
   Each account yields two events: a `$groupidentify` that keeps the account's
   group properties current, and an `Account Snapshot` event that records the same
-  properties over time. Properties are counts, enum values, timestamps and Stripe
-  subscription details only.
-  Names, addresses, emails, IPs and other customer-entered data are never sent.
+  properties over time. Besides the account's name and slug, properties are counts,
+  enum values, timestamps and Stripe subscription details only. Other names,
+  addresses, emails, IPs and customer-entered data are never sent.
 
   Building is separate from sending, so the payload can be inspected locally:
 
@@ -19,6 +19,11 @@ defmodule Portal.Analytics.AccountSnapshot do
 
   @group_type "account"
   @snapshot_event "Account Snapshot"
+
+  # Account events have no user behind them. PostHog only links events to groups
+  # when it processes a person for them, and recommends one static distinct ID for
+  # such events, so they share a single person instead of creating one per account.
+  @distinct_id "firezone-portal"
   @batch_size 100
 
   @doc """
@@ -71,11 +76,11 @@ defmodule Portal.Analytics.AccountSnapshot do
           "timestamp" => timestamp,
           "uuid" => PostHog.event_uuid([account.id, "$groupidentify", date]),
           "properties" => %{
-            "distinct_id" => account.id,
-            "$process_person_profile" => false,
+            "distinct_id" => @distinct_id,
             "$group_type" => @group_type,
             "$group_key" => account.id,
-            "$group_set" => properties
+            # PostHog shows a group by its `name` property
+            "$group_set" => Map.put(properties, "name", account.name)
           }
         },
         %{
@@ -84,8 +89,7 @@ defmodule Portal.Analytics.AccountSnapshot do
           "uuid" => PostHog.event_uuid([account.id, @snapshot_event, date]),
           "properties" =>
             Map.merge(properties, %{
-              "distinct_id" => account.id,
-              "$process_person_profile" => false,
+              "distinct_id" => @distinct_id,
               "$groups" => %{@group_type => account.id}
             })
         }
@@ -148,7 +152,9 @@ defmodule Portal.Analytics.AccountSnapshot do
   defp online_key(:client), do: :clients_online
 
   defp properties(account, counts) do
-    %{
+    account
+    |> PostHog.account_properties()
+    |> Map.merge(%{
       "plan_type" => account |> Portal.Billing.plan_type() |> Atom.to_string(),
       "subscription_status" => stripe(account).subscription_status,
       "trial_ends_at" => iso8601(stripe(account).trial_ends_at),
@@ -190,7 +196,7 @@ defmodule Portal.Analytics.AccountSnapshot do
       "log_sink_types" => Map.get(counts, :log_sink_types, []),
       "api_tokens_count" => Map.get(counts, :api_tokens, 0),
       "oauth_grants_count" => Map.get(counts, :oauth_grants, 0)
-    }
+    })
   end
 
   defp stripe(%Account{metadata: %{stripe: %Account.Metadata.Stripe{} = stripe}}), do: stripe

@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -18,8 +19,8 @@ impl Workers {
     /// Starts one worker per IO direction, with packet channels and queue metrics.
     pub fn spawn(
         runtime: &tokio::runtime::Handle,
-        send: impl FnOnce(OutboundRx) -> anyhow::Result<()> + Send + 'static,
-        recv: impl FnOnce(InboundTx) -> anyhow::Result<()> + Send + 'static,
+        send: impl FnOnce(OutboundRx) -> Result<()> + Send + 'static,
+        recv: impl FnOnce(InboundTx) -> Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
         let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
         let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
@@ -118,7 +119,7 @@ impl Drop for Workers {
 
 fn spawn_worker(
     direction: &'static str,
-    worker: impl FnOnce() -> anyhow::Result<()> + Send + 'static,
+    worker: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> std::io::Result<JoinHandle<()>> {
     let thread = std::thread::Builder::new()
         .name(format!("TUN {direction}"))

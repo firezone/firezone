@@ -100,7 +100,7 @@ pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> R
 }
 
 /// Run WebSocket test from resolved config.
-pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> Result<()> {
     run(config, seed).await?;
 
     Ok(())
@@ -223,7 +223,7 @@ pub struct WebsocketServerConfig {
 ///
 /// Listens for WebSocket connections and echoes back any received messages.
 /// Runs indefinitely until interrupted.
-async fn run_server(config: WebsocketServerConfig) -> anyhow::Result<()> {
+async fn run_server(config: WebsocketServerConfig) -> Result<()> {
     use axum::{
         Router,
         extract::ws::{Message as AxumMessage, WebSocket, WebSocketUpgrade},

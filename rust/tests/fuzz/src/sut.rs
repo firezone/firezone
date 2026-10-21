@@ -1751,6 +1751,16 @@ impl TunnelTest {
     }
 }
 
+pub(crate) fn encrypt(
+    encapsulation: snownet::PendingEncapsulate,
+    packet: &IpPacket,
+) -> Option<Transmit> {
+    encapsulation
+        .encrypt(packet)
+        .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
+        .ok()
+}
+
 fn address_from_destination(
     destination: &Destination,
     state: &TunnelTest,
