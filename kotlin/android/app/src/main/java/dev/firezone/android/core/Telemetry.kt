@@ -25,6 +25,7 @@ object Telemetry {
             options.release = releaseName()
             options.dist = distributionType(context)
             options.logs.isEnabled = true
+            options.isTombstoneEnabled = true
         }
     }
 
