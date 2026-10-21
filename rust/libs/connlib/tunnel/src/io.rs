@@ -15,7 +15,7 @@ use crate::{TunnelError, dns, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
-use crypto::CryptoWorkers;
+use crypto::{CryptoWorkers, Decrypting};
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -43,6 +43,7 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     crypto: CryptoWorkers,
+    decrypting: Decrypting,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
@@ -193,11 +194,11 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             return;
         }
 
-        self.input.decrypted = poll_to_option(self.io.crypto.poll_decrypted(self.cx));
+        self.input.decrypted = poll_to_option(self.io.decrypting.poll_next(self.cx));
     }
 
     fn poll_network(&mut self) {
-        if !self.io.crypto.has_room_to_decrypt() {
+        if !self.io.decrypting.has_room() {
             return;
         }
 
@@ -335,6 +336,7 @@ impl Io {
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
             crypto: CryptoWorkers::new(packet_counter),
+            decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
@@ -479,7 +481,7 @@ impl Io {
     /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
     /// [`Input::decrypted`].
     pub fn start_decrypt_batch(&mut self) -> DecryptBatch<'_> {
-        self.crypto.start_decrypt_batch()
+        self.crypto.start_decrypt_batch(&mut self.decrypting)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {

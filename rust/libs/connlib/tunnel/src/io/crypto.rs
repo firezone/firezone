@@ -86,14 +86,11 @@ pub struct Received<P> {
 /// through one socket thread.
 ///
 /// To decrypt, received buffers go to the workers in jobs of up to [`DECRYPT_BATCH_SIZE`] data
-/// messages. The results come back through a `oneshot` channel per job, which we queue in
-/// submission order to accept the decrypted packets in that order.
+/// messages. The results come back through a `oneshot` channel per job, which [`Decrypting`]
+/// queues in submission order to accept the decrypted packets in that order.
 pub struct CryptoWorkers {
     workers: Vec<mpsc::Sender<Work>>,
     next_worker: usize,
-
-    /// The decrypt jobs handed to the workers.
-    decrypting: VecDeque<oneshot::Receiver<Decrypted>>,
 }
 
 /// A job for a crypto worker.
@@ -111,7 +108,6 @@ impl CryptoWorkers {
         Self {
             workers: spawn_workers(num_crypto_workers(), packet_counter),
             next_worker: 0,
-            decrypting: VecDeque::new(),
         }
     }
 
@@ -127,32 +123,16 @@ impl CryptoWorkers {
     }
 
     /// Starts a batch of received buffers to decrypt, handed to the workers when it is dropped.
-    pub fn start_decrypt_batch(&mut self) -> DecryptBatch<'_> {
+    ///
+    /// The results of its jobs are queued in `decrypting`.
+    pub fn start_decrypt_batch<'a>(
+        &'a mut self,
+        decrypting: &'a mut Decrypting,
+    ) -> DecryptBatch<'a> {
         DecryptBatch {
             crypto: self,
+            decrypting,
             job: DecryptJob::new(),
-        }
-    }
-
-    /// Whether we may hand more received buffers to the workers.
-    pub fn has_room_to_decrypt(&self) -> bool {
-        self.decrypting.len() < MAX_JOBS_IN_FLIGHT
-    }
-
-    /// Returns the next batch of decrypted packets, in the order they were received.
-    pub fn poll_decrypted(&mut self, cx: &mut Context<'_>) -> Poll<Decrypted> {
-        loop {
-            let Some(decrypted) = self.decrypting.front_mut() else {
-                return Poll::Pending;
-            };
-            let result = ready!(Pin::new(decrypted).poll(cx));
-
-            self.decrypting.pop_front();
-
-            match result {
-                Ok(decrypted) => return Poll::Ready(decrypted),
-                Err(_) => tracing::debug!("Decrypt worker stopped; dropping packets"),
-            }
         }
     }
 
@@ -266,6 +246,7 @@ impl EncryptJob {
 /// Received buffers to decrypt, handed to the workers when dropped.
 pub struct DecryptBatch<'a> {
     crypto: &'a mut CryptoWorkers,
+    decrypting: &'a mut Decrypting,
     job: DecryptJob,
 }
 
@@ -312,9 +293,9 @@ impl DecryptBatch<'_> {
         };
         let (tx, rx) = oneshot::channel();
 
-        // A stopped worker drops the sender, so `poll_decrypted` skips the job.
+        // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
         let _ = worker.send(Work::Decrypt(job, tx));
-        self.crypto.decrypting.push_back(rx);
+        self.decrypting.push(rx);
     }
 }
 
@@ -322,6 +303,40 @@ impl Drop for DecryptBatch<'_> {
     fn drop(&mut self) {
         if !self.job.messages.is_empty() {
             self.submit();
+        }
+    }
+}
+
+/// The decrypt jobs handed to the workers, in submission order.
+#[derive(Default)]
+pub struct Decrypting {
+    jobs: VecDeque<oneshot::Receiver<Decrypted>>,
+}
+
+impl Decrypting {
+    /// Whether we may hand more received buffers to the workers.
+    pub fn has_room(&self) -> bool {
+        self.jobs.len() < MAX_JOBS_IN_FLIGHT
+    }
+
+    fn push(&mut self, job: oneshot::Receiver<Decrypted>) {
+        self.jobs.push_back(job);
+    }
+
+    /// Returns the next batch of decrypted packets, in the order they were received.
+    pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Decrypted> {
+        loop {
+            let Some(decrypted) = self.jobs.front_mut() else {
+                return Poll::Pending;
+            };
+            let result = ready!(Pin::new(decrypted).poll(cx));
+
+            self.jobs.pop_front();
+
+            match result {
+                Ok(decrypted) => return Poll::Ready(decrypted),
+                Err(_) => tracing::debug!("Decrypt worker stopped; dropping packets"),
+            }
         }
     }
 }
