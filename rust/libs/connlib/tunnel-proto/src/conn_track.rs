@@ -4,15 +4,16 @@
 //! opened grant a return-traffic exemption from the inbound filter, so
 //! revoking or expiring an authorization cuts off peer-opened flows.
 
+use fast_random_state::FastRandomState;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Protocol};
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
-    initiated: BTreeMap<Key, Instant>,
-    received: BTreeMap<Key, Instant>,
+    initiated: HashMap<Key, Instant, FastRandomState>,
+    received: HashMap<Key, Instant, FastRandomState>,
 }
 
 /// Which side opened a tracked flow.
@@ -183,9 +184,10 @@ impl ConnTrack {
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for map in [&mut self.initiated, &mut self.received] {
-            for _ in map.extract_if(.., |key, last_seen| {
-                now.saturating_duration_since(*last_seen) >= ttl(key)
-            }) {}
+            for _ in map
+                .extract_if(|key, last_seen| now.saturating_duration_since(*last_seen) >= ttl(key))
+            {
+            }
         }
     }
 }

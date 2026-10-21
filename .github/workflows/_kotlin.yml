@@ -253,6 +253,8 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
+          SENTRY_UPLOAD_MAPPING: ${{ github.event_name == 'workflow_dispatch' }}
+          SENTRY_AUTH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && secrets.SENTRY_AUTH_TOKEN || '' }}
         run: |
           KEYSTORE_PATH="$(pwd)/app/keystore.jks"
           echo -n "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"

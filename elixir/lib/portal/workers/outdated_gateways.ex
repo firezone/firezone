@@ -34,8 +34,8 @@ defmodule Portal.Workers.OutdatedGateways do
     end)
   end
 
-  # Dropped before anything is sent so last_notified stays unset and the account
-  # is notified the first time it comes back.
+  # Dropped before anything is sent so the last sent time stays unset and the
+  # account is notified the first time it comes back.
   defp dormant?(account) do
     not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
@@ -52,35 +52,17 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp send_notifications(gateways, account, incompatible_client_count) do
-    admin_emails =
-      Database.all_admins_for_account!(account)
-      |> Enum.map(& &1.email)
+    account
+    |> Database.all_admins_for_account!()
+    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
 
-    if admin_emails != [] do
-      send_email(account, gateways, incompatible_client_count, admin_emails)
-    end
-
-    changeset =
-      account_changeset(account, %{
-        config: %{
-          notifications: %{
-            outdated_gateway: %{
-              last_notified: DateTime.utc_now()
-            }
-          }
-        }
-      })
-
-    Database.update_account(changeset)
+    account
+    |> Ecto.Changeset.change(outdated_gateway_last_sent_at: DateTime.utc_now())
+    |> Database.update_account()
   end
 
-  defp send_email(account, gateways, incompatible_client_count, emails) do
-    Mailer.Notifications.outdated_gateway_email(
-      account,
-      gateways,
-      incompatible_client_count,
-      emails
-    )
+  defp send_email(account, gateways, incompatible_client_count, admin) do
+    Mailer.Notifications.outdated_gateway_email(account, gateways, incompatible_client_count, admin)
     |> Mailer.enqueue()
     |> case do
       {:ok, _result} ->
@@ -89,35 +71,10 @@ defmodule Portal.Workers.OutdatedGateways do
       {:error, reason} ->
         Logger.error("Failed to enqueue outdated gateway email",
           account_id: account.id,
-          recipient_count: length(emails),
+          actor_id: admin.id,
           reason: inspect(reason)
         )
     end
-  end
-
-  defp account_changeset(account, attrs) do
-    import Ecto.Changeset
-
-    account
-    |> cast(attrs, [])
-    |> cast_embed(:config,
-      with: fn config, config_attrs ->
-        config
-        |> cast(config_attrs, [])
-        |> cast_embed(:notifications,
-          with: fn notifications, notif_attrs ->
-            notifications
-            |> cast(notif_attrs, [])
-            |> cast_embed(:outdated_gateway,
-              with: fn gateway, gateway_attrs ->
-                gateway
-                |> cast(gateway_attrs, [:last_notified])
-              end
-            )
-          end
-        )
-      end
-    )
   end
 
   defmodule Database do
@@ -127,16 +84,9 @@ defmodule Portal.Workers.OutdatedGateways do
 
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
-        where: fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
         where:
-          fragment(
-            "?->'notifications'->'outdated_gateway'->>'last_notified' IS NULL",
-            a.config
-          ) or
-            fragment(
-              "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
-              a.config
-            )
+          is_nil(a.outdated_gateway_last_sent_at) or
+            a.outdated_gateway_last_sent_at < ago(24, "hour")
       )
       |> Safe.unscoped()
       |> Safe.all()
@@ -153,6 +103,13 @@ defmodule Portal.Workers.OutdatedGateways do
       |> where([actors: a], a.is_disabled == false)
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
+      |> where(
+        [actors: a],
+        fragment(
+          "COALESCE(NULLIF(?->'notifications'->'outdated_gateways', 'null') @> '[\"email\"]', true)",
+          a.preferences
+        )
+      )
       |> Safe.unscoped()
       |> Safe.all()
     end
@@ -193,6 +150,5 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Safe.unscoped()
       |> Safe.all()
     end
-
   end
 end

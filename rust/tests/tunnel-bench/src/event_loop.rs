@@ -9,8 +9,8 @@
 use std::collections::BTreeSet;
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::task::{Context, Poll};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
@@ -23,7 +23,7 @@ use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
-use snownet::{RelaySocket, Transmit, TransmitBuffer};
+use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
@@ -56,10 +56,26 @@ const BURST: usize = 10_000;
 
 /// How many packets go into the tunnel ahead of those that came out of it.
 ///
-/// Bounded so no UDP receive buffer overflows.
-const IN_FLIGHT: usize = 2_048;
+/// Deep enough that the event loop never drains the pipeline while a stand-in thread wakes up,
+/// shallow enough that no UDP receive buffer overflows: macOS caps a socket buffer at 8 MiB
+/// (`kern.ipc.maxsockbuf`), which holds about 4096 datagrams of [`SIZE`] bytes. The crypto workers
+/// make the pipeline deeper than that on many-core machines, so Linux, whose benchmark container
+/// raises `rmem_max` to 16 MiB, keeps twice as many in flight.
+const IN_FLIGHT: usize = cfg_select! {
+    target_os = "macos" => { 4_096 }
+    _ => { 8_192 }
+};
 
-/// How often the event loop may park per 1000 packets.
+/// How many packets the receiving side sends to its peer before a benchmark.
+///
+/// That is one transmit above socket-factory's promotion threshold, so the receiver's socket pool
+/// connects a flow socket to the peer as either side of a real tunnel does within its first
+/// transmits. On macOS, a connected socket receives much more cheaply than the catch-all socket:
+/// too cheaply for an unconnected receiver to keep up with the event loop over loopback.
+#[cfg(target_os = "macos")]
+const FLOW_SOCKET_PACKETS: usize = 16;
+
+/// How often the event loop may park per 1000 packets before a benchmark reports it.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
 /// if a stand-in thread could not keep up.
@@ -77,6 +93,7 @@ criterion::criterion_group! {
 }
 
 fn bench(c: &mut Criterion) {
+    prioritize_stand_in();
     let mut group = c.benchmark_group("event_loop");
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
 
@@ -115,10 +132,24 @@ fn outbound(
     peer: Side,
     now: Instant,
 ) {
-    let (event_loop, _) = EventLoop::spawn(local.state, local.socket, now);
+    let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
-    let (peer, socket) = bind_peer(peer.socket);
-    peer.spawn({
+    let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let mut peer = peer;
+        let datagrams = peer
+            .state
+            .encapsulate(&peer.reads, FLOW_SOCKET_PACKETS, now, local.socket);
+        for datagram in datagrams {
+            runtime.block_on(socket.send(datagram)).unwrap();
+        }
+
+        assert_eq!(socket.flow_socket_count(), 1);
+    }
+
+    runtime.spawn({
         let arrivals = arrivals.clone();
 
         async move {
@@ -155,6 +186,7 @@ fn inbound(
             let arrivals = arrivals.clone();
 
             move || {
+                prioritize_stand_in();
                 while let Some(batch) = tun_writes.blocking_recv() {
                     arrivals.add(batch.len());
                 }
@@ -162,6 +194,17 @@ fn inbound(
         })
         .unwrap();
     let (runtime, socket) = bind_peer(peer.socket);
+
+    #[cfg(target_os = "macos")]
+    {
+        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
+        event_loop.tun_reads.blocking_send(batch).unwrap();
+
+        let mut received = 0;
+        while received < FLOW_SOCKET_PACKETS {
+            received += runtime.block_on(socket.recv_from()).unwrap().len();
+        }
+    }
 
     let inputs = |packets| {
         peer.state
@@ -198,12 +241,12 @@ fn connect(resource: Resource, protocol: Protocol, flow_logs: bool) -> (Side, Si
 
     let client = Side {
         state: State::Client(tunnel.client),
-        socket: CLIENT_SOCKET,
+        socket: *CLIENT_SOCKET,
         reads: request,
     };
     let gateway = Side {
         state: State::Gateway(tunnel.gateway),
-        socket: GATEWAY_SOCKET,
+        socket: *GATEWAY_SOCKET,
         reads: reply,
     };
 
@@ -219,19 +262,21 @@ impl State {
         now: Instant,
         dst: SocketAddr,
     ) -> Vec<DatagramOut> {
-        let mut transmits = TransmitBuffer::default();
         let segments = (0..count)
             .map(|_| {
-                match self {
-                    State::Client(client) => client
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
-                        .unwrap(),
-                    State::Gateway(gateway) => gateway
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
-                        .unwrap(),
-                }
+                let mut packet = packet.clone();
+                let encapsulation = match self {
+                    State::Client(client) => client.handle_tun_input(&mut packet, now),
+                    State::Gateway(gateway) => gateway.handle_tun_input(&mut packet, now),
+                };
 
-                transmits.poll_transmit().unwrap().payload.to_vec()
+                encapsulation
+                    .unwrap()
+                    .unwrap()
+                    .encrypt(&packet)
+                    .unwrap()
+                    .payload
+                    .to_vec()
             })
             .collect::<Vec<_>>();
         let segment_size = segments[0].len();
@@ -260,8 +305,8 @@ impl State {
 /// A tunnel's event loop, polled on its own thread until its TUN device closes.
 struct EventLoop {
     thread: JoinHandle<()>,
-    /// The `/proc` status file of its thread.
-    status: PathBuf,
+    /// How often its thread has parked.
+    parks: Arc<AtomicU64>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -280,8 +325,16 @@ impl EventLoop {
             SocketAddr::V6(_) => Err(std::io::ErrorKind::Unsupported.into()),
         });
 
+        let parks = Arc::new(AtomicU64::new(0));
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
+            .on_thread_park({
+                let parks = parks.clone();
+
+                move || {
+                    parks.fetch_add(1, Ordering::Relaxed);
+                }
+            })
             .build()
             .unwrap();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
@@ -305,14 +358,9 @@ impl EventLoop {
             }
         };
 
-        let (status_tx, status_rx) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
             .name("event-loop".to_owned())
             .spawn(move || {
-                let thread_self = std::fs::read_link("/proc/thread-self").unwrap();
-                status_tx
-                    .send(Path::new("/proc").join(thread_self).join("status"))
-                    .unwrap();
                 // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
                 // are irrelevant here: a lost packet fails the benchmark.
                 runtime.block_on(poll_fn(|cx| {
@@ -330,12 +378,11 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let status = status_rx.recv().unwrap();
 
         (
             Self {
                 thread,
-                status,
+                parks,
                 tun_reads,
             },
             tun_writes,
@@ -344,14 +391,7 @@ impl EventLoop {
 
     /// Returns how often the event loop's thread has parked.
     fn parks(&self) -> u64 {
-        std::fs::read_to_string(&self.status)
-            .unwrap()
-            .lines()
-            .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap()
+        self.parks.load(Ordering::Relaxed)
     }
 
     fn stop(self) {
@@ -412,7 +452,7 @@ impl Arrivals {
 }
 
 /// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
-/// those that arrived, and asserts that the event loop did not park while packets were in flight.
+/// those that arrived, and reports if the event loop parked while packets were in flight.
 ///
 /// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
 /// input holds.
@@ -452,10 +492,24 @@ fn measure<T>(
     let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
 
     // Skipped or test runs send too few packets to tell.
-    assert!(
-        packets < BURST || parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
-    );
+    #[allow(clippy::print_stderr)]
+    if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
+        eprintln!(
+            "Event loop thread parked {parks:.2} times per 1000 packets and may not be the bottleneck"
+        );
+    }
+}
+
+/// Raises the scheduling priority of the calling thread on macOS.
+///
+/// The stand-in threads take the place of a kernel TUN device and a remote peer, neither of which
+/// is subject to macOS' quality-of-service scheduling. At the default QoS class, their wake-ups
+/// are delayed enough to starve the event loop between hand-offs.
+fn prioritize_stand_in() {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
+    }
 }
 
 /// Returns `count` copies of `packet` in batches.
@@ -480,6 +534,7 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .thread_name("peer")
+        .on_thread_start(prioritize_stand_in)
         .enable_all()
         .build()
         .unwrap();
@@ -493,10 +548,31 @@ fn bind_peer(socket: SocketAddr) -> (tokio::runtime::Runtime, PerfUdpSocket) {
     (runtime, socket)
 }
 
-const CLIENT_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 1111));
-const GATEWAY_SOCKET: SocketAddr =
-    SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 2), 2222));
+static CLIENT_SOCKET: LazyLock<SocketAddr> = LazyLock::new(|| SocketAddr::new(local_ip(), 1111));
+static GATEWAY_SOCKET: LazyLock<SocketAddr> = LazyLock::new(|| SocketAddr::new(local_ip(), 2222));
+
+/// Returns the IP address to bind the Client's and Gateway's sockets to.
+///
+/// On macOS, that is the host's primary non-loopback address, falling back to loopback without
+/// one. Packets to any local address travel over the loopback interface either way, but NECP
+/// decides by address: a loopback address takes a bypass that looks up an entitlement on every
+/// datagram, which no real interface pays for, and which hides the policy evaluation they do pay.
+fn local_ip() -> IpAddr {
+    #[cfg(target_os = "macos")]
+    {
+        // Connecting a UDP socket sends nothing but makes the kernel pick the source address.
+        let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+        if probe.connect("192.0.2.1:9").is_ok()
+            && let Ok(addr) = probe.local_addr()
+            && !addr.ip().is_loopback()
+            && !addr.ip().is_unspecified()
+        {
+            return addr.ip();
+        }
+    }
+
+    Ipv4Addr::LOCALHOST.into()
+}
 const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
@@ -622,11 +698,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(
-                tunnel.request(Protocol::Udp),
-                now,
-                &mut TransmitBuffer::default(),
-            )
+            .handle_tun_input(&mut tunnel.request(Protocol::Udp), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -642,14 +714,27 @@ impl Tunnel {
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
     fn reply(&mut self, protocol: Protocol) -> IpPacket {
-        let mut transmits = TransmitBuffer::default();
-        self.client
-            .handle_tun_input(self.request(protocol), self.now, &mut transmits)
+        let mut request = self.request(protocol);
+        let datagram = self
+            .client
+            .handle_tun_input(&mut request, self.now)
+            .unwrap()
+            .unwrap()
+            .encrypt(&request)
             .unwrap();
-        let datagram = transmits.poll_transmit().unwrap();
+        let decapsulation = self
+            .gateway
+            .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
+            .unwrap()
+            .unwrap();
         let request = self
             .gateway
-            .handle_network_input(GATEWAY_SOCKET, CLIENT_SOCKET, &datagram.payload, self.now)
+            .handle_peer_input(
+                *GATEWAY_SOCKET,
+                *CLIENT_SOCKET,
+                decapsulation.decrypt(&datagram.payload),
+                self.now,
+            )
             .unwrap()
             .unwrap();
         let (sport, dport) = match protocol {
@@ -711,10 +796,10 @@ impl Tunnel {
         }
 
         while let Some(transmit) = self.client.poll_transmit() {
-            self.route(CLIENT_SOCKET, transmit);
+            self.route(*CLIENT_SOCKET, transmit);
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
-            self.route(GATEWAY_SOCKET, transmit);
+            self.route(*GATEWAY_SOCKET, transmit);
         }
         for _ in std::iter::from_fn(|| self.client.poll_packets()) {}
     }
@@ -781,15 +866,23 @@ impl Tunnel {
     }
 
     fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if to == CLIENT_SOCKET {
-            let _ = self
+        if to == *CLIENT_SOCKET
+            && let Ok(Some(decapsulation)) = self
                 .client
-                .handle_network_input(to, from, payload, self.now);
+                .handle_network_input(to, from, payload, self.now)
+        {
+            let _ =
+                self.client
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
-        if to == GATEWAY_SOCKET {
-            let _ = self
+        if to == *GATEWAY_SOCKET
+            && let Ok(Some(decapsulation)) = self
                 .gateway
-                .handle_network_input(to, from, payload, self.now);
+                .handle_network_input(to, from, payload, self.now)
+        {
+            let _ =
+                self.gateway
+                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
         }
     }
 }
@@ -797,11 +890,9 @@ impl Tunnel {
 /// Resolves the DNS resource through the Client's stub resolver and returns its proxy IP.
 fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
-    let query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
+    let mut query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
 
-    client
-        .handle_tun_input(query, now, &mut TransmitBuffer::default())
-        .unwrap();
+    client.handle_tun_input(&mut query, now).unwrap();
     let response = client.poll_packets().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
 

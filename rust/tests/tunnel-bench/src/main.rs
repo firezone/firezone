@@ -1,8 +1,7 @@
-#[cfg(target_os = "linux")]
+/// The gateway's allocator, so the benchmark exercises the same one.
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod event_loop;
 
-#[cfg(target_os = "linux")]
 criterion::criterion_main!(event_loop::benches);
-
-#[cfg(not(target_os = "linux"))]
-fn main() {}

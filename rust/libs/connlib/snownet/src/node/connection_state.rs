@@ -18,7 +18,7 @@ pub(crate) enum ConnectionState {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        wg_buffer: AllocRingBuffer<Vec<u8>>,
+        wg_buffer: AllocRingBuffer<sanstun::Datagram>,
     },
     /// A socket has been nominated.
     Connected {

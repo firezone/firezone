@@ -875,7 +875,7 @@ defmodule Portal.Config.Definitions do
   @doc """
   PostHog project API key used to attribute consented website visitors after authentication.
 
-  PostHog analytics are disabled when this is unset or blank.
+  PostHog analytics are disabled unless both this and `POSTHOG_HOST` are set.
   """
   defconfig(:posthog_project_api_key, :string,
     default: nil,
@@ -888,6 +888,26 @@ defmodule Portal.Config.Definitions do
 
       project_api_key ->
         project_api_key
+    end
+  )
+
+  @doc """
+  Base URL of the PostHog instance (or a reverse proxy in front of it) that receives
+  analytics events, e.g. `https://us.i.posthog.com`.
+
+  PostHog analytics are disabled unless both this and `POSTHOG_PROJECT_API_KEY` are set.
+  """
+  defconfig(:posthog_host, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.update_change(key, fn host ->
+        case String.trim(host) do
+          "" -> nil
+          host -> host
+        end
+      end)
+      |> Portal.Changeset.validate_uri(key, schemes: ["https"])
     end
   )
 
@@ -989,8 +1009,9 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
-  Recipient address for feedback submitted through the portal.
-  Feedback is disabled when unset or blank.
+  Recipient address for emails to the Firezone team: portal feedback, sign-up
+  questionnaires, account deletion feedback and Enterprise seat overage reports.
+  They are not sent when unset or blank.
   """
   defconfig(:feedback_email_recipient, :string,
     default: nil,

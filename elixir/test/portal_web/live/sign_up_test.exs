@@ -674,7 +674,7 @@ defmodule PortalWeb.SignUpTest do
 
   describe "sign-up survey" do
     setup do
-      Portal.Config.put_env_override(:portal, Portal.Mailer.FeedbackEmail, recipient: "feedback@example.com")
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
       :ok
     end
 

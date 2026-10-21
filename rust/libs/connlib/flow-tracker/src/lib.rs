@@ -15,8 +15,8 @@
 //! direction identically.
 //!
 //! Processing a packet begins with [`Tracker::begin_tun_packet`] /
-//! [`Tracker::begin_network_packet`], which stores a [`FlowData`] in a
-//! thread-local that the call sites processing the packet fill in via the
+//! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
+//! as gathering a packet that the call sites processing it fill in via the
 //! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
 //! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
@@ -36,7 +36,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
-use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
+use ip_packet::{IcmpError, IpPacket, Protocol, TcpFlags, UnsupportedProtocol};
 use smallvec::{SmallVec, smallvec};
 
 mod token;
@@ -56,7 +56,7 @@ const MAX_CONTEXTS_PER_FLOW: usize = 16;
 
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
-    static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
+    static CURRENT_FLOW: RefCell<FlowData> = const { RefCell::new(FlowData::EMPTY) };
 }
 
 /// Identifies which authorization a flow belongs to on one device.
@@ -211,8 +211,7 @@ where
 
     fn insert_flow(&mut self, data: &mut FlowData, now: Instant) {
         let FlowData {
-            entry,
-            now: _,
+            packet: Some(CurrentPacket { entry, now: _ }),
             inner:
                 Some(InnerFlow {
                     src_ip,
@@ -727,10 +726,10 @@ pub struct CurrentFlowGuard<'a, S: Scope> {
 
 impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|current| {
-            let Some(data) = current else {
+        CURRENT_FLOW.with_borrow_mut(|data| {
+            if data.packet.is_none() {
                 return;
-            };
+            }
 
             self.tracker.insert_flow(data, self.now);
             self.tracker.mru_ingest_token = data
@@ -738,7 +737,7 @@ impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
                 .take()
                 .or_else(|| data.mru_ingest_token.take());
 
-            *current = None;
+            data.clear();
         });
     }
 }
@@ -764,13 +763,20 @@ enum Entry {
     },
 }
 
+/// How and when the packet currently being processed entered this device.
+#[derive(Debug, Clone, Copy)]
+struct CurrentPacket {
+    entry: Entry,
+    now: Instant,
+}
+
 /// The facts gathered about one packet while it is being processed.
 ///
 /// Which of these can be filled in depends on the entry point and this device's
 /// role; [`Tracker::insert_flow`] interprets them (see the module docs).
 struct FlowData {
-    entry: Entry,
-    now: Instant,
+    /// The packet being gathered; `None` while no packet is being processed.
+    packet: Option<CurrentPacket>,
     /// The inner (application) packet's flow fields.
     inner: Option<InnerFlow>,
     /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
@@ -794,8 +800,7 @@ struct FlowData {
 impl Debug for FlowData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FlowData")
-            .field("entry", &self.entry)
-            .field("now", &self.now)
+            .field("packet", &self.packet)
             .field("inner", &self.inner)
             .field("outer_tx", &self.outer_tx)
             .field("peer", &self.peer)
@@ -811,24 +816,27 @@ impl Debug for FlowData {
 }
 
 impl FlowData {
-    fn new(
-        entry: Entry,
-        inner: Option<InnerFlow>,
-        now: Instant,
-        mru_ingest_token: Option<IngestToken>,
-    ) -> Self {
-        Self {
-            entry,
-            now,
-            inner,
-            outer_tx: None,
-            peer: None,
-            resource: None,
-            ingest_token: None,
-            mru_ingest_token,
-            domain: None,
-            icmp_error: None,
-        }
+    const EMPTY: Self = Self {
+        packet: None,
+        inner: None,
+        outer_tx: None,
+        peer: None,
+        resource: None,
+        ingest_token: None,
+        mru_ingest_token: None,
+        domain: None,
+        icmp_error: None,
+    };
+
+    /// Releases the current packet and drops everything gathered about it.
+    fn clear(&mut self) {
+        self.packet = None;
+        self.inner = None;
+        self.outer_tx = None;
+        self.peer = None;
+        self.resource = None;
+        self.domain = None;
+        self.icmp_error = None;
     }
 }
 
@@ -838,21 +846,23 @@ fn set_current_flow(
     now: Instant,
     mru_ingest_token: Option<IngestToken>,
 ) {
-    CURRENT_FLOW.with_borrow_mut(|current| {
+    CURRENT_FLOW.with_borrow_mut(|data| {
         debug_assert!(
-            current.is_none(),
+            data.packet.is_none(),
             "at most 1 flow should be active at any time"
         );
 
-        *current = Some(FlowData::new(entry, inner, now, mru_ingest_token));
+        data.packet = Some(CurrentPacket { entry, now });
+        data.inner = inner;
+        data.mru_ingest_token = mru_ingest_token;
     });
 }
 
 fn update_current_flow(f: impl FnOnce(&mut FlowData)) {
-    CURRENT_FLOW.with_borrow_mut(|c| {
-        let Some(data) = c else {
+    CURRENT_FLOW.with_borrow_mut(|data| {
+        if data.packet.is_none() {
             return;
-        };
+        }
 
         f(data);
     });
@@ -920,7 +930,11 @@ pub fn record_translated_destination(src_proto: Protocol, dst: IpAddr) {
 /// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
 pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
     update_current_flow(|data| {
-        data.outer_tx = Some(FlowContext::new(src, dst, data.now));
+        let Some(packet) = data.packet else {
+            return;
+        };
+
+        data.outer_tx = Some(FlowContext::new(src, dst, packet.now));
     });
 }
 
@@ -953,46 +967,19 @@ struct InnerFlow {
 }
 
 impl From<&IpPacket> for InnerFlow {
+    #[inline]
     fn from(packet: &IpPacket) -> Self {
-        let (src_ip, dst_ip) = packet.source_and_destination();
-
-        if let Some(tcp) = packet.as_tcp() {
-            return InnerFlow {
-                src_ip,
-                dst_ip,
-                src_proto: Ok(Protocol::Tcp(tcp.source_port())),
-                dst_proto: Ok(Protocol::Tcp(tcp.destination_port())),
-                tcp_syn: tcp.syn(),
-                tcp_ack: tcp.ack(),
-                tcp_fin: tcp.fin(),
-                tcp_rst: tcp.rst(),
-                payload_len: tcp.payload().len(),
-            };
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            return InnerFlow {
-                src_ip,
-                dst_ip,
-                src_proto: Ok(Protocol::Udp(udp.source_port())),
-                dst_proto: Ok(Protocol::Udp(udp.destination_port())),
-                tcp_syn: false,
-                tcp_ack: false,
-                tcp_fin: false,
-                tcp_rst: false,
-                payload_len: udp.payload().len(),
-            };
-        }
+        let tcp_flags = packet.tcp_flags().unwrap_or_default();
 
         InnerFlow {
-            src_ip,
-            dst_ip,
+            src_ip: packet.source(),
+            dst_ip: packet.destination(),
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
-            tcp_syn: false,
-            tcp_ack: false,
-            tcp_fin: false,
-            tcp_rst: false,
+            tcp_syn: tcp_flags.contains(TcpFlags::SYN),
+            tcp_ack: tcp_flags.contains(TcpFlags::ACK),
+            tcp_fin: tcp_flags.contains(TcpFlags::FIN),
+            tcp_rst: tcp_flags.contains(TcpFlags::RST),
             payload_len: packet.layer4_payload_len(),
         }
     }

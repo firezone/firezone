@@ -24,16 +24,6 @@ defmodule Portal.Accounts.Config do
         field :address, :string
       end
     end
-
-    embeds_one :notifications, Notifications,
-      primary_key: false,
-      on_replace: :update do
-      embeds_one :outdated_gateway, Portal.Accounts.Config.Notifications.Email,
-        on_replace: :update
-
-      embeds_one :seats_warning, Portal.Accounts.Config.Notifications.Email,
-        on_replace: :update
-    end
   end
 
   @doc """
@@ -43,10 +33,6 @@ defmodule Portal.Accounts.Config do
     %__MODULE__{
       clients_upstream_dns: %__MODULE__.ClientsUpstreamDns{
         type: :system
-      },
-      notifications: %__MODULE__.Notifications{
-        outdated_gateway: %Portal.Accounts.Config.Notifications.Email{enabled: true},
-        seats_warning: %Portal.Accounts.Config.Notifications.Email{enabled: true}
       }
     }
   end
@@ -54,32 +40,7 @@ defmodule Portal.Accounts.Config do
   @doc """
   Ensures a config has proper defaults
   """
-  def ensure_defaults(%__MODULE__{} = config) do
-    # Ensure notifications defaults
-    notifications = config.notifications || %__MODULE__.Notifications{}
-
-    outdated_gateway =
-      notifications.outdated_gateway || %Portal.Accounts.Config.Notifications.Email{enabled: true}
-
-    outdated_gateway =
-      case outdated_gateway.enabled do
-        nil -> %{outdated_gateway | enabled: true}
-        _ -> outdated_gateway
-      end
-
-    seats_warning =
-      case notifications.seats_warning do
-        %{enabled: enabled} = seats_warning when not is_nil(enabled) ->
-          seats_warning
-
-        _ ->
-          %Portal.Accounts.Config.Notifications.Email{enabled: true}
-      end
-
-    notifications = %{notifications | outdated_gateway: outdated_gateway, seats_warning: seats_warning}
-
-    %{config | notifications: notifications}
-  end
+  def ensure_defaults(%__MODULE__{} = config), do: config
 
   def ensure_defaults(nil), do: default_config()
 
@@ -90,7 +51,6 @@ defmodule Portal.Accounts.Config do
     config
     |> cast(attrs, [:search_domain])
     |> cast_embed(:clients_upstream_dns, with: &clients_upstream_dns_changeset/2)
-    |> cast_embed(:notifications, with: &notifications_changeset/2)
     |> validate_search_domain()
   end
 
@@ -125,18 +85,6 @@ defmodule Portal.Accounts.Config do
         _ -> [address: "must be a valid IP address"]
       end
     end)
-  end
-
-  defp notifications_changeset(schema, attrs) do
-    schema
-    |> cast(attrs, [])
-    |> cast_embed(:outdated_gateway, with: &email_changeset/2)
-    |> cast_embed(:seats_warning, with: &email_changeset/2)
-  end
-
-  defp email_changeset(schema, attrs) do
-    schema
-    |> cast(attrs, [:enabled])
   end
 
   defp validate_search_domain(changeset) do

@@ -416,7 +416,7 @@ fn pipe_server_pid(handle: HANDLE) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::{Server, SocketId};
-    use anyhow::Context as _;
+    use anyhow::{Context as _, Result};
     use futures::StreamExt;
 
     #[test]
@@ -433,7 +433,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_instance() -> anyhow::Result<()> {
+    async fn single_instance() -> Result<()> {
         let _guard = logging::test("trace");
         const ID: SocketId = SocketId::Test(0x1A6FE1F6);
         let mut server_1 = Server::new(ID)?;

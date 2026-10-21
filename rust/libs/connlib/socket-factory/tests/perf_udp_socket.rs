@@ -53,7 +53,8 @@ async fn sends_and_receives_a_datagram() {
 
     let mut batch = socket.recv_from().await.unwrap();
     let datagram = batch.drain().next().unwrap();
+    let segment = datagram.segments().next().unwrap();
 
-    assert_eq!(datagram.packet, b"world");
-    assert_eq!(datagram.from, peer_addr);
+    assert_eq!(&datagram[segment], b"world");
+    assert_eq!(datagram.from(), peer_addr);
 }

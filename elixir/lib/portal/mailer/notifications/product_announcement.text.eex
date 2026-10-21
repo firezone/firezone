@@ -1,0 +1,7 @@
+<%= @announcement_text %>
+
+Thanks,
+The Firezone Team
+
+--
+Turn off these notifications: <%= @unsubscribe_url %>
