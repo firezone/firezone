@@ -24301,6 +24301,62 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "description": "Filter to Clients owned by this Actor",
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients that are connected (`true`) or not connected (`false`) right now",
+            "in": "query",
+            "name": "online",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Filter to Clients whose latest connection started before this RFC 3339 timestamp.\nA Client with no recorded `last_seen_at` counts as last seen when it was created.\n`last_seen_at` is set when a Client connects, so a Client that has stayed\nconnected since before this time also matches; add `online=false` to leave it out.\n",
+            "example": "2026-01-01T00:00:00Z",
+            "in": "query",
+            "name": "last_seen_before",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients whose latest connection started at or after this RFC 3339\ntimestamp. A Client with no recorded `last_seen_at` counts as last seen when it\nwas created.\n",
+            "example": "2026-01-01T00:00:00Z",
+            "in": "query",
+            "name": "last_seen_after",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients of this type, read from the user agent of the latest session:\n`headless` (Linux and Windows headless Clients), `gui` (Linux and Windows GUI\nClients), `apple` (macOS and iOS), or `android`. Clients with no recorded user\nagent match no type.\n",
+            "in": "query",
+            "name": "client_type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "headless",
+                "gui",
+                "apple",
+                "android"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
