@@ -384,9 +384,7 @@ roborazzi {
     outputDir.set(layout.projectDirectory.dir("../screenshots"))
 }
 
-// Only here to upload the R8 mapping, which CI turns on for the builds it releases. Everything
-// else is off: it would rewrite our bytecode, manage the SDK dependency, attach our dependency
-// list to every event, or report on the build itself.
+// Only here for the R8 mapping, which the release job uploads. Everything else the plugin does is off.
 sentry {
     org = "firezone-inc"
     projectName = "android-client"
