@@ -426,11 +426,8 @@ fn encrypt(
     encrypted: oneshot::Sender<DatagramOut>,
     packet_counter: &Counter<u64>,
 ) {
-    let Some(datagram) = train.encrypt(
-        packets
-            .drain(..)
-            .prefetching_with(|(_, packet)| packet.prefetch()),
-    ) else {
+    let Some(datagram) = train.encrypt(packets.drain(..).prefetching_with(|(_, packet)| packet))
+    else {
         return;
     };
 
@@ -454,7 +451,7 @@ fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
 
             (message.decapsulation, buffer, &buffer[message.segment])
         })
-        .prefetching_with(|(_, _, ciphertext)| ciphertext.prefetch())
+        .prefetching_with(|(_, _, ciphertext)| *ciphertext)
         .map(|(decapsulation, buffer, ciphertext)| DecryptedDatagram {
             local: buffer.local(),
             from: buffer.from(),

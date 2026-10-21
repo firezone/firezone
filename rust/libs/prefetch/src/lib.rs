@@ -48,25 +48,26 @@ pub fn prefetch_line<T>(ptr: *const T) {
 
 pub trait IteratorExt: Iterator + Sized {
     /// Prefetches each item one item ahead of yielding it.
-    fn prefetching(self) -> Prefetching<Self, fn(&Self::Item)>
+    fn prefetching(self) -> Prefetching<Self, fn(&Self::Item) -> &Self::Item>
     where
         Self::Item: Prefetch,
     {
-        self.prefetching_with(Prefetch::prefetch)
+        self.prefetching_with(|item| item)
     }
 
-    /// Calls `prefetch` on each item one item ahead of yielding it.
-    fn prefetching_with<F>(self, mut prefetch: F) -> Prefetching<Self, F>
+    /// Prefetches the part of each item that `project` selects, one item ahead of yielding it.
+    fn prefetching_with<F, P>(self, mut project: F) -> Prefetching<Self, F>
     where
-        F: FnMut(&Self::Item),
+        F: FnMut(&Self::Item) -> &P,
+        P: Prefetch + ?Sized,
     {
         let mut inner = self.peekable();
 
         if let Some(first) = inner.peek() {
-            prefetch(first);
+            project(first).prefetch();
         }
 
-        Prefetching { inner, prefetch }
+        Prefetching { inner, project }
     }
 }
 
@@ -75,13 +76,14 @@ impl<I: Iterator> IteratorExt for I {}
 /// An iterator that prefetches the item after the one it yields.
 pub struct Prefetching<I: Iterator, F> {
     inner: Peekable<I>,
-    prefetch: F,
+    project: F,
 }
 
-impl<I, F> Iterator for Prefetching<I, F>
+impl<I, F, P> Iterator for Prefetching<I, F>
 where
     I: Iterator,
-    F: FnMut(&I::Item),
+    F: FnMut(&I::Item) -> &P,
+    P: Prefetch + ?Sized,
 {
     type Item = I::Item;
 
@@ -89,7 +91,7 @@ where
         let item = self.inner.next()?;
 
         if let Some(next) = self.inner.peek() {
-            (self.prefetch)(next);
+            (self.project)(next).prefetch();
         }
 
         Some(item)
