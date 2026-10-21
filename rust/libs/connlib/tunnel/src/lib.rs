@@ -307,8 +307,8 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
-                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                if let Some(mut datagrams) = network {
+                    for datagram in datagrams.drain() {
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];
 
@@ -515,8 +515,8 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
-                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                if let Some(mut datagrams) = network {
+                    for datagram in datagrams.drain() {
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];
 
