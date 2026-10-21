@@ -36,7 +36,7 @@ mod utils;
 
 pub use tunnel_proto::*;
 
-pub use io::TunChannelClosed;
+pub use io::{CryptoWorkersStopped, TunChannelClosed};
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
@@ -287,6 +287,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
+                    let num_buffered_transmits = self.role_state.num_buffered_transmits();
                     let mut batch = self.io.start_encrypt_batch();
 
                     for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
@@ -298,6 +299,13 @@ impl ClientTunnel {
                             }
                         }
                     }
+
+                    // Packets encrypted inline would go out after this batch, despite their lower counters.
+                    debug_assert_eq!(
+                        self.role_state.num_buffered_transmits(),
+                        num_buffered_transmits,
+                        "TUN packets must not be encrypted inline"
+                    );
 
                     self.needs_timeout = true;
 
@@ -504,6 +512,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
+                    let num_buffered_transmits = self.role_state.num_buffered_transmits();
                     let mut batch = self.io.start_encrypt_batch();
 
                     for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
@@ -529,6 +538,13 @@ impl GatewayTunnel {
                             }
                         }
                     }
+
+                    // Packets encrypted inline would go out after this batch, despite their lower counters.
+                    debug_assert_eq!(
+                        self.role_state.num_buffered_transmits(),
+                        num_buffered_transmits,
+                        "TUN packets must not be encrypted inline"
+                    );
 
                     self.needs_timeout = true;
 

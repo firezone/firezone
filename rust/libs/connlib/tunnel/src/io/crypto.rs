@@ -144,14 +144,29 @@ impl CryptoWorkers {
         }
     }
 
-    /// Returns the worker after the one picked last.
-    fn next_worker(&mut self) -> Option<&mpsc::Sender<Work>> {
-        let worker = self
-            .workers
-            .get(self.next_worker % self.workers.len().max(1))?;
-        self.next_worker = self.next_worker.wrapping_add(1);
+    /// Whether every worker stopped, or none started.
+    pub fn is_stopped(&self) -> bool {
+        self.workers.is_empty()
+    }
 
-        Some(worker)
+    /// Sends `work` to the worker after the one picked last, removing the workers that stopped.
+    ///
+    /// Without any workers left, `work` is dropped.
+    fn send(&mut self, mut work: Work) {
+        while !self.workers.is_empty() {
+            let index = self.next_worker % self.workers.len();
+            self.next_worker = self.next_worker.wrapping_add(1);
+
+            match self.workers[index].send(work) {
+                Ok(()) => return,
+                Err(mpsc::SendError(unsent)) => {
+                    tracing::warn!("Crypto worker stopped");
+
+                    self.workers.remove(index);
+                    work = unsent;
+                }
+            }
+        }
     }
 }
 
@@ -203,13 +218,8 @@ impl EncryptBatch<'_> {
             .get_or_insert_with(|| PENDING_DATAGRAMS.pull())
             .push(rx);
 
-        let Some(worker) = self.crypto.next_worker() else {
-            tracing::debug!("No encrypt worker running; dropping packets");
-            return;
-        };
-
         // A stopped worker drops the sender, so the socket skips the train.
-        let _ = worker.send(Work::Encrypt(job, tx));
+        self.crypto.send(Work::Encrypt(job, tx));
     }
 }
 
@@ -280,14 +290,10 @@ impl<'a> DecryptBatch<'a> {
     fn submit(&mut self) {
         let job = mem::replace(&mut self.job, DecryptJob::new());
 
-        let Some(worker) = self.crypto.next_worker() else {
-            tracing::debug!("No decrypt worker running; dropping packets");
-            return;
-        };
         let (tx, rx) = oneshot::channel();
 
         // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
-        let _ = worker.send(Work::Decrypt(job, tx));
+        self.crypto.send(Work::Decrypt(job, tx));
         self.decrypting.jobs.push_back(rx);
     }
 }
@@ -458,3 +464,7 @@ fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
     let _ = decrypted.send(DecryptedIpPackets(packets));
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("All crypto workers stopped")]
+pub struct CryptoWorkersStopped;
