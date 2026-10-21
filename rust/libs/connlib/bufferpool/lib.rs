@@ -16,13 +16,13 @@ use std::{
 
 use opentelemetry::{KeyValue, metrics::UpDownCounter};
 
-/// A pooled byte buffer; its capacity is the [`Class`] it returns to when dropped.
+/// A pooled byte buffer; its capacity picks the pool it returns to when dropped.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bytes(Vec<u8>);
 
 /// The sizes buffers come in; a buffer's capacity identifies its class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Class {
+enum Class {
     /// An IP packet of at most 1280 bytes plus 32 bytes of WireGuard and 4 bytes of TURN channel data overhead.
     Packet,
     K2,
@@ -54,7 +54,7 @@ impl Class {
     ];
 
     /// The capacity of the class's buffers.
-    pub const fn size(self) -> usize {
+    const fn size(self) -> usize {
         match self {
             Class::Packet => 1280 + 32 + 4,
             Class::K2 => 2 * 1024,
@@ -99,8 +99,7 @@ impl Class {
 }
 
 impl Bytes {
-    /// Pulls a buffer of `class` at its full length.
-    pub fn pull(class: Class) -> Self {
+    fn pull(class: Class) -> Self {
         let buffer = MAGAZINES
             .try_with(|magazines| magazines.borrow_mut().pop(class))
             .unwrap_or_else(|_| depot(class).pop());
@@ -108,7 +107,7 @@ impl Bytes {
         Self(buffer.unwrap_or_else(|| allocate(class.size())))
     }
 
-    /// Pulls a buffer of the smallest class holding `len` bytes at its full length.
+    /// Pulls a buffer of the smallest size class holding `len` bytes, at its full length.
     ///
     /// Beyond the largest class, the buffer is allocated for this call alone.
     pub fn fitting(len: usize) -> Self {

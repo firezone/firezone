@@ -28,7 +28,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Bytes, Class};
+use bufferpool::Bytes;
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -58,7 +58,6 @@ pub const MAX_UDP_PAYLOAD: u16 = MAX_IP_PAYLOAD - UdpSlice::HEADER_LEN as u16;
 ///
 /// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
 pub const MAX_FZ_PAYLOAD: usize = MAX_IP_SIZE + WG_OVERHEAD + DATA_CHANNEL_OVERHEAD;
-const _: () = assert!(Class::Packet.size() >= MAX_FZ_PAYLOAD);
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 pub const WG_OVERHEAD: usize = 32;
 /// TURN's data channels have a 4 byte overhead.
@@ -136,7 +135,7 @@ pub struct IpPacketBuf {
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: Bytes::pull(Class::Packet),
+            inner: Bytes::fitting(MAX_FZ_PAYLOAD),
         }
     }
 }
