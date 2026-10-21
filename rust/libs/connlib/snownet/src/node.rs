@@ -547,7 +547,7 @@ where
     ) -> Result<Option<PendingDecapsulate>> {
         self.last_now = now;
 
-        let (from, packet, relayed) = match self.allocations_try_handle(from, local, datagram, now)
+        let (from, offset, relayed) = match self.allocations_try_handle(from, local, datagram, now)
         {
             ControlFlow::Continue(c) => c,
             ControlFlow::Break(()) => return Ok(None),
@@ -556,17 +556,13 @@ where
         // For our agents, it is important what the initial "destination" of the packet was.
         let destination = relayed.map(|s| s.address()).unwrap_or(local);
 
-        match self.agents_try_handle(from, destination, packet, now) {
+        match self.agents_try_handle(from, destination, &datagram[offset..], now) {
             ControlFlow::Continue(()) => {}
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        // Relayed messages arrive behind a channel-data header.
-        let header_len = datagram.len() - packet.len();
-
-        let pending = match self.connections_try_handle(from, destination, packet, header_len, now)
-        {
+        let pending = match self.connections_try_handle(from, destination, datagram, offset, now) {
             ControlFlow::Continue(pending) => pending,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
@@ -894,13 +890,13 @@ where
     /// This heuristic might fail because we are also handling wireguard packets.
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
-    fn allocations_try_handle<'p>(
+    fn allocations_try_handle(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
-        packet: &'p [u8],
+        packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+    ) -> ControlFlow<(), (SocketAddr, usize, Option<Socket>)> {
         if from.port() != 3478 {
             // Relays always send & receive from port 3478.
             //
@@ -917,7 +913,7 @@ where
             // previously had an allocation on a certain relay:
             // 1. If we previously had an allocation, we need to stop processing the packet.
             // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
-            return ControlFlow::Continue((from, packet, None));
+            return ControlFlow::Continue((from, 0, None));
         }
 
         match packet.first().copied() {
@@ -925,7 +921,7 @@ where
             Some(0..=3) => {
                 let Ok(Ok(message)) = allocation::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    return ControlFlow::Continue((from, 0, None));
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -940,7 +936,7 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, packet, None));
+                        return ControlFlow::Continue((from, 0, None));
                     }
                 };
 
@@ -957,7 +953,7 @@ where
             Some(64..=79) => {
                 let Ok(cd) = crate::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    return ControlFlow::Continue((from, 0, None));
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -971,11 +967,11 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, packet, None));
+                        return ControlFlow::Continue((from, 0, None));
                     }
                 };
 
-                let Some((from, packet, socket)) = allocation.decapsulate(from, cd, now) else {
+                let Some((from, _, socket)) = allocation.decapsulate(from, cd, now) else {
                     tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
                     return ControlFlow::Break(()); // Stop processing the packet.
@@ -983,10 +979,10 @@ where
 
                 // Successfully handled the packet and decapsulated the channel data message.
                 // Continue processing with the _unwrapped_ packet.
-                ControlFlow::Continue((from, packet, Some(socket)))
+                ControlFlow::Continue((from, crate::channel_data::HEADER_LEN, Some(socket)))
             }
             // Byte is in a different range? Move on with processing the packet.
-            Some(_) | None => ControlFlow::Continue((from, packet, None)),
+            Some(_) | None => ControlFlow::Continue((from, 0, None)),
         }
     }
 
@@ -1033,10 +1029,12 @@ where
         &mut self,
         from: SocketAddr,
         destination: SocketAddr,
-        packet: &[u8],
-        header_len: usize,
+        datagram: &[u8],
+        offset: usize,
         now: Instant,
     ) -> ControlFlow<Result<()>, PendingDecapsulate> {
+        let packet = &datagram[offset..];
+
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(sanstun::Received::Message(parsed_packet)) => parsed_packet,
             Ok(sanstun::Received::SendCookieReply(reply)) => {
@@ -1084,8 +1082,8 @@ where
             from,
             destination,
             parsed_packet,
-            packet,
-            header_len,
+            datagram,
+            offset,
             &mut self.allocations,
             &mut self.buffered_transmits,
             now,
@@ -1857,7 +1855,7 @@ where
         destination: SocketAddr,
         packet: sanstun::ReceivedMessage,
         datagram: &[u8],
-        header_len: usize,
+        offset: usize,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
@@ -1887,7 +1885,7 @@ where
                     Agent::Path(agent) => agent.handle_handshake_response(
                         &mut self.tunnel,
                         response,
-                        datagram,
+                        &datagram[offset..],
                         path,
                         now,
                     ),
@@ -1909,7 +1907,7 @@ where
                     Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
                         self.tunnel.id(),
                         path,
-                        header_len,
+                        offset,
                         pending,
                     )),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),

@@ -91,9 +91,8 @@ impl PendingEncapsulate {
 pub struct PendingDecapsulate {
     tunnel: sanstun::TunnelId,
     path: (SocketAddr, SocketAddr),
-    /// The length of the channel-data header in front of the WireGuard message, which takes up the
-    /// rest of the datagram.
-    header_len: usize,
+    /// Where the WireGuard message starts in the datagram; it takes up the rest of it.
+    offset: usize,
     pending: sanstun::PendingDecapsulate,
 }
 
@@ -101,13 +100,13 @@ impl PendingDecapsulate {
     pub(crate) fn new(
         tunnel: sanstun::TunnelId,
         path: (SocketAddr, SocketAddr),
-        header_len: usize,
+        offset: usize,
         pending: sanstun::PendingDecapsulate,
     ) -> Self {
         Self {
             tunnel,
             path,
-            header_len,
+            offset,
             pending,
         }
     }
@@ -116,7 +115,7 @@ impl PendingDecapsulate {
     ///
     /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt(self, datagram: &[u8]) -> DecryptedIpPacket {
-        let message = datagram.get(self.header_len..).unwrap_or_default();
+        let message = datagram.get(self.offset..).unwrap_or_default();
 
         DecryptedIpPacket {
             tunnel: self.tunnel,
