@@ -331,17 +331,27 @@ defmodule Portal.ResourceTest do
     end
   end
 
-  describe "self_device_pool_attrs/0" do
-    test "is the My devices pool" do
-      assert Portal.Resource.self_device_pool_attrs() == %{
+  describe "self_device_pool_attrs/1" do
+    test "is named after the first name of the actor" do
+      assert Portal.Resource.self_device_pool_attrs(%{name: "Jamil Bou Kheir"}) == %{
                type: :device_pool,
                device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
-               name: "My devices"
+               name: "Jamil's devices"
              }
     end
 
+    test "has no extra s after a first name that ends in s" do
+      assert Portal.Resource.self_device_pool_attrs(%{name: "Chris Smith"}).name ==
+               "Chris' devices"
+    end
+
+    test "is My devices when the actor is missing or has no name" do
+      assert Portal.Resource.self_device_pool_attrs(nil).name == "My devices"
+      assert Portal.Resource.self_device_pool_attrs(%{name: " "}).name == "My devices"
+    end
+
     test "produces a valid resource changeset" do
-      changeset = build_changeset(Portal.Resource.self_device_pool_attrs())
+      changeset = build_changeset(Portal.Resource.self_device_pool_attrs(%{name: "Jamil"}))
 
       assert changeset.valid?
     end

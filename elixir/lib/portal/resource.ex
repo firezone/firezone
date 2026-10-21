@@ -98,18 +98,38 @@ defmodule Portal.Resource do
   end
 
   @doc """
-  Attributes of the `My devices` pool every account gets at creation: a device
-  pool holding each actor's own devices, reached at `<slug>.firezone.network`,
-  see `Portal.Device.fqdn/1`.
+  Attributes of the pool every account gets at creation: a device pool holding
+  each actor's own devices, reached at `<slug>.firezone.network`, see
+  `Portal.Device.fqdn/1`.
+
+  The pool is named after the first name of the actor who created the account,
+  like `Jamil's devices` or `Chris' devices`. It is `My devices` when there is
+  no actor, or the actor has no name.
   """
-  @spec self_device_pool_attrs() :: map()
-  def self_device_pool_attrs do
+  @spec self_device_pool_attrs(Portal.Actor.t() | nil) :: map()
+  def self_device_pool_attrs(actor) do
     %{
       type: :device_pool,
       device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
-      name: @self_device_pool_name
+      name: self_device_pool_name(actor)
     }
   end
+
+  defp self_device_pool_name(%{name: name}) when is_binary(name) do
+    case String.split(name) do
+      [first_name | _rest] ->
+        if String.ends_with?(first_name, ["s", "S"]) do
+          "#{first_name}' devices"
+        else
+          "#{first_name}'s devices"
+        end
+
+      [] ->
+        @self_device_pool_name
+    end
+  end
+
+  defp self_device_pool_name(_actor), do: @self_device_pool_name
 
   @doc """
   Validates that the Resource type and its Site agree with each other.

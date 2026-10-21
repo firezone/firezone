@@ -951,12 +951,12 @@ defmodule Portal.BillingTest do
       account: account
     } do
       Portal.Config.put_env_override(Portal.Billing, enabled: false)
-      admin = actor_fixture(account: account, type: :account_admin_user)
+      admin = actor_fixture(account: account, type: :account_admin_user, name: "Ada Lovelace")
 
       assert {:ok, ^account} = Portal.Billing.provision_account(account)
 
       pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
-      assert pool.name == "My devices"
+      assert pool.name == "Ada's devices"
 
       assert pool.device_membership_criteria ==
                Portal.Resource.DeviceMembershipCriteria.own_devices()
