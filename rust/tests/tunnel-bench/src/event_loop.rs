@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,8 +32,25 @@ use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelC
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 
+use crate::thread_cpu::thread_cpu_times;
+
 /// The size of the IP packets sent through the tunnel.
 const SIZE: usize = 1280;
+
+const GROUP: &str = "event_loop";
+
+/// The file to write the measures of all benchmarks to in Bencher Metric Format, if set.
+///
+/// An environment variable because criterion parses the whole command line itself.
+const BENCHER_JSON_ENV: &str = "TUNNEL_BENCH_JSON";
+
+/// The pipeline stages, as the measure slug and the prefix of the threads' names.
+const STAGES: [(&str, &str); 4] = [
+    ("event-loop", "event-loop"),
+    ("udp", "UDP"),
+    ("crypto", "wg-crypto"),
+    ("tun", "TUN"),
+];
 
 #[derive(Debug, Clone, Copy)]
 enum Resource {
@@ -75,7 +92,7 @@ const IN_FLIGHT: usize = cfg_select! {
 #[cfg(target_os = "macos")]
 const FLOW_SOCKET_PACKETS: usize = 16;
 
-/// How often the event loop may park per 1000 packets before a benchmark reports it.
+/// How often the event loop may park per 1000 packets before a benchmark's measures are discarded.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
 /// if a stand-in thread could not keep up.
@@ -94,8 +111,9 @@ criterion::criterion_group! {
 
 fn bench(c: &mut Criterion) {
     prioritize_stand_in();
-    let mut group = c.benchmark_group("event_loop");
+    let mut group = c.benchmark_group(GROUP);
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
+    let mut report = BTreeMap::new();
 
     for resource in RESOURCES {
         for protocol in PROTOCOLS {
@@ -109,18 +127,50 @@ fn bench(c: &mut Criterion) {
                 let connect = || connect(resource, protocol, flow_logs);
 
                 let (client, gateway, now) = connect();
-                outbound(&mut group, id("client_outbound"), client, gateway, now);
+                report.extend(outbound(
+                    &mut group,
+                    id("client_outbound"),
+                    client,
+                    gateway,
+                    now,
+                ));
 
                 let (client, gateway, now) = connect();
-                inbound(&mut group, id("gateway_inbound"), gateway, client, now);
+                report.extend(inbound(
+                    &mut group,
+                    id("gateway_inbound"),
+                    gateway,
+                    client,
+                    now,
+                ));
 
                 let (client, gateway, now) = connect();
-                outbound(&mut group, id("gateway_outbound"), gateway, client, now);
+                report.extend(outbound(
+                    &mut group,
+                    id("gateway_outbound"),
+                    gateway,
+                    client,
+                    now,
+                ));
 
                 let (client, gateway, now) = connect();
-                inbound(&mut group, id("client_inbound"), client, gateway, now);
+                report.extend(inbound(
+                    &mut group,
+                    id("client_inbound"),
+                    client,
+                    gateway,
+                    now,
+                ));
             }
         }
+    }
+
+    if let Some(path) = std::env::var_os(BENCHER_JSON_ENV) {
+        let json = report
+            .iter()
+            .map(|(name, measures)| (name.clone(), measures.bmf()))
+            .collect::<serde_json::Map<_, _>>();
+        std::fs::write(path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
     }
 }
 
@@ -131,7 +181,7 @@ fn outbound(
     local: Side,
     peer: Side,
     now: Instant,
-) {
+) -> Option<(String, Measures)> {
     let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
     let (runtime, socket) = bind_peer(peer.socket);
@@ -160,7 +210,7 @@ fn outbound(
     });
 
     let inputs = |packets| batches(&local.reads, packets);
-    measure(group, id, &event_loop, &arrivals, inputs, |batch| {
+    let measures = measure(group, id, &event_loop, &arrivals, inputs, |batch| {
         let packets = batch.len();
         event_loop.tun_reads.blocking_send(batch).unwrap();
 
@@ -168,6 +218,8 @@ fn outbound(
     });
 
     event_loop.stop();
+
+    measures
 }
 
 /// Sends encrypted datagrams to the tunnel's UDP socket and counts the packets it writes to TUN.
@@ -177,11 +229,11 @@ fn inbound(
     local: Side,
     mut peer: Side,
     now: Instant,
-) {
+) -> Option<(String, Measures)> {
     let (event_loop, mut tun_writes) = EventLoop::spawn(local.state, local.socket, now);
     let arrivals = Arc::new(Arrivals::default());
     let tun_write = std::thread::Builder::new()
-        .name("tun-write".to_owned())
+        .name("TUN write".to_owned())
         .spawn({
             let arrivals = arrivals.clone();
 
@@ -210,7 +262,7 @@ fn inbound(
         peer.state
             .encapsulate(&peer.reads, packets, now, local.socket)
     };
-    measure(group, id, &event_loop, &arrivals, inputs, |datagram| {
+    let measures = measure(group, id, &event_loop, &arrivals, inputs, |datagram| {
         let packets = datagram.packet.len() / datagram.segment_size;
         runtime.block_on(socket.send(datagram)).unwrap();
 
@@ -219,6 +271,8 @@ fn inbound(
 
     event_loop.stop();
     tun_write.join().unwrap();
+
+    measures
 }
 
 /// One side of an established connection.
@@ -452,10 +506,12 @@ impl Arrivals {
 }
 
 /// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
-/// those that arrived, and reports if the event loop parked while packets were in flight.
+/// those that arrived.
 ///
 /// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
-/// input holds.
+/// input holds. Returns the measures under the benchmark's name as criterion reports it, or
+/// nothing for skipped or test runs, which send too few packets to tell.
+#[allow(clippy::print_stdout, clippy::print_stderr)]
 fn measure<T>(
     group: &mut BenchmarkGroup<'_, WallTime>,
     id: String,
@@ -463,11 +519,12 @@ fn measure<T>(
     arrivals: &Arrivals,
     mut inputs: impl FnMut(usize) -> Vec<T>,
     mut send: impl FnMut(T) -> usize,
-) {
-    let before = (event_loop.parks(), arrivals.count());
-    group.bench_function(id, |b| {
+) -> Option<(String, Measures)> {
+    let before = (event_loop.parks(), arrivals.count(), cpu_by_thread());
+    let mut elapsed = Duration::ZERO;
+    group.bench_function(&id, |b| {
         b.iter_custom(|iters| {
-            let mut elapsed = Duration::ZERO;
+            let mut iter_elapsed = Duration::ZERO;
             let mut remaining = usize::try_from(iters).unwrap();
             while remaining > 0 {
                 let packets = remaining.min(BURST);
@@ -482,22 +539,173 @@ fn measure<T>(
                     sent += send(input);
                 }
                 arrivals.wait_for(arrived + packets);
-                elapsed += start.elapsed();
+                iter_elapsed += start.elapsed();
             }
+            elapsed += iter_elapsed;
 
-            elapsed
+            iter_elapsed
         })
     });
     let packets = arrivals.count() - before.1;
-    let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
+    if packets < BURST {
+        return None;
+    }
 
-    // Skipped or test runs send too few packets to tell.
-    #[allow(clippy::print_stderr)]
-    if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
+    let measures = Measures {
+        packets,
+        elapsed,
+        parks: event_loop.parks() - before.0,
+        cpu: cpu_by_thread()
+            .into_iter()
+            .map(|(name, after)| {
+                let before = before.2.get(&name).copied().unwrap_or_default();
+
+                (name, after.saturating_sub(before))
+            })
+            .collect(),
+    };
+    if measures.starved() {
         eprintln!(
-            "Event loop thread parked {parks:.2} times per 1000 packets and may not be the bottleneck"
+            "Event loop thread parked {:.2} times per 1000 packets, so a stand-in fell behind and the throughput and CPU measures are discarded",
+            measures.parks_per_1k()
         );
     }
+    println!("{measures}");
+
+    Some((format!("{GROUP}/{id}"), measures))
+}
+
+/// What a benchmark measured besides criterion's wall time.
+struct Measures {
+    packets: usize,
+    /// The wall time the packets took, over all of criterion's iterations.
+    elapsed: Duration,
+    parks: u64,
+    /// The CPU time each thread spent during the benchmark.
+    cpu: BTreeMap<String, Duration>,
+}
+
+impl Measures {
+    /// Returns the measures in Bencher Metric Format.
+    fn bmf(&self) -> serde_json::Value {
+        let value = |value: f64| serde_json::json!({ "value": value });
+        let mut bmf = serde_json::Map::from_iter([
+            ("latency".to_owned(), value(self.latency_ns())),
+            ("parks".to_owned(), value(self.parks_per_1k())),
+        ]);
+        if self.starved() {
+            return bmf.into();
+        }
+
+        bmf.insert("throughput".to_owned(), value(self.throughput()));
+        bmf.insert("bitrate".to_owned(), value(self.bitrate()));
+        for (slug, prefix) in STAGES {
+            bmf.insert(slug.to_owned(), value(self.cpu_ns_per_packet(prefix)));
+        }
+        bmf.insert("stage-ceiling".to_owned(), value(self.stage_ceiling().1));
+
+        bmf.into()
+    }
+
+    /// Whether a stand-in thread fell behind, leaving the event loop idle while packets were in
+    /// flight.
+    fn starved(&self) -> bool {
+        self.parks_per_1k() > MAX_PARKS_PER_1K_PACKETS
+    }
+
+    fn parks_per_1k(&self) -> f64 {
+        self.parks as f64 * 1000.0 / self.packets as f64
+    }
+
+    fn latency_ns(&self) -> f64 {
+        self.elapsed.as_nanos() as f64 / self.packets as f64
+    }
+
+    /// Returns the packets per second.
+    fn throughput(&self) -> f64 {
+        self.packets as f64 / self.elapsed.as_secs_f64()
+    }
+
+    /// Returns the bits per second.
+    fn bitrate(&self) -> f64 {
+        self.throughput() * (SIZE * 8) as f64
+    }
+
+    /// Returns the CPU nanoseconds per packet of all threads of the given stage together.
+    fn cpu_ns_per_packet(&self, prefix: &str) -> f64 {
+        let cpu = self
+            .stage_threads(prefix)
+            .map(|(_, cpu)| cpu)
+            .sum::<Duration>();
+
+        cpu.as_nanos() as f64 / self.packets as f64
+    }
+
+    /// Returns the packets per second if every thread had its own core, and the thread that caps
+    /// them.
+    fn stage_ceiling(&self) -> (&str, f64) {
+        STAGES
+            .iter()
+            .flat_map(|(_, prefix)| self.stage_threads(prefix))
+            .max_by_key(|(_, cpu)| **cpu)
+            .map(|(name, cpu)| (name.as_str(), self.packets as f64 / cpu.as_secs_f64()))
+            .unwrap_or(("none", f64::INFINITY))
+    }
+
+    fn stage_threads(&self, prefix: &str) -> impl Iterator<Item = (&String, &Duration)> {
+        self.cpu
+            .iter()
+            .filter(move |(name, _)| name.starts_with(prefix))
+    }
+}
+
+impl std::fmt::Display for Measures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let indent = " ".repeat(24);
+        writeln!(
+            f,
+            "{indent}parks:  {:.2} per 1000 packets{}",
+            self.parks_per_1k(),
+            if self.starved() { " (starved)" } else { "" }
+        )?;
+        if self.starved() {
+            return Ok(());
+        }
+
+        writeln!(
+            f,
+            "{indent}pkt/s:  {:.0} ({:.2} Gbit/s)",
+            self.throughput(),
+            self.bitrate() / 1e9
+        )?;
+        let stages = STAGES
+            .iter()
+            .map(|(slug, prefix)| {
+                let threads = self.stage_threads(prefix).count();
+                let per_packet = self.cpu_ns_per_packet(prefix);
+                if threads > 1 {
+                    format!("{slug} {per_packet:.0} ({threads} threads)")
+                } else {
+                    format!("{slug} {per_packet:.0}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(f, "{indent}cpu:    {stages} ns/pkt")?;
+        let (thread, ceiling) = self.stage_ceiling();
+        write!(f, "{indent}ceiling: {ceiling:.0} pkt/s ({thread})")
+    }
+}
+
+/// Returns the CPU time of every thread of this process so far, by name.
+fn cpu_by_thread() -> BTreeMap<String, Duration> {
+    thread_cpu_times()
+        .into_iter()
+        .fold(BTreeMap::new(), |mut threads, (name, cpu)| {
+            *threads.entry(name).or_default() += cpu;
+
+            threads
+        })
 }
 
 /// Raises the scheduling priority of the calling thread on macOS.

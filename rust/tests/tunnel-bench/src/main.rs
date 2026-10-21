@@ -3,5 +3,6 @@
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod event_loop;
+mod thread_cpu;
 
 criterion::criterion_main!(event_loop::benches);
