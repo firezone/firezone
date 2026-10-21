@@ -30,6 +30,7 @@ defmodule PortalAPI.Scopes do
     PortalAPI.ResourceController => :resources,
     PortalAPI.PoolMemberController => :resources,
     PortalAPI.PolicyController => :policies,
+    PortalAPI.PostureFieldController => :policies,
     PortalAPI.LogController => :logs,
     PortalAPI.EmailOTPAuthProviderController => :auth_providers,
     PortalAPI.X509AuthProviderController => :auth_providers,

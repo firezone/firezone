@@ -32,7 +32,7 @@ defmodule PortalAPI.MCP.ToolsTest do
           |> length() == 1
       end)
 
-    assert length(tools) == length(operations) - aliased
+    assert length(flatten(tools)) == length(operations) - aliased
   end
 
   test "names are unique, lowercase, and underscore separated", %{tools: tools} do
@@ -164,54 +164,106 @@ defmodule PortalAPI.MCP.ToolsTest do
     assert address == ["string", "null"]
   end
 
-  test "policy tools advertise nullable recursive postures without truncating the grammar", %{tools: tools} do
+  test "policy tools carry a posture stub that points at list_posture_fields", %{tools: tools} do
     for name <- ~w[create_policy update_policy] do
       tool = fetch(tools, name)
       schema = tool.input_schema
       postures = get_in(schema, ["properties", "policy", "properties", "postures"])
       assert [expression, %{"type" => "null"}] = postures["anyOf"]
-      [node, nullable] = expression["anyOf"]
-      assert %{"anyOf" => [_, %{"type" => "null"}]} = nullable
-      [conjunction, disjunction, negation, leaf] = node["oneOf"]
-      assert conjunction["additionalProperties"] == false
-      assert conjunction["required"] == ["and"]
-      assert disjunction["required"] == ["or"]
-      assert get_in(conjunction, ["properties", "and", "items", "$ref"]) == "#/$defs/PolicyPostureNode"
-      assert get_in(negation, ["properties", "not", "$ref"]) == "#/$defs/PolicyPostureNode"
-      assert Enum.all?(leaf["oneOf"], &(&1["additionalProperties"] == false))
-      assert Enum.any?(leaf["oneOf"], &(get_in(&1, ["properties", "rows", "default"]) == "any"))
-      assert schema["$defs"]["PolicyPostureNode"] == node
-      assert node["description"] =~ "firezone.last_seen_version"
-      assert node["description"] =~ "sentinelone.enrolled"
+      assert [stub, %{"anyOf" => [_, %{"type" => "null"}]}] = expression["anyOf"]
+      assert stub["type"] == "object"
+      assert stub["description"] =~ "list_posture_fields"
+      refute Map.has_key?(schema, "$defs")
       assert tool.description =~ "device_posture"
+      assert byte_size(Jason.encode!(Tool.to_definition(tool))) < 10_000
     end
+  end
+
+  test "posture provider and device operations share one tool per operation", %{tools: tools} do
+    types = ~w[defender intune iru santa sentinelone sophos]
+
+    for name <- ~w[list_posture_providers get_posture_provider update_posture_provider
+                   delete_posture_provider list_posture_devices get_posture_device] do
+      tool = fetch(tools, name)
+
+      assert tool.entity == :posture_providers
+      assert tool.variants |> Map.keys() |> Enum.sort() == types
+      assert tool.input_schema["properties"]["type"]["enum"] |> Enum.sort() == types
+      assert "type" in tool.input_schema["required"]
+    end
+
+    refute Enum.any?(tools, &String.contains?(&1.name, "iru"))
+  end
+
+  test "maps grouped arguments to each type's own names", %{tools: tools} do
+    update = fetch(tools, "update_posture_provider")
+
+    assert {%Tool{path_template: "/iru_posture_providers/{id}"}, names} = update.variants["iru"]
+    assert names["posture_provider"] == "iru_posture_provider"
+    assert names["id"] == "id"
+    assert update.input_schema["required"] |> Enum.sort() == ["id", "posture_provider", "type"]
+
+    properties = update.input_schema["properties"]["posture_provider"]["properties"]
+    assert Map.keys(properties) |> Enum.sort() == ["is_disabled", "name"]
+
+    assert {%Tool{path_template: "/sentinelone_devices/{sentinelone_agent}"}, names} =
+             fetch(tools, "get_posture_device").variants["sentinelone"]
+
+    assert names["id"] == "sentinelone_agent"
   end
 
   test "posture provider writes are flagged as device trust changes", %{tools: tools} do
-    for type <- ~w[intune iru defender santa sentinelone sophos],
-        name <- ["update_#{type}_posture_provider", "delete_#{type}_posture_provider"] do
-      tool = fetch(tools, name)
-      assert tool.entity == :posture_providers
-      assert tool.description =~ "Security-sensitive"
+    for name <- ~w[update_posture_provider delete_posture_provider] do
+      assert fetch(tools, name).description =~ "Security-sensitive"
       assert_annotations(tools, name, true, true)
     end
-
-    properties =
-      get_in(fetch(tools, "update_iru_posture_provider").input_schema, [
-        "properties",
-        "iru_posture_provider",
-        "properties"
-      ])
-
-    assert Map.keys(properties) |> Enum.sort() == ["is_disabled", "name"]
   end
 
-  test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do
+  test "list_posture_fields carries the posture grammar", %{tools: tools} do
+    tool = fetch(tools, "list_posture_fields")
+
+    assert %Tool{method: :get, path_template: "/posture_fields", entity: :policies} = tool
+    assert tool.description =~ "within_last"
+    assert "intune" in tool.input_schema["properties"]["provider"]["enum"]
+  end
+
+  test "read tools that return records accept fields naming those records' properties", %{
+    tools: tools
+  } do
+    for name <- ~w[list_clients get_client] do
+      tool = fetch(tools, name)
+      fields = tool.input_schema["properties"]["fields"]
+
+      assert fields["type"] == "array"
+      assert fields["items"] == %{"type" => "string"}
+      assert "last_seen_at" in tool.response_fields
+    end
+
+    for tool <- flatten(tools), tool.method != :get do
+      assert is_nil(tool.response_fields)
+      refute Map.has_key?(tool.input_schema["properties"], "fields")
+    end
+  end
+
+  test "keeps the whole tool list small enough to load on every session", %{tools: tools} do
+    size = tools |> Enum.map(&Tool.to_definition/1) |> Jason.encode!() |> byte_size()
+
+    assert size < 110_000
+  end
+
+  test "descriptions carry the summary and the body notes", %{tools: tools} do
     description = fetch(tools, "create_resource").description
 
     assert description =~ "Create Resource"
     assert description =~ "device_pool"
-    assert description =~ "POST /resources"
+    refute description =~ "POST /resources"
+  end
+
+  defp flatten(tools) do
+    Enum.flat_map(tools, fn
+      %Tool{variants: nil} = tool -> [tool]
+      %Tool{variants: variants} -> Enum.map(Map.values(variants), &elem(&1, 0))
+    end)
   end
 
   defp fetch(tools, name) do
