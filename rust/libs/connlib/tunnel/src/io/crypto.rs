@@ -403,8 +403,8 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
             thread::Builder::new()
                 .name(name.clone())
                 .spawn(move || {
-                    for work in rx {
-                        match work {
+                    for job in rx {
+                        match job {
                             Job::Encrypt(train, encrypted) => {
                                 encrypt(train, encrypted, &packet_counter)
                             }
