@@ -2,7 +2,6 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use ip_packet::{IpPacket, IpPacketBuf};
-use prefetch::Prefetch as _;
 
 use crate::node::Transmit;
 
