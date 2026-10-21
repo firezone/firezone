@@ -502,6 +502,8 @@ defmodule PortalAPI.MCPControllerTest do
       assert result["instructions"] =~ "Firezone"
       assert result["instructions"] =~ "metadata.next_page"
       assert result["instructions"] =~ "page_cursor"
+      assert result["instructions"] =~ "`fields`"
+      assert result["instructions"] =~ "list_posture_fields"
       assert %{"name" => "firezone"} = result["_meta"][MCP.server_info_key()]
     end
   end
@@ -632,6 +634,91 @@ defmodule PortalAPI.MCPControllerTest do
                json_response(conn, 200)
 
       assert found["id"] == resource.id
+    end
+
+    test "returns only the requested fields", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, name: "trimmed")
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_resources", %{"fields" => ["name"]})
+
+      assert %{"result" => result} = json_response(conn, 200)
+      assert result["isError"] == false
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = result["structuredContent"]
+      assert data == %{"id" => resource.id, "name" => "trimmed"}
+
+      assert [%{"type" => "text", "text" => text}] = result["content"]
+      assert Jason.decode!(text) == result["structuredContent"]
+    end
+
+    test "returns only the requested fields of a single record", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, name: "trimmed")
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("get_resource", %{"id" => resource.id, "fields" => ["name", "type"]})
+
+      assert %{"result" => %{"structuredContent" => %{"data" => data}}} = json_response(conn, 200)
+      assert Map.keys(data) |> Enum.sort() == ["id", "name", "type"]
+    end
+
+    test "returns a tool error for an unknown field", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_resources", %{"fields" => ["name", "secret"]})
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ ~s|unknown field(s): "secret"|
+      assert text =~ "Accepted fields are:"
+    end
+
+    test "returns a tool error for fields that are not a list", %{conn: conn, actor: actor} do
+      for fields <- ["name", []] do
+        response =
+          conn
+          |> authorize_mcp_conn(actor)
+          |> call_tool("list_resources", %{"fields" => fields})
+          |> json_response(200)
+
+        assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+        assert text =~ "non-empty list"
+      end
+    end
+
+    test "treats fields as unknown on a tool that does not offer it", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_logs", %{"type" => "session", "fields" => ["subject"]})
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ "unknown argument(s): fields"
+    end
+
+    test "lists posture fields for one provider", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_posture_fields", %{"provider" => "santa", "fields" => ["type"]})
+
+      assert %{"result" => %{"structuredContent" => %{"data" => [_ | _] = data}}} =
+               json_response(conn, 200)
+
+      assert Enum.all?(data, &(Map.keys(&1) == ["type"]))
     end
 
     test "creates a record through a write tool", %{conn: conn, account: account, actor: actor} do

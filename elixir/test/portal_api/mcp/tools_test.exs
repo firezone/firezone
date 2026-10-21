@@ -164,26 +164,18 @@ defmodule PortalAPI.MCP.ToolsTest do
     assert address == ["string", "null"]
   end
 
-  test "policy tools advertise nullable recursive postures without truncating the grammar", %{tools: tools} do
+  test "policy tools carry a posture stub that points at list_posture_fields", %{tools: tools} do
     for name <- ~w[create_policy update_policy] do
       tool = fetch(tools, name)
       schema = tool.input_schema
       postures = get_in(schema, ["properties", "policy", "properties", "postures"])
       assert [expression, %{"type" => "null"}] = postures["anyOf"]
-      [node, nullable] = expression["anyOf"]
-      assert %{"anyOf" => [_, %{"type" => "null"}]} = nullable
-      [conjunction, disjunction, negation, leaf] = node["oneOf"]
-      assert conjunction["additionalProperties"] == false
-      assert conjunction["required"] == ["and"]
-      assert disjunction["required"] == ["or"]
-      assert get_in(conjunction, ["properties", "and", "items", "$ref"]) == "#/$defs/PolicyPostureNode"
-      assert get_in(negation, ["properties", "not", "$ref"]) == "#/$defs/PolicyPostureNode"
-      assert Enum.all?(leaf["oneOf"], &(&1["additionalProperties"] == false))
-      assert Enum.any?(leaf["oneOf"], &(get_in(&1, ["properties", "rows", "default"]) == "any"))
-      assert schema["$defs"]["PolicyPostureNode"] == node
-      assert node["description"] =~ "firezone.last_seen_version"
-      assert node["description"] =~ "sentinelone.enrolled"
+      assert [stub, %{"anyOf" => [_, %{"type" => "null"}]}] = expression["anyOf"]
+      assert stub["type"] == "object"
+      assert stub["description"] =~ "list_posture_fields"
+      refute Map.has_key?(schema, "$defs")
       assert tool.description =~ "device_posture"
+      assert byte_size(Jason.encode!(Tool.to_definition(tool))) < 10_000
     end
   end
 
@@ -204,6 +196,38 @@ defmodule PortalAPI.MCP.ToolsTest do
       ])
 
     assert Map.keys(properties) |> Enum.sort() == ["is_disabled", "name"]
+  end
+
+  test "list_posture_fields carries the posture grammar", %{tools: tools} do
+    tool = fetch(tools, "list_posture_fields")
+
+    assert %Tool{method: :get, path_template: "/posture_fields", entity: :policies} = tool
+    assert tool.description =~ "within_last"
+    assert "intune" in tool.input_schema["properties"]["provider"]["enum"]
+  end
+
+  test "read tools that return records accept fields naming those records' properties", %{
+    tools: tools
+  } do
+    for name <- ~w[list_clients get_client] do
+      tool = fetch(tools, name)
+      fields = tool.input_schema["properties"]["fields"]
+
+      assert fields["type"] == "array"
+      assert "last_seen_at" in fields["items"]["enum"]
+      assert fields["items"]["enum"] == tool.response_fields
+    end
+
+    for tool <- tools, tool.method != :get do
+      assert is_nil(tool.response_fields)
+      refute Map.has_key?(tool.input_schema["properties"], "fields")
+    end
+  end
+
+  test "keeps the whole tool list small enough to load on every session", %{tools: tools} do
+    size = tools |> Enum.map(&Tool.to_definition/1) |> Jason.encode!() |> byte_size()
+
+    assert size < 200_000
   end
 
   test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do

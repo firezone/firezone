@@ -86,6 +86,25 @@ defmodule PortalAPI.MCP.Tools do
     {:delete, "/sophos_posture_providers/{id}"} => {true, true}
   }
 
+  # The full posture grammar is about 160 KB per policy tool; list_posture_fields serves it on demand.
+  @compact_schemas %{
+    "PolicyPostureNode" => %OpenApiSpex.Schema{
+      type: :object,
+      description:
+        ~s(A device posture expression node: `{"and": [node, ...]}`, `{"or": [node, ...]}`, ) <>
+          ~s(`{"not": node}`, or a leaf `{"field": "<provider>.<attribute>", "op": ) <>
+          ~s("<operator>", "value": ...}` with an optional `"rows": "any" | "all"`. ) <>
+          "Call `list_posture_fields` for the full grammar and for every field with its type, " <>
+          "operators, and platforms before writing an expression.",
+      example: %{
+        "and" => [
+          %{"field" => "intune.enrolled", "op" => "is", "value" => true},
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+        ]
+      }
+    }
+  }
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -124,7 +143,7 @@ defmodule PortalAPI.MCP.Tools do
   """
   def build do
     spec = PortalAPI.ApiSpec.spec()
-    schemas = spec.components.schemas
+    schemas = Map.merge(spec.components.schemas, @compact_schemas)
 
     tools =
       spec.paths
@@ -206,13 +225,18 @@ defmodule PortalAPI.MCP.Tools do
         _other -> {[], []}
       end
 
+    response_fields = response_fields(method, operation, schemas)
+
     %Tool{
       name: tool_name(method, path, name_style),
       title: operation.summary,
       description: description(method, path, operation, body_schema, schemas),
       method: method,
       path_template: path,
-      input_schema: JSONSchema.build_input_schema(parameters, body_schema, schemas),
+      input_schema:
+        parameters
+        |> JSONSchema.build_input_schema(body_schema, schemas)
+        |> put_fields_argument(response_fields),
       annotations: annotations(method, path),
       controller: route.plug,
       action: route.plug_opts,
@@ -220,6 +244,7 @@ defmodule PortalAPI.MCP.Tools do
       path_params: parameter_names(parameters, :path),
       query_params: parameter_names(parameters, :query),
       body_params: body_properties,
+      response_fields: response_fields,
       write?: method != :get,
       entity: entity_for(method, path)
     }
@@ -243,6 +268,37 @@ defmodule PortalAPI.MCP.Tools do
       %{plug: _, plug_opts: _, route: _} = route -> route
       :error -> raise "MCP operation has no REST route: #{verb} #{path}"
     end
+  end
+
+  # MCP only: REST response schemas require every property.
+  defp response_fields(:get, operation, schemas) do
+    with %{content: %{"application/json" => %{schema: schema}}} <- Map.get(operation.responses, 200),
+         %{"properties" => %{"data" => data}} <- JSONSchema.convert(schema, schemas),
+         %{"properties" => properties} <- Map.get(data, "items", data) do
+      properties |> Map.keys() |> Enum.sort()
+    else
+      _other -> nil
+    end
+  end
+
+  defp response_fields(_method, _operation, _schemas), do: nil
+
+  defp put_fields_argument(input_schema, nil), do: input_schema
+
+  defp put_fields_argument(%{"properties" => properties} = input_schema, fields) do
+    if Map.has_key?(properties, "fields") do
+      raise ArgumentError, "the MCP `fields` argument collides with an API parameter"
+    end
+
+    put_in(input_schema, ["properties", "fields"], %{
+      "type" => "array",
+      "items" => %{"type" => "string", "enum" => fields},
+      "minItems" => 1,
+      "uniqueItems" => true,
+      "description" =>
+        "Return only these fields of each record, to keep the response small. " <>
+          "`id` is always returned when the record has one. Omit to return every field."
+    })
   end
 
   defp request_body_schema(%{requestBody: nil}), do: nil

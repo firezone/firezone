@@ -135,6 +135,7 @@ defmodule PortalAPI.Router do
       patch "/pool_members", PoolMemberController, :update_patch
     end
     resources "/policies", PolicyController, except: [:new, :edit]
+    get "/posture_fields", PostureFieldController, :index
 
     resources "/sites", SiteController, except: [:new, :edit] do
       post "/gateway_tokens", GatewayTokenController, :create

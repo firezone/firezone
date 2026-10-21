@@ -128,7 +128,11 @@ defmodule PortalAPI.MCP do
     List operations are paginated: read the cursor from \
     `metadata.next_page` in the response and pass it as `page_cursor` to fetch \
     the next page. Prefer filtering with the documented query parameters over \
-    listing everything and filtering afterwards.
+    listing everything and filtering afterwards. Read tools accept `fields` to \
+    return only the named fields of each record; use it to keep large pages small.
+
+    Before writing a Policy's `postures` expression, call `list_posture_fields` \
+    for the grammar and the fields it can test.
 
     On HTTP 429, wait at least `retry_after_seconds` from the error body before \
     retrying. The same delay appears in the error message and `Retry-After` \

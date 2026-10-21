@@ -33,7 +33,10 @@ defmodule PortalAPI.MCP.Dispatch do
   `{:error, reason}` when the arguments cannot be turned into a request.
   """
   def call(%Tool{} = tool, arguments, %Plug.Conn{} = conn) when is_map(arguments) do
-    with :ok <- validate_arguments(tool, arguments) do
+    {fields, arguments} = pop_fields(tool, arguments)
+
+    with :ok <- validate_fields(tool, fields),
+         :ok <- validate_arguments(tool, arguments) do
       body = build_body(tool, arguments)
       encoded_body = encode_body(body)
 
@@ -43,10 +46,44 @@ defmodule PortalAPI.MCP.Dispatch do
         conn = MCPRequestLog.dispatched(conn, inner)
         response = PortalAPI.Router.call(inner, [])
         conn = MCPRequestLog.completed(conn, response.status)
-        {:ok, response.status, decode_body(response.resp_body), conn}
+        body = response.resp_body |> decode_body() |> select_fields(response.status, fields)
+        {:ok, response.status, body, conn}
       end
     end
   end
+
+  defp pop_fields(%Tool{response_fields: nil}, arguments), do: {nil, arguments}
+  defp pop_fields(%Tool{}, arguments), do: Map.pop(arguments, "fields")
+
+  defp validate_fields(_tool, nil), do: :ok
+
+  defp validate_fields(%Tool{response_fields: known}, fields) when is_list(fields) and fields != [] do
+    case Enum.reject(fields, &(&1 in known)) do
+      [] ->
+        :ok
+
+      unknown ->
+        {:error,
+         "unknown field(s): #{Enum.map_join(unknown, ", ", &inspect/1)}. " <>
+           "Accepted fields are: #{Enum.join(known, ", ")}"}
+    end
+  end
+
+  defp validate_fields(_tool, _fields) do
+    {:error, "`fields` must be a non-empty list of field names."}
+  end
+
+  defp select_fields(body, _status, nil), do: body
+
+  defp select_fields(%{"data" => data} = body, status, fields) when status in 200..299 do
+    %{body | "data" => take_fields(data, ["id" | fields])}
+  end
+
+  defp select_fields(body, _status, _fields), do: body
+
+  defp take_fields(records, keep) when is_list(records), do: Enum.map(records, &take_fields(&1, keep))
+  defp take_fields(record, keep) when is_map(record), do: Map.take(record, keep)
+  defp take_fields(value, _keep), do: value
 
   defp validate_arguments(%Tool{} = tool, arguments) do
     known = MapSet.new(tool.path_params ++ tool.query_params ++ tool.body_params)
