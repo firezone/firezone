@@ -20,8 +20,8 @@ fi
 current_apple_client_version="1.5.22"
 next_apple_client_version="1.5.23"
 
-current_android_client_version="1.5.16"
-next_android_client_version="1.5.17"
+current_android_client_version="1.5.17"
+next_android_client_version="1.5.18"
 
 current_gui_client_version="1.5.19"
 next_gui_client_version="1.5.20"
