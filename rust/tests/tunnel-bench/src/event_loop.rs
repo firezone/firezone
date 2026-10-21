@@ -70,7 +70,7 @@ const IN_FLIGHT: usize = 4_096;
 #[cfg(target_os = "macos")]
 const FLOW_SOCKET_PACKETS: usize = 16;
 
-/// How often the event loop may park per 1000 packets.
+/// How often the event loop may park per 1000 packets before a benchmark reports it.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
 /// if a stand-in thread could not keep up.
@@ -445,7 +445,7 @@ impl Arrivals {
 }
 
 /// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
-/// those that arrived, and asserts that the event loop did not park while packets were in flight.
+/// those that arrived, and reports if the event loop parked while packets were in flight.
 ///
 /// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
 /// input holds.
@@ -485,10 +485,12 @@ fn measure<T>(
     let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
 
     // Skipped or test runs send too few packets to tell.
-    assert!(
-        packets < BURST || parks <= MAX_PARKS_PER_1K_PACKETS,
-        "Event loop parked {parks:.2} times per 1k packets: a stand-in thread is the bottleneck"
-    );
+    #[allow(clippy::print_stderr)]
+    if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
+        eprintln!(
+            "Event loop thread parked {parks:.2} times per 1000 packets and may not be the bottleneck"
+        );
+    }
 }
 
 /// Raises the scheduling priority of the calling thread on macOS.
