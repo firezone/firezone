@@ -8222,7 +8222,7 @@
             "type": "boolean"
           },
           "last_seen_at": {
-            "description": "Last time the actor was seen",
+            "description": "Latest time the Actor was active: a Client of theirs connected, they signed in to the admin portal, or one of their API or OAuth tokens was used. Null when none of these was recorded, and always null in a delete response.",
             "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
@@ -9783,7 +9783,7 @@
             "type": "string"
           },
           "last_seen_at": {
-            "description": "Timestamp of the latest connection",
+            "description": "When the latest connection started. It is not updated while the Client stays connected, so check `online` too. Every Client has connected at least once, when it was created. Null when the Client has not connected since this field started to be recorded in February 2026.",
             "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
