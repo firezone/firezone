@@ -99,5 +99,6 @@ jobs:
             --image "$IMAGE" \
             --job-timeout 300 \
             "${branch[@]}" \
-            --adapter rust_criterion \
+            --adapter json \
+            --file /tmp/tunnel-bench.json \
             --detach
