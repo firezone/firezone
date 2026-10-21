@@ -114,11 +114,11 @@ impl GatewayState {
     /// Handles packets received on the TUN device.
     pub fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        packet: &mut IpPacket,
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
-        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
+        let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -126,20 +126,20 @@ impl GatewayState {
 
         let dst = packet.destination();
 
-        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
+        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(packet));
 
         let (cid, peer) = self
             .peers
             .peer_by_ip_mut(dst)
-            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+            .with_context(|| UnroutablePacket::no_peer_state(packet))?;
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let packet = peer
-            .translate_inbound(packet, now)
-            .context("Failed to translate inbound packet")?;
+        if let Err(e) = peer.translate_inbound(packet, now) {
+            return Err(e.context("Failed to translate inbound packet"));
+        }
 
-        let Some(info) = encrypt_packet(packet, cid, &mut self.node, provider, now)? else {
+        let Some(info) = encapsulate(packet, cid, &mut self.node, provider, now)? else {
             return Ok(());
         };
 
@@ -687,7 +687,17 @@ fn encrypt_packet(
     provider: &mut impl snownet::BufferProvider,
     now: Instant,
 ) -> Result<Option<snownet::EncapsulateInfo>> {
-    match node.encapsulate(cid, &packet, now, provider) {
+    encapsulate(&packet, cid, node, provider, now)
+}
+
+fn encapsulate(
+    packet: &IpPacket,
+    cid: ClientId,
+    node: &mut Node<ClientId, RelayId>,
+    provider: &mut impl snownet::BufferProvider,
+    now: Instant,
+) -> Result<Option<snownet::EncapsulateInfo>> {
+    match node.encapsulate(cid, packet, now, provider) {
         Ok(info) => Ok(info),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
@@ -695,7 +705,7 @@ fn encrypt_packet(
             Ok(None)
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            Err(e.context(UnroutablePacket::not_connected(&packet)))
+            Err(e.context(UnroutablePacket::not_connected(packet)))
         }
         Err(e) => Err(e).context("Failed to encapsulate"),
     }
