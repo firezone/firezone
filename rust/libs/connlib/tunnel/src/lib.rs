@@ -273,7 +273,7 @@ impl ClientTunnel {
                 dns_responses,
                 tcp_dns_queries: _,
                 udp_dns_queries: _,
-                device,
+                mut device,
                 network,
                 decrypted,
                 mut error,
@@ -286,8 +286,7 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = device {
-                    let packets = packets.drain();
+                if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
                     for mut packet in packets.inspect(|p| tun_received.record(p)) {
@@ -475,7 +474,7 @@ impl GatewayTunnel {
                 dns_responses,
                 tcp_dns_queries,
                 udp_dns_queries,
-                device,
+                mut device,
                 network,
                 decrypted,
                 mut error,
@@ -512,8 +511,7 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut packets) = device {
-                    let packets = packets.drain();
+                if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
                     for mut packet in packets.inspect(|p| tun_received.record(p)) {
