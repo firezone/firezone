@@ -253,6 +253,43 @@ impl Sockets {
     }
 }
 
+/// Sends the items waiting for room in `socket`'s channel, resolving once none are left.
+///
+/// Items for a socket we do not have are dropped.
+fn poll_flush_overflow(
+    socket: Option<&mut ThreadedUdpSocket>,
+    overflow: &mut VecDeque<Outbound>,
+    name: &str,
+    cx: &mut Context<'_>,
+) -> Poll<Result<()>> {
+    let Some(socket) = socket else {
+        if overflow.is_empty() {
+            return Poll::Ready(Ok(()));
+        }
+
+        overflow.clear();
+
+        return Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::NotConnected,
+            format!("failed to send packets: no {name} socket"),
+        )
+        .into()));
+    };
+
+    while !overflow.is_empty() {
+        let reserved = ready!(socket.poll_reserve(cx));
+
+        let Some(outbound) = overflow.pop_front() else {
+            break;
+        };
+
+        // An item we cannot reserve room for is dropped.
+        reserved?.send(outbound);
+    }
+
+    Poll::Ready(Ok(()))
+}
+
 /// What a UDP socket thread sends, in queue order.
 enum Outbound {
     Ready(DatagramOut),
@@ -321,43 +358,6 @@ const _: () = {
     assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 64 * 1024 * 1024);
     assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 128 * 1024 * 1024);
 };
-
-/// Sends the items waiting for room in `socket`'s channel, resolving once none are left.
-///
-/// Items for a socket we do not have are dropped.
-fn poll_flush_overflow(
-    socket: Option<&mut ThreadedUdpSocket>,
-    overflow: &mut VecDeque<Outbound>,
-    name: &str,
-    cx: &mut Context<'_>,
-) -> Poll<Result<()>> {
-    let Some(socket) = socket else {
-        if overflow.is_empty() {
-            return Poll::Ready(Ok(()));
-        }
-
-        overflow.clear();
-
-        return Poll::Ready(Err(io::Error::new(
-            io::ErrorKind::NotConnected,
-            format!("failed to send packets: no {name} socket"),
-        )
-        .into()));
-    };
-
-    while !overflow.is_empty() {
-        let reserved = ready!(socket.poll_reserve(cx));
-
-        let Some(outbound) = overflow.pop_front() else {
-            break;
-        };
-
-        // An item we cannot reserve room for is dropped.
-        reserved?.send(outbound);
-    }
-
-    Poll::Ready(Ok(()))
-}
 
 struct ThreadedUdpSocket {
     thread_name: String,
