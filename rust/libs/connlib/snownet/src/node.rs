@@ -1200,15 +1200,10 @@ where
 /// If only one peer is behind symmetric NAT, this creates a predictable path through the NAT.
 ///
 /// In both cases, a direct connection will be established and we don't need to fall back to a relay.
-///
-/// Peer-reflexive remotes are skipped: they may be the remote's relay allocation,
-/// whose IP only listens on the relay's ports.
 fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     let public_ips = agent
         .remote_candidates()
-        .filter(|c| c.kind() == CandidateKind::ServerReflexive)
-        .filter(|c| !agent.remote_candidate_is_peer_reflexive(c.addr()))
-        .map(|c| c.addr().ip())
+        .filter_map(|c| (c.kind() == CandidateKind::ServerReflexive).then_some(c.addr().ip()))
         .collect::<SmallVec<[_; 8]>>();
 
     let host_candidates = agent

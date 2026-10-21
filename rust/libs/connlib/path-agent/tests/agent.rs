@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
-    Candidate, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC, PathAgent, Payload,
-    REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
+    PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 use zeroize::Zeroizing;
 
@@ -796,7 +796,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
 }
 
 #[test]
-fn a_peer_reflexive_remote_stays_marked_until_signaled() {
+fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
     let mut a = PathAgent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
@@ -809,18 +809,20 @@ fn a_peer_reflexive_remote_stays_marked_until_signaled() {
         (addr(1), addr(9)),
         t0,
     );
-    assert!(a.remote_is_peer_reflexive(addr(9)));
+    assert_eq!(remote_kind(&a, addr(9)), Some(CandidateKind::PeerReflexive));
 
     a.rebuild(|_| false, t0);
-    assert!(
-        a.remote_is_peer_reflexive(addr(9)),
-        "a rebuild keeps the mark"
+    assert_eq!(
+        remote_kind(&a, addr(9)),
+        Some(CandidateKind::PeerReflexive),
+        "a rebuild keeps the kind"
     );
 
     a.add_remote_candidate(Candidate::relayed(addr(9), addr(99)), t0);
-    assert!(
-        !a.remote_is_peer_reflexive(addr(9)),
-        "signaling clears the mark"
+    assert_eq!(
+        remote_kind(&a, addr(9)),
+        Some(CandidateKind::Relayed),
+        "signaling promotes the remote"
     );
 }
 
@@ -838,6 +840,12 @@ fn ms(n: u64) -> Duration {
 
 fn secs(n: u64) -> Duration {
     Duration::from_secs(n)
+}
+
+fn remote_kind(a: &PathAgent, remote: SocketAddr) -> Option<CandidateKind> {
+    a.remote_candidates()
+        .find(|c| c.addr() == remote)
+        .map(|c| c.kind())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

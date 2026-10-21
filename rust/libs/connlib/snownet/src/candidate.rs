@@ -4,8 +4,6 @@
 //! (`path_agent::Candidate`) consume the same gathered candidate set; this
 //! conversion lets us feed both from a single source.
 //!
-//! `PeerReflexive` collapses to `ServerReflexive` because the path-agent's
-//! tier scoring doesn't distinguish them: both are "indirect, NAT-mapped".
 //! For server-reflexive candidates we preserve `is::Candidate::local()`
 //! (the underlying base socket) — it's what we send from on the wire,
 //! whereas `addr()` is the NAT-mapped public-facing address.
@@ -15,9 +13,10 @@ use is::CandidateKind;
 pub(crate) fn to_path_agent(c: &is::Candidate) -> path_agent::Candidate {
     match c.kind() {
         CandidateKind::Host => path_agent::Candidate::host(c.addr()),
-        CandidateKind::ServerReflexive | CandidateKind::PeerReflexive => {
+        CandidateKind::ServerReflexive => {
             path_agent::Candidate::server_reflexive(c.addr(), c.local())
         }
+        CandidateKind::PeerReflexive => path_agent::Candidate::peer_reflexive(c.addr()),
         CandidateKind::Relayed => path_agent::Candidate::relayed(c.addr(), c.local()),
     }
 }
@@ -30,6 +29,17 @@ pub(crate) fn from_path_agent(c: &path_agent::Candidate) -> Option<is::Candidate
         path_agent::Candidate::ServerReflexive { addr, local } => {
             is::Candidate::server_reflexive(addr, local, "udp")
         }
+        path_agent::Candidate::PeerReflexive(addr) => Ok(is::Candidate::from_parts(
+            String::new(),
+            1,
+            is::Protocol::Udp,
+            0,
+            addr,
+            CandidateKind::PeerReflexive,
+            None,
+            None,
+            None,
+        )),
         path_agent::Candidate::Relayed { addr, local } => {
             is::Candidate::relayed(addr, local, "udp")
         }
