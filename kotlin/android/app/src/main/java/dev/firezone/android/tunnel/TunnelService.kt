@@ -429,7 +429,7 @@ class TunnelService : VpnService() {
                     try {
                         // Set telemetry environment and user context
                         val deviceIdValue = deviceId()
-                        Telemetry.setEnvironmentOrClose(config.apiUrl)
+                        Telemetry.start(this@TunnelService, config.apiUrl)
                         Telemetry.setFirezoneId(deviceIdValue)
                         // The portal names the account in `init`; until then this session has none.
                         Telemetry.setAccountSlug(null)
