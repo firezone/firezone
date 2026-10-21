@@ -103,9 +103,11 @@ pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
-    /// Items waiting for room in their socket's channel. Once one waits, every later item queues
-    /// behind it, so items go out in the order they were sent.
-    overflow: VecDeque<(IpVersion, Outbound)>,
+    /// Items waiting for room in the channel of the IPv4 / IPv6 socket. Once one waits, every
+    /// later item for that socket queues behind it, so a socket's items go out in the order they
+    /// were sent.
+    overflow_v4: VecDeque<Outbound>,
+    overflow_v6: VecDeque<Outbound>,
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
     packet_counter: Counter<u64>,
@@ -116,7 +118,8 @@ impl Default for Sockets {
         Self {
             socket_v4: None,
             socket_v6: None,
-            overflow: VecDeque::new(),
+            overflow_v4: VecDeque::new(),
+            overflow_v6: VecDeque::new(),
             bind_errors: VecDeque::new(),
             packet_counter: otel_instruments::network_packets(),
         }
@@ -127,7 +130,8 @@ impl Sockets {
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
         self.socket_v4 = None;
         self.socket_v6 = None;
-        self.overflow.clear();
+        self.overflow_v4.clear();
+        self.overflow_v6.clear();
 
         self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
@@ -154,27 +158,11 @@ impl Sockets {
 
     /// Sends the items waiting for room, resolving once none are left.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        while let Some((version, _)) = self.overflow.front() {
-            let (socket, name) = match version {
-                IpVersion::V4 => (self.socket_v4.as_mut(), "IPv4"),
-                IpVersion::V6 => (self.socket_v6.as_mut(), "IPv6"),
-            };
-            let reserved = match socket {
-                Some(socket) => ready!(socket.poll_reserve(cx)),
-                None => Err(io::Error::new(
-                    io::ErrorKind::NotConnected,
-                    format!("failed to send packets: no {name} socket"),
-                )
-                .into()),
-            };
+        let v4 = poll_flush_overflow(self.socket_v4.as_mut(), &mut self.overflow_v4, "IPv4", cx);
+        let v6 = poll_flush_overflow(self.socket_v6.as_mut(), &mut self.overflow_v6, "IPv6", cx);
 
-            let Some((_, outbound)) = self.overflow.pop_front() else {
-                break;
-            };
-
-            // An item we cannot reserve room for is dropped.
-            reserved?.send(outbound);
-        }
+        ready!(v4)?;
+        ready!(v6)?;
 
         Poll::Ready(Ok(()))
     }
@@ -207,22 +195,22 @@ impl Sockets {
         self.queue(version, Outbound::Pending(datagrams));
     }
 
-    /// Queues `outbound` behind the items still waiting for room, sending it right away if there
-    /// are none and its socket has room.
+    /// Queues `outbound` behind the items still waiting for room in its socket, sending it right
+    /// away if there are none and the socket has room.
     fn queue(&mut self, version: IpVersion, outbound: Outbound) {
-        let socket = match version {
-            IpVersion::V4 => self.socket_v4.as_ref(),
-            IpVersion::V6 => self.socket_v6.as_ref(),
+        let (socket, overflow) = match version {
+            IpVersion::V4 => (self.socket_v4.as_ref(), &mut self.overflow_v4),
+            IpVersion::V6 => (self.socket_v6.as_ref(), &mut self.overflow_v6),
         };
 
-        if self.overflow.is_empty()
+        if overflow.is_empty()
             && let Some(reserved) = socket.and_then(ThreadedUdpSocket::try_reserve)
         {
             reserved.send(outbound);
             return;
         }
 
-        self.overflow.push_back((version, outbound));
+        overflow.push_back(outbound);
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
@@ -333,6 +321,43 @@ const _: () = {
     assert!(MAX_UDP_OUTBOUND_QUEUE_MEMORY <= 64 * 1024 * 1024);
     assert!(MAX_UDP_INBOUND_QUEUE_MEMORY <= 128 * 1024 * 1024);
 };
+
+/// Sends the items waiting for room in `socket`'s channel, resolving once none are left.
+///
+/// Items for a socket we do not have are dropped.
+fn poll_flush_overflow(
+    socket: Option<&mut ThreadedUdpSocket>,
+    overflow: &mut VecDeque<Outbound>,
+    name: &str,
+    cx: &mut Context<'_>,
+) -> Poll<Result<()>> {
+    let Some(socket) = socket else {
+        if overflow.is_empty() {
+            return Poll::Ready(Ok(()));
+        }
+
+        overflow.clear();
+
+        return Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::NotConnected,
+            format!("failed to send packets: no {name} socket"),
+        )
+        .into()));
+    };
+
+    while !overflow.is_empty() {
+        let reserved = ready!(socket.poll_reserve(cx));
+
+        let Some(outbound) = overflow.pop_front() else {
+            break;
+        };
+
+        // An item we cannot reserve room for is dropped.
+        reserved?.send(outbound);
+    }
+
+    Poll::Ready(Ok(()))
+}
 
 struct ThreadedUdpSocket {
     thread_name: String,
