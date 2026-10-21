@@ -565,14 +565,14 @@ where
         // Relayed messages arrive behind a channel-data header.
         let header_len = datagram.len() - packet.len();
 
-        let decapsulation =
-            match self.connections_try_handle(from, destination, packet, header_len, now) {
-                ControlFlow::Continue(decapsulation) => decapsulation,
-                ControlFlow::Break(Ok(())) => return Ok(None),
-                ControlFlow::Break(Err(e)) => return Err(e),
-            };
+        let pending = match self.connections_try_handle(from, destination, packet, header_len, now)
+        {
+            ControlFlow::Continue(pending) => pending,
+            ControlFlow::Break(Ok(())) => return Ok(None),
+            ControlFlow::Break(Err(e)) => return Err(e),
+        };
 
-        Ok(Some(decapsulation))
+        Ok(Some(pending))
     }
 
     /// Commits a packet decrypted from a [`PendingDecapsulate`].
@@ -627,11 +627,11 @@ where
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
-        let encapsulation = conn
+        let pending = conn
             .encapsulate(cid, socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
-        Ok(encapsulation)
+        Ok(pending)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -1100,7 +1100,7 @@ where
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
-            ControlFlow::Continue(decapsulation) => ControlFlow::Continue(decapsulation),
+            ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
         }
     }
 
