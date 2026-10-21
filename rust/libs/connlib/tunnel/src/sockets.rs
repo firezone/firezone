@@ -472,6 +472,7 @@ impl ThreadedUdpSocket {
         let channels = self.channels_mut()?;
 
         if channels.waiting_for_room.is_none() {
+            // Fast path without registering a waker.
             match channels.outbound_tx.try_reserve() {
                 Ok(permit) => return Poll::Ready(Ok(Reserved::Borrowed(permit))),
                 Err(TrySendError::Full(())) => {}
