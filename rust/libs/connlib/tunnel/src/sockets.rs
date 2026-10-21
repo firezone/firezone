@@ -161,10 +161,11 @@ impl Sockets {
         let v4 = poll_flush_overflow(self.socket_v4.as_mut(), &mut self.overflow_v4, "IPv4", cx);
         let v6 = poll_flush_overflow(self.socket_v6.as_mut(), &mut self.overflow_v6, "IPv6", cx);
 
-        ready!(v4)?;
-        ready!(v6)?;
-
-        Poll::Ready(Ok(()))
+        match (v4, v6) {
+            (Poll::Ready(Err(e)), _) | (_, Poll::Ready(Err(e))) => Poll::Ready(Err(e)),
+            (Poll::Ready(Ok(())), Poll::Ready(Ok(()))) => Poll::Ready(Ok(())),
+            (Poll::Pending, _) | (_, Poll::Pending) => Poll::Pending,
+        }
     }
 
     /// Sends a datagram the main thread encrypted, or a control message.

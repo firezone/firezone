@@ -215,7 +215,8 @@ impl EncryptBatch<'_> {
 
 impl Drop for EncryptBatch<'_> {
     fn drop(&mut self) {
-        // Each destination has one open train, so their order does not matter.
+        // In the order they were opened, so a flow whose destination changed mid-batch stays in order.
+        self.open.reverse();
         while let Some(open) = self.open.pop() {
             self.dispatch(open);
         }
