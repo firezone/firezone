@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque, hash_map::Entry},
     net::IpAddr,
+    ops::ControlFlow,
     time::{Duration, Instant},
 };
 
@@ -169,7 +170,7 @@ impl DnsResourceNat {
 
     /// Handles an outgoing packet for a DNS resource.
     ///
-    /// Returns whether to send the packet now. If the DNS resource NAT is still being created, a
+    /// Continues if the packet should be sent now. If the DNS resource NAT is still being created, a
     /// copy of the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
@@ -178,11 +179,11 @@ impl DnsResourceNat {
         rid: ResourceId,
         packet: &IpPacket,
         now: Instant,
-    ) -> bool {
+    ) -> ControlFlow<()> {
         let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
             tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
-            return true; // Pass-through packet.
+            return ControlFlow::Continue(()); // Pass-through packet.
         };
 
         match state {
@@ -203,7 +204,7 @@ impl DnsResourceNat {
                     ));
                 }
 
-                false
+                ControlFlow::Break(())
             }
             State::Pending {
                 should_buffer: false,
@@ -220,12 +221,12 @@ impl DnsResourceNat {
                     ));
                 }
 
-                true
+                ControlFlow::Continue(())
             }
             State::Recreating { .. } | State::Confirmed | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
-                true
+                ControlFlow::Continue(())
             }
         }
     }
@@ -420,10 +421,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let send =
+        let control_flow =
             dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(!send);
+        assert!(control_flow.is_break());
     }
 
     #[test]
@@ -445,10 +446,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let send =
+        let control_flow =
             dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(!send);
+        assert!(control_flow.is_break());
 
         let packets = dns_resource_nat.on_domain_status(
             GID,
@@ -503,10 +504,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let send =
+        let control_flow =
             dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, Instant::now());
 
-        assert!(send);
+        assert!(control_flow.is_continue());
         assert!(dns_resource_nat.poll_packet().is_some());
     }
 
@@ -591,9 +592,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let send = dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, now);
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, now);
 
-        assert!(!send);
+        assert!(control_flow.is_break());
         assert!(dns_resource_nat.poll_packet().is_some());
     }
 

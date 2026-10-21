@@ -691,13 +691,17 @@ impl ClientState {
                 if let Some(domain) = &route.domain {
                     flow_tracker::record_domain(domain.name().clone());
 
-                    if !self.dns_resource_nat.handle_outgoing(
-                        authorization.gateway_id,
-                        domain,
-                        route.resource_id,
-                        packet,
-                        now,
-                    ) {
+                    if self
+                        .dns_resource_nat
+                        .handle_outgoing(
+                            authorization.gateway_id,
+                            domain,
+                            route.resource_id,
+                            packet,
+                            now,
+                        )
+                        .is_break()
+                    {
                         return Ok(None);
                     }
                 }
