@@ -14,12 +14,14 @@
 use std::sync::mpsc as std_mpsc;
 use std::thread;
 
-use bufferpool::{Bytes, Class};
+use bufferpool::Bytes;
 use divan::{Bencher, black_box, counter::ItemsCount};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
 /// Same as the TUN channels on desktop platforms.
 const CHANNEL_CAPACITY: usize = 100;
+/// The size of an IP packet buffer.
+const PACKET: usize = 1316;
 
 /// The number of items each benchmark iteration moves (in each direction).
 const ITEMS_PER_ITER: usize = 1024;
@@ -36,7 +38,7 @@ enum Item {
 const ITEMS: [Item; 3] = [Item::Pooled, Item::Plain, Item::Alloc];
 
 fn pooled() -> Bytes {
-    Bytes::pull(Class::Packet)
+    Bytes::fitting(PACKET)
 }
 
 fn plain() -> [u8; size_of::<Bytes>()] {
@@ -44,13 +46,13 @@ fn plain() -> [u8; size_of::<Bytes>()] {
 }
 
 fn alloc() -> Vec<u8> {
-    Vec::with_capacity(Class::Packet.size())
+    Vec::with_capacity(PACKET)
 }
 
 fn main() {
     // Grow the pool beyond what any benchmark holds at once, so pulling never allocates.
     let buffers = (0..4 * ITEMS_PER_ITER)
-        .map(|_| Bytes::pull(Class::Packet))
+        .map(|_| Bytes::fitting(PACKET))
         .collect::<Vec<_>>();
     drop(buffers);
 
