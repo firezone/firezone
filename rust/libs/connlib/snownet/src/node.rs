@@ -58,7 +58,7 @@ const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
 /// Instead, you need to call one of the following functions:
 ///
-/// - [`Node::decapsulate`] for handling incoming network traffic
+/// - [`Node::begin_decapsulate`] for handling incoming network traffic
 /// - [`Node::encapsulate`] for handling outgoing network traffic
 /// - [`Node::handle_timeout`] for waking the [`Node`]
 ///
@@ -537,8 +537,8 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
-    ///   Decrypt it from `datagram` and pass the result to [`Node::handle_decrypted`].
-    pub fn decapsulate(
+    ///   Decrypt it from `datagram` and pass the result to [`Node::commit_decrypted`].
+    pub fn begin_decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -573,13 +573,13 @@ where
         ))
     }
 
-    /// Accepts a packet decrypted from a [`PendingDecapsulate`].
+    /// Commits a packet decrypted from a [`PendingDecapsulate`].
     ///
     /// # Returns
     ///
     /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
     /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
-    pub fn handle_decrypted(
+    pub fn commit_decrypted(
         &mut self,
         packet: DecryptedIpPacket,
         now: Instant,

@@ -163,7 +163,7 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<snownet::PendingDecapsulate>> {
-        match self.node.decapsulate(local, from, packet, now) {
+        match self.node.begin_decapsulate(local, from, packet, now) {
             Ok(decapsulation) => Ok(decapsulation),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
@@ -183,7 +183,7 @@ impl GatewayState {
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        let decrypted = match self.node.handle_decrypted(packet, now) {
+        let decrypted = match self.node.commit_decrypted(packet, now) {
             Ok(decrypted) => decrypted,
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };

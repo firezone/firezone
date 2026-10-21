@@ -166,7 +166,9 @@ where
                         return Ok(None);
                     };
 
-                    Ok(Some(encapsulation.encrypt(&goodbye.packet)?))
+                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+
+                    Ok(Some(transmit))
                 });
 
             match encrypted {

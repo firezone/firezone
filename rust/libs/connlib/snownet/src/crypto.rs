@@ -117,9 +117,9 @@ impl PendingDecapsulate {
         self
     }
 
-    /// Decrypts the message from `datagram`, the one passed to [`Node::decapsulate`](crate::Node::decapsulate).
+    /// Decrypts the message from `datagram`, the one passed to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate).
     ///
-    /// Accept the result with [`Node::handle_decrypted`](crate::Node::handle_decrypted).
+    /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt(self, datagram: &[u8]) -> DecryptedIpPacket {
         let message = datagram.get(self.header_len..).unwrap_or_default();
 
