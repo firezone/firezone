@@ -102,20 +102,15 @@ impl PendingDecapsulate {
     pub(crate) fn new(
         tunnel: sanstun::TunnelId,
         path: (SocketAddr, SocketAddr),
+        header_len: usize,
         pending: sanstun::PendingDecapsulate,
     ) -> Self {
         Self {
             tunnel,
             path,
-            header_len: 0,
+            header_len,
             pending,
         }
-    }
-
-    pub(crate) fn with_header_len(mut self, header_len: usize) -> Self {
-        self.header_len = header_len;
-
-        self
     }
 
     /// Decrypts the message from `datagram`, the one passed to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate).

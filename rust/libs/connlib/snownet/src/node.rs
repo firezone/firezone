@@ -562,15 +562,17 @@ where
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        let decapsulation = match self.connections_try_handle(from, destination, packet, now) {
-            ControlFlow::Continue(decapsulation) => decapsulation,
-            ControlFlow::Break(Ok(())) => return Ok(None),
-            ControlFlow::Break(Err(e)) => return Err(e),
-        };
+        // Relayed messages arrive behind a channel-data header.
+        let header_len = datagram.len() - packet.len();
 
-        Ok(Some(
-            decapsulation.with_header_len(datagram.len() - packet.len()),
-        ))
+        let decapsulation =
+            match self.connections_try_handle(from, destination, packet, header_len, now) {
+                ControlFlow::Continue(decapsulation) => decapsulation,
+                ControlFlow::Break(Ok(())) => return Ok(None),
+                ControlFlow::Break(Err(e)) => return Err(e),
+            };
+
+        Ok(Some(decapsulation))
     }
 
     /// Commits a packet decrypted from a [`PendingDecapsulate`].
@@ -1032,6 +1034,7 @@ where
         from: SocketAddr,
         destination: SocketAddr,
         packet: &[u8],
+        header_len: usize,
         now: Instant,
     ) -> ControlFlow<Result<()>, PendingDecapsulate> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
@@ -1082,6 +1085,7 @@ where
             destination,
             parsed_packet,
             packet,
+            header_len,
             &mut self.allocations,
             &mut self.buffered_transmits,
             now,
@@ -1853,6 +1857,7 @@ where
         destination: SocketAddr,
         packet: sanstun::ReceivedMessage,
         datagram: &[u8],
+        header_len: usize,
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
@@ -1904,6 +1909,7 @@ where
                     Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
                         self.tunnel.id(),
                         path,
+                        header_len,
                         pending,
                     )),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
