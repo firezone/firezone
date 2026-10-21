@@ -289,7 +289,19 @@ impl ClientTunnel {
                 if let Some(mut packets) = device {
                     let mut batch = self.io.start_encrypt_batch();
 
-                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    let mut packets = packets
+                        .drain()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+                    if let Some(first) = packets.peek() {
+                        first.prefetch();
+                    }
+
+                    while let Some(mut packet) = packets.next() {
+                        if let Some(next) = packets.peek() {
+                            next.prefetch();
+                        }
+
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
@@ -503,7 +515,19 @@ impl GatewayTunnel {
                 if let Some(mut packets) = device {
                     let mut batch = self.io.start_encrypt_batch();
 
-                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    let mut packets = packets
+                        .drain()
+                        .inspect(|p| tun_received.record(p))
+                        .peekable();
+                    if let Some(first) = packets.peek() {
+                        first.prefetch();
+                    }
+
+                    while let Some(mut packet) = packets.next() {
+                        if let Some(next) = packets.peek() {
+                            next.prefetch();
+                        }
+
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
