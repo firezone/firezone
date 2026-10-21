@@ -13,6 +13,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("io.sentry.android.gradle")
     id("com.diffplug.spotless")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
@@ -381,6 +382,24 @@ dependencies {
 
 roborazzi {
     outputDir.set(layout.projectDirectory.dir("../screenshots"))
+}
+
+// Only here to upload the R8 mapping, which CI turns on for the builds it releases. Everything
+// else is off: it would rewrite our bytecode, manage the SDK dependency, attach our dependency
+// list to every event, or report on the build itself.
+sentry {
+    org = "firezone-inc"
+    projectName = "android-client"
+    autoUploadProguardMapping =
+        providers
+            .environmentVariable("SENTRY_UPLOAD_MAPPING")
+            .map { it == "true" }
+            .orElse(false)
+    autoInstallation { enabled = false }
+    tracingInstrumentation { enabled = false }
+    runtimeOptimizations { enabled = false }
+    includeDependenciesReport = false
+    telemetry = false
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
