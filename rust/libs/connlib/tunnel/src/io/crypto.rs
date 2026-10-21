@@ -41,26 +41,32 @@ pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 bufferpool::buffer_pool!(
+    /// The packets of one GSO train, with their reserved counters.
     static TRAIN_PACKETS: VecBuf<(PendingEncapsulate, IpPacket)> = (MAX_GSO_SEGMENTS, "train-packets"),
     batch: 4
 );
 bufferpool::buffer_pool!(
+    /// The open trains of an `EncryptBatch`, at most one per destination.
     static ENCRYPT_BATCH_TRAINS: VecBuf<EncryptJob> = (8, "encrypt-batch-trains"),
     batch: 4
 );
 bufferpool::buffer_pool!(
+    /// The receivers for the datagrams of an `EncryptBatch`, handed to a UDP socket thread.
     static PENDING_DATAGRAM_RECEIVERS: VecBuf<oneshot::Receiver<DatagramOut>> = (tun::MAX_BATCH_SIZE, "pending-datagram-receivers"),
     batch: 4
 );
 bufferpool::buffer_pool!(
+    /// The receive buffers a decrypt job decrypts from.
     static DECRYPT_JOB_BUFFERS: VecBuf<DatagramIn> = (DECRYPT_BATCH_SIZE, "decrypt-job-buffers"),
     batch: 4
 );
 bufferpool::buffer_pool!(
+    /// The data messages of a decrypt job.
     static DECRYPT_JOB_MESSAGES: VecBuf<Message> = (DECRYPT_BATCH_SIZE, "decrypt-job-messages"),
     batch: 4
 );
 bufferpool::buffer_pool!(
+    /// The packets a decrypt job decrypted.
     static DECRYPTED_DATAGRAMS: VecBuf<DecryptedDatagram> = (DECRYPT_BATCH_SIZE, "decrypted-datagrams"),
     batch: 4
 );
