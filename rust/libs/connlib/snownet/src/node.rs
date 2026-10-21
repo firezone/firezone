@@ -952,7 +952,7 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Ok(channel_number) = crate::channel_data::decode(packet) else {
+                let Ok(cd) = crate::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, 0, None));
                 };
@@ -972,7 +972,7 @@ where
                     }
                 };
 
-                let Some((from, socket)) = allocation.decapsulate(from, channel_number, now) else {
+                let Some((from, socket)) = allocation.decapsulate(from, cd, now) else {
                     tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
                     return ControlFlow::Break(()); // Stop processing the packet.
