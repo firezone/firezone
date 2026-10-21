@@ -4,6 +4,8 @@ defmodule PortalAPI.SiteControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
   setup do
@@ -387,6 +389,26 @@ defmodule PortalAPI.SiteControllerTest do
              }
 
       refute Repo.get_by(Site, id: site.id, account_id: site.account_id)
+    end
+
+    test "deletes the site's resources and their policies", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      resource = resource_fixture(account: account, site: site)
+      policy = policy_fixture(account: account, resource: resource)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
+      assert json_response(conn, 200)
+      refute Repo.get_by(Portal.Resource, id: resource.id, account_id: account.id)
+      refute Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
     end
 
     test "returns error when deleting system managed site", %{

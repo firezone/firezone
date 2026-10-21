@@ -163,6 +163,14 @@ defmodule PortalAPI.SiteController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Site",
+    description: """
+    Deletes a Site. Deleting is not blocked when the Site still has Gateways \
+    or Resources.
+
+    The Site's Gateways, Gateway tokens, and Resources are deleted with it. \
+    Every Policy for those Resources is deleted too, and Clients lose access \
+    to them right away. The system-managed Internet Site cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,
