@@ -11,7 +11,10 @@ pub use crypto::{DecryptBatch, EncryptBatch, Received};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
-use crate::{TunnelError, dns, sockets::Sockets};
+use crate::{
+    TunnelError, dns,
+    sockets::{ReceivedDatagrams, Sockets},
+};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -27,7 +30,7 @@ use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::{HttpClient, TlsConfig};
 use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramBatch, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, HashMap},
     io,
@@ -87,7 +90,7 @@ enum DohClient {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
+    pub network: Option<ReceivedDatagrams>,
     /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`].
     pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedPacket>>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,

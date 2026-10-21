@@ -5,7 +5,9 @@ use bufferpool::{Buffer, VecBuf};
 use futures::ready;
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
-use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
+use socket_factory::{
+    DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
+};
 use std::collections::VecDeque;
 use std::env::VarError;
 use std::time::{Duration, Instant};
@@ -65,6 +67,16 @@ const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
     SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
+
+/// Datagrams received from the UDP sockets, in the batches their threads read them in.
+pub(crate) struct ReceivedDatagrams(Buffer<VecBuf<DatagramBatch>>);
+
+impl ReceivedDatagrams {
+    /// Moves out every received datagram, in the order the sockets received them.
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
+        self.0.iter_mut().flat_map(|batch| batch.drain())
+    }
+}
 
 pub(crate) struct Sockets {
     socket_v4: Option<ThreadedUdpSocket>,
@@ -221,7 +233,7 @@ impl Sockets {
     }
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
-    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Buffer<VecBuf<DatagramBatch>>> {
+    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ReceivedDatagrams> {
         let mut batches = DATAGRAM_BATCHES.pull();
 
         if let Some(socket) = self.socket_v4.as_mut() {
@@ -236,7 +248,7 @@ impl Sockets {
             return Poll::Pending;
         }
 
-        Poll::Ready(batches)
+        Poll::Ready(ReceivedDatagrams(batches))
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {

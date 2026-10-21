@@ -304,10 +304,10 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
+                if let Some(mut datagrams) = network {
                     let mut decrypts = self.io.start_decrypt_batch();
 
-                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    for datagram in datagrams.drain() {
                         decrypts.decrypt(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
@@ -532,10 +532,10 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut batches) = network {
+                if let Some(mut datagrams) = network {
                     let mut decrypts = self.io.start_decrypt_batch();
 
-                    for datagram in batches.iter_mut().flat_map(|batch| batch.drain()) {
+                    for datagram in datagrams.drain() {
                         decrypts.decrypt(datagram, |datagram, packet| {
                             udp_received.record(packet);
 
