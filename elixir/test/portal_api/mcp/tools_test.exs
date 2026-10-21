@@ -187,6 +187,25 @@ defmodule PortalAPI.MCP.ToolsTest do
     end
   end
 
+  test "posture provider writes are flagged as device trust changes", %{tools: tools} do
+    for type <- ~w[intune iru defender santa sentinelone sophos],
+        name <- ["update_#{type}_posture_provider", "delete_#{type}_posture_provider"] do
+      tool = fetch(tools, name)
+      assert tool.entity == :posture_providers
+      assert tool.description =~ "Security-sensitive"
+      assert_annotations(tools, name, true, true)
+    end
+
+    properties =
+      get_in(fetch(tools, "update_iru_posture_provider").input_schema, [
+        "properties",
+        "iru_posture_provider",
+        "properties"
+      ])
+
+    assert Map.keys(properties) |> Enum.sort() == ["is_disabled", "name"]
+  end
+
   test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do
     description = fetch(tools, "create_resource").description
 

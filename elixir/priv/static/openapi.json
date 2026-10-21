@@ -6164,6 +6164,34 @@
         "title": "ClientTokenListResponse",
         "type": "object"
       },
+      "IntunePostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating an Intune posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "intune_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Microsoft Intune",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "intune_posture_provider"
+        ],
+        "title": "IntunePostureProviderUpdateRequest",
+        "type": "object"
+      },
       "IruPostureProviderListResponse": {
         "properties": {
           "data": {
@@ -6381,6 +6409,34 @@
           "updated_at"
         ],
         "title": "GoogleDirectory",
+        "type": "object"
+      },
+      "IruPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating an Iru posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "iru_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Iru",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "iru_posture_provider"
+        ],
+        "title": "IruPostureProviderUpdateRequest",
         "type": "object"
       },
       "PolicyResponse": {
@@ -7026,6 +7082,34 @@
           "updated_at"
         ],
         "title": "OktaDirectory",
+        "type": "object"
+      },
+      "SentinelOnePostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a SentinelOne posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "sentinelone_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "SentinelOne",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "sentinelone_posture_provider"
+        ],
+        "title": "SentinelOnePostureProviderUpdateRequest",
         "type": "object"
       },
       "GatewayCreate": {
@@ -10798,6 +10882,34 @@
         "title": "ipv4 list device comparison",
         "type": "object"
       },
+      "SantaPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Santa posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "santa_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Santa",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "santa_posture_provider"
+        ],
+        "title": "SantaPostureProviderUpdateRequest",
+        "type": "object"
+      },
       "GatewayUpdate": {
         "description": "Update schema for a single Gateway",
         "properties": {
@@ -10974,6 +11086,34 @@
           }
         },
         "title": "ClientResponse",
+        "type": "object"
+      },
+      "DefenderPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Defender posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "defender_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Microsoft Defender for Endpoint",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "defender_posture_provider"
+        ],
+        "title": "DefenderPostureProviderUpdateRequest",
         "type": "object"
       },
       "datetime duration provider comparison": {
@@ -11595,6 +11735,34 @@
           "slug"
         ],
         "title": "Account",
+        "type": "object"
+      },
+      "SophosPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Sophos posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "sophos_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Sophos XDR",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "sophos_posture_provider"
+        ],
+        "title": "SophosPostureProviderUpdateRequest",
         "type": "object"
       },
       "DeviceMembershipCriteria": {
@@ -17157,6 +17325,118 @@
       }
     },
     "/iru_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes an Iru posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Iru\nprovider is left, `iru.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.IruPostureProviderController.show",
@@ -17264,6 +17544,294 @@
           }
         },
         "summary": "Show an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Iru posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Iru provider is left, `iru.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IruPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Iru posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Iru posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Iru provider is left, `iru.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IruPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Iru posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Iru posture provider",
         "tags": [
           "Iru Posture Providers"
         ]
@@ -18653,6 +19221,118 @@
       }
     },
     "/intune_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes an Intune posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Intune\nprovider is left, `intune.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.IntunePostureProviderController.show",
@@ -18760,6 +19440,294 @@
           }
         },
         "summary": "Show an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Intune posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Intune provider is left, `intune.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntunePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Intune posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Intune posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Intune provider is left, `intune.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntunePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Intune posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Intune posture provider",
         "tags": [
           "Intune Posture Providers"
         ]
@@ -20134,6 +21102,118 @@
       }
     },
     "/defender_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Defender posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Defender\nprovider is left, `defender.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.DefenderPostureProviderController.show",
@@ -20241,6 +21321,294 @@
           }
         },
         "summary": "Show a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Defender posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Defender provider is left, `defender.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefenderPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Defender posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Defender posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Defender provider is left, `defender.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefenderPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Defender posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Defender posture provider",
         "tags": [
           "Defender Posture Providers"
         ]
@@ -21011,6 +22379,118 @@
       }
     },
     "/santa_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Santa posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Santa\nprovider is left, `santa.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SantaPostureProviderController.show",
@@ -21118,6 +22598,294 @@
           }
         },
         "summary": "Show a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Santa posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Santa provider is left, `santa.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SantaPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Santa posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Santa posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Santa provider is left, `santa.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SantaPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Santa posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Santa posture provider",
         "tags": [
           "Santa Posture Providers"
         ]
@@ -23907,6 +25675,118 @@
       }
     },
     "/sentinelone_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a SentinelOne posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled SentinelOne\nprovider is left, `sentinelone.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SentinelOnePostureProviderController.show",
@@ -24014,6 +25894,294 @@
           }
         },
         "summary": "Show a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a SentinelOne posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled SentinelOne provider is left, `sentinelone.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentinelOnePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "SentinelOne posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a SentinelOne posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled SentinelOne provider is left, `sentinelone.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.update",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentinelOnePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "SentinelOne posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a SentinelOne posture provider",
         "tags": [
           "SentinelOne Posture Providers"
         ]
@@ -26750,6 +28918,118 @@
       }
     },
     "/sophos_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Sophos posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Sophos\nprovider is left, `sophos.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SophosPostureProviderController.show",
@@ -26857,6 +29137,294 @@
           }
         },
         "summary": "Show a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Sophos posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Sophos provider is left, `sophos.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SophosPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Sophos posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Sophos posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Sophos provider is left, `sophos.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SophosPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Sophos posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Sophos posture provider",
         "tags": [
           "Sophos Posture Providers"
         ]
