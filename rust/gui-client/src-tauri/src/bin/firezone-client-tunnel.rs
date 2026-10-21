@@ -3,13 +3,13 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 use bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use clap::Parser as _;
 use firezone_gui_client::service;
 use std::path::PathBuf;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .map_err(|_| anyhow!("Failed to install default crypto provider"))?;

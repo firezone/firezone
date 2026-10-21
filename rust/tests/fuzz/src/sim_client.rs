@@ -11,6 +11,7 @@ use super::{
     site_network::{IcmpError, icmp_error_reply},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
@@ -317,7 +318,7 @@ impl SimClient {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<snownet::Transmit>> {
+    ) -> Result<Option<snownet::Transmit>> {
         self.sut
             .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
 

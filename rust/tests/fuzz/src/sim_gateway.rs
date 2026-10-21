@@ -6,6 +6,7 @@ use super::{
     sim_relay::{SimRelay, map_explode},
     site_network::SiteNetwork,
 };
+use anyhow::Result;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
@@ -129,7 +130,7 @@ impl SimGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<snownet::Transmit>> {
+    ) -> Result<Option<snownet::Transmit>> {
         self.sut
             .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
 
