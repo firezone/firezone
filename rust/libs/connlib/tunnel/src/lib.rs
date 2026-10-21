@@ -287,9 +287,10 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut batch = self.io.start_encrypt_batch();
+                    let packets = packets.drain();
+                    let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
@@ -313,7 +314,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch();
+                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);
@@ -512,9 +513,10 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    let mut batch = self.io.start_encrypt_batch();
+                    let packets = packets.drain();
+                    let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
@@ -552,7 +554,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch();
+                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);

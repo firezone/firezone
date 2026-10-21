@@ -59,6 +59,11 @@ impl UdpGsoTrain {
         self.connection.dst
     }
 
+    /// The most datagrams the train can hold.
+    pub fn max_segments(&self) -> usize {
+        self.max_len / self.segment_size
+    }
+
     /// Whether the train goes from `src` to `dst`.
     pub fn is_between(&self, src: Option<SocketAddr>, dst: SocketAddr) -> bool {
         self.connection.src == src && self.connection.dst == dst

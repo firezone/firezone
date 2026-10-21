@@ -476,14 +476,16 @@ impl Io {
     /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn start_encrypt_batch(&mut self) -> EncryptBatch<'_> {
-        self.crypto.start_encrypt_batch(&mut self.sockets)
+    pub fn start_encrypt_batch(&mut self, num_packets: usize) -> EncryptBatch<'_> {
+        self.crypto
+            .start_encrypt_batch(&mut self.sockets, num_packets)
     }
 
     /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
     /// [`Input::decrypted`].
-    pub fn start_decrypt_batch(&mut self) -> DecryptBatch<'_> {
-        self.crypto.start_decrypt_batch(&mut self.decrypting)
+    pub fn start_decrypt_batch(&mut self, num_packets: usize) -> DecryptBatch<'_> {
+        self.crypto
+            .start_decrypt_batch(&mut self.decrypting, num_packets)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {

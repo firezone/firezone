@@ -74,6 +74,11 @@ const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
 pub(crate) struct ReceivedDatagrams(Buffer<VecBuf<DatagramBatch>>);
 
 impl ReceivedDatagrams {
+    /// How many datagrams were received, counting every segment of a coalesced one.
+    pub fn len(&self) -> usize {
+        self.0.iter().map(DatagramBatch::len).sum()
+    }
+
     /// Moves out every received datagram, in the order the sockets received them.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         self.0.iter_mut().flat_map(|batch| batch.drain())
