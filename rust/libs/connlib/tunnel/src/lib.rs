@@ -17,6 +17,7 @@ use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
+use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -289,7 +290,7 @@ impl ClientTunnel {
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    for mut packet in packets.inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
@@ -346,7 +347,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain() {
+                    for received in decrypted.drain().prefetching() {
                         let result = self.role_state.handle_peer_input(
                             received.local,
                             received.from,
@@ -514,7 +515,7 @@ impl GatewayTunnel {
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    for mut packet in packets.inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
                             Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
                             Ok(None) => {}
@@ -585,7 +586,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain() {
+                    for received in decrypted.drain().prefetching() {
                         let result = self.role_state.handle_peer_input(
                             received.local,
                             received.from,

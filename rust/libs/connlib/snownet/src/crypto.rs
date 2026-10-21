@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use ip_packet::{IpPacket, IpPacketBuf};
+use prefetch::Prefetch as _;
 
 use crate::node::Transmit;
 
@@ -138,4 +139,12 @@ pub struct DecryptedIpPacket {
     pub(crate) src: SocketAddr,
     pub(crate) dst: SocketAddr,
     pub(crate) decrypted: sanstun::Decrypted<Result<IpPacket>>,
+}
+
+impl prefetch::Prefetch for DecryptedIpPacket {
+    fn prefetch(&self) {
+        if let Some(Ok(packet)) = self.decrypted.plaintext() {
+            packet.prefetch();
+        }
+    }
 }

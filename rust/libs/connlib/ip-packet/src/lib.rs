@@ -201,6 +201,12 @@ pub enum IpVersion {
     V6,
 }
 
+impl prefetch::Prefetch for IpPacket {
+    fn prefetch(&self) {
+        prefetch::prefetch_line(self.buf.as_ptr());
+    }
+}
+
 impl std::fmt::Debug for IpPacket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("Packet");
