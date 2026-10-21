@@ -160,7 +160,7 @@ impl CryptoWorkers {
             match self.workers[index].send(work) {
                 Ok(()) => return,
                 Err(mpsc::SendError(unsent)) => {
-                    tracing::warn!("Crypto worker stopped");
+                    tracing::debug!("Crypto worker stopped");
 
                     self.workers.remove(index);
                     work = unsent;
