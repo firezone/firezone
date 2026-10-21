@@ -1,5 +1,5 @@
 use super::sim_net::{ExecMutScope, Host};
-use bufferpool::Buffer;
+use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::RelayId;
 use ip_packet::Ecn;
@@ -125,7 +125,7 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        mut payload: Bytes,
         client: ClientSocket,
         now: Instant,
         now_utc: SystemTime,
@@ -222,7 +222,7 @@ impl SimRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        mut payload: Bytes,
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit> {

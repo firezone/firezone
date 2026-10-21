@@ -28,7 +28,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::Buffer;
+use bufferpool::{Bytes, Class};
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -39,8 +39,6 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-
-bufferpool::buffer_pool!(static IP_PACKETS: Vec<u8> = (MAX_FZ_PAYLOAD, "ip-packet"), batch: 64);
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -60,6 +58,7 @@ pub const MAX_UDP_PAYLOAD: u16 = MAX_IP_PAYLOAD - UdpSlice::HEADER_LEN as u16;
 ///
 /// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
 pub const MAX_FZ_PAYLOAD: usize = MAX_IP_SIZE + WG_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+const _: () = assert!(Class::Packet.size() >= MAX_FZ_PAYLOAD);
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 pub const WG_OVERHEAD: usize = 32;
 /// TURN's data channels have a 4 byte overhead.
@@ -131,13 +130,13 @@ pub enum Layer4Protocol {
 
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
-    inner: Buffer<Vec<u8>>,
+    inner: Bytes,
 }
 
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
-            inner: IP_PACKETS.pull(),
+            inner: Bytes::pull(Class::Packet),
         }
     }
 }
@@ -166,7 +165,7 @@ impl AsMut<[u8]> for IpPacketBuf {
 
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
-    buf: Buffer<Vec<u8>>,
+    buf: Bytes,
     /// The packet length; `u16` keeps the struct small, which matters wherever packets are moved.
     len: u16,
 
@@ -178,8 +177,8 @@ pub struct IpPacket {
     version: IpVersion,
 }
 
-const _: () =
-    assert!(std::mem::size_of::<IpPacket>() == std::mem::size_of::<Buffer<Vec<u8>>>() + 8);
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<IpPacket>() == 32);
 
 /// The transport protocol of an [`IpPacket`], determined and validated on creation.
 ///

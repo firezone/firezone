@@ -2,7 +2,7 @@
 //!
 //! Each benchmark runs with three kinds of items:
 //!
-//! - `Pooled`: a buffer from a static pool, like the ip-packet pool.
+//! - `Pooled`: a buffer of the packet class.
 //! - `Plain`: a value of the same size as a pooled buffer handle that costs nothing to create or drop.
 //!   Across threads, this is the cost of the channel alone.
 //! - `Alloc`: a freshly allocated `Vec` of the same capacity, i.e. no pooling at all.
@@ -14,12 +14,9 @@
 use std::sync::mpsc as std_mpsc;
 use std::thread;
 
-use bufferpool::{Buffer, buffer_pool};
+use bufferpool::{Bytes, Class};
 use divan::{Bencher, black_box, counter::ItemsCount};
 use tokio::sync::mpsc::{self, error::TrySendError};
-
-/// Same as `ip_packet::MAX_FZ_PAYLOAD`.
-const CAPACITY: usize = 1316;
 
 /// Same as the TUN channels on desktop platforms.
 const CHANNEL_CAPACITY: usize = 100;
@@ -28,8 +25,6 @@ const CHANNEL_CAPACITY: usize = 100;
 const ITEMS_PER_ITER: usize = 1024;
 
 const BATCHES: [usize; 2] = [1, 32];
-
-buffer_pool!(static POOL: Vec<u8> = (CAPACITY, "bench"), batch: 64);
 
 #[derive(Debug, Clone, Copy)]
 enum Item {
@@ -40,22 +35,22 @@ enum Item {
 
 const ITEMS: [Item; 3] = [Item::Pooled, Item::Plain, Item::Alloc];
 
-fn pooled() -> Buffer<Vec<u8>> {
-    POOL.pull()
+fn pooled() -> Bytes {
+    Bytes::pull(Class::Packet)
 }
 
-fn plain() -> [u8; size_of::<Buffer<Vec<u8>>>()] {
-    black_box([0; size_of::<Buffer<Vec<u8>>>()])
+fn plain() -> [u8; size_of::<Bytes>()] {
+    black_box([0; size_of::<Bytes>()])
 }
 
 fn alloc() -> Vec<u8> {
-    Vec::with_capacity(CAPACITY)
+    Vec::with_capacity(Class::Packet.size())
 }
 
 fn main() {
     // Grow the pool beyond what any benchmark holds at once, so pulling never allocates.
     let buffers = (0..4 * ITEMS_PER_ITER)
-        .map(|_| POOL.pull())
+        .map(|_| Bytes::pull(Class::Packet))
         .collect::<Vec<_>>();
     drop(buffers);
 

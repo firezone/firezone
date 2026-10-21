@@ -1,33 +1,12 @@
 use std::net::SocketAddr;
 
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Bytes;
 use ip_packet::{Ecn, IpPacket};
 use snownet::PendingEncapsulate;
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
-
-bufferpool::buffer_pool!(static GSO_BUFFERS_2K: Vec<u8> = (2 * 1024, "gso-train-2k"), batch: 2);
-bufferpool::buffer_pool!(static GSO_BUFFERS_4K: Vec<u8> = (4 * 1024, "gso-train-4k"), batch: 2);
-bufferpool::buffer_pool!(static GSO_BUFFERS_8K: Vec<u8> = (8 * 1024, "gso-train-8k"), batch: 2);
-bufferpool::buffer_pool!(static GSO_BUFFERS_16K: Vec<u8> = (16 * 1024, "gso-train-16k"), batch: 2);
-bufferpool::buffer_pool!(static GSO_BUFFERS_32K: Vec<u8> = (32 * 1024, "gso-train-32k"), batch: 2);
-bufferpool::buffer_pool!(static GSO_BUFFERS_64K: Vec<u8> = (64 * 1024, "gso-train-64k"), batch: 2);
-
-/// The pool of the smallest buffers that fit `len` bytes: at most 2 KiB or twice `len`.
-///
-/// One GSO send never exceeds 64 KiB, so neither does a [`UdpGsoTrain`].
-fn gso_buffers(len: usize) -> &'static BufferPool<Vec<u8>> {
-    match len {
-        0..=2_048 => &GSO_BUFFERS_2K,
-        2_049..=4_096 => &GSO_BUFFERS_4K,
-        4_097..=8_192 => &GSO_BUFFERS_8K,
-        8_193..=16_384 => &GSO_BUFFERS_16K,
-        16_385..=32_768 => &GSO_BUFFERS_32K,
-        _ => &GSO_BUFFERS_64K,
-    }
-}
 
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
@@ -100,7 +79,7 @@ impl UdpGsoTrain {
         self,
         packets: impl Iterator<Item = (PendingEncapsulate, IpPacket)>,
     ) -> Option<DatagramOut> {
-        let mut buffer = gso_buffers(self.len).pull();
+        let mut buffer = Bytes::fitting(self.len);
         buffer.clear();
 
         for (encapsulation, packet) in packets {
@@ -120,7 +99,7 @@ impl UdpGsoTrain {
         Some(self.into_datagram(buffer))
     }
 
-    fn into_datagram(self, packet: Buffer<Vec<u8>>) -> DatagramOut {
+    fn into_datagram(self, packet: Bytes) -> DatagramOut {
         DatagramOut {
             src: self.connection.src,
             dst: self.connection.dst,
@@ -171,19 +150,6 @@ mod tests {
     #[test]
     fn small_segments_hit_kernel_segment_limit() {
         assert_segments_per_send(100, socket_factory::MAX_GSO_SEGMENTS);
-    }
-
-    #[test]
-    fn train_takes_smallest_fitting_buffer() {
-        for (len, capacity) in [
-            (1, 2 * 1024),
-            (2 * 1024, 2 * 1024),
-            (2 * 1024 + 1, 4 * 1024),
-            (32 * 1024 + 1, 64 * 1024),
-            (DatagramOut::max_len(DST_1, MAX_SEGMENT_SIZE), 64 * 1024),
-        ] {
-            assert_eq!(gso_buffers(len).pull().capacity(), capacity);
-        }
     }
 
     fn assert_segments_per_send(segment_size: usize, segments_per_send: usize) {

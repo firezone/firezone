@@ -3,8 +3,6 @@
 use ip_packet::Ecn;
 use socket_factory::{DatagramOut, udp};
 
-bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (2048, "test"), batch: 64);
-
 /// Datagrams sent to a fresh peer round-trip: the peer receives them and the reply is
 /// delivered back through the same [`PerfUdpSocket`](socket_factory::PerfUdpSocket).
 ///
@@ -27,7 +25,7 @@ async fn sends_and_receives_a_datagram() {
         .send(DatagramOut {
             src: None,
             dst: peer_addr,
-            packet: PACKETS.pull_initialised(&b"hello".repeat(DATAGRAMS)),
+            packet: bufferpool::Bytes::copied_from(&b"hello".repeat(DATAGRAMS)),
             segment_size: 5,
             ecn: Ecn::NonEct,
         })

@@ -10,8 +10,6 @@ use std::{
     time::Duration,
 };
 
-bufferpool::buffer_pool!(static PACKETS: Vec<u8> = (0, "test"), batch: 64);
-
 // Starts up a WinTUN device, adds a "full-route" (`0.0.0.0/0`), and checks if we can still send packets to IPs outside of our tunnel.
 #[tokio::test]
 #[ignore = "Needs admin / sudo and Internet"]
@@ -43,8 +41,9 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     // Send a STUN request.
-    let packet = PACKETS
-        .pull_initialised(hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref());
+    let packet = bufferpool::Bytes::copied_from(
+        hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
+    );
 
     socket
         .send(DatagramOut {

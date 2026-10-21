@@ -3,6 +3,7 @@ use crate::{
     channel_data,
     node::Transmit,
 };
+use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
@@ -1240,7 +1241,7 @@ impl Allocation {
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: crate::DATAGRAMS.pull_initialised(&encode(message)),
+            payload: Bytes::copied_from(&encode(message)),
             ecn: Ecn::NonEct,
         });
 

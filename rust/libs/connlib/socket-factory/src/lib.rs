@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Bytes;
 use ip_packet::{Ecn, Ipv4HeaderSlice, Ipv6HeaderSlice, UdpSlice};
 use opentelemetry::KeyValue;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
@@ -278,7 +278,7 @@ pub struct PerfUdpSocket {
     /// The socket(s) we send and receive on; see [`SocketPool`].
     pool: SocketPool,
 
-    /// The pools backing batched receives; see [`RecvBuffers`].
+    /// The size of the buffers backing batched receives; see [`RecvBuffers`].
     recv_buffers: RecvBuffers,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
@@ -361,7 +361,7 @@ impl std::os::fd::AsFd for UdpSocket {
 
 /// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
 /// that all come from the same remote address.
-pub struct DatagramIn<B = Buffer<Vec<u8>>> {
+pub struct DatagramIn<B = Bytes> {
     buffer: B,
     local: SocketAddr,
     from: SocketAddr,
@@ -381,7 +381,7 @@ pub struct Segment {
 pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Buffer<Vec<u8>>,
+    pub packet: Bytes,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -903,28 +903,18 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// The pool backing a batched receive: scratch space for the datagrams themselves.
+/// How many bytes each buffer of a batched receive holds.
 pub(crate) struct RecvBuffers {
-    bytes: &'static BufferPool<Vec<u8>>,
+    recv_buf_size: usize,
 }
 
-bufferpool::buffer_pool!(
-    static UDP_RECV_BYTES: Vec<u8>,
-    "udp-recv-bytes",
-    batch: cfg_select! {
-        apple => { quinn_udp::BATCH_SIZE }
-        target_os = "android" => { 2 }
-        // A magazine holds two batches: enough to take back the unused buffers of a receive.
-        _ => { quinn_udp::BATCH_SIZE.div_ceil(2) }
-    }
-);
 /// The storage for one receive batch: a datagram buffer plus its metadata per slot.
 ///
 /// The buffers and metas live in heap-allocated `Vec`s rather than inline in
 /// [`DatagramBatch`]: the batch is sent over a channel and inline storage would make
 /// every channel slot (and thus tokio's block allocations) carry the full batch size.
 pub(crate) struct RecvBatch {
-    buffers: Vec<Buffer<Vec<u8>>>,
+    buffers: Vec<Bytes>,
     metas: Vec<quinn_udp::RecvMeta>,
 }
 
@@ -951,15 +941,13 @@ impl RecvBatch {
 
 impl RecvBuffers {
     fn new(recv_buf_size: usize) -> Self {
-        Self {
-            bytes: UDP_RECV_BYTES.with_capacity(recv_buf_size),
-        }
+        Self { recv_buf_size }
     }
 
     /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
     pub(crate) fn pull_batch(&self) -> RecvBatch {
         RecvBatch {
-            buffers: std::iter::repeat_with(|| self.bytes.pull())
+            buffers: std::iter::repeat_with(|| Bytes::fitting(self.recv_buf_size))
                 .take(quinn_udp::BATCH_SIZE)
                 .collect(),
             metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
@@ -978,7 +966,7 @@ impl RecvBuffers {
 ///
 /// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
-pub struct DatagramBatch<B = Buffer<Vec<u8>>> {
+pub struct DatagramBatch<B = Bytes> {
     #[debug(skip)]
     buffers: Vec<B>,
     #[debug(skip)]

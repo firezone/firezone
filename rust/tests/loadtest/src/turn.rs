@@ -82,13 +82,6 @@ const MAX_BATCH: usize = 64;
 /// How many probes the peer sends to open its NAT mapping toward the relayed address.
 const PUNCH_COUNT: usize = 5;
 
-bufferpool::buffer_pool!(
-    /// Room for any STUN control message or probe we send.
-    static CONTROL_MESSAGES: Vec<u8> = (2048, "turn-loadtest-control"),
-    batch: 4
-);
-bufferpool::buffer_pool!(static BATCHES: Vec<u8>, "turn-loadtest", batch: 2);
-
 /// Extra time the receiver keeps listening after the sender stops, to drain in-flight datagrams.
 const DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -575,7 +568,6 @@ async fn send(
     counters: &Counters,
 ) -> Result<SendStats> {
     let frame_size = CHANNEL_DATA_HEADER_SIZE + config.payload_size;
-    let pool = BATCHES.with_capacity(MAX_BATCH * frame_size);
     let frame_bits = (frame_size * 8) as f64;
     let packets_per_second = config.bitrate_bps as f64 * flows.get() as f64 / frame_bits;
     let send_end = data_start + config.duration;
@@ -612,7 +604,7 @@ async fn send(
             sequence += 1;
         }
 
-        let packet = pool.pull_initialised(&batch);
+        let packet = bufferpool::Bytes::copied_from(&batch);
         socket
             .send(DatagramOut {
                 src: None,
@@ -1160,7 +1152,7 @@ async fn send_datagram(
     bytes: &[u8],
     segment_size: usize,
 ) -> Result<()> {
-    let packet = CONTROL_MESSAGES.pull_initialised(bytes);
+    let packet = bufferpool::Bytes::copied_from(bytes);
 
     socket
         .send(DatagramOut {

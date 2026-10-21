@@ -962,7 +962,6 @@ dependencies = [
 name = "bufferpool"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "divan",
  "opentelemetry",
  "opentelemetry_sdk",
