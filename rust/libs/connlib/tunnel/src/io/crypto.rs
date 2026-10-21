@@ -97,13 +97,13 @@ pub struct CryptoWorkers {
 /// Every worker takes both kinds, so traffic in one direction can use all of them.
 enum Work {
     Encrypt(EncryptJob, oneshot::Sender<DatagramOut>),
-    Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
+    Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
 }
 
 /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
-pub struct Decrypted(Buffer<VecBuf<DecryptedDatagram>>);
+pub struct DecryptedIpPackets(Buffer<VecBuf<DecryptedDatagram>>);
 
-impl Decrypted {
+impl DecryptedIpPackets {
     /// Moves out every decrypted packet, in the order it was received.
     pub fn drain(&mut self) -> impl Iterator<Item = DecryptedDatagram> + '_ {
         self.0.drain(..)
@@ -317,7 +317,7 @@ impl Drop for DecryptBatch<'_> {
 /// The decrypt jobs handed to the workers, in submission order.
 #[derive(Default)]
 pub struct Decrypting {
-    jobs: FuturesOrdered<oneshot::Receiver<Decrypted>>,
+    jobs: FuturesOrdered<oneshot::Receiver<DecryptedIpPackets>>,
 }
 
 impl Decrypting {
@@ -327,7 +327,7 @@ impl Decrypting {
     }
 
     /// Returns the next batch of decrypted packets, in the order they were received.
-    pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<Decrypted> {
+    pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedIpPackets> {
         loop {
             let Some(result) = ready!(self.jobs.poll_next_unpin(cx)) else {
                 return Poll::Pending;
@@ -417,7 +417,7 @@ fn encrypt(
     let _ = encrypted.send(datagram);
 }
 
-fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<Decrypted>) {
+fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
     let mut packets = DECRYPTED.pull();
     packets.extend(job.messages.drain(..).map(|message| {
         let buffer = &job.buffers[message.buffer];
@@ -431,5 +431,5 @@ fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<Decrypted>) {
     }));
 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
-    let _ = decrypted.send(Decrypted(packets));
+    let _ = decrypted.send(DecryptedIpPackets(packets));
 }

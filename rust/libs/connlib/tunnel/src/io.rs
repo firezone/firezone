@@ -7,7 +7,7 @@ mod udp_dns;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{DecryptBatch, Decrypted, EncryptBatch};
+pub use crypto::{DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -90,7 +90,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
-    pub decrypted: Option<Decrypted>,
+    pub decrypted: Option<DecryptedIpPackets>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
