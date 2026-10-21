@@ -60,12 +60,12 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPTED: VecBuf<Received> = (DECRYPT_BATCH_SIZE, "decrypted"),
+    static DECRYPTED: VecBuf<DecryptedDatagram> = (DECRYPT_BATCH_SIZE, "decrypted"),
     batch: 4
 );
 
-/// A packet received from the network.
-pub struct Received {
+/// A datagram from the network with its WireGuard data message decrypted.
+pub struct DecryptedDatagram {
     pub local: SocketAddr,
     pub from: SocketAddr,
     pub ecn: Ecn,
@@ -101,11 +101,11 @@ enum Work {
 }
 
 /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
-pub struct Decrypted(Buffer<VecBuf<Received>>);
+pub struct Decrypted(Buffer<VecBuf<DecryptedDatagram>>);
 
 impl Decrypted {
     /// Moves out every decrypted packet, in the order it was received.
-    pub fn drain(&mut self) -> impl Iterator<Item = Received> + '_ {
+    pub fn drain(&mut self) -> impl Iterator<Item = DecryptedDatagram> + '_ {
         self.0.drain(..)
     }
 }
@@ -422,7 +422,7 @@ fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<Decrypted>) {
     packets.extend(job.messages.drain(..).map(|message| {
         let buffer = &job.buffers[message.buffer];
 
-        Received {
+        DecryptedDatagram {
             local: buffer.local(),
             from: buffer.from(),
             ecn: buffer.ecn(),
