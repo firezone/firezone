@@ -12,6 +12,7 @@ use super::{
     sut::encrypt,
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
@@ -311,7 +312,7 @@ impl SimClient {
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<snownet::Transmit>> {
+    ) -> Result<Option<snownet::Transmit>> {
         let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
             return Ok(None);
         };

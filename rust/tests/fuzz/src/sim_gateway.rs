@@ -7,6 +7,7 @@ use super::{
     site_network::SiteNetwork,
     sut::encrypt,
 };
+use anyhow::Result;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
@@ -136,7 +137,7 @@ impl SimGateway {
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<snownet::Transmit>> {
+    ) -> Result<Option<snownet::Transmit>> {
         let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
             return Ok(None);
         };

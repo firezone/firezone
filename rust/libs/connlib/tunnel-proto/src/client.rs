@@ -1036,7 +1036,7 @@ impl ClientState {
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;

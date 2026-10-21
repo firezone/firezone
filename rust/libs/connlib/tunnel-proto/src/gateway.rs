@@ -362,7 +362,7 @@ impl GatewayState {
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
 
         let expires_at = expires_at.map(|d| self.unix_ts_clock.instant_at(d, now));
@@ -400,7 +400,7 @@ impl GatewayState {
         resource: ResourceId,
         expires_at: Duration,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
         let expires_in = new_expiry.saturating_duration_since(now);
 
@@ -424,7 +424,7 @@ impl GatewayState {
         req: ResolveDnsRequest,
         resolve_result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         use p2p_control::dns_resource_nat;
 
         let nat_status = resolve_result
