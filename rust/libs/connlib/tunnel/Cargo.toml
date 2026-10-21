@@ -27,7 +27,6 @@ snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }

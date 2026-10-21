@@ -2,7 +2,7 @@ use crate::otel;
 use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bufferpool::{Buffer, VecBuf};
-use futures::ready;
+use futures::{FutureExt as _, future::BoxFuture, ready};
 use opentelemetry::metrics::Counter;
 use socket_factory::{
     DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
@@ -16,8 +16,10 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
-use tokio::sync::mpsc::{self, error::TrySendError};
-use tokio_util::sync::PollSender;
+use tokio::sync::mpsc::{
+    self,
+    error::{SendError, TrySendError},
+};
 
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
@@ -77,8 +79,15 @@ impl ReceivedDatagrams {
 
 /// Room for one datagram in a UDP socket's channel, reserved by [`Sockets::poll_reserve`].
 pub(crate) struct SendPermit<'a> {
-    permit: mpsc::Permit<'a, DatagramOut>,
+    reserved: Reserved<'a>,
     packet_counter: &'a Counter<u64>,
+}
+
+enum Reserved<'a> {
+    /// Taken right away from a channel with room.
+    Borrowed(mpsc::Permit<'a, DatagramOut>),
+    /// Waited for on a full channel.
+    Owned(mpsc::OwnedPermit<DatagramOut>),
 }
 
 impl SendPermit<'_> {
@@ -87,9 +96,13 @@ impl SendPermit<'_> {
         for segment in datagram.packet.chunks(datagram.segment_size) {
             transmitted.record(segment);
         }
-        drop(transmitted);
 
-        self.permit.send(datagram);
+        match self.reserved {
+            Reserved::Borrowed(permit) => permit.send(datagram),
+            Reserved::Owned(permit) => {
+                permit.send(datagram);
+            }
+        }
     }
 }
 
@@ -156,10 +169,10 @@ impl Sockets {
             )
         })?;
 
-        let permit = ready!(socket.poll_reserve(cx))?;
+        let reserved = ready!(socket.poll_reserve(cx))?;
 
         Poll::Ready(Ok(SendPermit {
-            permit,
+            reserved,
             packet_counter: &self.packet_counter,
         }))
     }
@@ -261,8 +274,9 @@ struct ThreadedUdpSocket {
 
 struct Channels {
     outbound_tx: mpsc::Sender<DatagramOut>,
-    /// Reserves a slot in the outbound channel only to wait for room once it is full.
-    outbound_reserve: PollSender<DatagramOut>,
+    /// Waits for room in the outbound channel once it is full.
+    waiting_for_room:
+        Option<BoxFuture<'static, Result<mpsc::OwnedPermit<DatagramOut>, SendError<()>>>>,
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
@@ -445,8 +459,8 @@ impl ThreadedUdpSocket {
             thread_name,
             join_handle,
             channels: Some(Channels {
-                outbound_reserve: PollSender::new(outbound_tx.clone()),
                 outbound_tx,
+                waiting_for_room: None,
                 inbound_rx,
                 error_rx,
             }),
@@ -454,28 +468,29 @@ impl ThreadedUdpSocket {
     }
 
     /// Reserves room in the outbound channel for another datagram.
-    ///
-    /// Only a full channel reserves a slot through the [`PollSender`], to be woken once the socket
-    /// thread frees one. That slot is released again right away, for `try_reserve` to take.
-    fn poll_reserve(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<mpsc::Permit<'_, DatagramOut>>> {
+    fn poll_reserve(&mut self, cx: &mut Context<'_>) -> Poll<Result<Reserved<'_>>> {
         let channels = self.channels_mut()?;
 
-        loop {
+        if channels.waiting_for_room.is_none() {
             match channels.outbound_tx.try_reserve() {
-                Ok(permit) => return Poll::Ready(Ok(permit)),
+                Ok(permit) => return Poll::Ready(Ok(Reserved::Borrowed(permit))),
                 Err(TrySendError::Full(())) => {}
                 Err(TrySendError::Closed(())) => {
                     return Poll::Ready(Err(UdpSocketThreadStopped.into()));
                 }
             }
-
-            ready!(channels.outbound_reserve.poll_reserve(cx))
-                .map_err(|_| UdpSocketThreadStopped)?;
-            channels.outbound_reserve.abort_send();
         }
+
+        let outbound_tx = &channels.outbound_tx;
+        let waiting_for_room = channels
+            .waiting_for_room
+            .get_or_insert_with(|| outbound_tx.clone().reserve_owned().boxed());
+
+        let result = ready!(waiting_for_room.poll_unpin(cx));
+        channels.waiting_for_room = None;
+        let permit = result.map_err(|_| UdpSocketThreadStopped)?;
+
+        Poll::Ready(Ok(Reserved::Owned(permit)))
     }
 
     /// Appends the batches received from the socket thread to `batches`, at most
