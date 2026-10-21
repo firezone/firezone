@@ -172,6 +172,15 @@ impl Agent {
         }
     }
 
+    pub(crate) fn remote_candidate_is_peer_reflexive(&self, addr: std::net::SocketAddr) -> bool {
+        match self {
+            Self::Ice(a) => a
+                .remote_candidates()
+                .any(|c| c.addr() == addr && c.kind() == is::CandidateKind::PeerReflexive),
+            Self::Path(path) => path.remote_is_peer_reflexive(addr),
+        }
+    }
+
     pub(crate) fn handle_stun_packet(&mut self, now: Instant, p: StunPacket<'_>) -> bool {
         match self {
             Self::Ice(a) => a.handle_packet(now, p),

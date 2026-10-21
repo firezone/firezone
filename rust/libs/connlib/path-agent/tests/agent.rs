@@ -795,6 +795,35 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     );
 }
 
+#[test]
+fn a_peer_reflexive_remote_stays_marked_until_signaled() {
+    let mut a = PathAgent::new();
+    let t0 = Instant::now();
+    a.add_local_candidate(Candidate::host(addr(1)), t0);
+
+    let mut hs = Handshake::new(t0);
+    let _ = a.receive(
+        &mut hs.responder,
+        &mut hs.responder_interface,
+        &hs.init,
+        (addr(1), addr(9)),
+        t0,
+    );
+    assert!(a.remote_is_peer_reflexive(addr(9)));
+
+    a.rebuild(|_| false, t0);
+    assert!(
+        a.remote_is_peer_reflexive(addr(9)),
+        "a rebuild keeps the mark"
+    );
+
+    a.add_remote_candidate(Candidate::relayed(addr(9), addr(99)), t0);
+    assert!(
+        !a.remote_is_peer_reflexive(addr(9)),
+        "signaling clears the mark"
+    );
+}
+
 // --- test harness ---
 
 type Pair = (SocketAddr, SocketAddr);

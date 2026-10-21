@@ -397,11 +397,13 @@ impl PathAgent {
             .filter(|c| !drop_local(c))
             .collect();
         let remotes = std::mem::take(&mut self.remotes);
+        let peer_reflexive_addrs = std::mem::take(&mut self.peer_reflexive_addrs);
         let session_confirmed = self.session_confirmed;
 
         *self = Self::new();
 
         self.session_confirmed = session_confirmed;
+        self.peer_reflexive_addrs = peer_reflexive_addrs;
 
         for local in locals {
             self.add_local_candidate(local, now);
@@ -431,6 +433,10 @@ impl PathAgent {
         self.remotes
             .iter()
             .any(|c| c.addr() == addr && c.is_relayed())
+    }
+
+    pub fn remote_is_peer_reflexive(&self, addr: SocketAddr) -> bool {
+        self.peer_reflexive_addrs.contains(&addr)
     }
 
     pub fn send_handshake_initiation(&mut self, init: sanstun::Datagram, now: Instant) {
