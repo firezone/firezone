@@ -1,6 +1,5 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
-    channel_data,
     node::Transmit,
 };
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -726,7 +725,7 @@ impl Allocation {
     pub fn decapsulate(
         &mut self,
         from: SocketAddr,
-        packet: channel_data::Packet,
+        channel_number: u16,
         now: Instant,
     ) -> Option<(SocketAddr, Socket)> {
         if !self.server.matches(from) {
@@ -735,7 +734,9 @@ impl Allocation {
             return None;
         }
 
-        let peer = self.channel_bindings.try_handle_packet(packet, now)?;
+        let peer = self
+            .channel_bindings
+            .try_handle_packet(channel_number, now)?;
 
         // Our socket on the relay.
         // If the remote sent from an IP4 address, it must have been received on our IP4 allocation.
@@ -1579,13 +1580,7 @@ impl ChannelBindings {
     /// Per TURN spec, 0x4000 is the last channel number.
     const LAST_CHANNEL: u16 = 0x4FFF;
 
-    fn try_handle_packet(
-        &mut self,
-        packet: channel_data::Packet,
-        now: Instant,
-    ) -> Option<SocketAddr> {
-        let channel_number = packet.channel();
-
+    fn try_handle_packet(&mut self, channel_number: u16, now: Instant) -> Option<SocketAddr> {
         let Some(channel) = self.inner.get_mut(&channel_number) else {
             tracing::debug!(%channel_number, "Unknown channel");
             return None;
@@ -1928,9 +1923,9 @@ mod tests {
 
         let mut packet = channel_data_packet_buffer(b"foobar");
         crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
-        let packet = channel_data::decode(&packet).unwrap();
+        let channel_number = crate::channel_data::decode(&packet).unwrap();
         let peer = channel_bindings
-            .try_handle_packet(packet, start + Duration::from_secs(2))
+            .try_handle_packet(channel_number, start + Duration::from_secs(2))
             .unwrap();
 
         assert_eq!(peer, PEER1);
@@ -1946,9 +1941,9 @@ mod tests {
 
         let mut packet = channel_data_packet_buffer(b"foobar");
         crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
-        let packet = channel_data::decode(&packet).unwrap();
+        let channel_number = crate::channel_data::decode(&packet).unwrap();
         channel_bindings
-            .try_handle_packet(packet, start + Duration::from_secs(2))
+            .try_handle_packet(channel_number, start + Duration::from_secs(2))
             .unwrap();
 
         let not_inflight = |_| false;

@@ -586,7 +586,8 @@ where
 
         let DecryptedIpPacket {
             tunnel,
-            path,
+            src,
+            dst,
             decrypted,
         } = packet;
 
@@ -594,7 +595,7 @@ where
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let control_flow = conn.commit_decrypted(cid, path, decrypted, now);
+        let control_flow = conn.commit_decrypted(cid, (dst, src), decrypted, now);
         let is_closing = self.connections.is_closing(&cid);
 
         let packet = match control_flow {
@@ -951,7 +952,7 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
-                let Ok(cd) = crate::channel_data::decode(packet) else {
+                let Ok(channel_number) = crate::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, 0, None));
                 };
@@ -971,7 +972,7 @@ where
                     }
                 };
 
-                let Some((from, socket)) = allocation.decapsulate(from, cd, now) else {
+                let Some((from, socket)) = allocation.decapsulate(from, channel_number, now) else {
                     tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
                     return ControlFlow::Break(()); // Stop processing the packet.
@@ -1906,7 +1907,8 @@ where
                 match self.tunnel.begin_decapsulate(data, now) {
                     Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
                         self.tunnel.id(),
-                        path,
+                        from,
+                        destination,
                         offset,
                         pending,
                     )),

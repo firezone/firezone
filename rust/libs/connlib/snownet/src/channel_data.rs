@@ -3,17 +3,8 @@ use std::io;
 
 pub(crate) const HEADER_LEN: usize = 4;
 
-pub struct Packet {
-    channel: u16,
-}
-
-impl Packet {
-    pub(crate) fn channel(&self) -> u16 {
-        self.channel
-    }
-}
-
-pub fn decode(data: &[u8]) -> Result<Packet, io::Error> {
+/// Decodes a channel-data message, returning its channel number.
+pub fn decode(data: &[u8]) -> Result<u16, io::Error> {
     if data.len() < HEADER_LEN {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
@@ -43,9 +34,7 @@ pub fn decode(data: &[u8]) -> Result<Packet, io::Error> {
         ));
     }
 
-    Ok(Packet {
-        channel: channel_number,
-    })
+    Ok(channel_number)
 }
 
 /// Encode the channel data header (number + length) to the given slice.

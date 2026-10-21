@@ -90,7 +90,8 @@ impl PendingEncapsulate {
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 pub struct PendingDecapsulate {
     tunnel: sanstun::TunnelId,
-    path: (SocketAddr, SocketAddr),
+    src: SocketAddr,
+    dst: SocketAddr,
     /// Where the WireGuard message starts in the datagram; it takes up the rest of it.
     offset: usize,
     pending: sanstun::PendingDecapsulate,
@@ -99,13 +100,15 @@ pub struct PendingDecapsulate {
 impl PendingDecapsulate {
     pub(crate) fn new(
         tunnel: sanstun::TunnelId,
-        path: (SocketAddr, SocketAddr),
+        src: SocketAddr,
+        dst: SocketAddr,
         offset: usize,
         pending: sanstun::PendingDecapsulate,
     ) -> Self {
         Self {
             tunnel,
-            path,
+            src,
+            dst,
             offset,
             pending,
         }
@@ -119,7 +122,8 @@ impl PendingDecapsulate {
 
         DecryptedIpPacket {
             tunnel: self.tunnel,
-            path: self.path,
+            src: self.src,
+            dst: self.dst,
             decrypted: self
                 .pending
                 .decrypt(message, IpPacketBuf::new())
@@ -131,6 +135,7 @@ impl PendingDecapsulate {
 /// The outcome of a [`PendingDecapsulate`].
 pub struct DecryptedIpPacket {
     pub(crate) tunnel: sanstun::TunnelId,
-    pub(crate) path: (SocketAddr, SocketAddr),
+    pub(crate) src: SocketAddr,
+    pub(crate) dst: SocketAddr,
     pub(crate) decrypted: sanstun::Decrypted<Result<IpPacket>>,
 }
