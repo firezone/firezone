@@ -92,7 +92,7 @@ pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
     /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`].
-    pub decrypted: Option<Buffer<VecBuf<Received<snownet::DecryptedIpPacket>>>>,
+    pub decrypted: Option<Buffer<VecBuf<Received>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_responses: Vec<dns::RecursiveResponse>,

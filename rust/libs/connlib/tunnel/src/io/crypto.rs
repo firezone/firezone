@@ -60,16 +60,16 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPTED: VecBuf<Received<DecryptedIpPacket>> = (DECRYPT_BATCH_SIZE, "decrypted"),
+    static DECRYPTED: VecBuf<Received> = (DECRYPT_BATCH_SIZE, "decrypted"),
     batch: 4
 );
 
 /// A packet received from the network.
-pub struct Received<P> {
+pub struct Received {
     pub local: SocketAddr,
     pub from: SocketAddr,
     pub ecn: Ecn,
-    pub packet: P,
+    pub packet: DecryptedIpPacket,
 }
 
 /// Encrypts and decrypts WireGuard data messages on worker threads.
@@ -100,7 +100,7 @@ enum Work {
     Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
 }
 
-type Decrypted = Buffer<VecBuf<Received<DecryptedIpPacket>>>;
+type Decrypted = Buffer<VecBuf<Received>>;
 
 impl CryptoWorkers {
     pub fn new(packet_counter: Counter<u64>) -> Self {
@@ -294,7 +294,7 @@ impl DecryptBatch<'_> {
 
         // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
         let _ = worker.send(Work::Decrypt(job, tx));
-        self.decrypting.push(rx);
+        self.decrypting.jobs.push_back(rx);
     }
 }
 
@@ -316,10 +316,6 @@ impl Decrypting {
     /// Whether we may hand more received buffers to the workers.
     pub fn has_room(&self) -> bool {
         self.jobs.len() < MAX_JOBS_IN_FLIGHT
-    }
-
-    fn push(&mut self, job: oneshot::Receiver<Decrypted>) {
-        self.jobs.push_back(job);
     }
 
     /// Returns the next batch of decrypted packets, in the order they were received.
