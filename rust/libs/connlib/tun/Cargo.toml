@@ -7,7 +7,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-bufferpool = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
 otel-attributes = { workspace = true }

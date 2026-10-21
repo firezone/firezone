@@ -3,7 +3,6 @@
 mod workers;
 pub use workers::Workers;
 
-use bufferpool::{Buffer, VecBuf};
 use ip_packet::IpPacket;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
@@ -43,8 +42,6 @@ const CHANNEL_CAPACITY: usize = cfg_select! {
     _ => { 40 }
 };
 
-bufferpool::buffer_pool!(static PACKET_BATCHES: VecBuf<IpPacket> = (MAX_BATCH_SIZE, "ip-packet-batch"), batch: 4);
-
 /// Worst-case memory usage of the two TUN channels: every slot filled with a full batch of packets,
 /// each of which owns a pooled buffer of [`ip_packet::MAX_FZ_PAYLOAD`] bytes.
 const MAX_CHANNEL_MEMORY: usize = 2
@@ -59,21 +56,19 @@ const _: () = assert!(MAX_CHANNEL_MEMORY <= 32 * 1024 * 1024);
 
 /// A batch of packets, exchanged over the TUN channels as a single item.
 ///
-/// A batch holds at most [`MAX_BATCH_SIZE`] packets in a pooled buffer:
-/// [`PacketBatch::try_push`] hands the packet back once the batch is full, so the
-/// storage never grows and moving a batch only copies a pointer. Callers send off
-/// a full batch and start a new one with [`PacketBatch::new`]. Emptied batches are
-/// cleared on return to the pool by [`VecBuf`]'s `reset`, so stale packets don't
-/// keep their pooled payload buffers alive.
+/// A batch holds at most [`MAX_BATCH_SIZE`] packets: [`PacketBatch::try_push`] hands
+/// the packet back once the batch is full, so the storage never grows and moving a
+/// batch only copies a pointer. Callers send off a full batch and start a new one
+/// with [`PacketBatch::new`].
 #[derive(Debug)]
 pub struct PacketBatch {
-    inner: Buffer<VecBuf<IpPacket>>,
+    inner: Vec<IpPacket>,
 }
 
 impl Default for PacketBatch {
     fn default() -> Self {
         Self {
-            inner: PACKET_BATCHES.pull(),
+            inner: Vec::with_capacity(MAX_BATCH_SIZE),
         }
     }
 }

@@ -7,7 +7,7 @@
 //! Only packets that the kernel's own GRO would merge are combined, everything else is
 //! passed through untouched.
 
-use bufferpool::{Buffer, BufferPool, VecBuf};
+use bufferpool::{Buffer, BufferPool};
 use ip_packet::{IpNumber, IpPacket, IpVersion, Ipv6HeaderSlice, TcpSlice, UdpSlice};
 use std::mem;
 use std::net::IpAddr;
@@ -20,7 +20,6 @@ use ip_packet::checksum;
 /// are 16 bits wide), and so neither can our super packets.
 const MAX_COALESCED_PACKET: usize = u16::MAX as usize;
 
-bufferpool::buffer_pool!(static COALESCED_ITEMS: VecBuf<CoalescedPacket> = (tun::MAX_BATCH_SIZE, "coalesced-packets"), batch: 4);
 bufferpool::buffer_pool!(static COALESCED_PACKETS: Vec<u8>, "packet-coalescer", batch: 2);
 
 /// The kernel rejects `VIRTIO_NET_HDR_GSO_UDP_L4` writes with more segments than this
@@ -51,7 +50,7 @@ pub enum Protocol {
 /// Coalesces compatible IP packets while preserving per-flow ordering.
 pub struct PacketCoalescer {
     /// Queued packets, in write order.
-    items: Buffer<VecBuf<CoalescedPacket>>,
+    items: Vec<CoalescedPacket>,
     /// The batches in `items` that may still grow, at most one per connection.
     ///
     /// Non-coalescable packets flow through `items` too and close their connection's
@@ -79,7 +78,7 @@ impl PacketCoalescer {
         }
 
         Self {
-            items: COALESCED_ITEMS.pull(),
+            items: Vec::with_capacity(tun::MAX_BATCH_SIZE),
             open: Vec::new(),
             buffer_pool: COALESCED_PACKETS.with_capacity(MAX_COALESCED_PACKET),
             coalesce_tcp,
@@ -152,12 +151,12 @@ impl PacketCoalescer {
     }
 
     /// Takes all queued packets, in write order.
-    pub fn take(&mut self) -> Buffer<VecBuf<CoalescedPacket>> {
+    pub fn take(&mut self) -> Vec<CoalescedPacket> {
         for batch in self.open.drain(..) {
             batch.finish(&mut self.items, self.checksum_mode);
         }
 
-        mem::replace(&mut self.items, COALESCED_ITEMS.pull())
+        mem::replace(&mut self.items, Vec::with_capacity(tun::MAX_BATCH_SIZE))
     }
 }
 

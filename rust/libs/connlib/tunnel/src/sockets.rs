@@ -60,12 +60,7 @@ const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
     SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
 
 /// Datagrams received from the UDP sockets, in the batches their threads read them in.
-///
-/// Dropping it hands the emptied vector back to [`Sockets`] for the next receive.
-pub(crate) struct ReceivedDatagrams {
-    batches: Vec<DatagramBatch>,
-    spare: Arc<Mutex<Vec<DatagramBatch>>>,
-}
+pub(crate) struct ReceivedDatagrams(Vec<DatagramBatch>);
 
 impl ReceivedDatagrams {
     /// How many datagrams were received, counting every segment of a coalesced one.
@@ -231,14 +226,7 @@ impl Sockets {
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
     pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ReceivedDatagrams> {
-        let mut batches = self.recv_batches.take().unwrap_or_else(|| {
-            std::mem::take(
-                &mut self
-                    .returned_recv_batches
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner),
-            )
-        });
+        let mut batches = Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT);
 
         if let Some(socket) = self.socket_v4.as_mut() {
             socket.poll_recv_from(cx, &mut batches);
