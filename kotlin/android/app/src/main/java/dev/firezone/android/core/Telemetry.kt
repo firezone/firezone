@@ -9,19 +9,43 @@ import io.sentry.android.core.SentryAndroid
 import io.sentry.protocol.User
 
 object Telemetry {
+    private var environment: String? = null
     private var firezoneId: String? = null
     private var accountSlug: String? = null
 
-    fun start(context: Context) {
+    /**
+     * Starts Sentry in the environment of `apiUrl`, or stops it for an API we don't run.
+     *
+     * Sentry hands the environment to its native layer at init, so changing it means initialising again.
+     */
+    @Synchronized
+    fun start(
+        context: Context,
+        apiUrl: String,
+    ) {
         if (BuildConfig.NO_TELEMETRY) {
             Log.i("Telemetry", "Telemetry is switched off for this build")
+            return
+        }
+
+        val environment =
+            when {
+                apiUrl.startsWith("wss://api.firezone.dev") -> "production"
+                apiUrl.startsWith("wss://api.firez.one") -> "staging"
+                else -> null
+            }
+        if (environment == this.environment) return
+        this.environment = environment
+
+        if (environment == null) {
+            Sentry.close()
             return
         }
 
         SentryAndroid.init(context) { options ->
             options.dsn =
                 "https://928a6ee1f6af9734100b8bc89b2dc87d@sentry.firezone.dev/4508175126233088"
-            options.environment = "entrypoint"
+            options.environment = environment
             options.release = releaseName()
             options.dist = distributionType(context)
             options.logs.isEnabled = true
@@ -55,21 +79,6 @@ object Telemetry {
         } else {
             Sentry.setUser(null)
             Sentry.removeAttribute("user.account_slug")
-        }
-    }
-
-    fun setEnvironmentOrClose(apiUrl: String) {
-        val environment =
-            when {
-                apiUrl.startsWith("wss://api.firezone.dev") -> "production"
-                apiUrl.startsWith("wss://api.firez.one") -> "staging"
-                else -> null
-            }
-
-        if (environment != null) {
-            Sentry.getCurrentScopes().options.environment = environment
-        } else {
-            Sentry.close()
         }
     }
 
