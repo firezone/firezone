@@ -1,16 +1,14 @@
 //! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets.
 //!
 //! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
-//! and the peer. It hands the WireGuard crypto to worker threads, so the wall time per packet is
-//! the cost of the slowest of these pipeline stages, which never parks. One iteration is one
-//! packet.
+//! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
+//! event loop. One iteration is one packet.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::task::{Context, Poll};
@@ -77,10 +75,10 @@ const IN_FLIGHT: usize = cfg_select! {
 #[cfg(target_os = "macos")]
 const FLOW_SOCKET_PACKETS: usize = 16;
 
-/// How often the slowest pipeline stage may park per 1000 packets before a benchmark reports it.
+/// How often the event loop may park per 1000 packets before a benchmark reports it.
 ///
-/// The stages idle between bursts. Within one, every stage would park about once per batch of
-/// packets if a stand-in thread could not keep up.
+/// The event loop idles between bursts. Within one, it would park about once per batch of packets
+/// if a stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
@@ -309,8 +307,6 @@ struct EventLoop {
     thread: JoinHandle<()>,
     /// How often its thread has parked.
     parks: Arc<AtomicU64>,
-    /// The `/proc` status files of the tunnel's crypto workers and UDP threads, on Linux only.
-    stages: Vec<PathBuf>,
     /// The packets its TUN device reads.
     tun_reads: tun::InboundTx,
 }
@@ -341,7 +337,6 @@ impl EventLoop {
             })
             .build()
             .unwrap();
-        let threads_before = threads();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
 
@@ -383,46 +378,20 @@ impl EventLoop {
                 }))
             })
             .unwrap();
-        let stages = threads()
-            .into_iter()
-            .filter(|(tid, comm)| {
-                !threads_before.contains_key(tid)
-                    && (comm.starts_with("wg-") || comm.starts_with("UDP "))
-            })
-            .map(|(tid, _)| Path::new("/proc/self/task").join(tid).join("status"))
-            .collect();
 
         (
             Self {
                 thread,
                 parks,
-                stages,
                 tun_reads,
             },
             tun_writes,
         )
     }
 
-    /// Returns how often each pipeline stage has parked, the event loop first.
-    ///
-    /// A stage whose thread has exited, like a UDP socket that failed to bind, reports `None`.
-    fn parks(&self) -> Vec<Option<u64>> {
-        let stages = self.stages.iter().map(|status| {
-            let status = std::fs::read_to_string(status).ok()?;
-            let parks = status
-                .lines()
-                .find_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
-                .unwrap()
-                .trim()
-                .parse()
-                .unwrap();
-
-            Some(parks)
-        });
-
-        std::iter::once(Some(self.parks.load(Ordering::Relaxed)))
-            .chain(stages)
-            .collect()
+    /// Returns how often the event loop's thread has parked.
+    fn parks(&self) -> u64 {
+        self.parks.load(Ordering::Relaxed)
     }
 
     fn stop(self) {
@@ -448,26 +417,6 @@ impl tun::Tun for FakeTun {
     fn name(&self) -> &str {
         "fake"
     }
-}
-
-/// Returns the name of each of this process's threads, by thread ID; empty where `/proc` is missing.
-fn threads() -> BTreeMap<String, String> {
-    if !cfg!(target_os = "linux") {
-        return BTreeMap::new();
-    }
-
-    std::fs::read_dir("/proc/self/task")
-        .unwrap()
-        .map(|entry| {
-            let entry = entry.unwrap();
-            let comm = std::fs::read_to_string(entry.path().join("comm")).unwrap();
-
-            (
-                entry.file_name().into_string().unwrap(),
-                comm.trim_end().to_owned(),
-            )
-        })
-        .collect()
 }
 
 /// Counts the packets arriving at the far end.
@@ -540,24 +489,13 @@ fn measure<T>(
         })
     });
     let packets = arrivals.count() - before.1;
-    // A stage that never woke up had no work, e.g. decrypting while sending.
-    let parks = event_loop
-        .parks()
-        .into_iter()
-        .zip(before.0)
-        .map(|(after, before)| Some(after? - before?))
-        .enumerate()
-        .filter_map(|(stage, parks)| (stage == 0 || parks > Some(0)).then_some(parks?))
-        .min()
-        .unwrap() as f64
-        * 1000.0
-        / packets as f64;
+    let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
 
     // Skipped or test runs send too few packets to tell.
     #[allow(clippy::print_stderr)]
     if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
         eprintln!(
-            "Every pipeline stage parked at least {parks:.2} times per 1000 packets and a stand-in thread may be the bottleneck"
+            "Event loop thread parked {parks:.2} times per 1000 packets and may not be the bottleneck"
         );
     }
 }
