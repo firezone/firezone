@@ -363,7 +363,7 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
+    ) -> Result<TranslateOutboundResult> {
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
@@ -398,11 +398,7 @@ impl ClientOnGateway {
         Ok(result)
     }
 
-    pub fn translate_inbound(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket> {
+    pub fn translate_inbound(&mut self, packet: IpPacket, now: Instant) -> Result<IpPacket> {
         // Traffic from our own IP is allowed.
         match packet.source() {
             IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(packet),
@@ -434,7 +430,7 @@ impl ClientOnGateway {
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
+    ) -> Result<TranslateOutboundResult> {
         let dst = packet.destination();
 
         // Packets to the TUN interface don't get transformed.
@@ -498,11 +494,7 @@ impl ClientOnGateway {
         Ok(TranslateOutboundResult::Send(packet))
     }
 
-    fn transform_tun_to_network(
-        &mut self,
-        mut packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket> {
+    fn transform_tun_to_network(&mut self, mut packet: IpPacket, now: Instant) -> Result<IpPacket> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
@@ -535,7 +527,7 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
@@ -557,7 +549,7 @@ impl ClientOnGateway {
         Ok(())
     }
 
-    fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
+    fn ensure_client_ip(&self, ip: IpAddr) -> Result<()> {
         if !self.allowed_ips().contains(&ip) {
             return Err(anyhow::Error::new(NotClientIp(ip)));
         }
@@ -572,7 +564,7 @@ impl ClientOnGateway {
         &mut self,
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> anyhow::Result<ResourceId> {
+    ) -> Result<ResourceId> {
         let resource = match self.internet_resource_enabled {
             Some(internet_resource) => match resource_ip {
                 ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
@@ -592,7 +584,7 @@ impl ClientOnGateway {
         &mut self,
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> anyhow::Result<ResourceId> {
+    ) -> Result<ResourceId> {
         let entry = self
             .routing_table
             .matches(
@@ -786,7 +778,7 @@ fn is_reserved(addr: Ipv4Addr) -> bool {
 /// catch-all in [`ClientOnGateway::classify_resource`] carry traffic between two Clients
 /// of this Gateway, hair-pinning through the TUN device and side-stepping the device pool
 /// authorization that governs Client-to-Client access.
-fn ensure_not_peer_ip(ip: IpAddr) -> anyhow::Result<()> {
+fn ensure_not_peer_ip(ip: IpAddr) -> Result<()> {
     if crate::is_peer(ip) {
         return Err(anyhow::Error::new(NotAllowedResource(ip)));
     }

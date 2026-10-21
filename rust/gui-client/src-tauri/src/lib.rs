@@ -1,6 +1,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
 
+#[cfg(target_os = "linux")]
+use anyhow::Result;
+
 /// One-shot migration of MDM policy from the per-user registry hive into the
 /// machine-scope hive, owned by the Tunnel service.
 // TODO: remove once all clients have migrated.
@@ -58,7 +61,7 @@ pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 pub use windows_package_identity::PACKAGE_FAMILY_NAME;
 
 #[cfg(target_os = "linux")]
-pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
+pub fn firezone_client_group() -> Result<nix::unistd::Group> {
     use anyhow::Context as _;
 
     let group = nix::unistd::Group::from_name(FIREZONE_CLIENT_GROUP)

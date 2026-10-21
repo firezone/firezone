@@ -435,7 +435,7 @@ pub struct DeepLink {
     clippy::print_stdout,
     reason = "the whole point of this subcommand is to print a smoke-test signal to stdout"
 )]
-async fn debug_single_instance() -> anyhow::Result<()> {
+async fn debug_single_instance() -> Result<()> {
     use firezone_gui_client::gui::{self, SingleInstance};
 
     match gui::establish_single_instance().await? {

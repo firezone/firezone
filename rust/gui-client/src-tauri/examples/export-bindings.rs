@@ -2,6 +2,8 @@
 //!
 //! `cargo run -p firezone-gui-client --example export-bindings`
 
-fn main() -> anyhow::Result<()> {
+use anyhow::Result;
+
+fn main() -> Result<()> {
     firezone_gui_client::export_bindings()
 }

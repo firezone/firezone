@@ -4,6 +4,7 @@ use std::{
     num::NonZeroUsize,
 };
 
+use anyhow::Result;
 use connlib_model::ResourceId;
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
@@ -79,7 +80,7 @@ impl GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    pub(crate) fn ensure_allowed_src(&mut self, packet: &IpPacket) -> Result<()> {
         let src = packet.source();
 
         if self.gateway_tun.is_ip(src) {

@@ -1,5 +1,8 @@
 #[cfg(target_os = "linux")]
-fn main() -> anyhow::Result<()> {
+use anyhow::Result;
+
+#[cfg(target_os = "linux")]
+fn main() -> Result<()> {
     use anyhow::Context as _;
 
     let manifest_dir =
