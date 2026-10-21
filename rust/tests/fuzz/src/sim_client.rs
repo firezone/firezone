@@ -316,11 +316,11 @@ impl SimClient {
     /// simulation can keep working with a single [`snownet::Transmit`] per packet.
     fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
         self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+            .handle_tun_input(&mut packet, now, &mut self.transmit_buffer)?;
 
         Ok(self.transmit_buffer.poll_transmit())
     }

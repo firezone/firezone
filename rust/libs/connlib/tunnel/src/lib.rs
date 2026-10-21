@@ -286,10 +286,10 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(&mut packet, now, self.io.gso_queue_mut())
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(()) => {}
@@ -481,10 +481,10 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut packets) = device {
-                    for packet in packets.drain().inspect(|p| tun_received.record(p)) {
+                    for mut packet in packets.drain().inspect(|p| tun_received.record(p)) {
                         match self
                             .role_state
-                            .handle_tun_input(packet, now, self.io.gso_queue_mut())
+                            .handle_tun_input(&mut packet, now, self.io.gso_queue_mut())
                             .context("Failed to handle packet from TUN device")
                         {
                             Ok(()) => {}

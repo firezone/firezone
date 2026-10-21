@@ -260,12 +260,13 @@ impl State {
         let mut transmits = TransmitBuffer::default();
         let segments = (0..count)
             .map(|_| {
+                let mut packet = packet.clone();
                 match self {
                     State::Client(client) => client
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
+                        .handle_tun_input(&mut packet, now, &mut transmits)
                         .unwrap(),
                     State::Gateway(gateway) => gateway
-                        .handle_tun_input(packet.clone(), now, &mut transmits)
+                        .handle_tun_input(&mut packet, now, &mut transmits)
                         .unwrap(),
                 }
 
@@ -692,7 +693,7 @@ impl Tunnel {
         tunnel
             .client
             .handle_tun_input(
-                tunnel.request(Protocol::Udp),
+                &mut tunnel.request(Protocol::Udp),
                 now,
                 &mut TransmitBuffer::default(),
             )
@@ -713,7 +714,7 @@ impl Tunnel {
     fn reply(&mut self, protocol: Protocol) -> IpPacket {
         let mut transmits = TransmitBuffer::default();
         self.client
-            .handle_tun_input(self.request(protocol), self.now, &mut transmits)
+            .handle_tun_input(&mut self.request(protocol), self.now, &mut transmits)
             .unwrap();
         let datagram = transmits.poll_transmit().unwrap();
         let request = self
@@ -866,10 +867,10 @@ impl Tunnel {
 /// Resolves the DNS resource through the Client's stub resolver and returns its proxy IP.
 fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
-    let query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
+    let mut query = ip_packet::make::udp_packet(CLIENT_TUN_V4, sentinel, 5353, 53, &query).unwrap();
 
     client
-        .handle_tun_input(query, now, &mut TransmitBuffer::default())
+        .handle_tun_input(&mut query, now, &mut TransmitBuffer::default())
         .unwrap();
     let response = client.poll_packets().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
