@@ -397,16 +397,6 @@ impl IpPacket {
                 self.buf.as_ptr().cast(),
             );
         }
-
-        // SAFETY: a prefetch never faults and touches no register the compiler relies on.
-        #[cfg(target_arch = "aarch64")]
-        unsafe {
-            std::arch::asm!(
-                "prfm pldl1keep, [{ptr}]",
-                ptr = in(reg) self.buf.as_ptr(),
-                options(nostack, preserves_flags, readonly)
-            );
-        }
     }
 
     pub fn source(&self) -> IpAddr {
