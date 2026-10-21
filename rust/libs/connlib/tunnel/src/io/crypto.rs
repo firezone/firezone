@@ -83,12 +83,11 @@ pub struct DecryptedDatagram {
 ///
 /// Jobs of either kind go to the next worker round-robin.
 pub struct CryptoWorkers {
-    workers: Vec<mpsc::Sender<Work>>,
+    workers: Vec<mpsc::Sender<Job>>,
     next_worker: usize,
 }
 
-/// A job for a crypto worker.
-enum Work {
+enum Job {
     Encrypt(EncryptJob, oneshot::Sender<DatagramOut>),
     Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
 }
@@ -141,21 +140,21 @@ impl CryptoWorkers {
         self.workers.is_empty()
     }
 
-    /// Sends `work` to the worker after the one picked last, removing the workers that stopped.
+    /// Sends `job` to the worker after the one picked last, removing the workers that stopped.
     ///
-    /// Without any workers left, `work` is dropped.
-    fn send(&mut self, mut work: Work) {
+    /// Without any workers left, `job` is dropped.
+    fn send(&mut self, mut job: Job) {
         while !self.workers.is_empty() {
             let index = self.next_worker % self.workers.len();
             self.next_worker = self.next_worker.wrapping_add(1);
 
-            match self.workers[index].send(work) {
+            match self.workers[index].send(job) {
                 Ok(()) => return,
                 Err(mpsc::SendError(unsent)) => {
                     tracing::debug!("Crypto worker stopped");
 
                     self.workers.remove(index);
-                    work = unsent;
+                    job = unsent;
                 }
             }
         }
@@ -211,7 +210,7 @@ impl EncryptBatch<'_> {
             .push(rx);
 
         // A stopped worker drops the sender, so the socket skips the train.
-        self.crypto.send(Work::Encrypt(job, tx));
+        self.crypto.send(Job::Encrypt(job, tx));
     }
 }
 
@@ -285,7 +284,7 @@ impl<'a> DecryptBatch<'a> {
         let (tx, rx) = oneshot::channel();
 
         // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
-        self.crypto.send(Work::Decrypt(job, tx));
+        self.crypto.send(Job::Decrypt(job, tx));
         self.decrypting.jobs.push_back(rx);
     }
 }
@@ -394,7 +393,7 @@ fn num_crypto_workers() -> usize {
     (cores / 2).max(2)
 }
 
-fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::Sender<Work>> {
+fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::Sender<Job>> {
     (0..num_workers)
         .filter_map(|i| {
             let (tx, rx) = mpsc::channel();
@@ -406,10 +405,10 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
                 .spawn(move || {
                     for work in rx {
                         match work {
-                            Work::Encrypt(train, encrypted) => {
+                            Job::Encrypt(train, encrypted) => {
                                 encrypt(train, encrypted, &packet_counter)
                             }
-                            Work::Decrypt(job, decrypted) => decrypt(job, decrypted),
+                            Job::Decrypt(job, decrypted) => decrypt(job, decrypted),
                         }
                     }
                 })
