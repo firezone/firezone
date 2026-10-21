@@ -544,12 +544,12 @@ impl ClientState {
     ///
     /// Most packets originate from the TUN device, but internally-produced and previously-buffered
     /// packets also re-enter through this path. Sentinel DNS queries may be consumed locally; all
-    /// other packets are routed and either returned as an [`snownet::Encapsulation`] or buffered here.
+    /// other packets are routed and either returned as a [`snownet::PendingEncapsulate`] or buffered here.
     pub fn handle_tun_input(
         &mut self,
         packet: &mut IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Encapsulation>> {
+    ) -> Result<Option<snownet::PendingEncapsulate>> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -728,7 +728,7 @@ impl ClientState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::Decapsulation`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
     /// Decrypt it from `packet` and pass the result to [`ClientState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
@@ -739,14 +739,14 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<snownet::Decapsulation>> {
+    ) -> Result<Option<snownet::PendingDecapsulate>> {
         match self.node.decapsulate(local, from, packet, now) {
             Ok(decapsulation) => Ok(decapsulation),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }
 
-    /// Handles a WireGuard data message decrypted from a [`snownet::Decapsulation`].
+    /// Handles a WireGuard data message decrypted from a [`snownet::PendingDecapsulate`].
     ///
     /// `local` and `from` are the addresses the message was received on and from.
     ///
@@ -755,7 +755,7 @@ impl ClientState {
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: snownet::DecryptedPacket,
+        packet: snownet::DecryptedIpPacket,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
@@ -2879,7 +2879,7 @@ fn encapsulate_or_buffer(
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
     pending_packets: &mut HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
-) -> Result<Option<snownet::Encapsulation>> {
+) -> Result<Option<snownet::PendingEncapsulate>> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     if let Some(buffer) = pending_packets.get_mut(&pid) {

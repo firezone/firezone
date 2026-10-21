@@ -8,14 +8,14 @@ use crate::node::Transmit;
 ///
 /// Encrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 #[derive(Debug)]
-pub struct Encapsulation {
+pub struct PendingEncapsulate {
     src: Option<SocketAddr>,
     dst: SocketAddr,
     channel: Option<u16>,
     pending: sanstun::PendingEncapsulate,
 }
 
-impl Encapsulation {
+impl PendingEncapsulate {
     pub(crate) fn new(
         src: Option<SocketAddr>,
         dst: SocketAddr,
@@ -38,7 +38,7 @@ impl Encapsulation {
         self.dst
     }
 
-    /// Returns the length of the datagram written by [`Encapsulation::encrypt_into`].
+    /// Returns the length of the datagram written by [`PendingEncapsulate::encrypt_into`].
     pub fn datagram_len(&self, packet: &IpPacket) -> usize {
         let channel_data_overhead = match self.channel {
             Some(_) => ip_packet::DATA_CHANNEL_OVERHEAD,
@@ -49,7 +49,7 @@ impl Encapsulation {
     }
 
     /// Encrypts `packet`, the one passed to [`Node::encapsulate`](crate::Node::encapsulate), into
-    /// `dst`, which must be [`Encapsulation::datagram_len`] bytes long.
+    /// `dst`, which must be [`PendingEncapsulate::datagram_len`] bytes long.
     pub fn encrypt_into(self, packet: &IpPacket, dst: &mut [u8]) -> Result<(), sanstun::Error> {
         let message = match self.channel {
             Some(channel) => {
@@ -88,7 +88,7 @@ impl Encapsulation {
 ///
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 #[derive(Debug)]
-pub struct Decapsulation {
+pub struct PendingDecapsulate {
     tunnel: sanstun::TunnelId,
     path: (SocketAddr, SocketAddr),
     /// The length of the channel-data header in front of the WireGuard message, which takes up the
@@ -97,7 +97,7 @@ pub struct Decapsulation {
     pending: sanstun::PendingDecapsulate,
 }
 
-impl Decapsulation {
+impl PendingDecapsulate {
     pub(crate) fn new(
         tunnel: sanstun::TunnelId,
         path: (SocketAddr, SocketAddr),
@@ -120,10 +120,10 @@ impl Decapsulation {
     /// Decrypts the message from `datagram`, the one passed to [`Node::decapsulate`](crate::Node::decapsulate).
     ///
     /// Accept the result with [`Node::handle_decrypted`](crate::Node::handle_decrypted).
-    pub fn decrypt(self, datagram: &[u8]) -> DecryptedPacket {
+    pub fn decrypt(self, datagram: &[u8]) -> DecryptedIpPacket {
         let message = datagram.get(self.header_len..).unwrap_or_default();
 
-        DecryptedPacket {
+        DecryptedIpPacket {
             tunnel: self.tunnel,
             path: self.path,
             decrypted: self
@@ -134,8 +134,8 @@ impl Decapsulation {
     }
 }
 
-/// The outcome of a [`Decapsulation`].
-pub struct DecryptedPacket {
+/// The outcome of a [`PendingDecapsulate`].
+pub struct DecryptedIpPacket {
     pub(crate) tunnel: sanstun::TunnelId,
     pub(crate) path: (SocketAddr, SocketAddr),
     pub(crate) decrypted: sanstun::Decrypted<anyhow::Result<IpPacket>>,

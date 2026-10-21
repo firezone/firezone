@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::crypto::{Decapsulation, DecryptedPacket, Encapsulation};
+use crate::crypto::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -544,7 +544,7 @@ where
         from: SocketAddr,
         datagram: &[u8],
         now: Instant,
-    ) -> Result<Option<Decapsulation>> {
+    ) -> Result<Option<PendingDecapsulate>> {
         self.last_now = now;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, datagram, now)
@@ -573,7 +573,7 @@ where
         ))
     }
 
-    /// Accepts a packet decrypted from a [`Decapsulation`].
+    /// Accepts a packet decrypted from a [`PendingDecapsulate`].
     ///
     /// # Returns
     ///
@@ -581,12 +581,12 @@ where
     /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
     pub fn handle_decrypted(
         &mut self,
-        packet: DecryptedPacket,
+        packet: DecryptedIpPacket,
         now: Instant,
     ) -> Result<Option<(TId, IpPacket)>> {
         self.last_now = now;
 
-        let DecryptedPacket {
+        let DecryptedIpPacket {
             tunnel,
             path,
             decrypted,
@@ -619,7 +619,7 @@ where
         cid: TId,
         packet: &IpPacket,
         now: Instant,
-    ) -> Result<Option<Encapsulation>> {
+    ) -> Result<Option<PendingEncapsulate>> {
         self.last_now = now;
 
         let conn = self.connections.get_mut(&cid, now)?;
@@ -1033,7 +1033,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<()>, Decapsulation> {
+    ) -> ControlFlow<Result<()>, PendingDecapsulate> {
         let parsed_packet = match self.interface.receive(from, packet, now) {
             Ok(sanstun::Received::Message(parsed_packet)) => parsed_packet,
             Ok(sanstun::Received::SendCookieReply(reply)) => {
@@ -1800,7 +1800,7 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-    ) -> Result<Option<Encapsulation>>
+    ) -> Result<Option<PendingEncapsulate>>
     where
         TId: fmt::Display,
     {
@@ -1839,7 +1839,7 @@ where
             None => None,
         };
 
-        Ok(Some(Encapsulation::new(src, dst, channel, pending)))
+        Ok(Some(PendingEncapsulate::new(src, dst, channel, pending)))
     }
 
     #[expect(
@@ -1856,7 +1856,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, Decapsulation>
+    ) -> ControlFlow<Result<()>, PendingDecapsulate>
     where
         TId: fmt::Display,
         RId: Ord + Hash + fmt::Display + Copy,
@@ -1901,9 +1901,11 @@ where
             ),
             sanstun::ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => {
-                        ControlFlow::Continue(Decapsulation::new(self.tunnel.id(), path, pending))
-                    }
+                    Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
+                        self.tunnel.id(),
+                        path,
+                        pending,
+                    )),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }

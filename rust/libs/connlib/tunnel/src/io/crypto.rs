@@ -12,7 +12,7 @@ use std::{
 use bufferpool::{Buffer, VecBuf};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
-use snownet::{Decapsulation, DecryptedPacket, Encapsulation};
+use snownet::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
 use socket_factory::{DatagramIn, DatagramOut, MAX_GSO_SEGMENTS, Segment};
 use tokio::sync::oneshot;
 
@@ -41,7 +41,7 @@ pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 bufferpool::buffer_pool!(
-    static ENCRYPT_PACKETS: VecBuf<(Encapsulation, IpPacket)> = (MAX_GSO_SEGMENTS, "encrypt-packets"),
+    static ENCRYPT_PACKETS: VecBuf<(PendingEncapsulate, IpPacket)> = (MAX_GSO_SEGMENTS, "encrypt-packets"),
     batch: 4
 );
 bufferpool::buffer_pool!(
@@ -61,7 +61,7 @@ bufferpool::buffer_pool!(
     batch: 4
 );
 bufferpool::buffer_pool!(
-    static DECRYPTED: VecBuf<Received<DecryptedPacket>> = (DECRYPT_BATCH_SIZE, "decrypted"),
+    static DECRYPTED: VecBuf<Received<DecryptedIpPacket>> = (DECRYPT_BATCH_SIZE, "decrypted"),
     batch: 4
 );
 
@@ -101,7 +101,7 @@ enum Work {
     Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
 }
 
-type Decrypted = Buffer<VecBuf<Received<DecryptedPacket>>>;
+type Decrypted = Buffer<VecBuf<Received<DecryptedIpPacket>>>;
 
 impl CryptoWorkers {
     pub fn new(packet_counter: Counter<u64>) -> Self {
@@ -160,7 +160,7 @@ pub struct EncryptBatch<'a> {
 impl EncryptBatch<'_> {
     /// Adds `packet` to the open train to its destination, handing that train to a worker first if
     /// `packet` starts a new one.
-    pub fn encrypt(&mut self, encapsulation: Encapsulation, packet: IpPacket) {
+    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
         let src = encapsulation.src();
         let dst = encapsulation.dst();
 
@@ -225,11 +225,11 @@ impl Drop for EncryptBatch<'_> {
 /// Packets to encrypt into one [`UdpGsoTrain`].
 struct EncryptJob {
     train: UdpGsoTrain,
-    packets: Buffer<VecBuf<(Encapsulation, IpPacket)>>,
+    packets: Buffer<VecBuf<(PendingEncapsulate, IpPacket)>>,
 }
 
 impl EncryptJob {
-    fn new(encapsulation: Encapsulation, packet: IpPacket) -> Self {
+    fn new(encapsulation: PendingEncapsulate, packet: IpPacket) -> Self {
         let train = UdpGsoTrain::new(
             encapsulation.src(),
             encapsulation.dst(),
@@ -256,7 +256,7 @@ impl DecryptBatch<'_> {
     pub fn decrypt(
         &mut self,
         datagram: DatagramIn,
-        mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<Decapsulation>,
+        mut decapsulate: impl FnMut(&DatagramIn, &[u8]) -> Option<PendingDecapsulate>,
     ) {
         if self.job.messages.len() + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
@@ -352,7 +352,7 @@ struct DecryptJob {
 struct Message {
     buffer: usize,
     segment: Segment,
-    decapsulation: Decapsulation,
+    decapsulation: PendingDecapsulate,
 }
 
 impl DecryptJob {

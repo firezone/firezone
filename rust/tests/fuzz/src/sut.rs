@@ -1754,7 +1754,7 @@ impl TunnelTest {
 }
 
 pub(crate) fn encrypt(
-    encapsulation: snownet::Encapsulation,
+    encapsulation: snownet::PendingEncapsulate,
     packet: &IpPacket,
 ) -> Option<Transmit> {
     encapsulation

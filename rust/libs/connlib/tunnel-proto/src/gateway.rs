@@ -113,12 +113,12 @@ impl GatewayState {
 
     /// Handles packets received on the TUN device.
     ///
-    /// The returned [`snownet::Encapsulation`] is for `packet` as this call leaves it.
+    /// The returned [`snownet::PendingEncapsulate`] is for `packet` as this call leaves it.
     pub fn handle_tun_input(
         &mut self,
         packet: &mut IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Encapsulation>> {
+    ) -> Result<Option<snownet::PendingEncapsulate>> {
         let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -151,7 +151,7 @@ impl GatewayState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::Decapsulation`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
     /// Decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
@@ -162,14 +162,14 @@ impl GatewayState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<snownet::Decapsulation>> {
+    ) -> Result<Option<snownet::PendingDecapsulate>> {
         match self.node.decapsulate(local, from, packet, now) {
             Ok(decapsulation) => Ok(decapsulation),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }
 
-    /// Handles a WireGuard data message decrypted from a [`snownet::Decapsulation`].
+    /// Handles a WireGuard data message decrypted from a [`snownet::PendingDecapsulate`].
     ///
     /// `local` and `from` are the addresses the message was received on and from.
     ///
@@ -178,7 +178,7 @@ impl GatewayState {
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
-        packet: snownet::DecryptedPacket,
+        packet: snownet::DecryptedIpPacket,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
@@ -706,7 +706,7 @@ fn encapsulate(
     cid: ClientId,
     node: &mut Node<ClientId, RelayId>,
     now: Instant,
-) -> Result<Option<snownet::Encapsulation>> {
+) -> Result<Option<snownet::PendingEncapsulate>> {
     match node.encapsulate(cid, packet, now) {
         Ok(encapsulation) => Ok(encapsulation),
         // The Gateway does not buffer: it only sends in response to Client traffic.

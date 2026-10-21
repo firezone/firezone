@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use bufferpool::{Buffer, BufferPool};
 use ip_packet::{Ecn, IpPacket};
-use snownet::Encapsulation;
+use snownet::PendingEncapsulate;
 use socket_factory::DatagramOut;
 
 const MAX_SEGMENT_SIZE: usize =
@@ -94,7 +94,7 @@ impl UdpGsoTrain {
     /// Packets that fail to encrypt are skipped; returns `None` if none are left.
     pub fn encrypt(
         self,
-        packets: impl Iterator<Item = (Encapsulation, IpPacket)>,
+        packets: impl Iterator<Item = (PendingEncapsulate, IpPacket)>,
     ) -> Option<DatagramOut> {
         let mut buffer = gso_buffers(self.len).pull();
         buffer.clear();
