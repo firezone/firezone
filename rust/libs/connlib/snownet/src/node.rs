@@ -1094,11 +1094,11 @@ where
         }
 
         match control_flow {
+            ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
+            ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
             ControlFlow::Break(Err(e)) => {
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
             }
-            ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
-            ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
         }
     }
 

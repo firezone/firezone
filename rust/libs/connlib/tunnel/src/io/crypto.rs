@@ -100,12 +100,20 @@ enum Work {
     Decrypt(DecryptJob, oneshot::Sender<Decrypted>),
 }
 
-type Decrypted = Buffer<VecBuf<Received>>;
+/// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
+pub struct Decrypted(Buffer<VecBuf<Received>>);
+
+impl Decrypted {
+    /// Moves out every decrypted packet, in the order it was received.
+    pub fn drain(&mut self) -> impl Iterator<Item = Received> + '_ {
+        self.0.drain(..)
+    }
+}
 
 impl CryptoWorkers {
-    pub fn new(packet_counter: Counter<u64>) -> Self {
+    pub fn new() -> Self {
         Self {
-            workers: spawn_workers(num_crypto_workers(), packet_counter),
+            workers: spawn_workers(num_crypto_workers(), otel_instruments::network_packets()),
             next_worker: 0,
         }
     }
@@ -423,5 +431,5 @@ fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<Decrypted>) {
     }));
 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
-    let _ = decrypted.send(packets);
+    let _ = decrypted.send(Decrypted(packets));
 }

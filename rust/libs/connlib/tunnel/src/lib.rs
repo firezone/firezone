@@ -347,7 +347,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain(..) {
+                    for received in decrypted.drain() {
                         let result = self.role_state.handle_peer_input(
                             received.local,
                             received.from,
@@ -587,7 +587,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain(..) {
+                    for received in decrypted.drain() {
                         let result = self.role_state.handle_peer_input(
                             received.local,
                             received.from,

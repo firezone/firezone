@@ -7,7 +7,7 @@ mod udp_dns;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{DecryptBatch, EncryptBatch, Received};
+pub use crypto::{DecryptBatch, Decrypted, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -17,7 +17,6 @@ use crate::{
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use bufferpool::{Buffer, VecBuf};
 use crypto::{CryptoWorkers, Decrypting};
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
@@ -91,8 +90,7 @@ enum DohClient {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
-    /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`].
-    pub decrypted: Option<Buffer<VecBuf<Received>>>,
+    pub decrypted: Option<Decrypted>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
@@ -337,7 +335,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            crypto: CryptoWorkers::new(otel_instruments::network_packets()),
+            crypto: CryptoWorkers::new(),
             decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
