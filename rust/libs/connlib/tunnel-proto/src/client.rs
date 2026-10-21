@@ -49,6 +49,7 @@ use connlib_model::{Site, SiteId};
 use dns_resource_nat::DnsResourceNat;
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
+use flow_tracker::{Facts, Role};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
@@ -579,142 +580,156 @@ impl ClientState {
         }
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         // Recursive DNS queries we tunnel to upstream resolvers are internal
-        // traffic and never become flows either; dropping the guard before any
-        // fact is recorded discards the packet's flow data.
-        if self.udp_dns_client.owns_outbound(packet) || self.tcp_dns_client.owns_outbound(packet) {
-            drop(_guard);
-        }
+        // traffic and never become flows either.
+        let inner = if self.udp_dns_client.owns_outbound(packet)
+            || self.tcp_dns_client.owns_outbound(packet)
+        {
+            None
+        } else {
+            self.flow_tracker.observe(packet)
+        };
+        let mut facts = Facts::default();
 
         let dst = packet.destination();
-        let dst_proto = match packet.destination_protocol() {
-            Ok(dst_proto) => dst_proto,
-            // An ICMP error has no port or echo identifier of its own and so fails to
-            // classify. It belongs to the flow of the packet that failed, and that
-            // flow decides where it goes.
-            Err(e) => {
-                let Some(cid) = client_for_icmp_error(&self.clients, packet) else {
-                    return Err(e.into());
-                };
+        let peer = 'peer: {
+            let dst_proto = match packet.destination_protocol() {
+                Ok(dst_proto) => dst_proto,
+                // An ICMP error has no port or echo identifier of its own and so fails to
+                // classify. It belongs to the flow of the packet that failed, and that
+                // flow decides where it goes.
+                Err(e) => {
+                    let Some(cid) = client_for_icmp_error(&self.clients, packet) else {
+                        return Err(e.into());
+                    };
 
-                // The peer opened the flow the error refers to, so we are its responder.
-                flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
+                    // The peer opened the flow the error refers to, so we are its responder.
+                    facts.peer = Some((cid.into(), Role::Responder));
 
-                return encapsulate_or_buffer(
-                    packet,
-                    cid.into(),
-                    now,
-                    &mut self.node,
-                    &mut self.pending_routed_packets,
-                );
-            }
-        };
-        let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
-        let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
-            (peer.outbound_flow_originator(packet) == Some(Originator::Peer)).then_some(cid)
-        });
-        let routes = self
-            .routing_tables
-            .resolve(dst, dst_proto, internet_resource);
-
-        let peer = match (direct_gateway, peer_originated_client_flow, routes) {
-            (None, None, Err(routing::Denied)) => {
-                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                return Ok(None);
-            }
-            (None, None, Ok(routes)) if routes.is_empty() => {
-                return Err(UnroutablePacket::unknown_resource(packet).into());
-            }
-            (Some(gid), _, _) => {
-                // A Gateway's TUN IP takes precedence over resource matches.
-                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-
-                gid.into()
-            }
-            (None, Some(cid), _) => {
-                // A reply follows its peer-originated flow even if we have no outbound route to
-                // that peer.
-                flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
-
-                cid.into()
-            }
-            (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
-                let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
-                    self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools.iter().copied()),
-                        packet.clone(),
-                        now,
-                    );
-                    return Ok(None);
-                };
-
-                let Some(token) = pools.iter().find_map(|&resource_id| {
-                    self.outbound_authorizations.client_token(resource_id, cid)
-                }) else {
-                    self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::device(dst, pools.iter().copied()),
-                        packet.clone(),
-                        now,
-                    );
-                    return Ok(None);
-                };
-
-                flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(token));
-
-                self.clients
-                    .peer_by_id_mut(&cid)
-                    .with_context(|| UnroutablePacket::no_peer_state(packet))?
-                    .record_outbound_as_originator(packet, now);
-
-                cid.into()
-            }
-            (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
-                // Traffic only takes the most-preferred route, even if a less-preferred one is authorized.
-                let Some(route) = routes.first() else {
-                    return Err(UnroutablePacket::unknown_resource(packet).into());
-                };
-                let Some(authorization) = self.outbound_authorizations.gateway(route.resource_id)
-                else {
-                    self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::resources([route.resource_id]),
-                        packet.clone(),
-                        now,
-                    );
-                    return Ok(None);
-                };
-
-                flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
-
-                if let Some(domain) = &route.domain {
-                    flow_tracker::record_domain(domain.name().clone());
-
-                    match self.dns_resource_nat.handle_outgoing(
-                        authorization.gateway_id,
-                        domain,
-                        route.resource_id,
-                        packet,
-                        now,
-                    ) {
-                        ControlFlow::Continue(()) => {}
-                        ControlFlow::Break(()) => return Ok(None),
-                    }
+                    break 'peer cid.into();
                 }
+            };
+            let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
+            let peer_originated_client_flow =
+                self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
+                    (peer.outbound_flow_originator(packet) == Some(Originator::Peer)).then_some(cid)
+                });
+            let routes = self
+                .routing_tables
+                .resolve(dst, dst_proto, internet_resource);
 
-                authorization.gateway_id.into()
+            match (direct_gateway, peer_originated_client_flow, routes) {
+                (None, None, Err(routing::Denied)) => {
+                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                    return Ok(None);
+                }
+                (None, None, Ok(routes)) if routes.is_empty() => {
+                    return Err(UnroutablePacket::unknown_resource(packet).into());
+                }
+                (Some(gid), _, _) => {
+                    // A Gateway's TUN IP takes precedence over resource matches.
+                    facts.peer = Some((gid.into(), Role::Initiator));
+
+                    gid.into()
+                }
+                (None, Some(cid), _) => {
+                    // A reply follows its peer-originated flow even if we have no outbound route to
+                    // that peer.
+                    facts.peer = Some((cid.into(), Role::Responder));
+
+                    cid.into()
+                }
+                (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
+                    let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
+                        self.pending_authorizations.on_not_authorized(
+                            AuthorizationRequest::device(dst, pools.iter().copied()),
+                            packet.clone(),
+                            now,
+                        );
+                        return Ok(None);
+                    };
+
+                    let Some(token) = pools.iter().find_map(|&resource_id| {
+                        self.outbound_authorizations.client_token(resource_id, cid)
+                    }) else {
+                        self.pending_authorizations.on_not_authorized(
+                            AuthorizationRequest::device(dst, pools.iter().copied()),
+                            packet.clone(),
+                            now,
+                        );
+                        return Ok(None);
+                    };
+
+                    facts.peer = Some((cid.into(), Role::Initiator));
+                    facts.ingest_token = Some(token);
+
+                    self.clients
+                        .peer_by_id_mut(&cid)
+                        .with_context(|| UnroutablePacket::no_peer_state(packet))?
+                        .record_outbound_as_originator(packet, now);
+
+                    cid.into()
+                }
+                (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
+                    // Traffic only takes the most-preferred route, even if a less-preferred one is authorized.
+                    let Some(route) = routes.first() else {
+                        return Err(UnroutablePacket::unknown_resource(packet).into());
+                    };
+                    let Some(authorization) =
+                        self.outbound_authorizations.gateway(route.resource_id)
+                    else {
+                        self.pending_authorizations.on_not_authorized(
+                            AuthorizationRequest::resources([route.resource_id]),
+                            packet.clone(),
+                            now,
+                        );
+                        return Ok(None);
+                    };
+
+                    facts.peer = Some((authorization.gateway_id.into(), Role::Initiator));
+                    facts.ingest_token = Some(&authorization.ingest_token);
+
+                    if let Some(domain) = &route.domain {
+                        facts.domain = Some(domain.name().clone());
+
+                        match self.dns_resource_nat.handle_outgoing(
+                            authorization.gateway_id,
+                            domain,
+                            route.resource_id,
+                            packet,
+                            now,
+                        ) {
+                            ControlFlow::Continue(()) => {}
+                            ControlFlow::Break(()) => return Ok(None),
+                        }
+                    }
+
+                    authorization.gateway_id.into()
+                }
             }
         };
 
-        encapsulate_or_buffer(
+        let Some(encapsulation) = encapsulate_or_buffer(
             packet,
             peer,
             now,
             &mut self.node,
             &mut self.pending_routed_packets,
-        )
+        )?
+        else {
+            return Ok(None);
+        };
+
+        self.flow_tracker.record_tun_packet(
+            inner,
+            facts,
+            encapsulation.src(),
+            encapsulation.dst(),
+            now,
+        );
+
+        Ok(Some(encapsulation))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
@@ -760,8 +775,6 @@ impl ClientState {
         packet: snownet::DecryptedIpPacket,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let _guard = self.flow_tracker.begin_network_packet(local, from, now);
-
         let decrypted = match self.node.commit_decrypted(packet, now) {
             Ok(decrypted) => decrypted,
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
@@ -770,7 +783,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        flow_tracker::record_decrypted_packet(&packet);
+        let inner = self.flow_tracker.observe(&packet);
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
@@ -783,10 +796,6 @@ impl ClientState {
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            // Control traffic is not a flow; release the tracker borrow for
-            // the `&mut self` calls below.
-            drop(_guard);
-
             match (fz_p2p_control.event_type(), pid) {
                 (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
                     let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
@@ -844,7 +853,9 @@ impl ClientState {
                     return Ok(None);
                 };
 
-                let packet = match peer.ensure_allowed_inbound(packet, now)? {
+                let mut facts = Facts::default();
+
+                let packet = match peer.ensure_allowed_inbound(packet, now, &mut facts)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered {
                         reply,
@@ -875,7 +886,10 @@ impl ClientState {
                     }
                 };
 
-                return Ok(Some(packet));
+                self.flow_tracker
+                    .record_network_packet(local, from, inner, facts, now);
+
+                Ok(Some(packet))
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
@@ -888,11 +902,16 @@ impl ClientState {
 
                 // To a gateway we are always the one who opened the flow;
                 // this packet is a reply.
-                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
+                let facts = Facts {
+                    peer: Some((gid.into(), Role::Initiator)),
+                    ..Default::default()
+                };
+                self.flow_tracker
+                    .record_network_packet(local, from, inner, facts, now);
+
+                Ok(Some(packet))
             }
         }
-
-        Ok(Some(packet))
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
@@ -2892,11 +2911,7 @@ fn encapsulate_or_buffer(
     }
 
     match node.encapsulate(pid, packet, now) {
-        Ok(Some(encapsulation)) => {
-            flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
-
-            return Ok(Some(encapsulation));
-        }
+        Ok(Some(encapsulation)) => return Ok(Some(encapsulation)),
         Ok(None) => {}
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             pending_packets

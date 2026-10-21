@@ -16,6 +16,7 @@ use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
+use flow_tracker::{Facts, Role};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
@@ -119,7 +120,7 @@ impl GatewayState {
         packet: &mut IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::PendingEncapsulate>> {
-        let _guard = self.flow_tracker.begin_tun_packet(packet, now);
+        let inner = self.flow_tracker.observe(packet);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -134,17 +135,25 @@ impl GatewayState {
             .peer_by_ip_mut(dst)
             .with_context(|| UnroutablePacket::no_peer_state(packet))?;
 
-        flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
-
-        if let Err(e) = peer.translate_inbound(packet, now) {
-            return Err(e.context("Failed to translate inbound packet"));
-        }
+        let resource = peer
+            .translate_inbound(packet, now)
+            .context("Failed to translate inbound packet")?;
 
         let Some(encapsulation) = encapsulate(packet, cid, &mut self.node, now)? else {
             return Ok(None);
         };
 
-        flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
+        self.flow_tracker.record_tun_packet(
+            inner,
+            Facts {
+                peer: Some((cid.into(), Role::Responder)),
+                resource,
+                ..Default::default()
+            },
+            encapsulation.src(),
+            encapsulation.dst(),
+            now,
+        );
 
         Ok(Some(encapsulation))
     }
@@ -181,8 +190,6 @@ impl GatewayState {
         packet: snownet::DecryptedIpPacket,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let _guard = self.flow_tracker.begin_network_packet(local, from, now);
-
         let decrypted = match self.node.commit_decrypted(packet, now) {
             Ok(decrypted) => decrypted,
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
@@ -195,14 +202,12 @@ impl GatewayState {
             return Ok(None);
         }
 
-        flow_tracker::record_decrypted_packet(&packet);
+        let inner = self.flow_tracker.observe(&packet);
 
         let peer = self
             .peers
             .peer_by_id_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
-
-        flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
@@ -233,18 +238,32 @@ impl GatewayState {
             return Ok(None);
         }
 
-        let translated = match peer.translate_outbound(packet, now) {
+        let mut facts = Facts {
+            peer: Some((cid.into(), Role::Responder)),
+            ..Default::default()
+        };
+
+        let translated = match peer.translate_outbound(packet, now, &mut facts) {
             Ok(translated) => translated,
             Err(e) => return Err(e.context("Failed to translate outbound packet")),
         };
 
         match translated {
-            TranslateOutboundResult::Send(packet) => Ok(Some(packet)),
+            TranslateOutboundResult::Send(packet) => {
+                self.flow_tracker
+                    .record_network_packet(local, from, inner, facts, now);
+
+                Ok(Some(packet))
+            }
             TranslateOutboundResult::IcmpError {
                 reply,
                 no_authorization,
             } => {
-                flow_tracker::record_icmp_error(&reply);
+                if let Ok(Some((_, icmp_error))) = reply.icmp_error() {
+                    facts.icmp_error = Some(icmp_error);
+                }
+                self.flow_tracker
+                    .record_network_packet(local, from, inner, facts, now);
 
                 if let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? {
                     self.buffered_transmits.push_back(transmit);

@@ -6,6 +6,7 @@ use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
+use flow_tracker::Facts;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
@@ -359,50 +360,63 @@ impl ClientOnGateway {
         }
     }
 
-    pub fn translate_outbound(
-        &mut self,
+    pub fn translate_outbound<'a>(
+        &'a mut self,
         packet: IpPacket,
         now: Instant,
+        facts: &mut Facts<'a>,
     ) -> Result<TranslateOutboundResult> {
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        if let Err(error) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{error:#}");
+        let rid = match self.ensure_allowed_outbound(&packet) {
+            Ok(rid) => rid,
+            Err(error) => {
+                tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
-            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
-                Some(InternetResourceRejectedAddress(_)) => {
-                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
-                }
-                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            };
+                let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                    Some(InternetResourceRejectedAddress(_)) => {
+                        ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                    }
+                    None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                };
 
-            let no_authorization = error
-                .any_is::<NotAllowedResource>()
-                .then(|| packet.destination_protocol().ok())
-                .flatten()
-                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
-                    dst: packet.destination(),
-                    protocol: protocol.into(),
+                let no_authorization = error
+                    .any_is::<NotAllowedResource>()
+                    .then(|| packet.destination_protocol().ok())
+                    .flatten()
+                    .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                        dst: packet.destination(),
+                        protocol: protocol.into(),
+                    });
+
+                return Ok(TranslateOutboundResult::IcmpError {
+                    reply,
+                    no_authorization,
                 });
+            }
+        };
 
-            return Ok(TranslateOutboundResult::IcmpError {
-                reply,
-                no_authorization,
-            });
-        }
+        facts.resource = rid;
 
-        let result = self.transform_network_to_tun(packet, now)?;
+        let result = self.transform_network_to_tun(packet, now, facts);
 
-        Ok(result)
+        facts.ingest_token = rid.and_then(|rid| self.ingest_tokens.get(&rid));
+
+        result
     }
 
-    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    /// Returns the resource the packet originates from, if it is attributed to one.
+    pub fn translate_inbound(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<Option<ResourceId>> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(()),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(None),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(None),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
@@ -414,22 +428,21 @@ impl ClientOnGateway {
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(());
+            return Ok(None);
         }
 
         let rid = self
             .classify_resource(packet.source(), packet.source_protocol())
             .with_context(|| UnroutablePacket::not_allowed(packet))?;
 
-        flow_tracker::record_resource(rid);
-
-        Ok(())
+        Ok(Some(rid))
     }
 
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
+        facts: &mut Facts<'_>,
     ) -> Result<TranslateOutboundResult> {
         let dst = packet.destination();
 
@@ -452,7 +465,7 @@ impl ClientOnGateway {
             });
         };
 
-        flow_tracker::record_domain(state.domain.clone());
+        facts.domain = Some(state.domain.clone());
 
         let existing = self
             .nat_table
@@ -489,7 +502,7 @@ impl ClientOnGateway {
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
 
-        flow_tracker::record_translated_destination(source_protocol, real_ip);
+        facts.translated_destination = Some((source_protocol, real_ip));
 
         Ok(TranslateOutboundResult::Send(packet))
     }
@@ -527,12 +540,13 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
+    /// Returns the resource the packet accesses, if it is attributed to one.
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<Option<ResourceId>> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            return Ok(None);
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -541,12 +555,10 @@ impl ClientOnGateway {
 
         if !self.resources.contains_key(&rid) {
             tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
-            return Ok(());
+            return Ok(None);
         }
-        flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
-        Ok(())
+        Ok(Some(rid))
     }
 
     fn ensure_client_ip(&self, ip: IpAddr) -> Result<()> {
@@ -929,7 +941,8 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
+            peer.translate_outbound(request, Instant::now(), &mut Facts::default())
+                .unwrap(),
             TranslateOutboundResult::Send(_)
         ));
         peer.translate_inbound(&mut response, Instant::now())
@@ -960,7 +973,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .is_ok()
+        );
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -972,7 +988,8 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -986,7 +1003,8 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -999,7 +1017,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1024,7 +1045,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .is_ok()
+        );
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -1036,7 +1060,8 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
 
@@ -1049,7 +1074,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now(), &mut Facts::default())
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1067,7 +1095,8 @@ mod tests {
         .unwrap();
 
         assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
+            peer.translate_outbound(request, Instant::now(), &mut Facts::default())
+                .unwrap(),
             TranslateOutboundResult::IcmpError { .. }
         ));
     }
@@ -1123,7 +1152,7 @@ mod tests {
         let mut now = Instant::now();
 
         assert!(matches!(
-            peer.translate_outbound(request, now),
+            peer.translate_outbound(request, now, &mut Facts::default()),
             Ok(TranslateOutboundResult::Send(_))
         ));
 
@@ -1189,7 +1218,9 @@ mod tests {
             )
             .unwrap();
 
-            let result = peer.translate_outbound(request.clone(), now).unwrap();
+            let result = peer
+                .translate_outbound(request.clone(), now, &mut Facts::default())
+                .unwrap();
 
             assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
@@ -1201,7 +1232,9 @@ mod tests {
             )
             .unwrap();
 
-            let result = peer.translate_outbound(request, now).unwrap();
+            let result = peer
+                .translate_outbound(request, now, &mut Facts::default())
+                .unwrap();
 
             assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
@@ -1227,7 +1260,9 @@ mod tests {
             )
             .unwrap();
 
-            let result = peer.translate_outbound(request, now).unwrap();
+            let result = peer
+                .translate_outbound(request, now, &mut Facts::default())
+                .unwrap();
 
             let TranslateOutboundResult::Send(outside_packet) = result else {
                 panic!("Wrong result");
@@ -1278,8 +1313,9 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::Send(packet) =
-            peer.translate_outbound(request.clone(), now).unwrap()
+        let TranslateOutboundResult::Send(packet) = peer
+            .translate_outbound(request.clone(), now, &mut Facts::default())
+            .unwrap()
         else {
             panic!("Bad translation result")
         };
@@ -1296,7 +1332,9 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::Send(packet) = peer.translate_outbound(request, now).unwrap()
+        let TranslateOutboundResult::Send(packet) = peer
+            .translate_outbound(request, now, &mut Facts::default())
+            .unwrap()
         else {
             panic!("Bad translation result")
         };
@@ -1329,8 +1367,9 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::IcmpError { reply: packet, .. } =
-            peer.translate_outbound(request, now).unwrap()
+        let TranslateOutboundResult::IcmpError { reply: packet, .. } = peer
+            .translate_outbound(request, now, &mut Facts::default())
+            .unwrap()
         else {
             panic!("Bad translation result")
         };
@@ -1390,7 +1429,8 @@ mod tests {
 
         assert!(
             matches!(
-                peer.translate_outbound(udp_request, now).unwrap(),
+                peer.translate_outbound(udp_request, now, &mut Facts::default())
+                    .unwrap(),
                 TranslateOutboundResult::Send(_)
             ),
             "UDP/{} packet to shared proxy IP should be forwarded",
@@ -1413,7 +1453,8 @@ mod tests {
 
         assert!(
             matches!(
-                peer.translate_outbound(tcp_request, now).unwrap(),
+                peer.translate_outbound(tcp_request, now, &mut Facts::default())
+                    .unwrap(),
                 TranslateOutboundResult::Send(_)
             ),
             "TCP/{} packet to shared proxy IP should be forwarded",
@@ -1461,7 +1502,9 @@ mod tests {
         )
         .unwrap();
 
-        let error = peer.translate_outbound(icmp_unreachable, now).unwrap_err();
+        let error = peer
+            .translate_outbound(icmp_unreachable, now, &mut Facts::default())
+            .unwrap_err();
         let error = error.any_downcast_ref::<UnroutablePacket>().unwrap();
 
         assert_eq!(error.to_string(), "Unroutable packet: OutboundIcmpError");

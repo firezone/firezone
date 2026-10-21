@@ -7,6 +7,7 @@ use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use fast_random_state::FastRandomState;
+use flow_tracker::{Facts, Role};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashMap};
@@ -273,10 +274,11 @@ impl ClientOnClient {
     }
 
     /// Decide whether an inbound packet from this peer is admitted.
-    pub(crate) fn ensure_allowed_inbound(
-        &mut self,
+    pub(crate) fn ensure_allowed_inbound<'a>(
+        &'a mut self,
         packet: IpPacket,
         now: Instant,
+        facts: &mut Facts<'a>,
     ) -> Result<InboundResult> {
         let src = packet.source();
         let dst = packet.destination();
@@ -300,7 +302,7 @@ impl ClientOnClient {
 
         if self.conn_track.is_return_traffic(&packet) {
             // A reply to a flow we opened.
-            flow_tracker::record_peer(self.id, flow_tracker::Role::Initiator);
+            facts.peer = Some((self.id.into(), Role::Initiator));
 
             return Ok(InboundResult::Send(packet));
         }
@@ -331,8 +333,8 @@ impl ClientOnClient {
         self.conn_track.record_inbound(&packet, now);
 
         // The peer opened this flow towards us.
-        flow_tracker::record_peer(self.id, flow_tracker::Role::Responder);
-        flow_tracker::record_ingest_token(self.ingest_token_for_inbound(&packet));
+        facts.peer = Some((self.id.into(), Role::Responder));
+        facts.ingest_token = self.ingest_token_for_inbound(&packet);
 
         Ok(InboundResult::Send(packet))
     }
@@ -483,7 +485,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
+        assert!(
+            peer.ensure_allowed_inbound(spoofed, now, &mut Facts::default())
+                .is_err()
+        );
     }
 
     #[test]
@@ -507,7 +512,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.ensure_allowed_inbound(spoofed, now).is_err());
+        assert!(
+            peer.ensure_allowed_inbound(spoofed, now, &mut Facts::default())
+                .is_err()
+        );
     }
 
     #[test]
@@ -519,7 +527,10 @@ mod tests {
         peer.record_outbound_as_originator(&outbound, now);
         let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
 
-        assert!(is_send(peer.ensure_allowed_inbound(icmp, now).unwrap()));
+        assert!(is_send(
+            peer.ensure_allowed_inbound(icmp, now, &mut Facts::default())
+                .unwrap()
+        ));
     }
 
     #[test]
@@ -530,7 +541,10 @@ mod tests {
         let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
         let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
 
-        assert!(peer.ensure_allowed_inbound(icmp, now).is_err());
+        assert!(
+            peer.ensure_allowed_inbound(icmp, now, &mut Facts::default())
+                .is_err()
+        );
     }
 
     #[test]
@@ -541,13 +555,15 @@ mod tests {
         peer.add_resource(rid, udp_port(80), None, ingest_token(Responder), now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
 
         peer.remove_resource(&rid);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
     }
 
@@ -560,7 +576,10 @@ mod tests {
         peer.record_outbound_as_originator(&outbound, now);
 
         let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
-        assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));
+        assert!(is_send(
+            peer.ensure_allowed_inbound(reply, now, &mut Facts::default())
+                .unwrap()
+        ));
     }
 
     #[test]
@@ -577,7 +596,8 @@ mod tests {
         );
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
         let mut authorizations = OutboundAuthorizations::default();
@@ -593,7 +613,8 @@ mod tests {
             Some(&ingest_token(Initiator))
         );
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), later).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), later, &mut Facts::default())
+                .unwrap()
         ));
     }
 
@@ -607,10 +628,12 @@ mod tests {
         peer.add_resource(drop, udp_port(90), None, ingest_token(Responder), now);
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), now, &mut Facts::default())
+                .unwrap()
         ));
 
         let mut authorizations = OutboundAuthorizations::default();
@@ -623,10 +646,12 @@ mod tests {
         );
 
         assert!(is_send(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(90), now, &mut Facts::default())
+                .unwrap()
         ));
     }
 
@@ -647,7 +672,8 @@ mod tests {
         peer.handle_timeout(now);
 
         assert!(is_filtered(
-            peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
+            peer.ensure_allowed_inbound(udp_to(80), now, &mut Facts::default())
+                .unwrap()
         ));
     }
 

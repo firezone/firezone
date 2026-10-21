@@ -8,8 +8,8 @@ use serde::Deserialize;
 ///
 /// Deserializing parses and retains the claims; the signature is not
 /// verified because only the portal and the ingest API hold the key.
-/// Internally reference-counted: cloning is a refcount bump, so the token can
-/// be recorded into per-packet flow data without copying it.
+/// Internally reference-counted: cloning is a refcount bump, so every flow can
+/// hold its token without copying it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IngestToken(Arc<IngestTokenInner>);
 
@@ -26,10 +26,6 @@ impl IngestToken {
 
     pub fn claims(&self) -> &IngestTokenClaims {
         &self.0.claims
-    }
-
-    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 

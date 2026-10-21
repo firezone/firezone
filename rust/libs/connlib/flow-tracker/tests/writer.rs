@@ -11,7 +11,9 @@ use std::{
 use base64::Engine as _;
 use chrono::TimeZone as _;
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
-use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
+use flow_tracker::{
+    Facts, FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker,
+};
 use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
 
@@ -180,22 +182,30 @@ fn tracked_packets_spool_open_and_completed_reports() {
     let reply = ip_packet::make::udp_packet(resource_ip, client_ip, 5201, 1234, b"world!").unwrap();
 
     spool.observe(|| {
-        {
-            let flow = tracker.begin_network_packet(local, remote, now);
-            flow_tracker::record_decrypted_packet(&request);
-            flow_tracker::record_peer(client, Role::Responder);
-            flow_tracker::record_resource(resource);
-            flow_tracker::record_ingest_token(Some(&token));
-            drop(flow);
-        }
+        tracker.record_network_packet(
+            local,
+            remote,
+            tracker.observe(&request),
+            Facts {
+                peer: Some((client.into(), Role::Responder)),
+                resource: Some(resource),
+                ingest_token: Some(&token),
+                ..Default::default()
+            },
+            now,
+        );
 
-        {
-            let flow = tracker.begin_tun_packet(&reply, now);
-            flow_tracker::record_peer(client, Role::Responder);
-            flow_tracker::record_resource(resource);
-            flow_tracker::record_transmit(Some(local), remote);
-            drop(flow);
-        }
+        tracker.record_tun_packet(
+            tracker.observe(&reply),
+            Facts {
+                peer: Some((client.into(), Role::Responder)),
+                resource: Some(resource),
+                ..Default::default()
+            },
+            Some(local),
+            remote,
+            now,
+        );
 
         tracker.close_all(now);
     });
@@ -437,24 +447,31 @@ fn drive_tx_from(
     authz_id: &str,
     now: Instant,
 ) {
-    let _flow = tracker.begin_network_packet(
+    tracker.record_network_packet(
         "198.51.100.1:51820".parse().unwrap(),
         remote.parse().unwrap(),
+        tracker.observe(packet),
+        Facts {
+            peer: Some((ClientId::from_u128(1).into(), Role::Responder)),
+            ingest_token: Some(&test_token(authz_id, "responder")),
+            ..Default::default()
+        },
         now,
     );
-    flow_tracker::record_decrypted_packet(packet);
-    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
-    flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's
 /// public entry points, as the gateway does for a packet read from TUN.
 fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: Instant) {
-    let _flow = tracker.begin_tun_packet(packet, now);
-    flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
-    flow_tracker::record_transmit(
+    tracker.record_tun_packet(
+        tracker.observe(packet),
+        Facts {
+            peer: Some((ClientId::from_u128(1).into(), Role::Responder)),
+            ..Default::default()
+        },
         Some("198.51.100.1:51820".parse().unwrap()),
         "203.0.113.7:51820".parse().unwrap(),
+        now,
     );
 }
 

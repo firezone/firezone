@@ -14,17 +14,16 @@
 //! device observes the packet, so the initiator and responder label the same
 //! direction identically.
 //!
-//! Processing a packet begins with [`Tracker::begin_tun_packet`] /
-//! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
-//! as gathering a packet that the call sites processing it fill in via the
-//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
-//! the gathered data on every exit path; incomplete data (e.g. because packet
-//! processing bailed early or the packet was internal traffic) is discarded.
+//! Processing a packet begins with [`Tracker::observe`], which snapshots the
+//! inner packet before processing may rewrite it. The call sites processing the
+//! packet gather [`Facts`] about it and hand both to
+//! [`Tracker::record_tun_packet`] / [`Tracker::record_network_packet`] once it
+//! was handled; incomplete facts (e.g. because the packet was internal traffic)
+//! are discarded.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    cell::RefCell,
     collections::{HashMap, hash_map},
     fmt::Debug,
     hash::Hash,
@@ -53,11 +52,6 @@ const FLOW_TIMEOUT: Duration = Duration::from_mins(2);
 /// size. A change past the cap splits the flow instead of going unrecorded, so
 /// a peer cannot flap its path to keep later tuples out of the log.
 const MAX_CONTEXTS_PER_FLOW: usize = 16;
-
-thread_local! {
-    /// The [`FlowData`] for the packet currently being processed on this thread.
-    static CURRENT_FLOW: RefCell<FlowData> = const { RefCell::new(FlowData::EMPTY) };
-}
 
 /// Identifies which authorization a flow belongs to on one device.
 ///
@@ -92,10 +86,6 @@ impl Scope for (ClientId, ResourceId) {
 pub struct Tracker<S> {
     active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
     active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
-
-    /// The most recently recorded ingest token, lent to each packet's
-    /// [`FlowData`] so that recording it again needs no refcount update.
-    mru_ingest_token: Option<IngestToken>,
 
     enabled: bool,
     clock: Clock,
@@ -147,7 +137,6 @@ impl<S> Tracker<S> {
         Self {
             active_tcp_flows: HashMap::default(),
             active_udp_flows: HashMap::default(),
-            mru_ingest_token: None,
             enabled: false,
             clock: Clock {
                 created_at: now,
@@ -172,68 +161,87 @@ impl<S> Tracker<S>
 where
     S: Scope,
 {
-    /// Begins gathering flow data for one packet read from the TUN device.
+    /// Snapshots the flow-relevant fields of `packet` before processing may rewrite it.
     ///
-    /// Dropping the returned guard inserts the gathered flow data.
-    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
-        if self.enabled {
-            set_current_flow(
-                Entry::Tun,
-                Some(InnerFlow::from(packet)),
-                now,
-                self.mru_ingest_token.take(),
-            );
-        }
-
-        CurrentFlowGuard { tracker: self, now }
+    /// Returns `None` while tracking is disabled.
+    pub fn observe(&self, packet: &IpPacket) -> Option<InnerFlow> {
+        self.enabled.then(|| InnerFlow::from(packet))
     }
 
-    /// Begins gathering flow data for one packet received on the network interface.
+    /// Records a packet read from the TUN device that was encapsulated and sent from `src` to `dst`.
     ///
-    /// Dropping the returned guard inserts the gathered flow data.
-    pub fn begin_network_packet(
+    /// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
+    pub fn record_tun_packet(
+        &mut self,
+        inner: Option<InnerFlow>,
+        facts: Facts<'_>,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        now: Instant,
+    ) {
+        let Some(inner) = inner else {
+            return;
+        };
+
+        self.insert_flow(
+            Entry::Tun {
+                context: FlowContext::new(src, dst, now),
+            },
+            inner,
+            facts,
+            now,
+        );
+    }
+
+    /// Records a packet received on the network interface `local` from `remote` and decrypted to `inner`.
+    pub fn record_network_packet(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
+        inner: Option<InnerFlow>,
+        facts: Facts<'_>,
         now: Instant,
-    ) -> CurrentFlowGuard<'_, S> {
-        if self.enabled {
-            set_current_flow(
-                Entry::Network { local, remote },
-                None,
-                now,
-                self.mru_ingest_token.take(),
-            );
-        }
+    ) {
+        let Some(inner) = inner else {
+            return;
+        };
 
-        CurrentFlowGuard { tracker: self, now }
+        self.insert_flow(Entry::Network { local, remote }, inner, facts, now);
     }
 
-    fn insert_flow(&mut self, data: &mut FlowData, now: Instant) {
-        let FlowData {
-            packet: Some(CurrentPacket { entry, now: _ }),
-            inner:
-                Some(InnerFlow {
-                    src_ip,
-                    dst_ip,
-                    src_proto: Ok(src_proto),
-                    dst_proto: Ok(dst_proto),
-                    tcp_syn,
-                    tcp_ack,
-                    tcp_fin,
-                    tcp_rst,
-                    payload_len,
-                }),
-            outer_tx,
+    fn insert_flow(&mut self, entry: Entry, mut inner: InnerFlow, facts: Facts<'_>, now: Instant) {
+        if let Some((src_proto, dst)) = facts.translated_destination {
+            inner.dst_ip = dst;
+            inner.src_proto = Ok(src_proto);
+        }
+
+        let InnerFlow {
+            src_ip,
+            dst_ip,
+            src_proto: Ok(src_proto),
+            dst_proto: Ok(dst_proto),
+            tcp_syn,
+            tcp_ack,
+            tcp_fin,
+            tcp_rst,
+            payload_len,
+        } = inner
+        else {
+            tracing::trace!(?inner, "Cannot create flow for unsupported protocol");
+
+            return;
+        };
+
+        let Facts {
             peer: Some((peer, role)),
             resource,
-            ref ingest_token,
-            mru_ingest_token: _,
-            ref mut domain,
+            ingest_token,
+            domain,
+            translated_destination: _,
             icmp_error: _, // TODO: What to do with ICMP errors?
-        } = *data
+        } = facts
         else {
-            tracing::trace!(?data, "Cannot create flow with missing data");
+            tracing::trace!(?facts, "Cannot create flow with missing data");
 
             return;
         };
@@ -245,17 +253,8 @@ where
         };
 
         match (entry, role) {
-            // The initiator observes the tx direction on its TUN device; count the
-            // packet only once it was actually encapsulated and handed to the
-            // network (packets buffered during connection setup are recorded by
-            // the responder once they arrive).
-            (Entry::Tun, Role::Initiator) => {
-                let Some(context) = outer_tx else {
-                    tracing::trace!("Not recording flow for packet that was never sent");
-
-                    return;
-                };
-
+            // The initiator observes the tx direction on its TUN device.
+            (Entry::Tun { context }, Role::Initiator) => {
                 // Every authorization carries an ingest token, so a packet
                 // without one was never matched to an authorization and its
                 // flow is not tracked.
@@ -279,7 +278,7 @@ where
                         tcp_rst,
                         payload_len,
                         ingest_token,
-                        domain: domain.take(),
+                        domain,
                     },
                     now,
                 );
@@ -309,36 +308,14 @@ where
                         tcp_rst,
                         payload_len,
                         ingest_token,
-                        domain: domain.take(),
+                        domain,
                     },
                     now,
                 );
             }
-            // The responder observes the rx direction on its TUN device; same
-            // send-gate as above.
-            (Entry::Tun, Role::Responder) => {
-                if outer_tx.is_none() {
-                    tracing::trace!("Not recording flow for packet that was never sent");
-
-                    return;
-                }
-
-                self.record_rx(
-                    RxPacket {
-                        scope,
-                        src_ip,
-                        dst_ip,
-                        src_proto,
-                        dst_proto,
-                        tcp_fin,
-                        tcp_rst,
-                        payload_len,
-                    },
-                    now,
-                );
-            }
-            // The initiator observes the rx direction arriving over the network.
-            (Entry::Network { .. }, Role::Initiator) => {
+            // The responder observes the rx direction on its TUN device, the
+            // initiator arriving over the network.
+            (Entry::Tun { .. }, Role::Responder) | (Entry::Network { .. }, Role::Initiator) => {
                 self.record_rx(
                     RxPacket {
                         scope,
@@ -714,34 +691,6 @@ impl Clock {
     }
 }
 
-/// Inserts the current packet's flow data into the tracker when dropped.
-///
-/// Holding the tracker's `&mut` also guarantees at most one packet is
-/// gathered at a time.
-#[must_use]
-pub struct CurrentFlowGuard<'a, S: Scope> {
-    tracker: &'a mut Tracker<S>,
-    now: Instant,
-}
-
-impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
-    fn drop(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|data| {
-            if data.packet.is_none() {
-                return;
-            }
-
-            self.tracker.insert_flow(data, self.now);
-            self.tracker.mru_ingest_token = data
-                .ingest_token
-                .take()
-                .or_else(|| data.mru_ingest_token.take());
-
-            data.clear();
-        });
-    }
-}
-
 /// This device's role in the flow a packet belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -751,11 +700,12 @@ pub enum Role {
     Responder,
 }
 
-/// How the packet currently being processed entered this device.
+/// How the packet being recorded entered this device.
 #[derive(Debug, Clone, Copy)]
 enum Entry {
-    /// Read from the TUN device; it will leave via the network if routable.
-    Tun,
+    /// Read from the TUN device and encapsulated to the outer (transport)
+    /// 4-tuple `context`, in transmit direction.
+    Tun { context: FlowContext<Instant> },
     /// Received on the network interface `local` from `remote`.
     Network {
         local: SocketAddr,
@@ -763,196 +713,43 @@ enum Entry {
     },
 }
 
-/// How and when the packet currently being processed entered this device.
-#[derive(Debug, Clone, Copy)]
-struct CurrentPacket {
-    entry: Entry,
-    now: Instant,
-}
-
 /// The facts gathered about one packet while it is being processed.
 ///
 /// Which of these can be filled in depends on the entry point and this device's
-/// role; [`Tracker::insert_flow`] interprets them (see the module docs).
-struct FlowData {
-    /// The packet being gathered; `None` while no packet is being processed.
-    packet: Option<CurrentPacket>,
-    /// The inner (application) packet's flow fields.
-    inner: Option<InnerFlow>,
-    /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
-    /// in transmit direction. Absence means the packet was never sent.
-    outer_tx: Option<FlowContext<Instant>>,
+/// role; the [`Tracker`] interprets them (see the module docs).
+#[derive(Default)]
+pub struct Facts<'a> {
     /// The peer the packet is tunneled through and our role in the flow.
-    peer: Option<(ClientOrGatewayId, Role)>,
-    resource: Option<ResourceId>,
+    pub peer: Option<(ClientOrGatewayId, Role)>,
+    pub resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
-    ingest_token: Option<IngestToken>,
-    /// The token the [`Tracker`] kept from the previous packet, reused instead
-    /// of cloning if this packet records the same one.
-    mru_ingest_token: Option<IngestToken>,
+    pub ingest_token: Option<&'a IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
-    domain: Option<DomainName>,
-    icmp_error: Option<IcmpError>,
+    pub domain: Option<DomainName>,
+    /// The source protocol and destination NAT rewrote the packet to.
+    pub translated_destination: Option<(Protocol, IpAddr)>,
+    pub icmp_error: Option<IcmpError>,
 }
 
 /// Manual impl: `ingest_token` is a bearer credential and must never reach log
 /// output, not even at trace level.
-impl Debug for FlowData {
+impl Debug for Facts<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FlowData")
-            .field("packet", &self.packet)
-            .field("inner", &self.inner)
-            .field("outer_tx", &self.outer_tx)
+        f.debug_struct("Facts")
             .field("peer", &self.peer)
             .field("resource", &self.resource)
-            .field(
-                "ingest_token",
-                &self.ingest_token.as_ref().map(|_| "<redacted>"),
-            )
+            .field("ingest_token", &self.ingest_token.map(|_| "<redacted>"))
             .field("domain", &self.domain)
+            .field("translated_destination", &self.translated_destination)
             .field("icmp_error", &self.icmp_error)
             .finish()
     }
 }
 
-impl FlowData {
-    const EMPTY: Self = Self {
-        packet: None,
-        inner: None,
-        outer_tx: None,
-        peer: None,
-        resource: None,
-        ingest_token: None,
-        mru_ingest_token: None,
-        domain: None,
-        icmp_error: None,
-    };
-
-    /// Releases the current packet and drops everything gathered about it.
-    fn clear(&mut self) {
-        self.packet = None;
-        self.inner = None;
-        self.outer_tx = None;
-        self.peer = None;
-        self.resource = None;
-        self.domain = None;
-        self.icmp_error = None;
-    }
-}
-
-fn set_current_flow(
-    entry: Entry,
-    inner: Option<InnerFlow>,
-    now: Instant,
-    mru_ingest_token: Option<IngestToken>,
-) {
-    CURRENT_FLOW.with_borrow_mut(|data| {
-        debug_assert!(
-            data.packet.is_none(),
-            "at most 1 flow should be active at any time"
-        );
-
-        data.packet = Some(CurrentPacket { entry, now });
-        data.inner = inner;
-        data.mru_ingest_token = mru_ingest_token;
-    });
-}
-
-fn update_current_flow(f: impl FnOnce(&mut FlowData)) {
-    CURRENT_FLOW.with_borrow_mut(|data| {
-        if data.packet.is_none() {
-            return;
-        }
-
-        f(data);
-    });
-}
-
-/// Records the peer the current packet is tunneled through and our role in the
-/// flow it belongs to.
-pub fn record_peer(peer: impl Into<ClientOrGatewayId>, role: Role) {
-    let peer = peer.into();
-
-    update_current_flow(|data| {
-        data.peer = Some((peer, role));
-    });
-}
-
-/// Records the resource the current packet accesses.
-pub fn record_resource(resource: ResourceId) {
-    update_current_flow(|data| {
-        data.resource = Some(resource);
-    });
-}
-
-/// Records the ingest token attributing the current packet's flow.
-///
-/// Only clones `token` if it differs from the previously recorded one.
-pub fn record_ingest_token(token: Option<&IngestToken>) {
-    update_current_flow(|data| {
-        data.ingest_token = token.map(|token| {
-            data.mru_ingest_token
-                .take_if(|previous| previous.ptr_eq(token))
-                .unwrap_or_else(|| token.clone())
-        });
-    });
-}
-
-/// Records the domain name in case the current packet is for a DNS resource.
-pub fn record_domain(domain: DomainName) {
-    update_current_flow(|data| {
-        data.domain = Some(domain);
-    });
-}
-
-/// Records the inner packet decrypted from a network-entry packet.
-pub fn record_decrypted_packet(packet: &IpPacket) {
-    update_current_flow(|data| {
-        data.inner = Some(InnerFlow::from(packet));
-    });
-}
-
-/// Records that NAT rewrote the current packet's destination to `dst` and its
-/// source protocol to `src_proto`.
-pub fn record_translated_destination(src_proto: Protocol, dst: IpAddr) {
-    update_current_flow(|data| {
-        let Some(inner) = data.inner.as_mut() else {
-            return;
-        };
-
-        inner.dst_ip = dst;
-        inner.src_proto = Ok(src_proto);
-    });
-}
-
-/// Records that the current packet was encapsulated and sent from `src` to `dst`.
-///
-/// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
-pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
-    update_current_flow(|data| {
-        let Some(packet) = data.packet else {
-            return;
-        };
-
-        data.outer_tx = Some(FlowContext::new(src, dst, packet.now));
-    });
-}
-
-/// Records the ICMP error contained in the current packet, if any.
-pub fn record_icmp_error(packet: &IpPacket) {
-    let Ok(Some((_, icmp_error))) = packet.icmp_error() else {
-        return;
-    };
-
-    update_current_flow(|data| {
-        data.icmp_error = Some(icmp_error);
-    });
-}
-
 /// The flow-relevant fields of one inner (application) IP packet, in the packet's
 /// natural orientation.
 #[derive(Debug)]
-struct InnerFlow {
+pub struct InnerFlow {
     src_ip: IpAddr,
     dst_ip: IpAddr,
     src_proto: Result<Protocol, UnsupportedProtocol>,
