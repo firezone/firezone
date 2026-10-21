@@ -10,7 +10,6 @@ pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
 use crate::{
     TunnelError, dns,
-    packet_counts::UdpPacketCounts,
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::{ErrorExt, Result};
@@ -60,7 +59,6 @@ pub struct Io {
     doh_tls_config: TlsConfig,
 
     tun: Device,
-    packet_counter: opentelemetry::metrics::Counter<u64>,
     dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -294,7 +292,7 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::default();
+        let mut sockets = Sockets::new(otel_instruments::network_packets());
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
@@ -326,7 +324,6 @@ impl Io {
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
@@ -424,20 +421,15 @@ impl Io {
 
     pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
-        let mut transmitted = UdpPacketCounts::transmit(&self.packet_counter);
 
         loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
+            ready!(self.sockets.poll_has_room(cx)?);
 
             let Some(datagram) = datagrams.next() else {
                 break;
             };
 
-            for segment in datagram.packet.chunks(datagram.segment_size) {
-                transmitted.record(segment);
-            }
-
-            self.sockets.send(datagram)?;
+            self.sockets.send(datagram);
         }
 
         Poll::Ready(Ok(()))
