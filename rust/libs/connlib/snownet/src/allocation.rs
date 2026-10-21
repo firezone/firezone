@@ -719,23 +719,23 @@ impl Allocation {
 
     /// Attempts to decapsulate and incoming packet as a channel-data message.
     ///
-    /// Returns the original sender, the packet and _our_ relay socket that this packet was sent to.
+    /// Returns the original sender and _our_ relay socket that this packet was sent to.
     /// Our relay socket is the destination that the remote peer sees for us.
     /// TURN is designed such that the remote has no knowledge of the existence of a relay.
     /// It simply sends data to a socket.
-    pub fn decapsulate<'p>(
+    pub fn decapsulate(
         &mut self,
         from: SocketAddr,
-        packet: channel_data::Packet<'p>,
+        packet: channel_data::Packet,
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
+    ) -> Option<(SocketAddr, Socket)> {
         if !self.server.matches(from) {
             tracing::trace!(?self.server, "Packet is not for this allocation");
 
             return None;
         }
 
-        let (peer, payload) = self.channel_bindings.try_handle_packet(packet, now)?;
+        let peer = self.channel_bindings.try_handle_packet(packet, now)?;
 
         // Our socket on the relay.
         // If the remote sent from an IP4 address, it must have been received on our IP4 allocation.
@@ -747,7 +747,7 @@ impl Allocation {
 
         tracing::trace!(%peer, ?socket, "Decapsulated channel-data message");
 
-        Some((peer, payload, socket))
+        Some((peer, socket))
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
@@ -1579,11 +1579,11 @@ impl ChannelBindings {
     /// Per TURN spec, 0x4000 is the last channel number.
     const LAST_CHANNEL: u16 = 0x4FFF;
 
-    fn try_handle_packet<'p>(
+    fn try_handle_packet(
         &mut self,
-        packet: channel_data::Packet<'p>,
+        packet: channel_data::Packet,
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8])> {
+    ) -> Option<SocketAddr> {
         let channel_number = packet.channel();
 
         let Some(channel) = self.inner.get_mut(&channel_number) else {
@@ -1598,7 +1598,7 @@ impl ChannelBindings {
 
         channel.record_received(now);
 
-        Some((channel.peer, packet.payload()))
+        Some(channel.peer)
     }
 
     fn new_channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<u16> {
@@ -1929,12 +1929,11 @@ mod tests {
         let mut packet = channel_data_packet_buffer(b"foobar");
         crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
         let packet = channel_data::decode(&packet).unwrap();
-        let (peer, payload) = channel_bindings
+        let peer = channel_bindings
             .try_handle_packet(packet, start + Duration::from_secs(2))
             .unwrap();
 
         assert_eq!(peer, PEER1);
-        assert_eq!(payload, b"foobar");
     }
 
     #[test]

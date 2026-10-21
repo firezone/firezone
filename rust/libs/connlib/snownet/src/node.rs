@@ -971,7 +971,7 @@ where
                     }
                 };
 
-                let Some((from, _, socket)) = allocation.decapsulate(from, cd, now) else {
+                let Some((from, socket)) = allocation.decapsulate(from, cd, now) else {
                     tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
                     return ControlFlow::Break(()); // Stop processing the packet.

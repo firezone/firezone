@@ -3,22 +3,17 @@ use std::io;
 
 pub(crate) const HEADER_LEN: usize = 4;
 
-pub struct Packet<'a> {
+pub struct Packet {
     channel: u16,
-    payload: &'a [u8],
 }
 
-impl<'a> Packet<'a> {
+impl Packet {
     pub(crate) fn channel(&self) -> u16 {
         self.channel
     }
-
-    pub(crate) fn payload(&self) -> &'a [u8] {
-        self.payload
-    }
 }
 
-pub fn decode(data: &[u8]) -> Result<Packet<'_>, io::Error> {
+pub fn decode(data: &[u8]) -> Result<Packet, io::Error> {
     if data.len() < HEADER_LEN {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
@@ -50,7 +45,6 @@ pub fn decode(data: &[u8]) -> Result<Packet<'_>, io::Error> {
 
     Ok(Packet {
         channel: channel_number,
-        payload,
     })
 }
 
