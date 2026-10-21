@@ -167,9 +167,7 @@ defmodule PortalAPI.PolicyControllerTest do
     end
 
     test "returns a single policy", %{conn: conn, account: account, actor: actor} do
-      group = group_fixture(account: account, name: "Engineering")
-      resource = resource_fixture(account: account, name: "Internal Wiki")
-      policy = policy_fixture(account: account, group: group, resource: resource)
+      policy = policy_fixture(account: account)
 
       conn =
         conn
@@ -181,9 +179,7 @@ defmodule PortalAPI.PolicyControllerTest do
                "data" => %{
                  "id" => policy.id,
                  "group_id" => policy.group_id,
-                 "group_name" => "Engineering",
                  "resource_id" => policy.resource_id,
-                 "resource_name" => "Internal Wiki",
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
@@ -227,7 +223,7 @@ defmodule PortalAPI.PolicyControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get("/policies/#{policy.id}")
 
-      assert %{"group_id" => nil, "group_name" => nil} = json_response(conn, 200)["data"]
+      assert json_response(conn, 200)["data"]["group_id"] == nil
     end
 
     test "returns not found when policy does not exist", %{conn: conn, actor: actor} do
@@ -1091,9 +1087,7 @@ defmodule PortalAPI.PolicyControllerTest do
     end
 
     test "deletes a policy", %{conn: conn, account: account, actor: actor} do
-      group = group_fixture(account: account, name: "Engineering")
-      resource = resource_fixture(account: account, name: "Internal Wiki")
-      policy = policy_fixture(account: account, group: group, resource: resource)
+      policy = policy_fixture(account: account)
 
       conn =
         conn
@@ -1105,9 +1099,7 @@ defmodule PortalAPI.PolicyControllerTest do
                "data" => %{
                  "id" => policy.id,
                  "group_id" => policy.group_id,
-                 "group_name" => "Engineering",
                  "resource_id" => policy.resource_id,
-                 "resource_name" => "Internal Wiki",
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
@@ -1315,70 +1307,6 @@ defmodule PortalAPI.PolicyControllerTest do
       assert postures == @postures
       assert %{"data" => [%{"postures" => listed}]} = json_response(get(conn, "/policies"), 200)
       assert listed == @postures
-    end
-  end
-
-  describe "group and resource names" do
-    test "lists each policy with its group and resource names", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      group = group_fixture(account: account, name: "Engineering")
-      resource = resource_fixture(account: account, name: "Internal Wiki")
-      policy = policy_fixture(account: account, group: group, resource: resource)
-      orphaned = policy_fixture(account: account, resource: resource)
-      Repo.update!(Ecto.Changeset.change(orphaned, group_id: nil))
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> get("/policies")
-
-      names =
-        json_response(conn, 200)["data"]
-        |> Map.new(&{&1["id"], {&1["group_name"], &1["resource_name"]}})
-
-      assert names == %{
-               policy.id => {"Engineering", "Internal Wiki"},
-               orphaned.id => {nil, "Internal Wiki"}
-             }
-    end
-
-    test "returns the names on create", %{conn: conn, account: account, actor: actor} do
-      group = group_fixture(account: account, name: "Engineering")
-      resource = resource_fixture(account: account, name: "Internal Wiki")
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/policies", policy: %{"group_id" => group.id, "resource_id" => resource.id})
-
-      assert %{"group_name" => "Engineering", "resource_name" => "Internal Wiki"} =
-               json_response(conn, 201)["data"]
-    end
-
-    test "returns the new names when an update changes the group and resource", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      policy = policy_fixture(account: account)
-      group = group_fixture(account: account, name: "Sales")
-      resource = resource_fixture(account: account, name: "CRM")
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/policies/#{policy.id}",
-          policy: %{"group_id" => group.id, "resource_id" => resource.id}
-        )
-
-      assert %{"group_name" => "Sales", "resource_name" => "CRM"} =
-               json_response(conn, 200)["data"]
     end
   end
 end

@@ -347,24 +347,11 @@ defmodule PortalAPI.Schemas.Policy do
             "Group ID. Null if the Group was deleted during directory sync; it is relinked " <>
               "automatically if the Group reappears on a subsequent sync."
         },
-        group_name: %Schema{
-          example: "Engineering",
-          type: :string,
-          nullable: true,
-          readOnly: true,
-          description: "Name of the Group. Null when group_id is null."
-        },
         resource_id: %Schema{
           example: "a9f60587-793c-46ae-8525-597f43ab2fb1",
           type: :string,
           format: :uuid,
           description: "Resource ID"
-        },
-        resource_name: %Schema{
-          example: "Internal Wiki",
-          type: :string,
-          readOnly: true,
-          description: "Name of the Resource"
         },
         description: %Schema{
           example: "Policy to allow something",
@@ -411,29 +398,22 @@ defmodule PortalAPI.Schemas.Policy do
         :description,
         :flow_log_uploads_enabled,
         :group_id,
-        :group_name,
         :id,
         :is_disabled,
         :postures,
-        :resource_id,
-        :resource_name
+        :resource_id
       ]
     })
 
-    def map(%Portal.Policy{conditions: conditions} = policy, _map) do
+    def map(%Portal.Policy{conditions: conditions}, _map) do
       %{
         conditions:
           Enum.map(
             conditions,
             &%{property: &1.property, operator: &1.operator, values: &1.values}
-          ),
-        group_name: name(policy.group),
-        resource_name: name(policy.resource)
+          )
       }
     end
-
-    defp name(nil), do: nil
-    defp name(%{name: name}) when is_binary(name), do: name
   end
 
   defmodule CreateRequest do

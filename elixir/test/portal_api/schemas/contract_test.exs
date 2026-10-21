@@ -19,11 +19,7 @@ defmodule PortalAPI.Schemas.ContractTest do
     %{schema: PortalAPI.Schemas.Membership.Schema, struct: Portal.Actor},
     %{schema: PortalAPI.Schemas.Site.Schema, struct: Portal.Site},
     %{schema: PortalAPI.Schemas.Group.Schema, struct: Portal.Group, attrs: %{sync_state: nil}},
-    %{
-      schema: PortalAPI.Schemas.Policy.Schema,
-      struct: Portal.Policy,
-      attrs: %{group: nil, resource: nil}
-    },
+    %{schema: PortalAPI.Schemas.Policy.Schema, struct: Portal.Policy},
     %{
       schema: PortalAPI.Schemas.Resource.Schema,
       struct: Portal.Resource,

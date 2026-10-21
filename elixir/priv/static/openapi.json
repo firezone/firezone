@@ -11201,13 +11201,6 @@
             "nullable": true,
             "type": "string"
           },
-          "group_name": {
-            "description": "Name of the Group. Null when group_id is null.",
-            "example": "Engineering",
-            "nullable": true,
-            "readOnly": true,
-            "type": "string"
-          },
           "id": {
             "description": "Policy ID",
             "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -11276,12 +11269,6 @@
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
             "format": "uuid",
             "type": "string"
-          },
-          "resource_name": {
-            "description": "Name of the Resource",
-            "example": "Internal Wiki",
-            "readOnly": true,
-            "type": "string"
           }
         },
         "required": [
@@ -11289,12 +11276,10 @@
           "description",
           "flow_log_uploads_enabled",
           "group_id",
-          "group_name",
           "id",
           "is_disabled",
           "postures",
-          "resource_id",
-          "resource_name"
+          "resource_id"
         ],
         "title": "Policy",
         "type": "object"
