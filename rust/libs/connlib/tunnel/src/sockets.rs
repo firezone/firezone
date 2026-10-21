@@ -7,9 +7,7 @@ use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
 use socket_factory::{DatagramBatch, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket};
 use std::collections::VecDeque;
-use std::convert::Infallible;
 use std::env::VarError;
-use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{
     io,
@@ -425,12 +423,12 @@ impl ThreadedUdpSocket {
                     let error_tx = error_tx.clone();
                     let socket = socket.clone();
 
-                    let mut pending_datagrams = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+                    let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
 
                     async move {
-                        let send = async |datagram| -> ControlFlow<&str> {
+                        let send = async |datagram| {
                             let Err(e) = socket.send(datagram).await else {
-                                return ControlFlow::Continue(());
+                                return Ok(());
                             };
 
                             if let Some(io) = e.any_downcast_ref::<io::Error>() {
@@ -446,41 +444,39 @@ impl ThreadedUdpSocket {
                             }
 
                             // Dedicated channel so errors can't hold up received datagrams.
-                            match error_tx.send(e).await {
-                                Ok(()) => ControlFlow::Continue(()),
-                                Err(_) => ControlFlow::Break("Channel for errors closed"),
-                            }
+                            error_tx.send(e).await
                         };
 
-                        let ControlFlow::Break(reason): ControlFlow<_, Infallible> = async {
-                            loop {
-                                if outbound_rx
-                                    .recv_many(&mut pending_datagrams, UDP_SEND_BATCH_LIMIT)
-                                    .await
-                                    == 0
-                                {
-                                    return ControlFlow::Break(
-                                        "Channel for outbound datagrams closed",
-                                    );
-                                }
+                        let reason = 'send: loop {
+                            if outbound_rx
+                                .recv_many(&mut outbound, UDP_SEND_BATCH_LIMIT)
+                                .await
+                                == 0
+                            {
+                                break "Channel for outbound datagrams closed";
+                            }
 
-                                for outbound in pending_datagrams.drain(..) {
-                                    match outbound {
-                                        Outbound::Ready(datagram) => send(datagram).await?,
-                                        Outbound::Pending(mut datagrams) => {
-                                            for datagram in datagrams.drain(..) {
-                                                let Ok(datagram) = datagram.await else {
-                                                    continue;
-                                                };
+                            for item in outbound.drain(..) {
+                                match item {
+                                    Outbound::Ready(datagram) => {
+                                        if send(datagram).await.is_err() {
+                                            break 'send "Channel for errors closed";
+                                        }
+                                    }
+                                    Outbound::Pending(mut datagrams) => {
+                                        for datagram in datagrams.drain(..) {
+                                            let Ok(datagram) = datagram.await else {
+                                                continue;
+                                            };
 
-                                                send(datagram).await?;
+                                            if send(datagram).await.is_err() {
+                                                break 'send "Channel for errors closed";
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        .await;
+                        };
 
                         tracing::debug!("{reason}; exiting UDP send task");
                     }
