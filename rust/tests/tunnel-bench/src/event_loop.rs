@@ -238,7 +238,7 @@ fn inbound<M: Measurement + Copy>(
         device.writes(),
         inputs,
         |datagram| {
-            let packets = datagram.len / datagram.segment_size;
+            let packets = datagram.packet.len() / datagram.segment_size;
             runtime.block_on(socket.send(datagram)).unwrap();
 
             packets
@@ -304,7 +304,7 @@ impl State {
                     .unwrap()
                     .encrypt(&packet)
                     .unwrap()
-                    .payload()
+                    .payload
                     .to_vec()
             })
             .collect::<Vec<_>>();
@@ -313,13 +313,16 @@ impl State {
         segments
             .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
             .map(|segments| {
-                let datagram = segments.concat();
+                let mut packet = bufferpool::Bytes::fitting(64 * 1024);
+                packet.truncate(0);
+                for segment in segments {
+                    packet.extend_from_slice(segment);
+                }
 
                 DatagramOut {
                     src: None,
                     dst,
-                    packet: bufferpool::Bytes::copied_from(&datagram),
-                    len: datagram.len(),
+                    packet,
                     segment_size,
                     ecn: Ecn::NonEct,
                 }
@@ -801,12 +804,7 @@ impl Tunnel {
             .unwrap();
         let decapsulation = self
             .gateway
-            .handle_network_input(
-                *GATEWAY_SOCKET,
-                *CLIENT_SOCKET,
-                datagram.payload(),
-                self.now,
-            )
+            .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
         let request = self
@@ -814,7 +812,7 @@ impl Tunnel {
             .handle_peer_input(
                 *GATEWAY_SOCKET,
                 *CLIENT_SOCKET,
-                decapsulation.decrypt(datagram.payload()),
+                decapsulation.decrypt(&datagram.payload),
                 self.now,
             )
             .unwrap()
@@ -923,11 +921,11 @@ impl Tunnel {
         let relay = SocketAddr::V4(RELAY_SOCKET);
 
         if transmit.dst != relay {
-            self.deliver(from, transmit.dst, transmit.payload());
+            self.deliver(from, transmit.dst, &transmit.payload);
             return;
         }
 
-        let Some(response) = binding_response(transmit.payload(), from) else {
+        let Some(response) = binding_response(&transmit.payload, from) else {
             return;
         };
         self.deliver(relay, from, &response);

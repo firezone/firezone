@@ -16,11 +16,11 @@ use std::{
 
 use opentelemetry::{KeyValue, metrics::UpDownCounter};
 
-/// A pooled byte buffer; its length picks the pool it returns to when dropped.
-#[derive(PartialEq, Eq)]
-pub struct Bytes(Box<[u8]>);
+/// A pooled byte buffer; its capacity picks the pool it returns to when dropped.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub struct Bytes(Vec<u8>);
 
-/// The sizes buffers come in; a buffer's length identifies its class.
+/// The sizes buffers come in; a buffer's capacity identifies its class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Class {
     /// An IP packet of at most 1280 bytes plus 32 bytes of WireGuard and 4 bytes of TURN channel data overhead.
@@ -53,7 +53,7 @@ impl Class {
         Class::Gro,
     ];
 
-    /// The length of the class's buffers.
+    /// The capacity of the class's buffers.
     const fn size(self) -> usize {
         match self {
             Class::Packet => 1280 + 32 + 4,
@@ -93,8 +93,8 @@ impl Class {
         Self::ALL.into_iter().find(|class| class.size() >= len)
     }
 
-    fn of_len(len: usize) -> Option<Self> {
-        Self::fitting(len).filter(|class| class.size() == len)
+    fn of_capacity(capacity: usize) -> Option<Self> {
+        Self::fitting(capacity).filter(|class| class.size() == capacity)
     }
 }
 
@@ -107,7 +107,7 @@ impl Bytes {
         Self(buffer.unwrap_or_else(|| allocate(class.size())))
     }
 
-    /// Pulls a buffer of the smallest size class holding `len` bytes.
+    /// Pulls a buffer of the smallest size class holding `len` bytes, at its full length.
     ///
     /// Beyond the largest class, the buffer is allocated for this call alone.
     pub fn fitting(len: usize) -> Self {
@@ -117,13 +117,47 @@ impl Bytes {
         }
     }
 
-    /// Pulls a buffer that starts with a copy of `data`.
+    /// Pulls a buffer holding a copy of `data`, and nothing else.
     pub fn copied_from(data: &[u8]) -> Self {
         let mut buffer = Self::fitting(data.len());
 
-        buffer.0[..data.len()].copy_from_slice(data);
+        buffer.0.truncate(data.len());
+        buffer.0.copy_from_slice(data);
 
         buffer
+    }
+
+    /// Shortens the buffer to `len` bytes.
+    pub fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
+
+    /// Appends `data`, which must fit in the buffer's capacity so that the buffer never reallocates.
+    pub fn extend_from_slice(&mut self, data: &[u8]) {
+        assert!(
+            self.0.len() + data.len() <= self.0.capacity(),
+            "{} bytes do not fit in a buffer of {} bytes holding {}",
+            data.len(),
+            self.0.capacity(),
+            self.0.len()
+        );
+
+        self.0.extend_from_slice(data);
+    }
+
+    /// Shifts the start of the buffer to the right by N bytes, dropping the bytes at the front.
+    pub fn shift_start_right(&mut self, num: usize) {
+        self.0.drain(..num);
+    }
+
+    /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
+    pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
+        let current_len = self.0.len();
+
+        self.0.resize(current_len + num, 0);
+        self.0.copy_within(..current_len, num);
+
+        &mut self.0[..num]
     }
 }
 
@@ -161,13 +195,16 @@ impl AsMut<[u8]> for Bytes {
 
 impl Drop for Bytes {
     fn drop(&mut self) {
-        let buffer = std::mem::take(&mut self.0);
+        let mut buffer = std::mem::take(&mut self.0);
+        let capacity = buffer.capacity();
 
-        let Some(class) = Class::of_len(buffer.len()) else {
-            count(-1, buffer.len());
+        let Some(class) = Class::of_capacity(capacity) else {
+            count(-1, capacity);
 
             return;
         };
+
+        buffer.resize(capacity, 0);
 
         let mut buffer = Some(buffer);
 
@@ -185,14 +222,14 @@ impl Drop for Bytes {
     }
 }
 
-fn allocate(len: usize) -> Box<[u8]> {
-    count(1, len);
+fn allocate(capacity: usize) -> Vec<u8> {
+    count(1, capacity);
 
-    vec![0; len].into_boxed_slice()
+    vec![0; capacity]
 }
 
-/// Records a change in the number of allocated buffers of `len` bytes.
-fn count(delta: i64, len: usize) {
+/// Records a change in the number of allocated buffers of `capacity` bytes.
+fn count(delta: i64, capacity: usize) {
     static COUNTER: OnceLock<UpDownCounter<i64>> = OnceLock::new();
 
     COUNTER
@@ -204,7 +241,10 @@ fn count(delta: i64, len: usize) {
         })
         .add(
             delta,
-            &[KeyValue::new("system.buffer.pool.buffer_size", len as i64)],
+            &[KeyValue::new(
+                "system.buffer.pool.buffer_size",
+                capacity as i64,
+            )],
         );
 }
 
@@ -235,11 +275,11 @@ impl Magazines {
         Self([const { Magazine::new() }; NUM_CLASSES])
     }
 
-    fn pop(&mut self, class: Class) -> Option<Box<[u8]>> {
+    fn pop(&mut self, class: Class) -> Option<Vec<u8>> {
         self.0[class as usize].pop(class)
     }
 
-    fn push(&mut self, class: Class, buffer: Box<[u8]>) {
+    fn push(&mut self, class: Class, buffer: Vec<u8>) {
         self.0[class as usize].push(class, buffer);
     }
 }
@@ -274,7 +314,7 @@ impl Magazine {
         }
     }
 
-    fn pop(&mut self, class: Class) -> Option<Box<[u8]>> {
+    fn pop(&mut self, class: Class) -> Option<Vec<u8>> {
         if self.loaded.is_empty() {
             if self.spare.is_empty() {
                 let (Ok(batch) | Err(batch)) = trade_empty(class, std::mem::take(&mut self.loaded));
@@ -288,7 +328,7 @@ impl Magazine {
         self.loaded.pop()
     }
 
-    fn push(&mut self, class: Class, buffer: Box<[u8]>) {
+    fn push(&mut self, class: Class, buffer: Vec<u8>) {
         if self.loaded.len() >= class.batch() {
             if self.spare.len() >= class.batch() {
                 self.spare = trade_full(class, std::mem::take(&mut self.spare));
@@ -303,7 +343,7 @@ impl Magazine {
 
 /// Up to a class's batch size of buffers; empty batches keep their allocation for reuse.
 struct Batch {
-    buffers: Vec<Box<[u8]>>,
+    buffers: Vec<Vec<u8>>,
 }
 
 impl Batch {
@@ -313,11 +353,11 @@ impl Batch {
         }
     }
 
-    fn pop(&mut self) -> Option<Box<[u8]>> {
+    fn pop(&mut self) -> Option<Vec<u8>> {
         self.buffers.pop()
     }
 
-    fn push(&mut self, buffer: Box<[u8]>) {
+    fn push(&mut self, buffer: Vec<u8>) {
         self.buffers.push(buffer);
     }
 
@@ -373,7 +413,7 @@ impl Depot {
     }
 
     /// Takes a single buffer, for a thread without a magazine.
-    fn pop(&mut self) -> Option<Box<[u8]>> {
+    fn pop(&mut self) -> Option<Vec<u8>> {
         let batch = self.full.last_mut()?;
         let buffer = batch.pop();
 
@@ -422,15 +462,15 @@ mod tests {
     }
 
     #[test]
-    fn copied_buffer_starts_with_content() {
+    fn copied_buffer_is_only_as_long_as_content() {
         let buffer = Bytes::copied_from(b"hello world");
 
-        assert_eq!(&buffer[..11], b"hello world");
+        assert_eq!(buffer.len(), 11);
     }
 
     #[test]
     fn fitting_takes_the_smallest_class() {
-        for (len, size) in [
+        for (len, capacity) in [
             (1, Class::Packet.size()),
             (Class::Packet.size(), Class::Packet.size()),
             (Class::Packet.size() + 1, 2 * 1024),
@@ -439,18 +479,43 @@ mod tests {
             (64 * 1024 + 1, Class::Gro.size()),
             (Class::Gro.size() + 1, Class::Gro.size() + 1),
         ] {
-            assert_eq!(Bytes::fitting(len).len(), size);
+            assert_eq!(Bytes::fitting(len).0.capacity(), capacity);
         }
     }
 
     #[test]
+    fn pulled_buffer_has_full_length() {
+        let _exclusive = exclusive(CLASS);
+
+        let mut buffer = Bytes::pull(CLASS);
+        buffer.truncate(8);
+        drop(buffer);
+
+        assert_eq!(Bytes::pull(CLASS).len(), CLASS.size());
+    }
+
+    #[test]
+    fn returning_a_reallocated_buffer_discards_it() {
+        let _exclusive = exclusive(CLASS);
+
+        let mut buffer = Bytes::pull(CLASS);
+        buffer.0.resize(2 * CLASS.size() + 1, 0); // Force a reallocation to a capacity that is no class.
+        drop(buffer);
+
+        assert_eq!(Bytes::pull(CLASS).0.capacity(), CLASS.size());
+    }
+
+    #[test]
     fn discarded_buffer_is_subtracted_from_buffer_count() {
-        let oversized = Class::Gro.size() + 1;
-        let before = num_buffers(&[oversized]);
+        let _exclusive = exclusive(CLASS);
+        let grown = 2 * CLASS.size() + 1; // A capacity that is no class.
+        let before = num_buffers(&[CLASS.size(), grown]);
 
-        drop(Bytes::fitting(oversized));
+        let mut buffer = Bytes::pull(CLASS);
+        buffer.0.resize(grown, 0);
+        drop(buffer);
 
-        assert_eq!(num_buffers(&[oversized]), before);
+        assert_eq!(num_buffers(&[CLASS.size(), grown]), before);
     }
 
     #[test]
@@ -469,7 +534,7 @@ mod tests {
     #[cfg(target_pointer_width = "64")]
     #[test]
     fn handles_are_slim() {
-        assert_eq!(size_of::<Bytes>(), 16);
+        assert_eq!(size_of::<Bytes>(), 24);
     }
 
     #[test]
@@ -564,6 +629,25 @@ mod tests {
         .unwrap();
 
         assert_eq!(depot_len(CLASS), 1);
+    }
+
+    #[test]
+    fn shift_start_right() {
+        let mut buffer = Bytes::copied_from(b"hello world");
+
+        buffer.shift_start_right(5);
+
+        assert_eq!(&*buffer, b" world");
+    }
+
+    #[test]
+    fn shift_start_left() {
+        let mut buffer = Bytes::copied_from(b"hello world");
+
+        let front = buffer.shift_start_left(5);
+        front.copy_from_slice(b"12345");
+
+        assert_eq!(&*buffer, b"12345hello world");
     }
 
     /// Serialises the tests on `class` and empties its depot and this thread's magazine before and after each.

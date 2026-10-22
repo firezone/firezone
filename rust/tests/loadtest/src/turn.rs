@@ -604,12 +604,12 @@ async fn send(
             sequence += 1;
         }
 
+        let packet = bufferpool::Bytes::copied_from(&batch);
         socket
             .send(DatagramOut {
                 src: None,
                 dst: config.server,
-                packet: bufferpool::Bytes::copied_from(&batch),
-                len: batch.len(),
+                packet,
                 segment_size: frame_size,
                 ecn: Ecn::NonEct,
             })
@@ -1152,12 +1152,13 @@ async fn send_datagram(
     bytes: &[u8],
     segment_size: usize,
 ) -> Result<()> {
+    let packet = bufferpool::Bytes::copied_from(bytes);
+
     socket
         .send(DatagramOut {
             src: None,
             dst,
-            packet: bufferpool::Bytes::copied_from(bytes),
-            len: bytes.len(),
+            packet,
             segment_size,
             ecn: Ecn::NonEct,
         })

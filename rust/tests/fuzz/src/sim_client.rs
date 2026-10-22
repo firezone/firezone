@@ -344,7 +344,7 @@ impl SimClient {
         let (local, from) = (transmit.dst, transmit.src.unwrap());
         let Some(packet) = self
             .sut
-            .handle_network_input(local, from, transmit.payload(), now)
+            .handle_network_input(local, from, &transmit.payload, now)
             .and_then(|decapsulation| {
                 let Some(decapsulation) = decapsulation else {
                     return Ok(None);
@@ -353,7 +353,7 @@ impl SimClient {
                 self.sut.handle_peer_input(
                     local,
                     from,
-                    decapsulation.decrypt(transmit.payload()),
+                    decapsulation.decrypt(&transmit.payload),
                     now,
                 )
             })

@@ -1108,12 +1108,12 @@ where
         now: Instant,
     ) {
         let Some((_, allocation)) = self.allocations.get_mut_by_allocation(local) else {
-            self.buffered_transmits.push_back(Transmit::new(
-                Some(local),
-                remote,
-                message,
-                Ecn::NonEct,
-            ));
+            self.buffered_transmits.push_back(Transmit {
+                src: Some(local),
+                dst: remote,
+                payload: Bytes::copied_from(message),
+                ecn: Ecn::NonEct,
+            });
             return;
         };
 
@@ -1123,12 +1123,12 @@ where
             return;
         };
 
-        self.buffered_transmits.push_back(Transmit::new(
-            None,
-            encode_ok.socket,
-            &channel_data,
-            Ecn::NonEct,
-        ));
+        self.buffered_transmits.push_back(Transmit {
+            src: None,
+            dst: encode_ok.socket,
+            payload: Bytes::copied_from(&channel_data),
+            ecn: Ecn::NonEct,
+        });
     }
 
     fn allocations_drain_events(&mut self, now: Instant) {
@@ -1330,7 +1330,7 @@ pub enum Event<TId, RId> {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Transmit {
     /// The local interface from which this packet should be sent.
     ///
@@ -1341,10 +1341,8 @@ pub struct Transmit {
     pub src: Option<SocketAddr>,
     /// The remote the packet should be sent to.
     pub dst: SocketAddr,
-    /// The buffer that starts with the data that should be sent.
-    pub buffer: Bytes,
-    /// How many bytes at the start of [`Transmit::buffer`] to send.
-    pub len: usize,
+    /// The data that should be sent.
+    pub payload: Bytes,
     /// The ECN bits to set for the UDP packet.
     pub ecn: Ecn,
 }
@@ -1354,50 +1352,8 @@ impl fmt::Debug for Transmit {
         f.debug_struct("Transmit")
             .field("src", &self.src)
             .field("dst", &self.dst)
-            .field("len", &self.len)
+            .field("len", &self.payload.len())
             .finish()
-    }
-}
-
-impl Transmit {
-    /// Creates a transmit of a copy of `payload`.
-    pub fn new(src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) -> Self {
-        Self {
-            src,
-            dst,
-            buffer: Bytes::copied_from(payload),
-            len: payload.len(),
-            ecn,
-        }
-    }
-
-    /// The data that should be sent.
-    pub fn payload(&self) -> &[u8] {
-        &self.buffer[..self.len]
-    }
-
-    fn key(&self) -> (Option<SocketAddr>, SocketAddr, &[u8], Ecn) {
-        (self.src, self.dst, self.payload(), self.ecn)
-    }
-}
-
-impl PartialEq for Transmit {
-    fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
-    }
-}
-
-impl Eq for Transmit {}
-
-impl PartialOrd for Transmit {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Transmit {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key().cmp(&other.key())
     }
 }
 
@@ -1749,12 +1705,12 @@ where
             // Check if `is` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
                 // `source` did not match any of our allocated sockets, must be a local one then!
-                transmits.push_back(Transmit::new(
-                    Some(source),
+                transmits.push_back(Transmit {
+                    src: Some(source),
                     dst,
-                    &stun_packet_bytes,
-                    Ecn::NonEct,
-                ));
+                    payload: Bytes::copied_from(&stun_packet_bytes),
+                    ecn: Ecn::NonEct,
+                });
                 continue;
             };
 
@@ -1769,12 +1725,12 @@ where
                 continue;
             };
 
-            transmits.push_back(Transmit::new(
-                None,
-                encode_ok.socket,
-                &data_channel_packet,
-                Ecn::NonEct,
-            ));
+            transmits.push_back(Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Bytes::copied_from(&data_channel_packet),
+                ecn: Ecn::NonEct,
+            });
         }
     }
 
@@ -2264,14 +2220,24 @@ where
         | PeerSocket::PeerToRelay {
             dest: remote,
             source,
-        } => Transmit::new(Some(source), remote, message, Ecn::NonEct),
+        } => Transmit {
+            src: Some(source),
+            dst: remote,
+            payload: Bytes::copied_from(message),
+            ecn: Ecn::NonEct,
+        },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
             let allocation = allocations.get_mut_by_id(&relay?)?;
 
             let mut channel_data = channel_data_packet_buffer(message);
             let encode_ok = allocation.encode_channel_data_header(peer, &mut channel_data, now)?;
 
-            Transmit::new(None, encode_ok.socket, &channel_data, Ecn::NonEct)
+            Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Bytes::copied_from(&channel_data),
+                ecn: Ecn::NonEct,
+            }
         }
     };
 
