@@ -28,6 +28,9 @@ create_token_file
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
+# Some runners point `/etc/resolv.conf` at an egress proxy instead of `systemd-resolved`.
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+
 HTTPBIN=dns
 HTTPBIN_FQDN="$HTTPBIN.httpbin.search.test"
 
@@ -54,8 +57,6 @@ resolvectl query "$HTTPBIN" || debug_exit
 # Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
-# glibc stops searching at the first domain whose lookup errors, so drop the runner's own search domain.
-sudo resolvectl domain "$(ip -o route show default | awk '{print $5; exit}')" ""
 curl -v $HTTPBIN/get || debug_exit
 
 # Make sure it's going through the tunnel
