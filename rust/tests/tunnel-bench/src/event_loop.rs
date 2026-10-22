@@ -21,7 +21,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::ErrorExt as _;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
-use criterion::measurement::WallTime;
+use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::make::TcpFlags;
@@ -34,6 +34,7 @@ use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelC
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 
+use crate::measure::Stage;
 use crate::thread_cpu::thread_cpu_times;
 use device::Device;
 
@@ -46,14 +47,6 @@ const GROUP: &str = "event_loop";
 ///
 /// An environment variable because criterion parses the whole command line itself.
 const BENCHER_JSON_ENV: &str = "TUNNEL_BENCH_JSON";
-
-/// The pipeline stages, as the measure slug and the prefix of the threads' names.
-const STAGES: [(&str, &str); 4] = [
-    ("event-loop", "event-loop"),
-    ("udp", "UDP"),
-    ("crypto", "wg-crypto"),
-    ("tun", "TUN"),
-];
 
 #[derive(Debug, Clone, Copy)]
 enum Resource {
@@ -103,18 +96,10 @@ const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
 
-criterion::criterion_group! {
-    name = benches;
-    config = Criterion::default()
-        .warm_up_time(Duration::from_millis(500))
-        .measurement_time(Duration::from_millis(1500))
-        .without_plots();
-    targets = bench
-}
-
-fn bench(c: &mut Criterion) {
+/// Runs every benchmark under `measurement`, in a criterion group named after it.
+pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_name: &str) {
     prioritize_stand_in();
-    let mut group = c.benchmark_group(GROUP);
+    let mut group = c.benchmark_group(group_name);
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
     let mut report = BTreeMap::new();
 
@@ -132,6 +117,7 @@ fn bench(c: &mut Criterion) {
                 let (client, gateway, now) = connect();
                 report.extend(outbound(
                     &mut group,
+                    measurement,
                     id("client_outbound"),
                     client,
                     gateway,
@@ -141,6 +127,7 @@ fn bench(c: &mut Criterion) {
                 let (client, gateway, now) = connect();
                 report.extend(inbound(
                     &mut group,
+                    measurement,
                     id("gateway_inbound"),
                     gateway,
                     client,
@@ -150,6 +137,7 @@ fn bench(c: &mut Criterion) {
                 let (client, gateway, now) = connect();
                 report.extend(outbound(
                     &mut group,
+                    measurement,
                     id("gateway_outbound"),
                     gateway,
                     client,
@@ -159,6 +147,7 @@ fn bench(c: &mut Criterion) {
                 let (client, gateway, now) = connect();
                 report.extend(inbound(
                     &mut group,
+                    measurement,
                     id("client_inbound"),
                     client,
                     gateway,
@@ -178,8 +167,9 @@ fn bench(c: &mut Criterion) {
 }
 
 /// Lets the tunnel read packets from its TUN device and counts the datagrams arriving at the peer.
-fn outbound(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+fn outbound<M: Measurement + Copy>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     local: Side,
     peer: Side,
@@ -214,11 +204,19 @@ fn outbound(
     });
 
     let inputs = |packets| device.grants(packets);
-    let measures = measure(group, id, &event_loop, &arrivals, inputs, |packets| {
-        device.grant(packets);
+    let measures = measure(
+        group,
+        measurement,
+        id,
+        &event_loop,
+        &arrivals,
+        inputs,
+        |packets| {
+            device.grant(packets);
 
-        packets
-    });
+            packets
+        },
+    );
 
     event_loop.stop();
 
@@ -226,8 +224,9 @@ fn outbound(
 }
 
 /// Sends encrypted datagrams to the tunnel's UDP socket and counts the packets it writes to TUN.
-fn inbound(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+fn inbound<M: Measurement + Copy>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     local: Side,
     mut peer: Side,
@@ -253,6 +252,7 @@ fn inbound(
     };
     let measures = measure(
         group,
+        measurement,
         id,
         &event_loop,
         device.writes(),
@@ -481,8 +481,9 @@ impl Arrivals {
 /// input holds. Returns the measures under the benchmark's name as criterion reports it, or
 /// nothing for skipped or test runs, which send too few packets to tell.
 #[allow(clippy::print_stdout, clippy::print_stderr)]
-fn measure<T>(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+fn measure<M: Measurement + Copy, T>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     event_loop: &EventLoop,
     arrivals: &Arrivals,
@@ -493,7 +494,7 @@ fn measure<T>(
     let mut elapsed = Duration::ZERO;
     group.bench_function(&id, |b| {
         b.iter_custom(|iters| {
-            let mut iter_elapsed = Duration::ZERO;
+            let mut measured = measurement.zero();
             let mut remaining = usize::try_from(iters).unwrap();
             while remaining > 0 {
                 let packets = remaining.min(BURST);
@@ -501,6 +502,7 @@ fn measure<T>(
                 let inputs = inputs(packets);
 
                 let start = Instant::now();
+                let measuring = measurement.start();
                 let arrived = arrivals.count();
                 let mut sent = 0_usize;
                 for input in inputs {
@@ -508,11 +510,11 @@ fn measure<T>(
                     sent += send(input);
                 }
                 arrivals.wait_for(arrived + packets);
-                iter_elapsed += start.elapsed();
+                measured = measurement.add(&measured, &measurement.end(measuring));
+                elapsed += start.elapsed();
             }
-            elapsed += iter_elapsed;
 
-            iter_elapsed
+            measured
         })
     });
     let packets = arrivals.count() - before.1;
@@ -601,9 +603,9 @@ impl Measures {
     /// The stages that had a thread during the benchmark; a benchmark without a TUN device has
     /// no TUN threads.
     fn active_stages(&self) -> impl Iterator<Item = (&'static str, &'static str)> {
-        STAGES
-            .iter()
-            .copied()
+        Stage::ALL
+            .into_iter()
+            .map(|stage| (stage.name(), stage.thread_prefix()))
             .filter(|(_, prefix)| self.stage_threads(prefix).next().is_some())
     }
 
