@@ -43,7 +43,7 @@ use anyhow::Result;
 use parking_lot::{Mutex, MutexGuard};
 use quinn_udp::UdpSockRef;
 
-use crate::{DatagramBatch, RecvBuffers};
+use crate::{DatagramBatch, RecvBatch};
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -154,9 +154,9 @@ impl SocketPool {
         src: Option<IpAddr>,
         dst: SocketAddr,
         datagrams: usize,
-        recv_buffers: &RecvBuffers,
+        recv_buf_size: usize,
     ) -> Arc<OwnedSocket> {
-        self.get_or_connect(src, dst, datagrams, recv_buffers)
+        self.get_or_connect(src, dst, datagrams, recv_buf_size)
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
@@ -230,7 +230,7 @@ impl SocketPool {
         src: Option<IpAddr>,
         dst: SocketAddr,
         datagrams: usize,
-        recv_buffers: &RecvBuffers,
+        recv_buf_size: usize,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
         let mut inner = self.lock();
@@ -248,7 +248,12 @@ impl SocketPool {
         }
 
         if inner.flows.len() >= MAX_FLOW_SOCKETS {
-            evict_one(&mut inner, self.local.port(), recv_buffers, &self.evictions);
+            evict_one(
+                &mut inner,
+                self.local.port(),
+                recv_buf_size,
+                &self.evictions,
+            );
         }
 
         match connect(self.local, src, dst, inner.buffer_sizes) {
@@ -378,7 +383,7 @@ impl RateGate {
 fn evict_one(
     inner: &mut Inner,
     port: u16,
-    recv_buffers: &RecvBuffers,
+    recv_buf_size: usize,
     evictions: &opentelemetry::metrics::Counter<u64>,
 ) {
     let Some(key) = inner
@@ -400,7 +405,7 @@ fn evict_one(
 
     evictions.add(1, &[]);
 
-    drain(&victim, port, recv_buffers, &mut inner.drained);
+    drain(&victim, port, recv_buf_size, &mut inner.drained);
 
     if !inner.drained.is_empty()
         && let Some(waker) = inner.recv_waker.take()
@@ -429,11 +434,11 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 /// A connected socket captures inbound for its 4-tuple; whatever is already queued would be
 /// discarded by the kernel on close. Packets arriving after the close are delivered to the
 /// catch-all socket instead.
-fn drain(victim: &Flow, port: u16, recv_buffers: &RecvBuffers, out: &mut VecDeque<DatagramBatch>) {
+fn drain(victim: &Flow, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
     let socket = victim.socket.as_socket();
 
     loop {
-        let mut batch = recv_buffers.pull_batch();
+        let mut batch = RecvBatch::pull(recv_buf_size);
 
         let len = {
             let (mut io_bufs, metas) = batch.recv_slices();

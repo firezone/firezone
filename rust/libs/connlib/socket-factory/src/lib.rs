@@ -278,8 +278,8 @@ pub struct PerfUdpSocket {
     /// The socket(s) we send and receive on; see [`SocketPool`].
     pool: SocketPool,
 
-    /// The size of the buffers backing batched receives; see [`RecvBuffers`].
-    recv_buffers: RecvBuffers,
+    /// How many bytes each buffer of a batched receive holds.
+    recv_buf_size: usize,
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
@@ -322,7 +322,7 @@ impl UdpSocket {
 
         Ok(PerfUdpSocket {
             pool: SocketPool::new(wildcard),
-            recv_buffers: RecvBuffers::new(recv_buf_size),
+            recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
             source_ip_resolver: self.source_ip_resolver,
@@ -426,7 +426,7 @@ impl PerfUdpSocket {
     /// Returns `WouldBlock` if the socket is not readable, clearing tokio's cached
     /// readiness in the process so that waiting for readiness actually suspends.
     fn try_recv_batch(&self, socket: Socket<'_>) -> io::Result<DatagramBatch> {
-        let mut batch = self.recv_buffers.pull_batch();
+        let mut batch = RecvBatch::pull(self.recv_buf_size);
 
         let len = socket.inner.try_io(Interest::READABLE, || {
             // The loop only re-iterates on Apple, where connected sockets surface (one-shot)
@@ -486,7 +486,7 @@ impl PerfUdpSocket {
         let datagrams = transmit.contents.len().div_ceil(datagram.segment_size);
         let pooled =
             self.pool
-                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, &self.recv_buffers);
+                .get_send_socket(transmit.src_ip, datagram.dst, datagrams, self.recv_buf_size);
 
         self.send_transmit(pooled.as_socket(), &transmit).await
     }
@@ -903,11 +903,6 @@ async fn wait_for_send_capacity(socket: &tokio::net::UdpSocket) {
     let _ = tokio::time::timeout(timeout, socket.writable()).await;
 }
 
-/// How many bytes each buffer of a batched receive holds.
-pub(crate) struct RecvBuffers {
-    recv_buf_size: usize,
-}
-
 /// The storage for one receive batch: a datagram buffer plus its metadata per slot.
 ///
 /// The buffers and metas live in heap-allocated `Vec`s rather than inline in
@@ -919,6 +914,16 @@ pub(crate) struct RecvBatch {
 }
 
 impl RecvBatch {
+    /// Pulls the storage for one receive batch of `recv_buf_size`-byte buffers.
+    pub(crate) fn pull(recv_buf_size: usize) -> Self {
+        Self {
+            buffers: std::iter::repeat_with(|| Bytes::fitting(recv_buf_size))
+                .take(quinn_udp::BATCH_SIZE)
+                .collect(),
+            metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
+        }
+    }
+
     /// The batch's datagram buffers as scatter slices, paired with the meta array the
     /// kernel fills in — the two arguments a `recvmmsg`-style read expects. Borrows the
     /// batch for the duration of the read; afterwards the buffers are handed to a
@@ -936,22 +941,6 @@ impl RecvBatch {
             .collect();
 
         (io_bufs, &mut self.metas)
-    }
-}
-
-impl RecvBuffers {
-    fn new(recv_buf_size: usize) -> Self {
-        Self { recv_buf_size }
-    }
-
-    /// Pulls the storage for one receive batch, sized and ready for a `recv` call.
-    pub(crate) fn pull_batch(&self) -> RecvBatch {
-        RecvBatch {
-            buffers: std::iter::repeat_with(|| Bytes::fitting(self.recv_buf_size))
-                .take(quinn_udp::BATCH_SIZE)
-                .collect(),
-            metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
-        }
     }
 }
 
