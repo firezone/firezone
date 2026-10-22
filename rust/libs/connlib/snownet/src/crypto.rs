@@ -74,14 +74,14 @@ impl PendingEncapsulate {
         let dst = self.dst;
 
         let len = self.datagram_len(packet);
-        let mut payload = Bytes::fitting(len);
-        payload.truncate(len);
-        self.encrypt_into(packet, &mut payload)?;
+        let mut buffer = Bytes::fitting(len);
+        self.encrypt_into(packet, &mut buffer[..len])?;
 
         Ok(Transmit {
             src,
             dst,
-            payload,
+            buffer,
+            len,
             ecn: packet.ecn(),
         })
     }

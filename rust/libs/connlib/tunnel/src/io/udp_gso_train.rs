@@ -90,22 +90,22 @@ impl UdpGsoTrain {
                 Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
             }
         }
-        buffer.truncate(len);
 
-        if buffer.is_empty() {
+        if len == 0 {
             return None;
         }
 
-        Some(self.into_datagram(buffer))
+        Some(self.into_datagram(buffer, len))
     }
 
-    fn into_datagram(self, packet: Bytes) -> DatagramOut {
+    fn into_datagram(self, packet: Bytes, len: usize) -> DatagramOut {
         DatagramOut {
             src: self.connection.src,
             dst: self.connection.dst,
             // Skipped packets may leave only the shorter last segment.
-            segment_size: self.segment_size.min(packet.len()),
+            segment_size: self.segment_size.min(len),
             packet,
+            len,
             ecn: self.connection.ecn,
         }
     }

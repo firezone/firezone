@@ -1078,12 +1078,7 @@ impl TunnelTest {
                             .expect("relay to never emit packets without a matching socket");
 
                         buffered_transmits.push_from(
-                            Transmit {
-                                src: Some(src),
-                                dst,
-                                payload: bufferpool::Bytes::copied_from(&payload),
-                                ecn: Ecn::NonEct,
-                            },
+                            Transmit::new(Some(src), dst, &payload, Ecn::NonEct),
                             relay,
                             now,
                         );

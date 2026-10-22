@@ -182,7 +182,7 @@ impl Sockets {
     ///
     /// Failures are returned by [`Sockets::poll_flush`].
     pub fn send_ready(&mut self, transmit: snownet::Transmit) {
-        UdpPacketCounts::transmit(&self.packet_counter).record(&transmit.payload);
+        UdpPacketCounts::transmit(&self.packet_counter).record(transmit.payload());
 
         let version = match transmit.dst {
             SocketAddr::V4(_) => IpVersion::V4,
@@ -191,8 +191,9 @@ impl Sockets {
         let datagram = DatagramOut {
             src: transmit.src,
             dst: transmit.dst,
-            segment_size: transmit.payload.len(),
-            packet: transmit.payload,
+            segment_size: transmit.len,
+            packet: transmit.buffer,
+            len: transmit.len,
             ecn: transmit.ecn,
         };
 

@@ -164,6 +164,7 @@ enum Inner {
     /// A coalesced batch.
     Batch {
         buf: Bytes,
+        len: usize,
         num_segments: usize,
         offload_metadata: Option<OffloadMetadata>,
     },
@@ -182,7 +183,7 @@ impl CoalescedPacket {
     pub fn packet(&self) -> &[u8] {
         match &self.0 {
             Inner::Packet(packet) => packet.packet(),
-            Inner::Batch { buf, .. } => buf,
+            Inner::Batch { buf, len, .. } => &buf[..*len],
         }
     }
 
@@ -207,24 +208,27 @@ impl CoalescedPacket {
         }
     }
 
-    /// The coalescing buffer, copying the first packet into one on first use.
-    fn coalesced(&mut self, max_packet_len: usize) -> &mut Bytes {
+    /// Appends `payload` to the coalescing buffer, copying the first packet into one on first use.
+    fn append(&mut self, payload: &[u8], max_packet_len: usize) {
         if let Inner::Packet(first) = &self.0 {
+            let first = first.packet();
             let mut buf = Bytes::fitting(max_packet_len);
-            buf.truncate(0);
-            buf.extend_from_slice(first.packet());
+            buf[..first.len()].copy_from_slice(first);
 
             self.0 = Inner::Batch {
                 buf,
+                len: first.len(),
                 num_segments: 1,
                 offload_metadata: None,
             };
         }
 
-        match &mut self.0 {
-            Inner::Batch { buf, .. } => buf,
-            Inner::Packet(_) => unreachable!("converted to `Batch` above"),
-        }
+        let Inner::Batch { buf, len, .. } = &mut self.0 else {
+            unreachable!("converted to `Batch` above")
+        };
+
+        buf[*len..*len + payload.len()].copy_from_slice(payload);
+        *len += payload.len();
     }
 }
 
@@ -433,7 +437,7 @@ impl OpenBatch {
         let bytes = packet.packet();
         let payload = &bytes[candidate.ip_hdr_len + candidate.l4_hdr_len..];
 
-        item.coalesced(max_packet_len).extend_from_slice(payload);
+        item.append(payload, max_packet_len);
 
         self.total_len += payload.len();
         self.next_seq = self.next_seq.wrapping_add(payload.len() as u32);
@@ -455,6 +459,7 @@ impl OpenBatch {
     fn finish(self, items: &mut [CoalescedPacket], checksum_mode: ChecksumMode) {
         let Inner::Batch {
             buf,
+            len,
             num_segments,
             offload_metadata,
         } = &mut items[self.item].0
@@ -463,7 +468,7 @@ impl OpenBatch {
         };
 
         let metadata = finalize(
-            buf,
+            &mut buf[..*len],
             &self.key,
             self.ip_hdr_len,
             self.l4_hdr_len,

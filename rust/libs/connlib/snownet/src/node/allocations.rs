@@ -590,7 +590,7 @@ mod tests {
         let allocation = allocations.get_mut_by_id(&rid).unwrap();
         let local = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 33333));
 
-        let binding = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+        let binding = crate::allocation::decode(allocation.poll_transmit().unwrap().payload())
             .unwrap()
             .unwrap();
         let mut response = Message::new(
@@ -601,7 +601,7 @@ mod tests {
         response.add_attribute(XorMappedAddress::new(local));
         allocation.handle_input(SERVER_V4, local, response, now);
 
-        let allocate = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+        let allocate = crate::allocation::decode(allocation.poll_transmit().unwrap().payload())
             .unwrap()
             .unwrap();
         let mut response = Message::new(

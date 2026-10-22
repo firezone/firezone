@@ -146,8 +146,7 @@ pub struct IpPacket {
     version: IpVersion,
 }
 
-#[cfg(target_pointer_width = "64")]
-const _: () = assert!(std::mem::size_of::<IpPacket>() == 32);
+const _: () = assert!(std::mem::size_of::<IpPacket>() == std::mem::size_of::<Bytes>() + 8);
 
 /// The transport protocol of an [`IpPacket`], determined and validated on creation.
 ///

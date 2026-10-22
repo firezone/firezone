@@ -5,7 +5,7 @@
 //! - `Pooled`: a buffer of the packet class.
 //! - `Plain`: a value of the same size as a pooled buffer handle that costs nothing to create or drop.
 //!   Across threads, this is the cost of the channel alone.
-//! - `Alloc`: a freshly allocated `Vec` of the same capacity, i.e. no pooling at all.
+//! - `Alloc`: a freshly allocated, uninitialised box of the same length, i.e. no pooling at all.
 //!
 //! Items move in batches of `BATCH`, like packets do between connlib's threads.
 
@@ -45,8 +45,8 @@ fn plain() -> [u8; size_of::<Bytes>()] {
     black_box([0; size_of::<Bytes>()])
 }
 
-fn alloc() -> Vec<u8> {
-    Vec::with_capacity(PACKET)
+fn alloc() -> Box<[std::mem::MaybeUninit<u8>]> {
+    Box::new_uninit_slice(PACKET)
 }
 
 fn main() {

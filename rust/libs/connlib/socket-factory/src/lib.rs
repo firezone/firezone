@@ -382,6 +382,8 @@ pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
     pub packet: Bytes,
+    /// How many bytes at the start of [`DatagramOut::packet`] to send.
+    pub len: usize,
     pub segment_size: usize,
     pub ecn: Ecn,
 }
@@ -390,7 +392,7 @@ pub struct DatagramOut {
 pub const MAX_GSO_SEGMENTS: usize = 64;
 
 impl DatagramOut {
-    /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
+    /// The largest [`DatagramOut::len`] that can be flushed to `dst` in a single GSO send.
     ///
     /// One send's payload is bounded by the maximum IP packet size less IP/UDP header overhead,
     /// and by the kernel's segment limit; the result is a whole number of segments.
@@ -478,7 +480,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            &datagram.packet,
+            &datagram.packet[..datagram.len],
             datagram.segment_size,
             datagram.ecn,
         )?;

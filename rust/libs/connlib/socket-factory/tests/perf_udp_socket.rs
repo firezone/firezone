@@ -26,6 +26,7 @@ async fn sends_and_receives_a_datagram() {
             src: None,
             dst: peer_addr,
             packet: bufferpool::Bytes::copied_from(&b"hello".repeat(DATAGRAMS)),
+            len: 5 * DATAGRAMS,
             segment_size: 5,
             ecn: Ecn::NonEct,
         })
@@ -83,6 +84,7 @@ async fn receives_after_many_icmp_errors() {
                 src: None,
                 dst: closed_addr,
                 packet: bufferpool::Bytes::copied_from(&[0; 1200]),
+                len: 1200,
                 segment_size: 1200,
                 ecn: Ecn::NonEct,
             })

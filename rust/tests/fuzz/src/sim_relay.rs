@@ -106,7 +106,7 @@ impl SimRelay {
         now_utc: SystemTime,
     ) -> Option<Transmit> {
         let dst = transmit.dst;
-        let payload = transmit.payload;
+        let payload = transmit.payload();
         let sender = transmit.src.unwrap();
 
         if self
@@ -125,30 +125,25 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        mut payload: Bytes,
+        payload: &[u8],
         client: ClientSocket,
         now: Instant,
         now_utc: SystemTime,
     ) -> Option<Transmit> {
         if self.out_of_capacity
-            && let Some(response) = self.reject_allocation(&payload)
+            && let Some(response) = self.reject_allocation(payload)
         {
-            payload.truncate(0);
-            payload.extend_from_slice(&response);
-
-            return Some(Transmit {
-                src: self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
-                dst: client.into_socket(),
-                payload,
-                ecn: Ecn::NonEct,
-            });
+            return Some(Transmit::new(
+                self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
+                client.into_socket(),
+                &response,
+                Ecn::NonEct,
+            ));
         }
 
         let (port, peer) = self
             .sut
-            .handle_client_input(&payload, client, now, now_utc)?;
-
-        payload.drain(..4);
+            .handle_client_input(payload, client, now, now_utc)?;
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -180,12 +175,7 @@ impl SimRelay {
         // The `src` of the relayed packet is the relay itself _from_ the allocated port.
         let src = SocketAddr::new(src_ip, port.value());
 
-        Some(Transmit {
-            src: Some(src),
-            dst,
-            payload,
-            ecn: Ecn::NonEct,
-        })
+        Some(Transmit::new(Some(src), dst, &payload[4..], Ecn::NonEct))
     }
 
     /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
@@ -222,17 +212,21 @@ impl SimRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        mut payload: Bytes,
+        payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit> {
-        let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
+        let (client, channel) = self.sut.handle_peer_traffic(payload, peer, port)?;
 
-        let data_len = payload.len() as u16;
-        payload.splice(..0, [0; 4]);
-        let header = &mut payload[..4];
+        let len = 4 + payload.len();
+        let mut buffer = Bytes::fitting(len);
+        buffer[4..len].copy_from_slice(payload);
 
-        relay_proto::ChannelData::encode_header_to_slice(channel, data_len, header);
+        relay_proto::ChannelData::encode_header_to_slice(
+            channel,
+            payload.len() as u16,
+            &mut buffer[..4],
+        );
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
@@ -242,7 +236,8 @@ impl SimRelay {
         Some(Transmit {
             src: Some(sending_socket),
             dst: receiving_socket,
-            payload,
+            buffer,
+            len,
             ecn: Ecn::NonEct,
         })
     }

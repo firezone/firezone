@@ -433,7 +433,7 @@ fn encrypt(
 
     let mut transmitted = UdpPacketCounts::transmit(packet_counter);
 
-    for segment in datagram.packet.chunks(datagram.segment_size) {
+    for segment in datagram.packet[..datagram.len].chunks(datagram.segment_size) {
         transmitted.record(segment);
     }
 

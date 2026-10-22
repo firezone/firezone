@@ -1238,12 +1238,8 @@ impl Allocation {
         self.sent_requests
             .insert(id, (dst, message.clone(), backoff));
 
-        self.buffered_transmits.push_back(Transmit {
-            src: None,
-            dst,
-            payload: Bytes::copied_from(&encode(message)),
-            ecn: Ecn::NonEct,
-        });
+        self.buffered_transmits
+            .push_back(Transmit::new(None, dst, &encode(message), Ecn::NonEct));
 
         true
     }
@@ -3023,7 +3019,7 @@ mod tests {
         let transmit = allocation.poll_transmit().unwrap();
         assert_eq!(transmit.dst, RELAY_V4.into());
         assert_eq!(
-            decode(&transmit.payload).unwrap().unwrap().method(),
+            decode(transmit.payload()).unwrap().unwrap().method(),
             BINDING
         );
     }
@@ -3213,7 +3209,7 @@ mod tests {
         fn next_message(&mut self) -> Option<Message<Attribute>> {
             let transmit = self.poll_transmit()?;
 
-            Some(decode(&transmit.payload).unwrap().unwrap())
+            Some(decode(transmit.payload()).unwrap().unwrap())
         }
 
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.

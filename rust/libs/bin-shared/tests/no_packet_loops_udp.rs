@@ -41,16 +41,15 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     // Send a STUN request.
-    let packet = bufferpool::Bytes::copied_from(
-        hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
-    );
+    let request = hex_literal::hex!("000100002112A4420123456789abcdef01234567");
 
     socket
         .send(DatagramOut {
             src: None,
             dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
-            segment_size: packet.len(),
-            packet,
+            packet: bufferpool::Bytes::copied_from(&request),
+            len: request.len(),
+            segment_size: request.len(),
             ecn: Ecn::NonEct,
         })
         .await
