@@ -1056,7 +1056,11 @@ impl ReferenceState {
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
             return Some(RejectionResponse::Prohibited);
         }
-        if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
+        // An authorized CIDR route takes precedence over the Internet resource's reject list.
+        if is_internet_resource
+            && !allowed_by_another_cidr
+            && dst.ip_addr().is_some_and(internet_resource_rejects)
+        {
             return Some(RejectionResponse::Unreachable);
         }
 

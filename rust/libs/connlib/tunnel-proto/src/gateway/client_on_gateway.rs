@@ -565,19 +565,37 @@ impl ClientOnGateway {
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> Result<ResourceId> {
-        let resource = match self.internet_resource_enabled {
-            Some(internet_resource) => match resource_ip {
-                ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
-                ip if internet_resource_rejects(ip) => {
-                    bail!(InternetResourceRejectedAddress(ip))
-                }
-                // Note a Gateway with Internet resource should never get packets for other resources.
-                _ => internet_resource,
-            },
-            None => self.classify_non_internet_resource(resource_ip, protocol)?,
+        // DNS proxy addresses only ever belong to DNS resources, never to the Internet catch-all.
+        if is_dns_addr(resource_ip) {
+            return self.classify_non_internet_resource(resource_ip, protocol);
+        }
+
+        // An authorized CIDR or DNS resource takes precedence over the Internet resource:
+        // a device may serve both, and the Internet catch-all rejects the private ranges
+        // those resources usually live in.
+        let matched = self
+            .routing_table
+            .matches(
+                resource_ip,
+                protocol,
+                crate::routing_table::FilterMode::Apply,
+            )
+            .and_then(|entries| entries.first())
+            .map(|entry| entry.resource_id);
+
+        if let Some(resource) = matched {
+            return Ok(resource);
+        }
+
+        let Some(internet_resource) = self.internet_resource_enabled else {
+            bail!(NotAllowedResource(resource_ip))
         };
 
-        Ok(resource)
+        if internet_resource_rejects(resource_ip) {
+            bail!(InternetResourceRejectedAddress(resource_ip))
+        }
+
+        Ok(internet_resource)
     }
 
     fn classify_non_internet_resource(
@@ -1050,6 +1068,73 @@ mod tests {
         .unwrap();
 
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn cidr_resource_takes_precedence_over_internet_resource() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(bar_cidr_resource(), None, Instant::now());
+        peer.add_resource(internet_resource(), None, Instant::now());
+
+        // Inside the CIDR resource and allowed by its filter: routed as that resource.
+        let pkt = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            bar_contained_ip(),
+            1,
+            bar_allowed_port(),
+            &[0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+
+        // Inside the CIDR resource but not allowed by its filter: the Internet resource
+        // does not pick it up, because the address is private.
+        let pkt = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            bar_contained_ip(),
+            1,
+            600,
+            &[0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError { .. }
+        ));
+
+        // Outside every resource: the Internet resource.
+        let pkt = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            "1.1.1.1".parse::<Ipv4Addr>().unwrap(),
+            1,
+            600,
+            &[0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn internet_resource_alone_does_not_reach_private_ranges() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(internet_resource(), None, Instant::now());
+
+        let pkt = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            bar_contained_ip(),
+            1,
+            bar_allowed_port(),
+            &[0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError { .. }
+        ));
     }
 
     #[test]
