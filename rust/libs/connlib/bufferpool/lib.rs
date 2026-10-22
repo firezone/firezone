@@ -162,26 +162,6 @@ impl Bytes {
 
         self.0.extend_from_slice(data);
     }
-
-    /// Shifts the start of the buffer to the right by N bytes, dropping the bytes at the front.
-    pub fn shift_start_right(&mut self, num: usize) {
-        self.0.drain(..num);
-    }
-
-    /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
-    pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
-        let current_len = self.0.len();
-        assert!(
-            current_len + num <= self.0.capacity(),
-            "Shifting by {num} bytes overflows a buffer of {} bytes holding {current_len}",
-            self.0.capacity()
-        );
-
-        self.0.resize(current_len + num, 0);
-        self.0.copy_within(..current_len, num);
-
-        &mut self.0[..num]
-    }
 }
 
 impl Clone for Bytes {
@@ -668,25 +648,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(depot_len(CLASS), 1);
-    }
-
-    #[test]
-    fn shift_start_right() {
-        let mut buffer = Bytes::copied_from(b"hello world");
-
-        buffer.shift_start_right(5);
-
-        assert_eq!(&*buffer, b" world");
-    }
-
-    #[test]
-    fn shift_start_left() {
-        let mut buffer = Bytes::copied_from(b"hello world");
-
-        let front = buffer.shift_start_left(5);
-        front.copy_from_slice(b"12345");
-
-        assert_eq!(&*buffer, b"12345hello world");
     }
 
     /// Serialises the tests on `class` and empties its depot and this thread's magazine before and after each.

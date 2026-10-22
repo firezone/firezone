@@ -133,8 +133,7 @@ impl SimRelay {
         if self.out_of_capacity
             && let Some(response) = self.reject_allocation(&payload)
         {
-            payload.truncate(0);
-            payload.extend_from_slice(&response);
+            payload = Bytes::copied_from(&response);
 
             return Some(Transmit {
                 src: self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
@@ -148,7 +147,7 @@ impl SimRelay {
             .sut
             .handle_client_input(&payload, client, now, now_utc)?;
 
-        payload.shift_start_right(4);
+        let payload = Bytes::copied_from(&payload[4..]);
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -222,16 +221,21 @@ impl SimRelay {
 
     fn handle_peer_traffic(
         &mut self,
-        mut payload: Bytes,
+        payload: Bytes,
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit> {
         let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
 
-        let data_len = payload.len() as u16;
-        let header = payload.shift_start_left(4);
-
-        relay_proto::ChannelData::encode_header_to_slice(channel, data_len, header);
+        let mut header = [0; 4];
+        relay_proto::ChannelData::encode_header_to_slice(
+            channel,
+            payload.len() as u16,
+            &mut header,
+        );
+        let mut channel_data = Bytes::fitting(header.len() + payload.len());
+        channel_data.extend_from_slice(&header);
+        channel_data.extend_from_slice(&payload);
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
@@ -241,7 +245,7 @@ impl SimRelay {
         Some(Transmit {
             src: Some(sending_socket),
             dst: receiving_socket,
-            payload,
+            payload: channel_data,
             ecn: Ecn::NonEct,
         })
     }
