@@ -1,10 +1,13 @@
-//! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets.
+//! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets
+//! and the real TUN worker threads over an in-memory device.
 //!
-//! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
-//! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
+//! The event loop runs on its own thread, kept busy by the TUN threads and a thread that stands in
+//! for the peer. A busy event loop never parks, so the wall time per packet is the cost of the
 //! event loop. One iteration is one packet.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
+
+mod device;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
@@ -27,12 +30,12 @@ use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
-use tun::{MAX_BATCH_SIZE, PacketBatch};
 use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 
 use crate::thread_cpu::thread_cpu_times;
+use device::Device;
 
 /// The size of the IP packets sent through the tunnel.
 const SIZE: usize = 1280;
@@ -95,7 +98,7 @@ const FLOW_SOCKET_PACKETS: usize = 16;
 /// How often the event loop may park per 1000 packets before a benchmark's measures are discarded.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
-/// if a stand-in thread could not keep up.
+/// if a TUN or stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
@@ -174,7 +177,7 @@ fn bench(c: &mut Criterion) {
     }
 }
 
-/// Feeds packets into the tunnel's TUN channel and counts the datagrams arriving at the peer.
+/// Lets the tunnel read packets from its TUN device and counts the datagrams arriving at the peer.
 fn outbound(
     group: &mut BenchmarkGroup<'_, WallTime>,
     id: String,
@@ -182,7 +185,8 @@ fn outbound(
     peer: Side,
     now: Instant,
 ) -> Option<(String, Measures)> {
-    let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
+    let device = Device::new(&local.reads);
+    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
     let arrivals = Arc::new(Arrivals::default());
     let (runtime, socket) = bind_peer(peer.socket);
 
@@ -209,10 +213,9 @@ fn outbound(
         }
     });
 
-    let inputs = |packets| batches(&local.reads, packets);
-    let measures = measure(group, id, &event_loop, &arrivals, inputs, |batch| {
-        let packets = batch.len();
-        event_loop.tun_reads.blocking_send(batch).unwrap();
+    let inputs = |packets| device.grants(packets);
+    let measures = measure(group, id, &event_loop, &arrivals, inputs, |packets| {
+        device.grant(packets);
 
         packets
     });
@@ -230,27 +233,13 @@ fn inbound(
     mut peer: Side,
     now: Instant,
 ) -> Option<(String, Measures)> {
-    let (event_loop, mut tun_writes) = EventLoop::spawn(local.state, local.socket, now);
-    let arrivals = Arc::new(Arrivals::default());
-    let tun_write = std::thread::Builder::new()
-        .name("TUN write".to_owned())
-        .spawn({
-            let arrivals = arrivals.clone();
-
-            move || {
-                prioritize_stand_in();
-                while let Some(batch) = tun_writes.blocking_recv() {
-                    arrivals.add(batch.len());
-                }
-            }
-        })
-        .unwrap();
+    let device = Device::new(&local.reads);
+    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
     let (runtime, socket) = bind_peer(peer.socket);
 
     #[cfg(target_os = "macos")]
     {
-        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
-        event_loop.tun_reads.blocking_send(batch).unwrap();
+        device.grant(FLOW_SOCKET_PACKETS);
 
         let mut received = 0;
         while received < FLOW_SOCKET_PACKETS {
@@ -262,15 +251,21 @@ fn inbound(
         peer.state
             .encapsulate(&peer.reads, packets, now, local.socket)
     };
-    let measures = measure(group, id, &event_loop, &arrivals, inputs, |datagram| {
-        let packets = datagram.packet.len() / datagram.segment_size;
-        runtime.block_on(socket.send(datagram)).unwrap();
+    let measures = measure(
+        group,
+        id,
+        &event_loop,
+        device.writes(),
+        inputs,
+        |datagram| {
+            let packets = datagram.packet.len() / datagram.segment_size;
+            runtime.block_on(socket.send(datagram)).unwrap();
 
-        packets
-    });
+            packets
+        },
+    );
 
     event_loop.stop();
-    tun_write.join().unwrap();
 
     measures
 }
@@ -361,18 +356,12 @@ struct EventLoop {
     thread: JoinHandle<()>,
     /// How often its thread has parked.
     parks: Arc<AtomicU64>,
-    /// The packets its TUN device reads.
-    tun_reads: tun::InboundTx,
+    device: Device,
 }
 
 impl EventLoop {
-    /// Spawns the event loop of a tunnel bound to `socket`.
-    ///
-    /// Returns the packets written to its TUN device alongside.
-    fn spawn(state: State, socket: SocketAddr, now: Instant) -> (Self, tun::OutboundRx) {
-        let (tun_reads, reads) = tun::inbound_channel();
-        let (writes, tun_writes) = tun::outbound_channel();
-        let tun = Box::new(FakeTun { reads, writes });
+    /// Spawns the event loop of a tunnel bound to `socket`, with its TUN workers on `device`.
+    fn spawn(state: State, socket: SocketAddr, now: Instant, device: &Device) -> Self {
         let tcp: Arc<dyn SocketFactory<TcpSocket>> = Arc::new(socket_factory::tcp);
         let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(move |addr| match addr {
             SocketAddr::V4(_) => socket_factory::udp(socket),
@@ -393,6 +382,7 @@ impl EventLoop {
             .unwrap();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
+            let tun = device.io(runtime.handle());
 
             match state {
                 State::Client(client) => {
@@ -433,14 +423,11 @@ impl EventLoop {
             })
             .unwrap();
 
-        (
-            Self {
-                thread,
-                parks,
-                tun_reads,
-            },
-            tun_writes,
-        )
+        Self {
+            thread,
+            parks,
+            device: device.clone(),
+        }
     }
 
     /// Returns how often the event loop's thread has parked.
@@ -448,28 +435,10 @@ impl EventLoop {
         self.parks.load(Ordering::Relaxed)
     }
 
+    /// Closes the TUN device, which stops its workers and thereby the event loop.
     fn stop(self) {
-        drop(self.tun_reads);
+        self.device.stop();
         self.thread.join().unwrap();
-    }
-}
-
-struct FakeTun {
-    reads: tun::InboundRx,
-    writes: tun::OutboundTx,
-}
-
-impl tun::Tun for FakeTun {
-    fn sender(&mut self) -> &mut tun::OutboundTx {
-        &mut self.writes
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.reads
-    }
-
-    fn name(&self) -> &str {
-        "fake"
     }
 }
 
@@ -684,31 +653,14 @@ fn cpu_by_thread() -> BTreeMap<String, Duration> {
 
 /// Raises the scheduling priority of the calling thread on macOS.
 ///
-/// The stand-in threads take the place of a kernel TUN device and a remote peer, neither of which
-/// is subject to macOS' quality-of-service scheduling. At the default QoS class, their wake-ups
-/// are delayed enough to starve the event loop between hand-offs.
+/// The stand-in thread takes the place of a remote peer, which is not subject to macOS'
+/// quality-of-service scheduling. At the default QoS class, its wake-ups are delayed enough to
+/// starve the event loop between hand-offs.
 fn prioritize_stand_in() {
     #[cfg(target_os = "macos")]
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
     }
-}
-
-/// Returns `count` copies of `packet` in batches.
-fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
-    let mut batches = Vec::<PacketBatch>::new();
-    for i in 0..count {
-        if i % MAX_BATCH_SIZE == 0 {
-            batches.push(PacketBatch::default());
-        }
-        batches
-            .last_mut()
-            .unwrap()
-            .try_push(packet.clone())
-            .unwrap();
-    }
-
-    batches
 }
 
 /// Binds the peer's socket, on a runtime with a single worker thread.

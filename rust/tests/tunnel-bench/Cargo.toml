@@ -21,13 +21,21 @@ socket-factory = { workspace = true }
 stun_codec = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tun = { workspace = true }
+tun-offload = { workspace = true }
 tunnel = { workspace = true }
 tunnel-proto = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tun-linux = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = { workspace = true }
 
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+tun-apple = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
+tun-windows = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 
 [lints]
