@@ -67,6 +67,12 @@ jobs:
           docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
           docker build --platform linux/amd64 -t "$image" "$GITHUB_WORKSPACE/$BACKFILL"
           docker push "$image"
+          mkdir -p "$GITHUB_WORKSPACE/built" && touch "$GITHUB_WORKSPACE/built/$COMMIT"
+      # Marks the commit as built for the submit job.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: built-${{ matrix.commit }}
+          path: built
 
   submit:
     name: submit
@@ -85,6 +91,11 @@ jobs:
         with:
           fetch-depth: 0
       - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: built-*
+          path: built
+          merge-multiple: true
       - name: Submit to Bencher Bare Metal in order
         working-directory: .
         env:
@@ -92,14 +103,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
-
           # In their order on main: Bencher numbers a branch's versions as the reports are
           # created, which happens at submission. The backdate puts each report at its
           # commit's time on the date axis.
           for commit in $(jq -r '.[]' <<<"$COMMITS"); do
-            image="registry.bencher.dev/$BENCHER_PROJECT:$commit-backfill"
-            if ! docker manifest inspect "$image" >/dev/null 2>&1; then
+            if [ ! -f "built/$commit" ]; then
               echo "No image for $commit, its build failed"
               continue
             fi
@@ -110,7 +118,7 @@ jobs:
               --backdate "$(git show -s --format=%ct "$commit")" \
               --testbed "bare-metal-$BENCHER_SPEC" \
               --spec "$BENCHER_SPEC" \
-              --image "$image" \
+              --image "registry.bencher.dev/$BENCHER_PROJECT:$commit-backfill" \
               --job-timeout 300 \
               --adapter json \
               --file /tmp/tunnel-bench.json \
