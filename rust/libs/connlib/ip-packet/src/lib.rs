@@ -127,9 +127,12 @@ pub enum Layer4Protocol {
     Icmp { seq: u16, id: u16 },
 }
 
-/// Pulls a buffer for reading a new [`IpPacket`] from the network.
+/// Pulls a buffer for reading a new [`IpPacket`] from the network, exposed at its full length.
 pub fn packet_buffer() -> Bytes {
-    Bytes::fitting(MAX_FZ_PAYLOAD)
+    let mut buffer = Bytes::fitting(MAX_FZ_PAYLOAD);
+    buffer.expose(MAX_FZ_PAYLOAD);
+
+    buffer
 }
 
 #[derive(PartialEq, Clone)]

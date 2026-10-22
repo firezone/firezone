@@ -917,9 +917,14 @@ impl RecvBatch {
     /// Pulls the storage for one receive batch of `recv_buf_size`-byte buffers.
     pub(crate) fn pull(recv_buf_size: usize) -> Self {
         Self {
-            buffers: std::iter::repeat_with(|| Bytes::fitting(recv_buf_size))
-                .take(quinn_udp::BATCH_SIZE)
-                .collect(),
+            buffers: std::iter::repeat_with(|| {
+                let mut buffer = Bytes::fitting(recv_buf_size);
+                buffer.expose(recv_buf_size);
+
+                buffer
+            })
+            .take(quinn_udp::BATCH_SIZE)
+            .collect(),
             metas: vec![quinn_udp::RecvMeta::default(); quinn_udp::BATCH_SIZE],
         }
     }

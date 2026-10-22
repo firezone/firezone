@@ -17,6 +17,8 @@ use std::{
 use opentelemetry::{KeyValue, metrics::UpDownCounter};
 
 /// A pooled byte buffer; its capacity picks the pool it returns to when dropped.
+///
+/// Every buffer is initialised up to its capacity: it is allocated zeroed and never reallocated.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bytes(Vec<u8>);
 
@@ -107,7 +109,7 @@ impl Bytes {
         Self(buffer.unwrap_or_else(|| allocate(class.size())))
     }
 
-    /// Pulls a buffer of the smallest size class holding `len` bytes, at its full length.
+    /// Pulls an empty buffer of the smallest size class holding `len` bytes.
     ///
     /// Beyond the largest class, the buffer is allocated for this call alone.
     pub fn fitting(len: usize) -> Self {
@@ -120,16 +122,27 @@ impl Bytes {
     /// Pulls a buffer holding a copy of `data`, and nothing else.
     pub fn copied_from(data: &[u8]) -> Self {
         let mut buffer = Self::fitting(data.len());
-
-        buffer.0.truncate(data.len());
-        buffer.0.copy_from_slice(data);
+        buffer.extend_from_slice(data);
 
         buffer
     }
 
-    /// Empties the buffer, keeping its class.
-    pub fn clear(&mut self) {
-        self.0.clear();
+    /// Sets the buffer's length to `len`, keeping whatever bytes it holds, and returns it to be written into.
+    ///
+    /// # Panics
+    ///
+    /// If `len` exceeds the buffer's capacity.
+    pub fn expose(&mut self, len: usize) -> &mut [u8] {
+        assert!(
+            len <= self.0.capacity(),
+            "{len} bytes exceed a buffer of {} bytes",
+            self.0.capacity()
+        );
+
+        // SAFETY: `len` is within the capacity, up to which every buffer is initialised.
+        unsafe { self.0.set_len(len) };
+
+        &mut self.0
     }
 
     /// Shortens the buffer to `len` bytes.
@@ -158,6 +171,11 @@ impl Bytes {
     /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
     pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
         let current_len = self.0.len();
+        assert!(
+            current_len + num <= self.0.capacity(),
+            "Shifting by {num} bytes overflows a buffer of {} bytes holding {current_len}",
+            self.0.capacity()
+        );
 
         self.0.resize(current_len + num, 0);
         self.0.copy_within(..current_len, num);
@@ -200,7 +218,7 @@ impl AsMut<[u8]> for Bytes {
 
 impl Drop for Bytes {
     fn drop(&mut self) {
-        let mut buffer = std::mem::take(&mut self.0);
+        let buffer = std::mem::take(&mut self.0);
         let capacity = buffer.capacity();
 
         let Some(class) = Class::of_capacity(capacity) else {
@@ -208,8 +226,6 @@ impl Drop for Bytes {
 
             return;
         };
-
-        buffer.resize(capacity, 0);
 
         let mut buffer = Some(buffer);
 
@@ -489,14 +505,26 @@ mod tests {
     }
 
     #[test]
-    fn pulled_buffer_has_full_length() {
+    fn pulled_buffer_is_empty() {
         let _exclusive = exclusive(CLASS);
 
         let mut buffer = Bytes::pull(CLASS);
-        buffer.truncate(8);
+        buffer.extend_from_slice(b"hello world");
         drop(buffer);
 
-        assert_eq!(Bytes::pull(CLASS).len(), CLASS.size());
+        assert!(Bytes::pull(CLASS).is_empty());
+    }
+
+    #[test]
+    fn exposed_buffer_spans_its_capacity_in_place() {
+        let _exclusive = exclusive(CLASS);
+
+        let mut buffer = Bytes::pull(CLASS);
+        let storage = buffer.as_ptr();
+        let exposed = buffer.expose(CLASS.size());
+
+        assert_eq!(exposed.len(), CLASS.size());
+        assert_eq!(exposed.as_ptr(), storage);
     }
 
     #[test]
@@ -634,16 +662,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(depot_len(CLASS), 1);
-    }
-
-    #[test]
-    fn cleared_buffer_keeps_its_class() {
-        let mut buffer = Bytes::copied_from(b"hello world");
-
-        buffer.clear();
-        buffer.extend_from_slice(&[0; Class::Packet.size()]);
-
-        assert_eq!(buffer.len(), Class::Packet.size());
     }
 
     #[test]
