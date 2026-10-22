@@ -179,7 +179,7 @@ defmodule Portal.OAuth.ClientMetadata do
          when is_binary(name) and is_list(uris) <- document,
          true <- String.trim(name) != "",
          true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1),
-         true <- document["token_endpoint_auth_method"] in [nil, "none"],
+         true <- supports_public_client?(document),
          false <- Map.has_key?(document, "client_secret"),
          false <- Map.has_key?(document, "client_secret_expires_at"),
          true <- Enum.all?(~w[client_uri logo_uri], &optional_string?(document[&1])) do
@@ -187,6 +187,20 @@ defmodule Portal.OAuth.ClientMetadata do
     else
       _other -> {:error, :invalid_document}
     end
+  end
+
+  # CIMD's method list describes capabilities; the legacy singular field is a
+  # preference. Our token endpoint supports only public clients using PKCE.
+  defp supports_public_client?(%{"token_endpoint_auth_methods_supported" => methods})
+       when is_list(methods) do
+    "none" in methods and
+      Enum.all?(methods, &(is_binary(&1) and String.trim(&1) != ""))
+  end
+
+  defp supports_public_client?(%{"token_endpoint_auth_methods_supported" => _}), do: false
+
+  defp supports_public_client?(document) do
+    document["token_endpoint_auth_method"] in [nil, "none"]
   end
 
   # Checked when the document is stored rather than when a request arrives, so

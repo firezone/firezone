@@ -68,7 +68,61 @@ defmodule Portal.OAuthTest do
       end
     end
 
-    test "rejects metadata that requests client authentication or contains a secret" do
+    test "accepts public-client authentication advertised alongside a private-key preference" do
+      client_id = "https://localhost/chatgpt.json"
+
+      Req.Test.stub(ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "ChatGPT",
+          "redirect_uris" => [redirect_uri()],
+          "token_endpoint_auth_method" => "private_key_jwt",
+          "token_endpoint_auth_methods_supported" => ["none", "private_key_jwt"]
+        })
+      end)
+
+      assert {:ok, client, uri} =
+               OAuth.validate_client(%{
+                 "client_id" => client_id,
+                 "redirect_uri" => redirect_uri()
+               })
+
+      assert client.client_id == client_id
+      assert uri == redirect_uri()
+    end
+
+    test "rejects unsupported or malformed method lists even with a public-client preference" do
+      for {methods, index} <-
+            Enum.with_index([
+              ["private_key_jwt"],
+              [],
+              nil,
+              "none",
+              ["none", nil],
+              ["none", ""],
+              ["none", " "]
+            ]) do
+        client_id = "https://localhost/methods-#{index}.json"
+
+        Req.Test.stub(ClientMetadata, fn conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Invalid methods",
+            "redirect_uris" => [redirect_uri()],
+            "token_endpoint_auth_method" => "none",
+            "token_endpoint_auth_methods_supported" => methods
+          })
+        end)
+
+        assert {:error, "invalid_client", _description} =
+                 OAuth.validate_client(%{
+                   "client_id" => client_id,
+                   "redirect_uri" => redirect_uri()
+                 })
+      end
+    end
+
+    test "rejects metadata that requires client authentication or contains a secret" do
       for {suffix, extra} <- [
             {"private-key", %{"token_endpoint_auth_method" => "private_key_jwt"}},
             {"secret", %{"client_secret" => "must-not-be-here"}}
