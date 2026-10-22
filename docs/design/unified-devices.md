@@ -441,6 +441,11 @@ NULL`, partial index on `rotated_at`.
 
 ### Phase 2: device rows and site assignment
 
+The UI steps in this phase (2.12, 2.19 to 2.21) ship behind an account
+feature flag, `unified_devices`, and are switched on for everyone at the
+cutover in 3.8b, so admins see the new package and the new screens on the
+same day.
+
 - **2.1 Migration: `device_actors`.** `(account_id, device_id, actor_id,
 first_seen_at, last_seen_at)`, PK on the three ids, cascading FKs. Ecto
   schema; both replication consumer lists; broadcast-only hook.
@@ -572,6 +577,11 @@ client` becomes an alias bin of the same crate. CI builds both.
   `firezone/`; `ComponentVersions` component mapped onto the gateway and
   headless gates; releases endpoint; deploy UI commands become `apt install
 firezone` and `firezone authenticate`. Depends 3.7.
+- **3.8b Cutover and comms for R2.** On the day `firezone` 1.7.0 is
+  published: flip the `unified_devices` flag for every account, switch the
+  deploy commands, publish the blog post on the package rename and the
+  in-place upgrade, and email the admins of every account with a gateway
+  through the existing mailer, pointing at the post. Depends 3.8.
 - **3.9 Docs: install and upgrade notes.** Depends 3.8.
 - **3.10 Remove alias bins and tags** after the window. Depends 3.9.
 
@@ -646,6 +656,10 @@ firezone` and `firezone authenticate`. Depends 3.7.
 - **5.10 Integration tests** on one image for both roles. Depends 5.9.
 - **5.11 Portal: version gate** marking `firezone >= x` as routing-capable
   over `/device/v1`. Depends 5.9.
+- **5.12 Cutover and comms for R3.** Blog post on sites as device
+  assignments and co-hosting; targeted email to admins of accounts with
+  gateways below the routing-capable version, pointing at the post and the
+  upgrade path (the conversation 0.9 started). Depends 5.11.
 
 ### Phase 6: contract
 
@@ -670,17 +684,17 @@ firezone` and `firezone authenticate`. Depends 3.7.
 
 The portal deploys on every merge. These are the points where order matters.
 
-| Point | Must be live                               | Release                                                                       |
-| ----- | ------------------------------------------ | ----------------------------------------------------------------------------- |
-| D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                            |
-| D2    | 1.1 to 1.17                                | none                                                                          |
-| D3    | 1.18, one release after D2 settled         | none                                                                          |
-| D4    | 2.1 to 2.21                                | none                                                                          |
-| D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch |
-| D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                       |
-| D7    | 5.11 after R3 is in the fleet              | none                                                                          |
-| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                               |
-| D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                          |
+| Point | Must be live                               | Release                                                                                     |
+| ----- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                                          |
+| D2    | 1.1 to 1.17                                | none                                                                                        |
+| D3    | 1.18, one release after D2 settled         | none                                                                                        |
+| D4    | 2.1 to 2.21                                | none                                                                                        |
+| D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch; cutover 3.8b |
+| D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                                     |
+| D7    | 5.11 after R3 is in the fleet              | cutover 5.12                                                                                |
+| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                                             |
+| D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                                        |
 
 **Customer-facing compatibility.** Today's rule: a Gateway must be within one
 minor version of the Client in either direction, and Clients connecting to
@@ -698,10 +712,10 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
-Apple, Android and the Windows GUI need no release. PR count is about 88
+Apple, Android and the Windows GUI need no release. PR count is about 90
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
-phase 1 has 19, phase 2 has 22, phase 3 has 11, phase 4 has 13,
-phase 5 has 11, phase 6 has 8.
+phase 1 has 19, phase 2 has 22, phase 3 has 12, phase 4 has 13,
+phase 5 has 12, phase 6 has 8.
 
 ## 4. Decisions taken
 
@@ -737,7 +751,7 @@ phase 5 has 11, phase 6 has 8.
 | 1     | 19    | medium    |
 | 2     | 23    | medium    |
 | 2b    | 1     | docs only |
-| 3     | 12    | medium    |
+| 3     | 13    | medium    |
 | 4     | 13    | large     |
-| 5     | 11    | large     |
+| 5     | 12    | large     |
 | 6     | 8     | medium    |
