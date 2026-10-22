@@ -1090,10 +1090,6 @@ where
             now,
         );
 
-        if self.connections.is_closing(&cid) && control_flow.is_continue() {
-            return ControlFlow::Break(Ok(()));
-        }
-
         match control_flow {
             ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),

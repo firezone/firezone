@@ -155,6 +155,8 @@ where
                 inflight_stun_requests,
             );
 
+            // The goodbye may have to wait for a channel binding or a handshake, e.g. when
+            // the peer's handshake response arrived but it has not confirmed the session yet.
             let Ok(socket) = connection.ready_socket(cid) else {
                 continue;
             };
@@ -171,19 +173,20 @@ where
                     Ok(Some(transmit))
                 });
 
-            match encrypted {
-                Ok(Some(transmit)) => {
-                    transmits.push_back(transmit);
-                    tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
-                }
+            let transmit = match encrypted {
+                Ok(Some(transmit)) => transmit,
                 Ok(None) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye)");
+                    tracing::debug!(%cid, "Cannot send goodbye yet");
+                    continue;
                 }
                 Err(e) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
+                    tracing::debug!(%cid, "Cannot send goodbye yet: {e:#}");
+                    continue;
                 }
-            }
+            };
 
+            transmits.push_back(transmit);
+            tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
             connection.state = ConnectionState::Failed;
         }
 
