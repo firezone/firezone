@@ -35,6 +35,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket_module
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(device, token),
         gateway: device,
         site: site,
         session_ref: Keyword.get_lazy(opts, :session_ref, fn -> make_ref() end),
@@ -44,6 +45,29 @@ defmodule PortalAPI.Gateway.ChannelTest do
       |> subscribe_and_join(channel, "gateway")
 
     socket
+  end
+
+  # The Subject a gateway socket assigns: the account's Infrastructure actor
+  # behind the token, with the gateway as the device.
+  defp gateway_subject(device, token) do
+    account = Portal.Repo.get!(Portal.Account, device.account_id)
+    actor = Portal.Actor.fetch_or_create_infrastructure_actor(account.id)
+
+    %Portal.Authentication.Subject{
+      account: account,
+      actor: actor,
+      credential: %Portal.Authentication.Credential.ClientToken{
+        id: token.id,
+        auth_provider_id: nil
+      },
+      expires_at: nil,
+      context: %Portal.Authentication.Context{
+        type: :gateway,
+        user_agent: device.last_seen_user_agent || "Firezone-Gateway/1.3.0",
+        remote_ip: device.last_seen_remote_ip && device.last_seen_remote_ip.address
+      }
+    }
+    |> Portal.Authentication.Subject.with_device(device)
   end
 
   # Joins the gateway channel with a custom transport pid instead of the test
@@ -56,6 +80,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(device, token),
         gateway: device,
         site: site,
         session_ref: make_ref(),
@@ -2600,6 +2625,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         PortalAPI.Gateway.Socket
         |> socket("gateway:#{gateway.id}", %{
           token_id: token.id,
+          subject: gateway_subject(gateway, token),
           gateway: gateway,
           session_ref: make_ref(),
           site: site,
@@ -2822,6 +2848,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
@@ -2874,6 +2901,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
@@ -4287,6 +4315,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
@@ -4331,6 +4360,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
@@ -4384,6 +4414,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
@@ -4434,6 +4465,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       PortalAPI.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
         token_id: token.id,
+        subject: gateway_subject(gateway, token),
         gateway: gateway,
         session_ref: make_ref(),
         site: site,
