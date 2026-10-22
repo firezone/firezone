@@ -503,6 +503,50 @@ fn parse_packet(buf: &mut IpPacketBuf, len: usize) -> Option<IpPacket> {
 mod tests {
     use super::*;
 
+    /// The driver the Client ships.
+    const WINTUN_DLL: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../bin-shared/src/wintun/bin/amd64/wintun.dll"
+    );
+
+    #[test]
+    #[ignore = "Needs admin to create a Wintun adapter"]
+    fn dropping_io_joins_the_workers() {
+        // SAFETY: the bundled library is Wintun.
+        let wintun = unsafe { wintun::load_from_path(WINTUN_DLL) }.unwrap();
+        let adapter = wintun::Adapter::create(&wintun, "Firezone Test", "Firezone", None).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+
+        // Twice, so a session that did not end would fail the second start.
+        for _ in 0..2 {
+            let mut io = Io::new("test", &adapter, || true, runtime.handle()).unwrap();
+            let packet = ip_packet::make::udp_packet(
+                std::net::Ipv4Addr::new(100, 64, 0, 1),
+                std::net::Ipv4Addr::new(100, 64, 0, 2),
+                1,
+                2,
+                &[0; 8],
+            )
+            .unwrap();
+            io.workers
+                .sender()
+                .try_send(tun::PacketBatch::new(packet))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+
+            let (done, joined) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                drop(io);
+                let _ = done.send(());
+            });
+            joined
+                .recv_timeout(Duration::from_secs(5))
+                .expect("dropping Io should join both worker threads");
+        }
+    }
+
     #[test]
     fn ring_capacity_tracks_line_rate_and_service_gap() {
         const MIB: u32 = 1024 * 1024;
