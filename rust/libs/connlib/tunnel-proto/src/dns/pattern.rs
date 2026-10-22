@@ -93,7 +93,7 @@ impl Pattern {
         let domain = domain.0.as_str();
 
         if let Some(rem) = self.inner.as_str().strip_prefix("*/")
-            && domain == rem
+            && domain.eq_ignore_ascii_case(rem)
         {
             return true;
         }
