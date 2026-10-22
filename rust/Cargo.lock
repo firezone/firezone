@@ -9024,7 +9024,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bufferpool",
- "bytecodec",
  "connlib-model",
  "criterion",
  "dns-types",
@@ -9032,10 +9031,11 @@ dependencies = [
  "ip-packet",
  "libc",
  "mimalloc",
+ "rand 0.10.3",
+ "relay-proto",
  "serde_json",
  "snownet",
  "socket-factory",
- "stun_codec",
  "tokio",
  "tun",
  "tun-apple",
@@ -9044,6 +9044,7 @@ dependencies = [
  "tun-windows",
  "tunnel",
  "tunnel-proto",
+ "uuid",
  "windows",
 ]
 
