@@ -303,7 +303,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
           last_seen_at: dynamic([d, v], v.last_seen_at)
-        ] ++ [{token_field, dynamic([d, v], v.token_id)}]
+        ] ++ [{:token_id, dynamic([d, v], v.token_id)}, {token_field, dynamic([d, v], v.token_id)}]
 
       {_count, ids} =
         from(d in Device,

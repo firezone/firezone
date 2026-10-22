@@ -13,6 +13,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :attested?,
                :posture,
                :client_token_id,
+               :token_id,
                :device_serial,
                :device_uuid,
                :firebase_installation_id,
