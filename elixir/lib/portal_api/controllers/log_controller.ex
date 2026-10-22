@@ -34,7 +34,10 @@ defmodule PortalAPI.LogController do
   operation(:index,
     summary: "List Logs",
     description: """
-    Lists log entries of the requested `type` for the authenticated account.
+    Retrieves Firezone audit, session, network flow, or REST API request logs
+    for the authenticated account. Use this to investigate configuration
+    changes, review session activity, or troubleshoot network access and API
+    requests. Returns a page of log entries, most recent first.
 
     - `change`: audit entries recording each insert, update, or delete event
       against an account-scoped object, most recent first.
@@ -45,16 +48,12 @@ defmodule PortalAPI.LogController do
     - `api_request`: one entry per authenticated REST API request, most
       recent first.
 
-    The `begin` and `end` query parameters bound the time window. For
-    `change`, `session`, and `api_request`, entries match when their
-    `timestamp` falls inside the window; for `flow`, entries match when
-    the flow was active at any point inside the window, i.e. when
-    `[flow_start, flow_end)` overlaps it. Both must be RFC 3339 (ISO
-    8601) timestamps, for example `2026-05-26T00:00:00Z`; values with a
-    non-UTC offset are accepted and converted to UTC. When omitted,
-    `begin` defaults to 90 days before the current time and `end`
-    defaults to the current time. `begin` must be less than or equal to
-    `end`.
+    Select one log stream with the required `type` argument. Narrow results
+    with `begin` and `end` RFC 3339 timestamps, for example
+    `2026-05-26T00:00:00Z`. The inclusive window applies to the entry's
+    `timestamp`, or `flow_start` for flows. Non-UTC offsets are converted
+    to UTC. The default window is the last 90 days; `begin` must not be
+    later than `end`.
 
     Results can be further narrowed by `actor_id` (every type) or
     `actor_email` (`change`, `session`, and `flow`), which matches the
@@ -62,8 +61,9 @@ defmodule PortalAPI.LogController do
     API clients, which have no email, so `actor_email` is not supported
     for `api_request`.
 
-    Use the `next_page` cursor returned in `metadata` to fetch the
-    following page of results.
+    Returns up to `limit` entries (default 50, maximum 100). Pass the
+    `next_page` cursor from the response's `metadata` as `page_cursor`
+    to retrieve the next page.
     """,
     parameters: [
       type: [
