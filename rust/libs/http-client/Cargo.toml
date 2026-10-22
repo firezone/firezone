@@ -26,6 +26,8 @@ tracing = { workspace = true }
 webpki-roots = { workspace = true }
 
 [dev-dependencies]
+dns-types = { workspace = true }
+doh-test-server = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 

@@ -23,14 +23,15 @@ object FakeSessionFactory : SessionFactory {
     override fun open(
         config: AndroidSessionConfig,
         tlsIdentity: ClientTlsIdentity?,
-    ): TunnelSession {
+    ): TunnelConnection {
         opened++
         failWith?.let { throw it() }
 
-        return FakeSession(config, tlsIdentity).also {
-            handedOut += it
-            sessions.trySend(it).getOrThrow()
-        }
+        val session = FakeSession(config, tlsIdentity)
+        handedOut += session
+        sessions.trySend(session).getOrThrow()
+
+        return TunnelConnection(session, session.eventStream)
     }
 
     suspend fun awaitSession(): FakeSession = sessions.receive()

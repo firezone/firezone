@@ -49,7 +49,7 @@ defmodule Portal.SentinelOne.Device do
     field :cpu_id, :string
     field :cpu_count, :integer
     field :core_count, :integer
-    field :external_ip, :string
+    field :external_ip, Portal.Types.IP
     field :group_ip, :string
 
     field :active_threats, :integer
@@ -95,7 +95,7 @@ defmodule Portal.SentinelOne.Device do
     field :installer_type, :string
     field :ranger_version, :string
     field :ranger_status, :string
-    field :last_ip_to_management, :string
+    field :last_ip_to_management, Portal.Types.IP
     field :operational_state, :string
     field :operational_state_expires_at, :utc_datetime_usec
     field :remote_profiling_state, :string

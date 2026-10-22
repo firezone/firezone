@@ -30,7 +30,7 @@ runs:
         packages: ""
 
     # No NDK install step: we always pin `ndkVersion` in app/build.gradle.kts to a
-    # version preinstalled on the ubuntu-24.04 runner (currently 28.2.13676358), so
+    # version preinstalled on the ubuntu-24.04 runner (currently 29.0.14206865), so
     # there is nothing to download. Keep them in sync when bumping runner images.
 
     - name: Validate Gradle wrapper

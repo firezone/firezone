@@ -1,0 +1,103 @@
+name: Event-loop benchmark
+run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
+"on":
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/event-loop-bench.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rust/**"
+      - ".github/workflows/event-loop-bench.yml"
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-loop-bench-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  event-loop-bench:
+    name: event-loop-bench-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-24.04, macos-26, windows-2025]
+    runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: read
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+      BENCHER_SPEC: intel-v1
+      # Bencher only measures on Linux. PRs from forks and Dependabot have no access to its API key.
+      BENCHER: ${{ startsWith(matrix.runs-on, 'ubuntu') && (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # Runs each benchmark once, so a broken one fails here instead of on Bencher.
+      - name: Test bench
+        run: cargo run --release -p tunnel-bench -- --test
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+        if: env.BENCHER == 'true'
+      - name: Push image to the Bencher registry
+        if: env.BENCHER == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          cp target/release/tunnel-bench tests/tunnel-bench/
+          image="registry.bencher.dev/$BENCHER_PROJECT:$GITHUB_SHA"
+          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
+          docker build --platform linux/amd64 -t "$image" tests/tunnel-bench
+          docker push "$image"
+          echo "IMAGE=$image" >>"$GITHUB_ENV"
+      - name: Run on Bencher Bare Metal
+        if: env.BENCHER == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            branch=(
+              --branch "$GITHUB_HEAD_REF"
+              --start-point "$GITHUB_BASE_REF"
+              --start-point-hash "$BASE_SHA"
+              --start-point-clone-thresholds
+              --start-point-reset
+            )
+          else
+            branch=(
+              --branch main
+              --threshold-measure latency
+              --threshold-test t_test
+              --threshold-max-sample-size 64
+              --threshold-min-sample-size 10
+              --threshold-upper-boundary 0.99
+              --thresholds-reset
+            )
+          fi
+
+          # Bare Metal jobs can queue for hours, so only submit the job. Its results and
+          # alerts show up on Bencher once it has run.
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --testbed "bare-metal-$BENCHER_SPEC" \
+            --spec "$BENCHER_SPEC" \
+            --image "$IMAGE" \
+            --job-timeout 300 \
+            "${branch[@]}" \
+            --adapter rust_criterion \
+            --detach

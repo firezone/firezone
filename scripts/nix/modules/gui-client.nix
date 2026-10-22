@@ -70,6 +70,8 @@ in
       members = cfg.allowedUsers;
     };
 
+    services.resolved.enable = lib.mkIf (cfg.dnsControl == "systemd-resolved") (lib.mkDefault true);
+
     # A Secret Service provider is needed to store the session token. Default
     # to gnome-keyring; desktops that ship their own (e.g. KWallet) can
     # override this with lib.mkForce false.

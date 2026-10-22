@@ -46,11 +46,7 @@ defmodule Portal.Iru.Sync do
   def perform(%Oban.Job{
         args: %{"account_id" => account_id, "posture_provider_id" => provider_id}
       }) do
-    if Portal.Features.enabled?(:device_posture) do
-      sync(account_id, provider_id)
-    else
-      :ok
-    end
+    sync(account_id, provider_id)
   end
 
   def perform(_), do: :ok

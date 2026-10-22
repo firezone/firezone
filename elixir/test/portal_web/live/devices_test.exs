@@ -1,6 +1,16 @@
 defmodule PortalWeb.DevicesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Device, Repo}
   alias Portal.Changes.Change
 
@@ -12,6 +22,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.IruFixtures
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
+  import Portal.SophosFixtures
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
@@ -43,6 +54,20 @@ defmodule PortalWeb.DevicesTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      client_fixture(account: account, actor: actor)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/devices") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#devices-skeleton")
+      assert Floki.find(static, "#devices-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/devices")
+      assert has_element?(lv, "#devices-rows tr")
+      refute has_element?(lv, "#devices-skeleton")
+    end
+
     test "renders empty state when no devices exist", %{
       conn: conn,
       account: account,
@@ -66,10 +91,10 @@ defmodule PortalWeb.DevicesTest do
         |> live(~p"/#{account}/devices")
 
       assert html =~ "Devices"
-      assert html =~ client.name
+      assert html =~ client.slug
     end
 
-    test "filters devices by client name or actor name/email", %{
+    test "filters devices by client name, slug, or actor name/email", %{
       conn: conn,
       account: account,
       actor: actor
@@ -80,12 +105,12 @@ defmodule PortalWeb.DevicesTest do
 
       conn = authorize_conn(conn, actor)
 
-      for search <- [client.name, owner.name, owner.email] do
-        {:ok, _lv, html} =
+      for search <- [client.name, client.slug, owner.name, owner.email] do
+        {:ok, lv, _html} =
           live(conn, ~p"/#{account}/devices?#{%{"devices_filter[search]" => search}}")
 
-        assert html =~ client.name
-        refute html =~ other_client.name
+        assert has_element?(lv, "#device-#{client.id}")
+        refute has_element?(lv, "#device-#{other_client.id}")
       end
     end
 
@@ -122,13 +147,13 @@ defmodule PortalWeb.DevicesTest do
             {"attested", attested, [verified, plain]},
             {"none", plain, [verified, attested]}
           ] do
-        {:ok, _lv, html} =
+        {:ok, lv, _html} =
           live(conn, ~p"/#{account}/devices?#{%{"devices_filter[attestation]" => level}}")
 
-        assert html =~ shown.name
+        assert has_element?(lv, "#device-#{shown.id}")
 
         for client <- hidden do
-          refute html =~ client.name
+          refute has_element?(lv, "#device-#{client.id}")
         end
       end
     end
@@ -157,38 +182,39 @@ defmodule PortalWeb.DevicesTest do
       assert render(lv) =~ "This device is attested through an X.509 certificate."
     end
 
-    test "orders by name and opens the panel from row click", %{
+    test "orders by slug and opens the panel from row click", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      alpha = client_fixture(account: account, actor: actor, name: "Alpha Client")
-      omega = client_fixture(account: account, actor: actor, name: "Omega Client")
+      alpha = client_fixture(account: account, actor: actor, slug: "alpha-client")
+      omega = client_fixture(account: account, actor: actor, slug: "omega-client")
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices")
 
-      html =
-        element(
-          lv,
-          "button[phx-click='order_by'][phx-value-table_id='devices'][phx-value-order_by='devices:asc:name']"
-        )
-        |> render_click()
+      element(
+        lv,
+        "button[phx-click='order_by'][phx-value-table_id='devices'][phx-value-order_by='devices:asc:slug']"
+      )
+      |> render_click()
 
-      assert html =~ alpha.name
-      assert html =~ omega.name
-      assert elem(:binary.match(html, omega.name), 0) < elem(:binary.match(html, alpha.name), 0)
+      html = render_async(lv)
+
+      assert html =~ alpha.slug
+      assert html =~ omega.slug
+      assert elem(:binary.match(html, omega.slug), 0) < elem(:binary.match(html, alpha.slug), 0)
 
       render_click(element(lv, "#device-#{omega.id}"))
 
       assert_patch(
         lv,
-        ~p"/#{account}/devices/#{omega.id}?#{%{devices_order_by: "devices:desc:name"}}"
+        ~p"/#{account}/devices/#{omega.id}?#{%{devices_order_by: "devices:desc:slug"}}"
       )
 
-      assert render(lv) =~ omega.name
+      assert has_element?(lv, "h2", omega.slug)
     end
   end
 
@@ -329,7 +355,7 @@ defmodule PortalWeb.DevicesTest do
       client = client_fixture(account: account, actor: actor)
 
       pool =
-        static_device_pool_resource_fixture(
+        device_pool_resource_fixture(
           account: account,
           name: "Engineering Laptops",
           devices: [client]
@@ -554,6 +580,103 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.name
     end
 
+    test "offers a copy button for the device id and the slug", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      for field <- ["device-id", "device-slug", "device-ipv4", "device-ipv6"] do
+        id = "#{field}-#{client.id}"
+
+        assert has_element?(lv, "##{id}[phx-hook='CopyClipboard']")
+        assert has_element?(lv, "button[data-copy-to-clipboard-target='#{id}-code']")
+      end
+
+      assert has_element?(lv, "#device-id-#{client.id}-code", client.id)
+      assert has_element?(lv, "#device-slug-#{client.id}-code", Portal.Device.fqdn(client))
+      assert has_element?(lv, "#device-ipv4-#{client.id}-code", to_string(client.ipv4))
+      assert has_element?(lv, "#device-ipv6-#{client.id}-code", to_string(client.ipv6))
+    end
+
+    test "shows the slug and lets an admin change it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ "Tunnel DNS Name"
+      assert html =~ "old-client-name.firezone.network"
+
+      html = render_click(lv, "open_device_edit_form")
+
+      assert html =~ "Slug"
+      assert html =~ "Used to reach this device directly through a"
+      assert html =~ ">device pool</a>. Must be unique in the account."
+      refute has_element?(lv, "input[name='device[slug]'].font-mono")
+      assert has_element?(lv, "input[name='device[slug]'][required]")
+
+      for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", "my_laptop", String.duplicate("a", 64)] do
+        html =
+          lv
+          |> form("[phx-submit='submit_device_edit_form']", device: %{slug: bad})
+          |> render_change()
+
+        assert html =~ "must be 1 to 63 lowercase letters, digits or hyphens"
+      end
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: ""})
+        |> render_change()
+
+      assert html =~ "can&#39;t be blank"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: "laptop"})
+        |> render_submit()
+
+      assert html =~ "Device updated successfully."
+      assert html =~ "laptop.firezone.network"
+    end
+
+    test "refuses a slug another device in the account already holds", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      taken = client_fixture(account: account, actor: actor, name: "Taken")
+      client = client_fixture(account: account, actor: actor, name: "Mine")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      render_click(lv, "open_device_edit_form")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: taken.slug})
+        |> render_submit()
+
+      assert html =~ "is already used by another device in this account"
+      assert Repo.get_by!(Device, id: client.id).slug == client.slug
+    end
+
     test "opens edit form from show panel, validates, cancels, and updates client", %{
       conn: conn,
       account: account,
@@ -736,7 +859,7 @@ defmodule PortalWeb.DevicesTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/devices")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/devices")
 
       assert html =~ "Loading..."
 
@@ -804,7 +927,7 @@ defmodule PortalWeb.DevicesTest do
 
       {:ok, _updated} =
         client
-        |> Ecto.Changeset.change(name: "Renamed Client")
+        |> Ecto.Changeset.change(slug: "renamed-client")
         |> Repo.update()
 
       send(lv.pid, %Change{op: :update, struct: %Device{type: :client, id: client.id}})
@@ -812,7 +935,7 @@ defmodule PortalWeb.DevicesTest do
       assert has_element?(lv, "#devices-reload-btn")
 
       render_click(lv, "reload", %{"table_id" => "devices"})
-      assert render(lv) =~ "Renamed Client"
+      assert render_async(lv) =~ "renamed-client"
     end
 
     test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
@@ -833,27 +956,9 @@ defmodule PortalWeb.DevicesTest do
 
   describe ":show action posture tab" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       %{account: account, actor: actor}
-    end
-
-    test "hides the tab while the feature is off for the deployment", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-      client = client_fixture(account: account, actor: actor)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
-
-      refute html =~ "phx-value-tab=\"posture\""
-      assert html =~ "Tunnel IPv4"
     end
 
     test "offers the tab to every device", %{conn: conn, account: account, actor: actor} do
@@ -914,6 +1019,21 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "No posture data was found for this device."
     end
 
+    test "still shows the record of a disabled provider", %{conn: conn, account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account, name: "Paused Intune", is_disabled: true)
+      intune_device_fixture(provider: provider, serial_number: "INTUNE-1234", device_name: "ENG-LAPTOP-02")
+      client = client_fixture(account: account, actor: actor, device_serial: "INTUNE-1234")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Paused Intune"
+      assert html =~ "ENG-LAPTOP-02"
+      refute html =~ "No posture data was found for this device."
+    end
+
     test "shows the Intune record matched on the attested MDM device id", %{
       conn: conn,
       account: account,
@@ -952,7 +1072,9 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "Self-reported serial"
 
       # Columns the summary grid leaves out are still in the copy-paste blob.
-      assert html =~ "Provider record"
+      assert html =~ "Raw provider record"
+      assert html =~ "Click to expand"
+      assert html =~ ~r/id="posture-intune-[^"]+-body" class="relative hidden"/
       assert html =~ "management_agent"
       # Columns the provider left empty are not.
       refute html =~ "android_security_patch_level"
@@ -1175,6 +1297,39 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ "Attested serial"
     end
 
+    test "shows the Sophos record matched on serial", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = sophos_posture_provider_fixture(account: account, name: "Sophos Prod")
+
+      sophos_device_fixture(
+        provider: provider,
+        hostname: "sophos-mac-01",
+        serial_number: "SOPHOS-1",
+        health_overall: "suspicious"
+      )
+
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SOPHOS-1",
+          last_attested_cert_fingerprint: "fp-8"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Sophos Prod"
+      assert html =~ "sophos-mac-01"
+      assert html =~ "suspicious"
+      assert html =~ "Attested serial"
+    end
+
     test "renders one section per provider that knows the device", %{
       conn: conn,
       account: account,
@@ -1263,7 +1418,6 @@ defmodule PortalWeb.DevicesTest do
 
   describe "index serial column" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       %{account: account, actor: actor}
@@ -1366,15 +1520,14 @@ defmodule PortalWeb.DevicesTest do
       account: account,
       actor: actor
     } do
-      client =
-        client_fixture(account: account, actor: actor, name: "No Serial Client", device_serial: nil)
+      client = client_fixture(account: account, actor: actor, device_serial: nil)
 
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices")
 
-      assert html =~ "No Serial Client"
+      assert html =~ client.slug
       refute has_element?(lv, "#device-#{client.id} .ri-shield-keyhole-line")
     end
   end
@@ -1534,5 +1687,50 @@ defmodule PortalWeb.DevicesTest do
       {:rdnSequence,
        [[{:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, common_name}}]]}
     )
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account, actor: actor} do
+      matching = client_fixture(account: account, actor: actor, name: "laptop-alpha")
+      other = client_fixture(account: account, actor: actor, name: "desktop-beta")
+      filter = %{"devices_filter[search]" => "laptop"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when editing a device", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_device_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_device_edit_form']", device: %{name: "laptop-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "laptop-renamed"
+      refute html =~ other.name
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/devices?#{filter}")
+    end
   end
 end

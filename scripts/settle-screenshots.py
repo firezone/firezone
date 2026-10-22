@@ -5,18 +5,27 @@
 # ///
 """Put back re-rendered screenshots that no one could tell apart.
 
-Two things move pixels without anything having changed. Antialiased text does not
-round a subpixel the same way twice, so a channel moves by one wherever text is
-drawn. And a control drawn on a material composites at one of two levels a few
-steps apart, uniformly across the whole of itself: iOS 26 draws the navigation
-bar's back button that way, and it settles on either 35 or 38 in the dark
-appearance. macOS composites the window title against the titlebar's material
-the same way, a further 13 steps apart.
+Several things move pixels without anything having changed. Antialiased text does
+not round a subpixel the same way twice. A control drawn on a material composites
+at one of two levels a few steps apart. And the compositor draws a window's edge,
+and the corner arcs of the menus and highlights inside it, against whatever lies
+behind them.
 
-Nobody can see either, but git can, and left alone they put a re-render commit on
-every pull request that touches the clients.
+Nobody can see any of it, but git can, and left alone it puts a re-render commit
+on every pull request that touches the clients.
+
+A render is judged against the commit the clients built, which on a pull request
+is its merge commit rather than the branch. A screen that main re-rendered after
+the branch was cut looks different from the branch's copy and the same as main's,
+and the branch's copy is what stays.
+
+A branch that re-rendered a screen and then changed the UI back is the other way
+around: the render differs from the picture the clients built and matches the one
+the branch will merge into, whose copy is what stays, leaving nothing of the
+screen in the diff at all.
 """
 
+import argparse
 import subprocess
 import sys
 from io import BytesIO
@@ -24,21 +33,25 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-# One step of a channel. Two is already visible on a flat background.
-EDGE_TOLERANCE = 1
+# A difference nobody can see is thin: a channel that rounds the other way, or a
+# corner arc drawn a shade differently. A difference worth keeping covers whole
+# glyphs and whole controls. Averaging over a block tells the two apart where the
+# largest step in the picture cannot: two pixels on a menu's corner reach 15 steps
+# while the menu is untouched, and a date that really changed reaches 246 across
+# an area no larger.
+#
+# Over every re-render this gallery has produced, the smallest real change
+# averages 8 across a block. Invisible wobble reaches 5: the title bar's material
+# draws a window title a shade heavier, darkening every pixel of it by nine levels
+# and leaving the rest of the screen alone.
+BLOCK = 8
+BLOCK_TOLERANCE = 6
 
-# What a material's two levels span, and how much of the picture one control
-# drawn on it covers. The back button measures 5 steps across 0.42% of the
-# screen and the macOS window title 13 steps across 0.19%, so both leave room
-# without reaching a change worth seeing.
-PATCH_TOLERANCE = 14
-PATCH_FRACTION = 0.01
 
-
-def committed(path: str) -> bytes | None:
-    """The file as HEAD has it, or None for one that HEAD does not carry."""
+def committed(revision: str, path: str) -> bytes | None:
+    """The file as `revision` has it, or None for one that it does not carry."""
     result = subprocess.run(
-        ["git", "show", f"HEAD:{path}"], capture_output=True, check=False
+        ["git", "show", f"{revision}:{path}"], capture_output=True, check=False
     )
 
     return result.stdout if result.returncode == 0 else None
@@ -51,44 +64,56 @@ def looks_the_same(path: str, before: bytes) -> bool:
             return False
 
         difference = ImageChops.difference(old.convert("RGB"), new.convert("RGB"))
-        pixels = difference.width * difference.height
         red, green, blue = difference.split()
-        # Per pixel, the channel that moved furthest. `getextrema` reports each
-        # channel over the whole picture, which cannot say how much of it moved.
+        # Per pixel the channel that moved furthest, then the mean of each block.
         worst = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-        counts = worst.histogram()
+        blocks = worst.resize(
+            (max(1, worst.width // BLOCK), max(1, worst.height // BLOCK)),
+            Image.Resampling.BOX,
+        )
 
-    steps = max((value for value, count in enumerate(counts) if count), default=0)
-    moved = sum(counts[1:])
-
-    if steps <= EDGE_TOLERANCE:
-        return True
-
-    return steps <= PATCH_TOLERANCE and moved <= PATCH_FRACTION * pixels
+    return blocks.getextrema()[1] <= BLOCK_TOLERANCE
 
 
-def main(directories: list[str]) -> int:
-    changed = subprocess.run(
-        ["git", "diff", "--name-only", "--", *directories],
-        capture_output=True,
-        text=True,
-        check=True,
+def listed(*arguments: str) -> list[str]:
+    """The paths a git command prints, one per line."""
+    return subprocess.run(
+        ["git", *arguments], capture_output=True, text=True, check=True
     ).stdout.split()
+
+
+def main(baseline: str, merge_target: str | None, directories: list[str]) -> int:
+    # A screen that main added after the branch was cut arrives as a file HEAD
+    # does not track, and would otherwise be committed as the branch's own.
+    changed = listed("diff", "--name-only", "--", *directories) + listed(
+        "ls-files", "--others", "--exclude-standard", "--", *directories
+    )
 
     restored = []
     for path in changed:
         if not path.endswith(".png"):
             continue
 
-        before = committed(path)
-        if before is None or not looks_the_same(path, before):
+        before = committed(baseline, path)
+        if before is not None and looks_the_same(path, before):
+            ours = committed("HEAD", path)
+            if ours is None:
+                Path(path).unlink()
+            else:
+                Path(path).write_bytes(ours)
+            restored.append(path)
             continue
 
-        Path(path).write_bytes(before)
-        restored.append(path)
+        # Judged once more against what the branch merges into, which a screen it
+        # re-rendered and then changed back matches while the picture the clients
+        # built no longer does.
+        started_with = committed(merge_target, path) if merge_target else None
+        if started_with is not None and looks_the_same(path, started_with):
+            Path(path).write_bytes(started_with)
+            restored.append(path)
 
     for path in restored:
-        print(f"Unchanged to the eye, kept as committed: {path}")
+        print(f"Unchanged to the eye, put back: {path}")
 
     print(f"{len(restored)} of {len(changed)} re-rendered images were put back.")
 
@@ -96,4 +121,17 @@ def main(directories: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--baseline",
+        default="HEAD",
+        help="the commit whose pictures a render is judged against",
+    )
+    parser.add_argument(
+        "--merge-target",
+        help="the commit the branch will merge into",
+    )
+    parser.add_argument("directories", nargs="+")
+    arguments = parser.parse_args()
+
+    sys.exit(main(arguments.baseline, arguments.merge_target, arguments.directories))

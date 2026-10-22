@@ -53,7 +53,7 @@ class SettingsViewModelTest {
             viewModel.onCancel()
 
             assertTrue(FAVORITE_ID in repository.favorites.value.inner)
-            assertEquals("https://managed.example.com", viewModel.configStateFlow.value.authUrl)
+            assertEquals("https://managed.example.com", viewModel.config.authUrl)
         }
 
     @Test

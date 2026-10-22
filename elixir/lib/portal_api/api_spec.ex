@@ -35,7 +35,10 @@ defmodule PortalAPI.ApiSpec do
   # runs, so the flow-log ingest schemas would never be discovered - and
   # they have to stay published as contracts even though the operation
   # isn't advertised.
-  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations"]
+  # /mcp is the Model Context Protocol endpoint. It speaks JSON-RPC rather than
+  # REST and derives its tools from this very spec, so publishing it as an API
+  # operation would be circular.
+  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations", "/mcp"]
 
   defp api_paths do
     Router

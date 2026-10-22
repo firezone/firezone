@@ -213,8 +213,7 @@ const CERTIFICATE_REJECTION_CODES: &[&str] = &[
     "x509_user_type_not_allowed",
 ];
 
-/// Every variant's `Display` output is shown to the user verbatim: as a notification on mobile
-/// and as a dialog on desktop.
+/// Every variant's `Display` output is shown to the user verbatim.
 ///
 /// These are product copy, not log lines. Word them for someone who has never seen this code.
 /// Diagnostics we cannot word for a user go into the variant's source, which only the logs render.

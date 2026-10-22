@@ -1,7 +1,7 @@
 defmodule PortalWeb.Logs.FlowLogs do
   use PortalWeb, :live_view
 
-  import PortalWeb.Logs.Components
+  alias PortalWeb.Logs.Components, as: LogComponents
 
   alias __MODULE__.Database
 
@@ -9,21 +9,22 @@ defmodule PortalWeb.Logs.FlowLogs do
   @filter_key "flow_logs_filter"
 
   def mount(_params, _session, socket) do
-    browser_tz = browser_tz_from_connect(socket)
+    browser_tz = LogComponents.browser_tz_from_connect(socket)
 
     socket =
       socket
       |> assign(page_title: "Flow Logs")
       |> assign(selected_report: nil, selected_report_json: nil, browser_tz: browser_tz)
+      |> assign(flow_logs: [], flow_logs_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
       |> assign(tz_mode: "utc", display_tz: "Etc/UTC")
-      |> assign_live_table(@table_id,
+      |> LiveTable.assign_live_table(@table_id,
         query_module: Database,
         sortable_fields: [
           {:flow_logs, :flow_start},
           {:flow_logs, :total_bytes},
           {:flow_logs, :log_id}
         ],
-        callback: &handle_logs_update!/2
+        loader: &load_logs/2
       )
 
     {:ok, socket}
@@ -36,8 +37,8 @@ defmodule PortalWeb.Logs.FlowLogs do
       ) do
     socket =
       socket
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     case Database.fetch_report(log_id, socket.assigns.subject) do
       {:ok, report} ->
@@ -65,15 +66,15 @@ defmodule PortalWeb.Logs.FlowLogs do
     socket =
       socket
       |> assign(selected_report: nil, selected_report_json: nil)
-      |> assign_tz(params, @filter_key)
-      |> handle_live_tables_params(params, uri)
+      |> LogComponents.assign_tz(params, @filter_key)
+      |> LiveTable.handle_live_tables_params(params, uri)
 
     {:noreply, socket}
   end
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
     {:noreply,
@@ -92,12 +93,13 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
 
-  def handle_logs_update!(socket, list_opts) do
+  defp load_logs(subject, list_opts) do
     list_opts =
-      Keyword.update(list_opts, :filter, [show_incomplete: false], &default_show_incomplete/1)
+      list_opts
+      |> Keyword.update(:filter, [show_incomplete: false], &default_show_incomplete/1)
 
-    with {:ok, logs, metadata} <- Database.list_flow_logs(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, flow_logs: logs, flow_logs_metadata: metadata)}
+    with {:ok, logs, metadata} <- Database.list_flow_logs(subject, list_opts) do
+      {:ok, %{flow_logs: logs, flow_logs_metadata: metadata}}
     end
   end
 
@@ -110,12 +112,15 @@ defmodule PortalWeb.Logs.FlowLogs do
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.logs_nav account={@account} current_path={@current_path} />
+      <Navigation.logs_nav account={@account} current_path={@current_path} />
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="flow_logs"
           rows={@flow_logs}
+          filtered_empty_hint="Try broadening the time window or using a different filter."
+          loading={@loading_by_table_id["flow_logs"]}
+          query_error={@query_error_by_table_id["flow_logs"]}
           row_id={&"flow-log-#{&1.log.log_id}"}
           row_click={
             fn row ->
@@ -138,7 +143,7 @@ defmodule PortalWeb.Logs.FlowLogs do
         >
           <:col :let={row} field={{:flow_logs, :flow_start}} label="Opened" class="w-44">
             <span class="sr-only">Logged by {row.log.role}</span>
-            <.timestamp_cell
+            <LogComponents.timestamp_cell
               log_id={row.log.log_id}
               timestamp={row.log.flow_start}
               tz_mode={@tz_mode}
@@ -146,16 +151,16 @@ defmodule PortalWeb.Logs.FlowLogs do
             />
           </:col>
           <:col :let={row} label="Actor" class="w-64">
-            <.actor_cell subject={actor_subject(row.log)} />
+            <LogComponents.actor_cell subject={actor_subject(row.log)} />
           </:col>
           <:col :let={row} label="Client" class="w-52">
-            <.flow_client_cell
+            <LogComponents.flow_client_cell
               device_name={device_name(row.initiator_device, "Deleted device")}
               ip={first_outer_src_ip(row.log)}
             />
           </:col>
           <:col :let={row} label="Resource" class="w-72">
-            <.flow_resource_cell
+            <LogComponents.flow_resource_cell
               name={row.log.resource_name}
               domain={row.log.domain}
               protocol={row.log.protocol}
@@ -173,7 +178,7 @@ defmodule PortalWeb.Logs.FlowLogs do
             class="w-28"
           >
             <span
-              class="font-mono text-xs tabular-nums text-[var(--text-secondary)]"
+              class="font-mono text-xs tabular-nums text-body"
               title="Total traffic in both directions"
             >
               {format_bytes(total_bytes(row.log))}
@@ -181,41 +186,41 @@ defmodule PortalWeb.Logs.FlowLogs do
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-exchange-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <Core.icon name="ri-exchange-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No flow logs</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  Logs from initiators and responders will appear here as flows are observed.
+                <p class="text-sm font-medium text-heading">No flow logs found</p>
+                <p class="text-xs text-subtle mt-0.5">
+                  Try broadening the time window or using a different filter.
                 </p>
               </div>
             </div>
           </:empty>
           <:footer>
-            <.log_sinks_notice account={@account} />
+            <LogComponents.log_sinks_notice account={@account} />
           </:footer>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.show_panel id="flow-log-panel" open?={not is_nil(@selected_report)}>
+      <LogComponents.show_panel id="flow-log-panel" open?={not is_nil(@selected_report)}>
         <:title>
           <%= if @selected_report do %>
             <div id="flow-log-panel-title" class="flex min-w-0 items-center gap-2 text-sm">
-              <span class="truncate text-[var(--text-primary)]">
+              <span class="truncate text-heading">
                 {@selected_report.log.initiator_actor_name || "Unknown actor"}
                 <span
                   :if={@selected_report.log.initiator_actor_email not in [nil, ""]}
-                  class="text-[var(--text-tertiary)]"
+                  class="text-subtle"
                 >
                   ({@selected_report.log.initiator_actor_email})
                 </span>
               </span>
-              <.icon
+              <Core.icon
                 name="ri-arrow-right-line"
-                class="h-4 w-4 shrink-0 text-[var(--text-tertiary)]"
+                class="h-4 w-4 shrink-0 text-subtle"
               />
-              <span class="truncate text-[var(--text-primary)]">
+              <span class="truncate text-heading">
                 {@selected_report.log.resource_name}
               </span>
             </div>
@@ -232,36 +237,36 @@ defmodule PortalWeb.Logs.FlowLogs do
             hint="Directions are normalized to initiator → responder"
           >
             <div class="space-y-3">
-              <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
-                <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
-                  <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
-                    <.icon name="ri-shield-keyhole-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+              <div class="overflow-hidden rounded border border-border bg-surface">
+                <div class="flex items-center justify-between gap-3 border-b border-border bg-raised px-4 py-2">
+                  <div class="flex items-center gap-2 text-xs font-medium text-body">
+                    <Core.icon name="ri-shield-keyhole-line" class="h-3.5 w-3.5 text-brand" />
                     Inner tunnel
                   </div>
-                  <span class="font-mono text-[10px] uppercase text-[var(--text-tertiary)]">
+                  <span class="font-mono text-[10px] uppercase text-subtle">
                     {@selected_report.log.protocol}
                   </span>
                 </div>
                 <div class="px-4 py-3">
                   <div class="flex items-center gap-3 min-w-0">
                     <div class="min-w-0 flex-1">
-                      <div class="text-xs text-[var(--text-tertiary)]">
+                      <div class="text-xs text-subtle">
                         Initiator
                       </div>
-                      <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
-                        {format_endpoint(
+                      <div class="mt-1 truncate font-mono text-xs text-heading">
+                        {LogComponents.format_endpoint(
                           @selected_report.log.inner_src_ip,
                           @selected_report.log.inner_src_port
                         )}
                       </div>
                     </div>
-                    <.icon name="ri-arrow-right-line" class="w-4 h-4 shrink-0 text-[var(--brand)]" />
+                    <Core.icon name="ri-arrow-right-line" class="w-4 h-4 shrink-0 text-brand" />
                     <div class="min-w-0 flex-1 text-right">
-                      <div class="truncate text-xs text-[var(--text-tertiary)]">
+                      <div class="truncate text-xs text-subtle">
                         {destination_label(@selected_report.log)}
                       </div>
-                      <div class="mt-1 truncate font-mono text-xs text-[var(--text-primary)]">
-                        {format_endpoint(
+                      <div class="mt-1 truncate font-mono text-xs text-heading">
+                        {LogComponents.format_endpoint(
                           @selected_report.log.inner_dst_ip,
                           @selected_report.log.inner_dst_port
                         )}
@@ -270,37 +275,37 @@ defmodule PortalWeb.Logs.FlowLogs do
                   </div>
                   <div
                     :if={@selected_report.log.domain}
-                    class="mt-3 pt-3 border-t border-[var(--border)] text-xs text-[var(--text-secondary)]"
+                    class="mt-3 pt-3 border-t border-border text-xs text-body"
                   >
                     Resolved domain:
-                    <span class="font-mono text-[var(--text-primary)]">
+                    <span class="font-mono text-heading">
                       {@selected_report.log.domain}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
-                <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
-                  <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
-                    <.icon name="ri-time-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+              <div class="overflow-hidden rounded border border-border bg-surface">
+                <div class="flex items-center justify-between gap-3 border-b border-border bg-raised px-4 py-2">
+                  <div class="flex items-center gap-2 text-xs font-medium text-body">
+                    <Core.icon name="ri-time-line" class="h-3.5 w-3.5 text-brand" />
                     Timing and traffic
                   </div>
                   <.flow_state log={@selected_report.log} />
                 </div>
                 <div class="space-y-3 px-4 py-3">
                   <dl class="grid grid-cols-3 gap-x-4 gap-y-2">
-                    <.detail_row label="Started">
-                      <.timestamp_cell
+                    <LogComponents.detail_row label="Started">
+                      <LogComponents.timestamp_cell
                         id_prefix="panel-start"
                         log_id={@selected_report.log.log_id}
                         timestamp={@selected_report.log.flow_start}
                         tz_mode={@tz_mode}
                         display_tz={@display_tz}
                       />
-                    </.detail_row>
-                    <.detail_row label="Ended">
-                      <.timestamp_cell
+                    </LogComponents.detail_row>
+                    <LogComponents.detail_row label="Ended">
+                      <LogComponents.timestamp_cell
                         :if={@selected_report.log.flow_end}
                         id_prefix="panel-end"
                         log_id={@selected_report.log.log_id}
@@ -310,13 +315,13 @@ defmodule PortalWeb.Logs.FlowLogs do
                       />
                       <span
                         :if={is_nil(@selected_report.log.flow_end)}
-                        class="text-xs text-[var(--text-tertiary)]"
+                        class="text-xs text-subtle"
                       >
                         Open
                       </span>
-                    </.detail_row>
-                    <.detail_row label="Last packet">
-                      <.timestamp_cell
+                    </LogComponents.detail_row>
+                    <LogComponents.detail_row label="Last packet">
+                      <LogComponents.timestamp_cell
                         :if={@selected_report.log.last_packet}
                         id_prefix="panel-packet"
                         log_id={@selected_report.log.log_id}
@@ -326,11 +331,11 @@ defmodule PortalWeb.Logs.FlowLogs do
                       />
                       <span
                         :if={is_nil(@selected_report.log.last_packet)}
-                        class="text-xs text-[var(--text-tertiary)]"
+                        class="text-xs text-subtle"
                       >
                         -
                       </span>
-                    </.detail_row>
+                    </LogComponents.detail_row>
                   </dl>
 
                   <div class="grid grid-cols-2 gap-2">
@@ -377,153 +382,153 @@ defmodule PortalWeb.Logs.FlowLogs do
             </div>
           </.role_fieldset>
 
-          <.json_view id="flow-log-json" value={@selected_report_json} label="Flow log JSON" />
+          <JSONView.json_view id="flow-log-json" value={@selected_report_json} label="Flow log JSON" />
         </div>
 
-        <.show_panel_sidebar :if={@selected_report}>
+        <LogComponents.show_panel_sidebar :if={@selected_report}>
           <section>
-            <.section_heading label="Log details" />
+            <LogComponents.section_heading label="Log details" />
             <dl class="space-y-2.5">
-              <.detail_row label="Logged by">
+              <LogComponents.detail_row label="Logged by">
                 <div class="flex items-center gap-2">
                   <.role_badge role={@selected_report.log.role} />
-                  <span class="truncate text-xs text-[var(--text-secondary)]">
+                  <span class="truncate text-xs text-body">
                     {reporter_device_name(@selected_report)}
                   </span>
                 </div>
-              </.detail_row>
-              <.detail_row label="Received">
-                <.timestamp_cell
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Received">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-received"
                   log_id={@selected_report.log.log_id}
                   timestamp={@selected_report.log.inserted_at}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
-              <.detail_row label="Log ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Log ID">
                 <.identifier value={@selected_report.log.log_id} />
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Devices and resource" />
+            <LogComponents.section_heading label="Devices and resource" />
             <dl class="space-y-2.5">
-              <.detail_row label="Actor">
-                <div class="text-xs text-[var(--text-primary)]">
+              <LogComponents.detail_row label="Actor">
+                <div class="text-xs text-heading">
                   {@selected_report.log.initiator_actor_name}
                 </div>
                 <div
                   :if={@selected_report.log.initiator_actor_email}
-                  class="truncate text-xs text-[var(--text-tertiary)]"
+                  class="truncate text-xs text-subtle"
                 >
                   {@selected_report.log.initiator_actor_email}
                 </div>
-              </.detail_row>
-              <.detail_row label="Initiator device">
-                <div class="text-xs text-[var(--text-secondary)]">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Initiator device">
+                <div class="text-xs text-body">
                   {device_name(@selected_report.initiator_device, "Deleted device")}
                 </div>
                 <.identifier value={@selected_report.log.initiator_device_id} />
-              </.detail_row>
-              <.detail_row label="Responder device">
-                <div class="text-xs text-[var(--text-secondary)]">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Responder device">
+                <div class="text-xs text-body">
                   {device_name(@selected_report.responder_device, "Deleted responder")}
                 </div>
                 <.identifier value={@selected_report.log.responder_device_id} />
-              </.detail_row>
-              <.detail_row label="Resource">
-                <div class="text-xs text-[var(--text-primary)]">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Resource">
+                <div class="text-xs text-heading">
                   {@selected_report.log.resource_name}
                 </div>
                 <div
                   :if={@selected_report.log.resource_address}
-                  class="truncate font-mono text-xs text-[var(--text-tertiary)]"
+                  class="truncate font-mono text-xs text-subtle"
                 >
                   {@selected_report.log.resource_address}
                 </div>
                 <.identifier value={@selected_report.log.resource_id} />
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
-            <.section_heading label="Authorization" />
+            <LogComponents.section_heading label="Authorization" />
             <dl class="space-y-2.5">
-              <.detail_row label="Authorization ID">
+              <LogComponents.detail_row label="Authorization ID">
                 <.identifier value={@selected_report.log.policy_authorization_id} />
-              </.detail_row>
-              <.detail_row label="Policy ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Policy ID">
                 <.identifier value={@selected_report.log.policy_id} />
-              </.detail_row>
-              <.detail_row label="Authorized">
-                <.timestamp_cell
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Authorized">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-authorized"
                   log_id={@selected_report.log.log_id}
                   timestamp={@selected_report.log.authorized_at}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
-              <.detail_row label="Expires">
-                <.timestamp_cell
+              </LogComponents.detail_row>
+              <LogComponents.detail_row label="Expires">
+                <LogComponents.timestamp_cell
                   id_prefix="panel-expires"
                   log_id={@selected_report.log.log_id}
                   timestamp={@selected_report.log.authorization_expires_at}
                   tz_mode={@tz_mode}
                   display_tz={@display_tz}
                 />
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
 
           <div
             :if={has_client_telemetry?(@selected_report.log)}
-            class="border-t border-[var(--border)]"
+            class="border-t border-border"
           >
           </div>
 
           <section :if={has_client_telemetry?(@selected_report.log)}>
-            <.section_heading label="Initiator device details" />
+            <LogComponents.section_heading label="Initiator device details" />
             <dl class="space-y-2.5">
-              <.detail_row :if={@selected_report.log.initiator_client_version} label="Client">
+              <LogComponents.detail_row :if={@selected_report.log.initiator_client_version} label="Client">
                 <.detail_value value={@selected_report.log.initiator_client_version} />
-              </.detail_row>
-              <.detail_row :if={@selected_report.log.initiator_device_os_name} label="Operating system">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_report.log.initiator_device_os_name} label="Operating system">
                 <.detail_value value={os_label(@selected_report.log)} />
-              </.detail_row>
-              <.detail_row :if={@selected_report.log.initiator_device_serial} label="Serial">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_report.log.initiator_device_serial} label="Serial">
                 <.identifier value={@selected_report.log.initiator_device_serial} />
-              </.detail_row>
-              <.detail_row :if={@selected_report.log.initiator_device_uuid} label="Device UUID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_report.log.initiator_device_uuid} label="Device UUID">
                 <.identifier value={@selected_report.log.initiator_device_uuid} />
-              </.detail_row>
-              <.detail_row
+              </LogComponents.detail_row>
+              <LogComponents.detail_row
                 :if={@selected_report.log.initiator_device_identifier_for_vendor}
                 label="Vendor identifier"
               >
                 <.identifier value={@selected_report.log.initiator_device_identifier_for_vendor} />
-              </.detail_row>
-              <.detail_row
+              </LogComponents.detail_row>
+              <LogComponents.detail_row
                 :if={@selected_report.log.initiator_device_firebase_installation_id}
                 label="Firebase installation"
               >
                 <.identifier value={
                   @selected_report.log.initiator_device_firebase_installation_id
                 } />
-              </.detail_row>
-              <.detail_row :if={@selected_report.log.initiator_auth_provider_id} label="Auth provider ID">
+              </LogComponents.detail_row>
+              <LogComponents.detail_row :if={@selected_report.log.initiator_auth_provider_id} label="Auth provider ID">
                 <.identifier value={@selected_report.log.initiator_auth_provider_id} />
-              </.detail_row>
+              </LogComponents.detail_row>
             </dl>
           </section>
-        </.show_panel_sidebar>
-      </.show_panel>
+        </LogComponents.show_panel_sidebar>
+      </LogComponents.show_panel>
     </div>
     """
   end
@@ -532,9 +537,9 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp role_badge(assigns) do
     ~H"""
-    <.badge type={if(@role == :initiator, do: "primary", else: "accent")} size="xs">
+    <Core.badge type={if(@role == :initiator, do: "primary", else: "accent")} size="xs">
       {if(@role == :initiator, do: "Initiator", else: "Responder")}
-    </.badge>
+    </Core.badge>
     """
   end
 
@@ -553,7 +558,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       ]}>
         {@label}
       </legend>
-      <p :if={@hint} class="mb-3 text-[10px] text-[var(--text-tertiary)]">{@hint}</p>
+      <p :if={@hint} class="mb-3 text-[10px] text-subtle">{@hint}</p>
       {render_slot(@inner_block)}
     </fieldset>
     """
@@ -565,18 +570,18 @@ defmodule PortalWeb.Logs.FlowLogs do
     assigns = assign(assigns, :skew?, clock_skew?(assigns.log))
 
     ~H"""
-    <.badge :if={is_nil(@log.flow_end)} type="info" size="xs">Incomplete</.badge>
-    <.badge
+    <Core.badge :if={is_nil(@log.flow_end)} type="info" size="xs">Incomplete</Core.badge>
+    <Core.badge
       :if={@skew?}
       type="warning"
       size="xs"
       title="The reported flow end time is earlier than its start time, usually because the reporting device's clock changed or was out of sync."
     >
       Clock skew
-    </.badge>
+    </Core.badge>
     <span
       :if={not is_nil(@log.flow_end) and not @skew?}
-      class="text-xs tabular-nums text-[var(--text-secondary)]"
+      class="text-xs tabular-nums text-body"
     >
       {format_duration(@log.flow_start, @log.flow_end)}
     </span>
@@ -596,9 +601,9 @@ defmodule PortalWeb.Logs.FlowLogs do
     ~H"""
     <div
       :if={@count == 0}
-      class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-secondary)]"
+      class="flex items-center gap-2 rounded border border-border bg-raised px-3 py-2 text-xs text-body"
     >
-      <.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+      <Core.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-brand" />
       <span>
         No matching {@other_role} log was found. It may still be open, delayed, dropped, or beyond
         the retention period.
@@ -606,26 +611,26 @@ defmodule PortalWeb.Logs.FlowLogs do
     </div>
     <div
       :if={@count == 1}
-      class="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-secondary)]"
+      class="flex items-center gap-2 rounded border border-border bg-raised px-3 py-2 text-xs text-body"
     >
-      <.icon name="ri-link" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+      <Core.icon name="ri-link" class="h-4 w-4 shrink-0 text-brand" />
       <span>
         Flow logs are paired on a best-effort basis.
-        <.link
+        <Navigation.link
           href="https://www.firezone.dev/kb/audit-logs/flow#two-sided-reporting"
           target="_blank"
           rel="noopener noreferrer"
-          class="font-medium text-[var(--brand)] hover:underline"
+          class="font-medium text-brand hover:underline"
         >
           Read more
-        </.link>
+        </Navigation.link>
       </span>
     </div>
     <div
       :if={@count > 1}
-      class="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+      class="flex items-center gap-2 rounded border border-warning/30 bg-warning-light px-3 py-2 text-xs text-warning"
     >
-      <.icon name="ri-alert-line" class="h-4 w-4 shrink-0" />
+      <Core.icon name="ri-alert-line" class="h-4 w-4 shrink-0" />
       <span>
         Multiple {@other_role} logs have the same flow details and overlapping time windows. Up to
         the three closest matches are shown; none can be selected with certainty.
@@ -641,34 +646,34 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp matching_log_card(assigns) do
     ~H"""
-    <.link
+    <Navigation.link
       id={"flow-log-match-#{@log.log_id}"}
       patch={@path}
       data-role={@log.role}
-      class="block overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)] transition-colors hover:border-[var(--brand)]/50"
+      class="block overflow-hidden rounded border border-border bg-surface transition-colors hover:border-brand/50"
     >
-      <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2">
+      <div class="flex items-center justify-between gap-3 border-b border-border bg-raised px-3 py-2">
         <div class="flex min-w-0 items-center gap-2">
           <.role_badge role={@log.role} />
           <.flow_state log={@log} />
         </div>
-        <span class="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--brand)]">
-          View log <.icon name="ri-arrow-right-line" class="h-3 w-3" />
+        <span class="inline-flex shrink-0 items-center gap-1 text-xs text-brand">
+          View log <Core.icon name="ri-arrow-right-line" class="h-3 w-3" />
         </span>
       </div>
       <div class="px-3 py-2.5">
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2 xl:grid-cols-4">
-          <.detail_row label="Started">
-            <.timestamp_cell
+          <LogComponents.detail_row label="Started">
+            <LogComponents.timestamp_cell
               id_prefix="match-start"
               log_id={@log.log_id}
               timestamp={@log.flow_start}
               tz_mode={@tz_mode}
               display_tz={@display_tz}
             />
-          </.detail_row>
-          <.detail_row label="Ended">
-            <.timestamp_cell
+          </LogComponents.detail_row>
+          <LogComponents.detail_row label="Ended">
+            <LogComponents.timestamp_cell
               :if={@log.flow_end}
               id_prefix="match-end"
               log_id={@log.log_id}
@@ -676,19 +681,19 @@ defmodule PortalWeb.Logs.FlowLogs do
               tz_mode={@tz_mode}
               display_tz={@display_tz}
             />
-            <span :if={is_nil(@log.flow_end)} class="text-xs text-[var(--text-tertiary)]">Open</span>
-          </.detail_row>
-          <.detail_row label="Traffic">
-            <span class="font-mono text-xs tabular-nums text-[var(--text-secondary)]">
+            <span :if={is_nil(@log.flow_end)} class="text-xs text-subtle">Open</span>
+          </LogComponents.detail_row>
+          <LogComponents.detail_row label="Traffic">
+            <span class="font-mono text-xs tabular-nums text-body">
               {format_bytes(total_bytes(@log))}
             </span>
-          </.detail_row>
-          <.detail_row label="Log ID">
+          </LogComponents.detail_row>
+          <LogComponents.detail_row label="Log ID">
             <.identifier value={@log.log_id} />
-          </.detail_row>
+          </LogComponents.detail_row>
         </dl>
       </div>
-    </.link>
+    </Navigation.link>
     """
   end
 
@@ -702,27 +707,27 @@ defmodule PortalWeb.Logs.FlowLogs do
     assigns = assign(assigns, :path_count, length(assigns.outers))
 
     ~H"""
-    <div id={@id} class="overflow-hidden rounded border border-[var(--border)] bg-[var(--surface)]">
-      <div class="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--surface-raised)] px-4 py-2">
-        <div class="flex items-center gap-2 text-xs font-medium text-[var(--text-secondary)]">
-          <.icon name="ri-route-line" class="h-3.5 w-3.5 text-[var(--brand)]" />
+    <div id={@id} class="overflow-hidden rounded border border-border bg-surface">
+      <div class="flex items-center justify-between gap-3 border-b border-border bg-raised px-4 py-2">
+        <div class="flex items-center gap-2 text-xs font-medium text-body">
+          <Core.icon name="ri-route-line" class="h-3.5 w-3.5 text-brand" />
           WireGuard path history
         </div>
-        <.badge :if={@path_count > 0} type="neutral" size="xs">
+        <Core.badge :if={@path_count > 0} type="neutral" size="xs">
           {@path_count} {if(@path_count == 1, do: "path", else: "paths")}
-        </.badge>
+        </Core.badge>
       </div>
 
       <div class="px-4 py-3">
         <div
           :if={@path_count == 0}
-          class="flex items-center gap-2 rounded bg-[var(--surface-raised)] px-3 py-2 text-xs text-[var(--text-tertiary)]"
+          class="flex items-center gap-2 rounded bg-raised px-3 py-2 text-xs text-subtle"
         >
-          <.icon name="ri-time-line" class="h-3.5 w-3.5 shrink-0" />
+          <Core.icon name="ri-time-line" class="h-3.5 w-3.5 shrink-0" />
           Paths are reported when the flow closes.
         </div>
 
-        <div :if={@path_count > 0} class="mb-2 text-[10px] text-[var(--text-tertiary)]">
+        <div :if={@path_count > 0} class="mb-2 text-[10px] text-subtle">
           Ordered from first to last observed
         </div>
 
@@ -735,7 +740,7 @@ defmodule PortalWeb.Logs.FlowLogs do
             <div class="relative flex w-6 shrink-0 justify-center">
               <span
                 :if={index < @path_count}
-                class="absolute left-1/2 top-6 -bottom-2 w-px -translate-x-1/2 bg-[var(--border)]"
+                class="absolute left-1/2 top-6 -bottom-2 w-px -translate-x-1/2 bg-border"
               >
               </span>
               <span class="relative z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-brand/30 bg-brand-subtle font-mono text-[10px] font-semibold text-brand">
@@ -743,12 +748,12 @@ defmodule PortalWeb.Logs.FlowLogs do
               </span>
             </div>
 
-            <div class="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-raised)] px-3 py-2.5">
+            <div class="min-w-0 flex-1 rounded border border-border bg-raised px-3 py-2.5">
               <div class="mb-2 flex items-center justify-between gap-2">
-                <div class="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
+                <div class="text-[10px] font-medium uppercase tracking-wide text-subtle">
                   {if(index == 1, do: "Initial path", else: "Path change")}
                 </div>
-                <.timestamp_cell
+                <LogComponents.timestamp_cell
                   :if={outer.path_activated_at}
                   id_prefix={"path-activated-#{index}"}
                   log_id={@log_id}
@@ -759,30 +764,30 @@ defmodule PortalWeb.Logs.FlowLogs do
               </div>
               <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
                 <div class="min-w-0">
-                  <div class="text-[10px] text-[var(--text-tertiary)]">Initiator</div>
+                  <div class="text-[10px] text-subtle">Initiator</div>
                   <div
                     :if={outer.src_ip}
                     data-wireguard-endpoint="initiator"
-                    class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                    class="mt-0.5 break-all font-mono text-xs text-heading"
                   >
-                    {format_endpoint(outer.src_ip, outer.src_port)}
+                    {LogComponents.format_endpoint(outer.src_ip, outer.src_port)}
                   </div>
                   <div
                     :if={is_nil(outer.src_ip)}
                     data-wireguard-endpoint="initiator"
-                    class="mt-0.5 text-xs italic text-[var(--text-tertiary)]"
+                    class="mt-0.5 text-xs italic text-subtle"
                   >
                     Not observed
                   </div>
                 </div>
-                <.icon name="ri-arrow-right-line" class="h-4 w-4 shrink-0 text-[var(--brand)]" />
+                <Core.icon name="ri-arrow-right-line" class="h-4 w-4 shrink-0 text-brand" />
                 <div class="min-w-0 text-right">
-                  <div class="text-[10px] text-[var(--text-tertiary)]">Responder</div>
+                  <div class="text-[10px] text-subtle">Responder</div>
                   <div
                     data-wireguard-endpoint="responder"
-                    class="mt-0.5 break-all font-mono text-xs text-[var(--text-primary)]"
+                    class="mt-0.5 break-all font-mono text-xs text-heading"
                   >
-                    {format_endpoint(outer.dst_ip, outer.dst_port)}
+                    {LogComponents.format_endpoint(outer.dst_ip, outer.dst_port)}
                   </div>
                 </div>
               </div>
@@ -800,10 +805,10 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp metric(assigns) do
     ~H"""
-    <div class="rounded bg-[var(--surface-raised)] px-3 py-2">
-      <div class="text-xs text-[var(--text-tertiary)]">{@label}</div>
-      <div class="mt-1 font-mono text-xs text-[var(--text-primary)]">{@value}</div>
-      <div class="font-mono text-xs text-[var(--text-tertiary)]">{@secondary}</div>
+    <div class="rounded bg-raised px-3 py-2">
+      <div class="text-xs text-subtle">{@label}</div>
+      <div class="mt-1 font-mono text-xs text-heading">{@value}</div>
+      <div class="font-mono text-xs text-subtle">{@secondary}</div>
     </div>
     """
   end
@@ -812,7 +817,7 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp identifier(assigns) do
     ~H"""
-    <span class="block font-mono text-xs text-[var(--text-secondary)] break-all">
+    <span class="block font-mono text-xs text-body break-all">
       {@value}
     </span>
     """
@@ -822,7 +827,7 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp detail_value(assigns) do
     ~H"""
-    <span class="text-xs text-[var(--text-secondary)]">{@value}</span>
+    <span class="text-xs text-body">{@value}</span>
     """
   end
 
@@ -950,6 +955,7 @@ defmodule PortalWeb.Logs.FlowLogs do
     alias Portal.Types.LogId
 
     @candidate_limit 3
+    @candidate_start_window_seconds 86_400
 
     def list_flow_logs(subject, opts \\ []) do
       {query, opts} =
@@ -959,7 +965,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       result =
         query
         |> Safe.scoped(subject)
-        |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
+        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, [order_by_nulls: :natural] ++ LogComponents.list_opts()))
 
       case result do
         {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}
@@ -1082,6 +1088,10 @@ defmodule PortalWeb.Logs.FlowLogs do
     # overlapping time window narrows the matches, but cannot prove identity
     # because independently created logs have no shared flow ID.
     #
+    # The bare flow_start bounds around the selected flow let PostgreSQL prune
+    # the daily partitions. Without them every partition of the account is
+    # scanned and the time-distance sort runs over all of its rows.
+    #
     # Only fields both sides can agree on are matched, and the WireGuard tuple
     # is not one of them: each side records the path from its own vantage point
     # (its own bound socket address and the peer address it observes), so NAT on
@@ -1100,6 +1110,7 @@ defmodule PortalWeb.Logs.FlowLogs do
           where: candidate.responder_device_id == ^log.responder_device_id,
           where: candidate.resource_id == ^log.resource_id,
           where: candidate.protocol == ^log.protocol,
+          where: candidate.flow_start >= ^DateTime.add(selected_min, -@candidate_start_window_seconds),
           where: candidate.inner_src_ip == ^log.inner_src_ip,
           where: candidate.inner_src_port == ^log.inner_src_port,
           where: candidate.inner_dst_port == ^log.inner_dst_port,
@@ -1149,9 +1160,12 @@ defmodule PortalWeb.Logs.FlowLogs do
     defp filter_candidate_upper_bound(query, nil), do: query
 
     defp filter_candidate_upper_bound(query, selected_max) do
+      latest_start = DateTime.add(selected_max, @candidate_start_window_seconds)
+
       where(
         query,
         [flow_logs: candidate],
+        candidate.flow_start <= ^latest_start and
         fragment("LEAST(?, COALESCE(?, ?))", candidate.flow_start, candidate.flow_end, candidate.flow_start) <=
           ^selected_max
       )

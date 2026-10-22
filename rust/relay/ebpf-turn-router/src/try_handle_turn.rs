@@ -50,12 +50,28 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    let num_bytes = match eth.ether_type() {
-        Ok(EtherType::Ipv4) => try_handle_turn_ipv4(ctx)?,
-        Ok(EtherType::Ipv6) => try_handle_turn_ipv6(ctx)?,
+    let (num_bytes, ip_version) = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => (try_handle_turn_ipv4(ctx)?, 4),
+        Ok(EtherType::Ipv6) => (try_handle_turn_ipv6(ctx)?, 6),
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed());
+
+    // Every forwarding path preserves ECN, including address-family translation.
+    // Read it after rewriting so it need not stay live across the routing hot path.
+    // SAFETY: Reacquire packet pointers because rewriting may have adjusted the head.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+    let ecn = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => {
+            // SAFETY: EtherType identifies the rewritten IPv4 header.
+            unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn()
+        }
+        Ok(EtherType::Ipv6) => {
+            // SAFETY: EtherType identifies the rewritten IPv6 header.
+            unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn()
+        }
+        _ => return Err(Error::NotIp),
+    };
+    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
 
     Ok(())
 }

@@ -1,15 +1,16 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
-};
+use std::iter;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::ClientId;
 use dns_types::{DomainName, RecordType};
+use itertools::Itertools as _;
 use tunnel_proto::dns;
 
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
+use super::values::arb_domain_matching_dns_resource;
 use crate::reference::ReferenceState;
+use crate::stub_portal::StubPortal;
 use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
@@ -31,10 +32,10 @@ enum DnsNameSpec {
         domain: DomainName,
         rtypes: Vec<RecordType>,
     },
-    Wildcard {
-        base: String,
+    Resource {
+        address: String,
     },
-    KnownDevice {
+    KnownLabel {
         base: String,
         labels: Vec<String>,
     },
@@ -43,12 +44,15 @@ enum DnsNameSpec {
     },
 }
 
-pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarget> {
-    let servers = state.reachable_dns_servers();
-    let labels = state.portal.device_labels();
+pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQueryTarget> {
+    let servers = state.reachable_dns_servers(portal);
+    let labels = iter::empty()
+        .chain(portal.device_labels())
+        .chain(portal.device_pool_labels())
+        .collect::<Vec<_>>();
 
     state
-        .all_domains(now)
+        .all_domains()
         .into_iter()
         .flat_map(|(client_id, domain, rtypes)| {
             servers
@@ -65,56 +69,106 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarge
         })
         .chain(
             state
-                .wildcard_dns_resources()
+                .dns_resources_on_any_client(portal)
                 .into_iter()
                 .flat_map(|(client_id, resource)| {
                     servers.iter().filter(move |(id, _)| *id == client_id).map(
                         move |(_, dns_server)| DnsQueryTarget {
                             client_id,
                             dns_server: dns_server.clone(),
-                            name: DnsNameSpec::Wildcard {
-                                base: resource.address.trim_start_matches("*.").to_owned(),
+                            name: DnsNameSpec::Resource {
+                                address: resource.address.clone(),
                             },
                         },
                     )
                 }),
         )
-        .chain(state.device_pool_query_targets().into_iter().flat_map(
-            |(client_id, resource, dns_server)| {
-                let base = resource.address.trim_start_matches("*.").to_owned();
-                [
-                    (!labels.is_empty()).then(|| DnsQueryTarget {
-                        client_id,
-                        dns_server: dns_server.clone(),
-                        name: DnsNameSpec::KnownDevice {
-                            base: base.clone(),
-                            labels: labels.clone(),
-                        },
-                    }),
-                    Some(DnsQueryTarget {
-                        client_id,
-                        dns_server,
-                        name: DnsNameSpec::UnknownDevice { base },
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            },
-        ))
+        .chain(servers.iter().cloned().flat_map(|(client_id, dns_server)| {
+            let base = dns::DEVICE_DOMAIN.to_owned();
+            [
+                (!labels.is_empty()).then(|| DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::KnownLabel {
+                        base: base.clone(),
+                        labels: labels.clone(),
+                    },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::UnknownDevice { base: base.clone() },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
+                    dns_server,
+                    name: DnsNameSpec::Concrete {
+                        domain: base.parse().unwrap(),
+                        rtypes: vec![RecordType::PTR],
+                    },
+                }),
+            ]
+            .into_iter()
+            .flatten()
+        }))
         .collect::<Vec<_>>()
 }
 
 pub(super) fn generate(
     g: &mut Generator,
-    target: DnsQueryTarget,
+    targets: &[DnsQueryTarget],
     state: &ReferenceState,
 ) -> Transition {
+    let target = targets[g.choose_index(targets.len())].clone();
+    let (client_id, query) = generate_query(g, target, &state.domain_tree);
+    let known_ptr_target = (query.r_type == RecordType::PTR)
+        .then(|| arb_known_ptr_target(g, state, client_id))
+        .flatten();
+
+    if let Some(KnownPtrTarget {
+        record_domain,
+        family,
+        address_index,
+    }) = known_ptr_target
+    {
+        return Transition::SendDnsResourcePtrQuery {
+            client_id,
+            record_domain,
+            family,
+            address_index,
+            query_id: query.query_id,
+            dns_server: query.dns_server,
+            transport: query.transport,
+        };
+    }
+
+    let queries = std::iter::once((client_id, query))
+        .chain((0..g.count(0, 4)).map(|_| {
+            let target = targets[g.choose_index(targets.len())].clone();
+            generate_query(g, target, &state.domain_tree)
+        }))
+        .unique_by(|(client_id, query)| {
+            (
+                *client_id,
+                query.dns_server.clone(),
+                query.query_id,
+                query.transport,
+            )
+        })
+        .collect();
+
+    Transition::SendDnsQueries(queries)
+}
+
+fn generate_query(
+    g: &mut Generator,
+    target: DnsQueryTarget,
+    domain_tree: &[DomainName],
+) -> (ClientId, DnsQuery) {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
-        DnsNameSpec::Wildcard { base } => {
-            let domain = format!("{}.{}", g.lower_ascii(3, 6), base)
-                .parse::<DomainName>()
-                .unwrap();
+        DnsNameSpec::Resource { address } => {
+            let domain = arb_domain_matching_dns_resource(g, &address, domain_tree);
             let rtypes = if g.bool() {
                 vec![RecordType::A]
             } else {
@@ -122,7 +176,7 @@ pub(super) fn generate(
             };
             (domain, rtypes)
         }
-        DnsNameSpec::KnownDevice { base, labels } => {
+        DnsNameSpec::KnownLabel { base, labels } => {
             let label = &labels[g.choose_index(labels.len())];
             (
                 format!("{label}.{base}").parse::<DomainName>().unwrap(),
@@ -138,44 +192,29 @@ pub(super) fn generate(
     };
 
     let r_type = arb_maybe_available_response_rtype(g, &rtypes);
-    let known_ptr_target = (r_type == RecordType::PTR)
-        .then(|| arb_known_ptr_target(g, state, target.client_id))
-        .flatten();
-
-    if let Some(KnownPtrTarget {
-        record_domain,
-        family,
-        address_index,
-    }) = known_ptr_target
-    {
-        return Transition::SendDnsResourcePtrQuery {
-            client_id: target.client_id,
-            record_domain,
-            family,
-            address_index,
-            query_id: arb_dns_query_id(g),
-            dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
-        };
-    }
-
-    let domain = if r_type == RecordType::PTR {
+    let domain = if r_type == RecordType::PTR && !dns::is_in_device_domain(&domain) {
         DomainName::reverse_from_addr(arb_unassigned_ptr_query_ip(g))
             .expect("reverse DNS names always fit")
     } else {
         domain
     };
 
-    Transition::SendDnsQuery {
-        client_id: target.client_id,
-        query: DnsQuery {
+    let query_id = arb_dns_query_id(g);
+    let transport = arb_dns_transport(g);
+    // Only the answers to PTR queries in the device domain depend on EDNS.
+    let edns = r_type == RecordType::PTR && dns::is_in_device_domain(&domain) && g.bool();
+
+    (
+        target.client_id,
+        DnsQuery {
             domain,
             r_type,
-            query_id: arb_dns_query_id(g),
+            query_id,
             dns_server: target.dns_server,
-            transport: arb_dns_transport(g),
+            transport,
+            edns,
         },
-    }
+    )
 }
 
 fn arb_known_ptr_target(

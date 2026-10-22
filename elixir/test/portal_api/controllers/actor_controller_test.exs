@@ -3,9 +3,14 @@ defmodule PortalAPI.ActorControllerTest do
   alias Portal.Actor
   alias Portal.ExternalIdentity
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.DeviceFixtures
   import Portal.IdentityFixtures
+  import Portal.OAuthFixtures
+  import Portal.PortalSessionFixtures
+  import Portal.TokenFixtures
 
   setup do
     account = account_fixture()
@@ -105,6 +110,18 @@ defmodule PortalAPI.ActorControllerTest do
         |> get("/actors", limit: "abc")
 
       assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
+    end
+
+    test "returns error for a limit outside 1 to 100", %{conn: conn, actor: actor} do
+      for limit <- ["0", "-1", "101"] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> get("/actors", limit: limit)
+
+        assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
+      end
     end
 
     test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
@@ -209,6 +226,7 @@ defmodule PortalAPI.ActorControllerTest do
                  "type" => Atom.to_string(actor.type),
                  "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
                  "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_by_directory_id" => actor.disabled_by_directory_id,
                  "is_disabled" => actor.is_disabled,
                  "email" => actor.email,
                  "inserted_at" => iso8601(actor.inserted_at),
@@ -216,6 +234,118 @@ defmodule PortalAPI.ActorControllerTest do
                  "updated_at" => iso8601(actor.updated_at)
                }
              }
+    end
+  end
+
+  describe "last_seen_at" do
+    setup %{account: account} do
+      %{target: actor_fixture(account: account)}
+    end
+
+    test "is null when the actor was never active", %{conn: conn, actor: api_actor, target: target} do
+      assert %{"data" => %{"last_seen_at" => nil}} = show_actor(conn, api_actor, target)
+    end
+
+    test "is the latest client connection", %{
+      conn: conn,
+      account: account,
+      actor: api_actor,
+      target: target
+    } do
+      older = ~U[2026-03-01 10:00:00.000000Z]
+      newer = ~U[2026-04-01 10:00:00.000000Z]
+
+      [account: account, actor: target] |> client_fixture() |> record_last_seen(older)
+      [account: account, actor: target] |> client_fixture() |> record_last_seen(newer)
+      [account: account] |> client_fixture() |> record_last_seen(DateTime.utc_now())
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} = show_actor(conn, api_actor, target)
+      assert last_seen_at == iso8601(newer)
+    end
+
+    test "is the latest admin portal sign-in", %{
+      conn: conn,
+      account: account,
+      actor: api_actor,
+      target: target
+    } do
+      session = portal_session_fixture(account: account, actor: target)
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} = show_actor(conn, api_actor, target)
+      assert last_seen_at == iso8601(session.inserted_at)
+    end
+
+    test "is the latest API token use", %{conn: conn, account: account, actor: api_actor} do
+      api_client = actor_fixture(account: account, type: :api_client)
+      seen_at = ~U[2026-05-01 10:00:00.000000Z]
+      api_token_fixture(account: account, actor: api_client, last_seen_at: seen_at)
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} =
+               show_actor(conn, api_actor, api_client)
+
+      assert last_seen_at == iso8601(seen_at)
+    end
+
+    test "is the latest OAuth token use", %{
+      conn: conn,
+      account: account,
+      actor: api_actor,
+      target: target
+    } do
+      seen_at = ~U[2026-06-01 10:00:00.000000Z]
+      {token, _encoded, _refresh_encoded} = oauth_token_fixture(account: account, actor: target)
+      token |> Ecto.Changeset.change(last_seen_at: seen_at) |> Portal.Repo.update!()
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} = show_actor(conn, api_actor, target)
+      assert last_seen_at == iso8601(seen_at)
+    end
+
+    test "takes the newest across sources", %{
+      conn: conn,
+      account: account,
+      actor: api_actor,
+      target: target
+    } do
+      newest = ~U[2026-07-01 10:00:00.000000Z]
+      [account: account, actor: target] |> client_fixture() |> record_last_seen(newest)
+
+      {token, _encoded, _refresh_encoded} = oauth_token_fixture(account: account, actor: target)
+
+      token
+      |> Ecto.Changeset.change(last_seen_at: ~U[2026-06-01 10:00:00.000000Z])
+      |> Portal.Repo.update!()
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} = show_actor(conn, api_actor, target)
+      assert last_seen_at == iso8601(newest)
+    end
+
+    test "is returned on list", %{conn: conn, account: account, actor: api_actor, target: target} do
+      seen_at = ~U[2026-03-01 10:00:00.000000Z]
+      [account: account, actor: target] |> client_fixture() |> record_last_seen(seen_at)
+
+      assert %{"data" => data} =
+               conn
+               |> authorize_conn(api_actor)
+               |> put_req_header("content-type", "application/json")
+               |> get("/actors")
+               |> json_response(200)
+
+      assert %{"last_seen_at" => last_seen_at} = Enum.find(data, &(&1["id"] == target.id))
+      assert last_seen_at == iso8601(seen_at)
+    end
+
+    test "is kept on update", %{conn: conn, account: account, actor: api_actor, target: target} do
+      seen_at = ~U[2026-03-01 10:00:00.000000Z]
+      [account: account, actor: target] |> client_fixture() |> record_last_seen(seen_at)
+
+      assert %{"data" => %{"last_seen_at" => last_seen_at}} =
+               conn
+               |> authorize_conn(api_actor)
+               |> put_req_header("content-type", "application/json")
+               |> put("/actors/#{target.id}", actor: %{name: "Renamed"})
+               |> json_response(200)
+
+      assert last_seen_at == iso8601(seen_at)
     end
   end
 
@@ -371,6 +501,19 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["email"] == attrs["email"]
       assert resp["data"]["type"] == attrs["type"]
+    end
+
+    test "returns validation error when the email domain cannot be encoded", %{conn: conn, actor: api_actor} do
+      attrs = %{"name" => "Test User", "email" => "Ï@ú1å?", "type" => "account_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert %{"status" => 422, "validation_errors" => %{"email" => errors}} = json_response(conn, 422)
+      assert "is an invalid email address" in errors
     end
 
     test "returns validation error when email host has no dot", %{conn: conn, actor: api_actor} do
@@ -846,6 +989,7 @@ defmodule PortalAPI.ActorControllerTest do
                  "type" => Atom.to_string(actor.type),
                  "allow_email_otp_sign_in" => actor.allow_email_otp_sign_in,
                  "created_by_directory_id" => actor.created_by_directory_id,
+                 "disabled_by_directory_id" => actor.disabled_by_directory_id,
                  "is_disabled" => actor.is_disabled,
                  "email" => actor.email,
                  "inserted_at" => iso8601(actor.inserted_at),
@@ -932,6 +1076,51 @@ defmodule PortalAPI.ActorControllerTest do
       refute Repo.get_by!(Actor, account_id: account.id, id: actor.id).is_disabled
     end
 
+    test "enabling an actor a directory disabled takes the decision away from the directory", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      directory = Portal.DirectoryFixtures.directory_fixture(account: account)
+      actor = actor_fixture(account: account)
+
+      Repo.update_all(
+        from(a in Actor, where: a.id == ^actor.id),
+        set: [is_disabled: true, disabled_by_directory_id: directory.id]
+      )
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}", actor: %{"is_disabled" => false})
+
+      assert %{"data" => %{"is_disabled" => false, "disabled_by_directory_id" => nil}} =
+               json_response(conn, 200)
+
+      assert Repo.get_by!(Actor, account_id: account.id, id: actor.id).disabled_by_directory_id == nil
+    end
+
+    test "ignores disabled_by_directory_id in the request", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      directory = Portal.DirectoryFixtures.directory_fixture(account: account)
+      actor = actor_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{actor.id}",
+          actor: %{"is_disabled" => true, "disabled_by_directory_id" => directory.id}
+        )
+
+      assert %{"data" => %{"is_disabled" => true, "disabled_by_directory_id" => nil}} =
+               json_response(conn, 200)
+    end
+
     test "returns forbidden when actor attempts to disable itself", %{
       conn: conn,
       account: account,
@@ -966,4 +1155,12 @@ defmodule PortalAPI.ActorControllerTest do
   end
 
   defp iso8601(_), do: nil
+
+  defp show_actor(conn, api_actor, actor) do
+    conn
+    |> authorize_conn(api_actor)
+    |> put_req_header("content-type", "application/json")
+    |> get("/actors/#{actor.id}")
+    |> json_response(200)
+  end
 end

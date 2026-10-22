@@ -77,11 +77,11 @@ defmodule Portal.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_html, "~> 4.0"},
-      {:phoenix_template, "~> 1.0.4"},
+      {:phoenix_template, "~> 1.1.0"},
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:bandit, "~> 1.0"},
+      {:bandit, "~> 1.3"},
       {:plug, "~> 1.15"},
       {:gettext, "~> 1.0"},
       {:remote_ip, "~> 1.1"},
@@ -112,7 +112,7 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.4.0"},
+      {:hammer, "~> 7.5.0"},
 
       # AWS request signing
       {:aws_signature, "~> 0.4"},

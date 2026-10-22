@@ -26,7 +26,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
@@ -472,7 +472,7 @@ where
         bind_ip6: Ipv6Addr,
         is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
-        let mut sockets = Sockets::new();
+        let mut sockets = Sockets::new().context("Failed to initialize sockets")?;
 
         if public_address.as_v4().is_some() {
             sockets
@@ -536,16 +536,23 @@ where
                             AddressFamily::V4 => self.bind_ip4.into(),
                             AddressFamily::V6 => self.bind_ip6.into(),
                         };
-                        self.sockets
-                            .bind(port.value(), bind_addr)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to bind to port {} on {family} interfaces",
-                                    port.value()
-                                )
-                            })?;
 
-                        tracing::info!(target: "relay", %port, %family, "Created allocation");
+                        // Failing to bind a single port must not take down the entire Relay.
+                        let bind = self
+                            .sockets
+                            .bind(port.value(), bind_addr)
+                            .context("Failed to bind port for allocation");
+
+                        match bind {
+                            Ok(()) => {
+                                tracing::info!(target: "relay", %port, %family, "Created allocation");
+                            }
+                            Err(e) => {
+                                tracing::warn!(target: "relay", %port, %family, "{e:#}");
+
+                                self.server.handle_allocation_failed(port);
+                            }
+                        }
                     }
                     Command::FreeAllocation { port, family } => {
                         self.sockets.unbind(port.value(), family).with_context(|| {
@@ -624,6 +631,7 @@ where
                         packet,
                         ClientSocket::new(from),
                         Instant::now(),
+                        SystemTime::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)

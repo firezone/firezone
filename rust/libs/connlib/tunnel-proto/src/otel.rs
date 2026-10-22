@@ -1,10 +1,10 @@
 pub mod attr {
     pub use otel_attributes::*;
 
-    pub fn network_protocol_name(payload: &[u8]) -> KeyValue {
+    pub fn network_protocol_name(kind: crate::packet_kind::Kind) -> KeyValue {
         const KEY: &str = "network.protocol.name";
 
-        KeyValue::new(KEY, crate::packet_kind::classify(payload))
+        KeyValue::new(KEY, kind)
     }
 
     /// The transport a DNS query was received / forwarded on.

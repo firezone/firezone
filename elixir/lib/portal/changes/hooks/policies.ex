@@ -58,6 +58,7 @@ defmodule Portal.Changes.Hooks.Policies do
     # policy's authorizations and let clients re-create their flows with
     # freshly minted tokens.
     if old_policy.conditions != policy.conditions or
+         old_policy.postures != policy.postures or
          old_policy.group_id != policy.group_id or
          old_policy.resource_id != policy.resource_id or
          old_policy.flow_log_uploads_enabled != policy.flow_log_uploads_enabled do

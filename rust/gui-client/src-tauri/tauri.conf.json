@@ -18,6 +18,10 @@
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
+          "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
+          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
+          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
@@ -30,6 +34,10 @@
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
+          "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
+          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
+          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
@@ -43,12 +51,14 @@
           "RemoveOldFirezoneService",
           "FirezoneClientTunnelService",
           "SparsePackageMsix",
-          "RegisterSparseExe"
+          "RegisterSparseExe",
+          "FirezoneCli"
         ],
         "dialogImagePath": "./win_files/install_dialog.png",
         "fragmentPaths": [
           "./win_files/service.wxs",
-          "./win_files/sparse-package.wxs"
+          "./win_files/sparse-package.wxs",
+          "./win_files/cli.wxs"
         ],
         "template": "./win_files/main.wxs"
       }

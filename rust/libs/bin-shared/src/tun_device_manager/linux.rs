@@ -1,9 +1,6 @@
 //! Virtual network interface
 
-use crate::{
-    FIREZONE_MARK,
-    tun_device_manager::{TunIpStack, TunWorkers},
-};
+use crate::{FIREZONE_MARK, tun_device_manager::TunIpStack};
 use anyhow::{Context as _, Result};
 use futures::{
     StreamExt, TryStreamExt,
@@ -40,7 +37,7 @@ use std::{
 };
 use std::{net::IpAddr, time::Duration};
 use tokio::time::Instant;
-use tun::ioctl;
+use tun_ioctl as ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUNSETOFFLOAD: libc::c_ulong = 0x4004_54d0;
@@ -154,7 +151,10 @@ impl TunDeviceManager {
     }
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
-        let tun = Box::new(Tun::new()?);
+        create_tun_device()?;
+        let fd = open_tun()?;
+        let io = tun_linux::Io::new(Self::IFACE_NAME, fd, &tokio::runtime::Handle::current())?;
+        let tun = Box::new(io);
 
         // Do this in a separate task because:
         // a) We want it to be infallible.
@@ -255,8 +255,8 @@ async fn configure_ips(
         .await
         {
             Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
-            Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
-                tracing::warn!(
+            Err(NetlinkError(err)) if is_unsupported(err.raw_code()) => {
+                tracing::debug!(
                     "VRF/fwmark routing rules not supported for IPv4 (possibly WSL or kernel without VRF): {err}"
                 )
             }
@@ -273,8 +273,8 @@ async fn configure_ips(
         .await
         {
             Ok(()) => tracing::debug!("Successfully created routing rules for IPv6"),
-            Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
-                tracing::warn!(
+            Err(NetlinkError(err)) if is_unsupported(err.raw_code()) => {
+                tracing::debug!(
                     "VRF/fwmark routing rules not supported for IPv6 (possibly WSL or kernel without VRF): {err}"
                 )
             }
@@ -426,6 +426,14 @@ async fn install_rules<const N: usize, T>(
     }
 
     Ok(())
+}
+
+/// Whether a netlink error means the kernel does not offer the facility we asked for.
+///
+/// A kernel built without VRF answers `EOPNOTSUPP`; one booted with IPv6 disabled
+/// answers `EAFNOSUPPORT` instead.
+fn is_unsupported(raw_code: i32) -> bool {
+    raw_code == -libc::EOPNOTSUPP || raw_code == -libc::EAFNOSUPPORT
 }
 
 /// Disables automatic IPv6 link-local address generation on the TUN device.
@@ -796,40 +804,7 @@ async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> Has
     link_state
 }
 
-pub struct Tun {
-    workers: TunWorkers,
-}
-
-impl Tun {
-    pub fn new() -> Result<Self> {
-        create_tun_device()?;
-
-        let fd = open_tun()?;
-
-        let workers = TunWorkers::spawn(
-            {
-                let fd = fd.clone();
-
-                move |outbound_rx| {
-                    logging::unwrap_or_warn!(
-                        tun::linux::tun_send(fd, outbound_rx),
-                        "Failed to send to TUN device: {}"
-                    )
-                }
-            },
-            move |inbound_tx| {
-                logging::unwrap_or_warn!(
-                    tun::linux::tun_recv(fd, inbound_tx),
-                    "Failed to recv from TUN device: {}"
-                )
-            },
-        )?;
-
-        Ok(Self { workers })
-    }
-}
-
-fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
+fn open_tun() -> Result<tun_linux::TunFd<Arc<OwnedFd>>> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => {
             let file = TUN_FILE.to_str()?;
@@ -866,7 +841,7 @@ fn open_tun() -> Result<tun::linux::TunFd<Arc<OwnedFd>>> {
 
     set_non_blocking(fd.as_raw_fd()).context("Failed to make TUN device non-blocking")?;
 
-    Ok(tun::linux::TunFd::new(Arc::new(fd), offloads))
+    Ok(tun_linux::TunFd::new(Arc::new(fd), offloads))
 }
 
 /// Enables checksum and segmentation offloads on the TUN device, returning whether the kernel
@@ -880,20 +855,6 @@ fn try_enable_offloads(fd: RawFd) -> bool {
 
     // Safety: The file descriptor is valid.
     unsafe { libc::ioctl(fd, TUNSETOFFLOAD as _, OFFLOADS as libc::c_ulong) >= 0 }
-}
-
-impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
-        self.workers.sender()
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        self.workers.receiver()
-    }
-
-    fn name(&self) -> &str {
-        TunDeviceManager::IFACE_NAME
-    }
 }
 
 fn get_last_error() -> io::Error {
@@ -911,7 +872,8 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
 }
 
 fn create_tun_device() -> io::Result<()> {
-    let path = Path::new(TUN_FILE.to_str().map_err(io::Error::other)?);
+    let path = TUN_FILE.to_str().map_err(io::Error::other)?;
+    let path = Path::new(path);
 
     if path.exists() {
         return Ok(());

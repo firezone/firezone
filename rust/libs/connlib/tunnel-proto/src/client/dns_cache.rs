@@ -36,6 +36,7 @@ impl DnsCache {
 
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(records)
+            .with_note(entry.value.note().map(ToOwned::to_owned))
             .build();
 
         tracing::trace!(%domain, records = ?fmt_friendly_records(&response), remaining_ttl = ?response.ttl(qtype), "Cache hit");
@@ -208,6 +209,26 @@ mod tests {
     }
 
     #[test]
+    fn cache_hit_notes_what_the_answer_lists_to_queries_with_edns() {
+        let mut cache = DnsCache::default();
+        let now = Instant::now();
+        let domain = DomainName::vec_from_str("all-devices.firezone.network").unwrap();
+        let laptop = DomainName::vec_from_str("laptop.firezone.network").unwrap();
+        let query = Query::new(domain.clone(), RecordType::PTR);
+        let response = dns_types::ResponseBuilder::for_query(&query, ResponseCode::NOERROR)
+            .with_records(iter::once((domain.clone(), 30, records::ptr(laptop))))
+            .with_note(Some("Lists 1 of 2 names".to_owned()))
+            .build();
+        cache.insert(domain, &response, now);
+
+        let with_edns = cache.try_answer(&query.clone().with_edns(), now).unwrap();
+        let without_edns = cache.try_answer(&query, now).unwrap();
+
+        assert_eq!(on_the_wire(with_edns).note(), Some("Lists 1 of 2 names"));
+        assert_eq!(on_the_wire(without_edns).note(), None);
+    }
+
+    #[test]
     fn does_not_cache_response_from_stub_resolver() {
         let mut resolver = ResourceStubResolver::default();
         let mut cache = DnsCache::default();
@@ -228,5 +249,9 @@ mod tests {
         let result = cache.try_answer(&query, Instant::now());
 
         assert!(result.is_none());
+    }
+
+    fn on_the_wire(response: Response) -> Response {
+        Response::parse(&response.into_bytes(u16::MAX)).unwrap()
     }
 }

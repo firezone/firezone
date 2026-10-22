@@ -4,7 +4,6 @@ defmodule PortalWeb.ConnCase do
   use PortalWeb, :verified_routes
   import Phoenix.LiveViewTest
   import Phoenix.ConnTest
-  import Portal.TokenFixtures
 
   using do
     quote do
@@ -124,97 +123,38 @@ defmodule PortalWeb.ConnCase do
     |> Plug.Conn.assign(:subject, subject)
   end
 
-  def authorize_api_conn(conn, %Portal.Actor{account: account} = actor) do
-    expires_at = DateTime.utc_now() |> DateTime.add(300, :second)
-    api_token = api_token_fixture(actor: actor, account: account, expires_at: expires_at)
-    encoded_fragment = encode_api_token(api_token)
+  @doc """
+  Signs in for the app-approval flow only.
 
-    Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> encoded_fragment)
-  end
+  Sets just the short lived `oauth_sess_<account_id>` cookie and no assigns, so
+  the request goes through the real plugs. A portal session will not do here,
+  and this one will not do for the portal.
+  """
+  def authorize_oauth_conn(conn, %Portal.Actor{} = actor) do
+    account = Portal.Repo.get!(Portal.Account, actor.account_id)
+    provider = Portal.AuthProviderFixtures.email_otp_provider_fixture(account: account)
 
-  def put_email_auth_state(
-        conn,
-        account,
-        %{adapter: :email} = provider,
-        identity,
-        params \\ %{}
-      ) do
-    params =
-      Map.merge(%{"email" => %{"provider_identifier" => identity.provider_identifier}}, params)
+    context = %Portal.Authentication.Context{
+      type: :portal,
+      user_agent: "FooBar 1.1",
+      remote_ip_location_region: "UA",
+      remote_ip_location_city: "Kyiv",
+      remote_ip_location_lat: 50.4501,
+      remote_ip_location_lon: 30.5234,
+      remote_ip: conn.remote_ip
+    }
 
-    redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}", params)
+    expires_at =
+      DateTime.add(DateTime.utc_now(), PortalWeb.Cookie.OAuthSession.lifetime_secs(), :second)
 
-    assert_received {:email, email}
-    [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
+    {:ok, session} =
+      Portal.Authentication.create_portal_session(actor, provider.id, context, expires_at)
 
-    cookie_key = "fz_auth_state_#{provider.id}"
-    %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
+    cookie = %PortalWeb.Cookie.OAuthSession{session_id: session.id}
+    conn = PortalWeb.Cookie.OAuthSession.put(conn, account.id, cookie)
+    cookie_name = "oauth_sess_#{account.id}"
 
-    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
-
-    {conn_with_cookie, secret}
-  end
-
-  def put_idp_auth_state(conn, account, provider, params \\ %{}) do
-    redirected_conn =
-      get(conn, ~p"/#{account.id}/sign_in/#{provider.adapter}/#{provider.id}", params)
-
-    cookie_key = "fz_auth_state_#{provider.id}"
-    redirected_conn = Plug.Conn.fetch_cookies(redirected_conn, signed: [cookie_key])
-
-    {_params, state, verifier} =
-      redirected_conn.cookies[cookie_key]
-      |> :erlang.binary_to_term([:safe])
-
-    %{value: signed_state} = redirected_conn.resp_cookies[cookie_key]
-
-    conn_with_cookie = put_req_cookie(conn, "fz_auth_state_#{provider.id}", signed_state)
-
-    {conn_with_cookie, state, verifier}
-  end
-
-  def put_client_auth_state(
-        conn,
-        account,
-        %{adapter: :email} = provider,
-        identity,
-        params \\ %{}
-      ) do
-    params =
-      Map.merge(
-        %{
-          "email" => %{"provider_identifier" => identity.provider_identifier},
-          "as" => "client",
-          "nonce" => "nonce",
-          "state" => "state"
-        },
-        params
-      )
-
-    redirected_conn =
-      post(conn, ~p"/#{account}/sign_in/email_otp/#{provider.id}", params)
-
-    assert_received {:email, email}
-    [_match, secret] = Regex.run(~r/secret=([^&\n]*)/, email.text_body)
-
-    auth_state_cookie_key = "fz_auth_state_#{provider.id}"
-    %{value: signed_state} = redirected_conn.resp_cookies[auth_state_cookie_key]
-
-    verified_conn =
-      conn
-      |> put_req_cookie("fz_auth_state_#{provider.id}", signed_state)
-      |> post(~p"/#{account}/sign_in/email_otp/#{provider.id}/verify", %{
-        "identity_id" => identity.id,
-        "secret" => secret
-      })
-
-    client_cookie_key = "fz_client_auth"
-    %{value: signed_client_auth} = verified_conn.resp_cookies[client_cookie_key]
-
-    conn
-    |> put_req_cookie("fz_client_auth", signed_client_auth)
-    |> put_req_cookie("fz_auth_state_#{provider.id}", signed_state)
+    put_req_cookie(conn, cookie_name, conn.resp_cookies[cookie_name].value)
   end
 
   ### Helpers to test LiveView forms
@@ -262,90 +202,6 @@ defmodule PortalWeb.ConnCase do
     form_element
   end
 
-  ### Helpers to test formatted time units
-
-  def around_now?(string) do
-    if string =~ "Now" do
-      true
-    else
-      [_all, seconds] = Regex.run(~r/([0-9]+) second[s]? ago/, string)
-      seconds = String.to_integer(seconds)
-      assert seconds in 0..5
-    end
-  end
-
-  ### Helpers to test LiveView tables
-
-  def table_to_map(table_html) do
-    columns = table_columns(table_html)
-    rows = table_rows(table_html)
-
-    for row <- rows do
-      Enum.zip(columns, row)
-      |> Enum.into(%{})
-    end
-  end
-
-  def vertical_table_to_map(table_html) do
-    table_html
-    |> parse_if_needed()
-    |> Floki.find("tbody tr")
-    |> Enum.map(fn row ->
-      key = row |> Floki.find("th") |> reject_tooltips() |> element_to_text() |> String.downcase()
-      value = row |> Floki.find("td") |> element_to_text()
-      {key, value}
-    end)
-    |> Enum.into(%{})
-  end
-
-  def table_columns(table_html) do
-    table_html
-    |> parse_if_needed()
-    |> Floki.find("thead tr th")
-    |> elements_to_text()
-    |> Enum.map(&String.downcase/1)
-  end
-
-  def table_rows(table_html) do
-    table_html
-    |> parse_if_needed()
-    |> Floki.find("tbody tr")
-    |> Enum.map(fn row ->
-      row
-      |> Floki.find("td")
-      |> elements_to_text()
-    end)
-  end
-
-  def with_table_row(rows, key, value, callback) do
-    row = Enum.find(rows, fn row -> Map.get(row, key) == value end)
-    assert row, "No row found with #{key} = #{value} in #{inspect(rows)}"
-    callback.(row)
-    rows
-  end
-
-  defp reject_tooltips([{"th", attrs, content}]) do
-    content =
-      content
-      |> Enum.reject(fn
-        {"div", attrs, _content} ->
-          {"role", "tooltip"} in attrs
-
-        _ ->
-          false
-      end)
-
-    [{"th", attrs, content}]
-  end
-
-  defp reject_tooltips(other) do
-    other
-  end
-
-  def elements_to_text(elements) do
-    Enum.map(elements, &element_to_text/1)
-  end
-
   def element_to_text(element) do
     element
     |> Floki.text()
@@ -353,14 +209,4 @@ defmodule PortalWeb.ConnCase do
     |> String.trim()
   end
 
-  def active_buttons(html) do
-    html
-    |> parse_if_needed()
-    |> Floki.find("main button")
-    |> Enum.filter(fn button ->
-      Floki.attribute(button, "disabled") != "disabled"
-    end)
-    |> elements_to_text()
-    |> Enum.reject(&(&1 in ["", "Previous", "Next", "Clear filters", "CopyCopied"]))
-  end
 end

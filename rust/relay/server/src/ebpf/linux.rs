@@ -86,6 +86,7 @@ impl Program {
         let packet_size = otel_instruments::relay_packet_size();
 
         let processing_duration = otel_instruments::relay_xdp_processing_duration();
+        let packets = otel_instruments::relay_packets();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
@@ -101,6 +102,7 @@ impl Program {
             tokio::task::spawn({
                 let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
+                let packets = packets.clone();
 
                 async move {
                     loop {
@@ -128,6 +130,16 @@ impl Program {
                                             packet_size.record(
                                                 stats.relayed_data(),
                                                 &[otel_attributes::relay_datapath_xdp()],
+                                            );
+                                            packets.add(
+                                                1,
+                                                &[
+                                                    otel_attributes::relay_datapath_xdp(),
+                                                    otel_attributes::network_type_for_ip_version(
+                                                        stats.ip_version(),
+                                                    ),
+                                                    otel_attributes::network_ecn(stats.ecn()),
+                                                ],
                                             );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,

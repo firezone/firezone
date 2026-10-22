@@ -315,6 +315,7 @@ where
         bytes: &[u8],
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
@@ -327,7 +328,7 @@ where
 
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
-                return self.handle_client_message(message, sender, now);
+                return self.handle_client_message(message, sender, now, now_utc);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_response)) => {
@@ -361,15 +362,20 @@ where
         message: ClientMessage,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let result = match &message {
-            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
-            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
+            ClientMessage::Allocate(request) => {
+                self.handle_allocate_request(request, sender, now, now_utc)
+            }
+            ClientMessage::Refresh(request) => {
+                self.handle_refresh_request(request, sender, now, now_utc)
+            }
             ClientMessage::ChannelBind(request) => {
-                self.handle_channel_bind_request(request, sender, now)
+                self.handle_channel_bind_request(request, sender, now, now_utc)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender)
+                self.handle_create_permission_request(request, sender, now_utc)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
@@ -408,7 +414,7 @@ where
                 }
             }
             None => {
-                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+                tracing::debug!(target: "relay", client_message = ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
 
                 AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
             }
@@ -544,8 +550,9 @@ where
         request: &Allocate,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
         let username = verified_username.username;
 
         if let Some(allocation) = self.allocations.get(&sender) {
@@ -673,8 +680,9 @@ where
         request: &Refresh,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
         let username = verified_username.username;
 
         // TODO: Verify that this is the correct error code.
@@ -730,8 +738,9 @@ where
         request: &ChannelBind,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let verified_username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
         let username = verified_username.username;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -847,8 +856,9 @@ where
         &mut self,
         request: &CreatePermission,
         sender: ClientSocket,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?.username;
+        let username = self.verify_auth(sender, request, now_utc)?.username;
 
         self.authenticate_and_send(
             &username,
@@ -899,10 +909,11 @@ where
         &mut self,
         sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
+        now_utc: SystemTime,
     ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
             let (error_response, msg) = make_error_response(Unauthorized, request);
-            tracing::warn!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
+            tracing::debug!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
 
             error_response
         })?;
@@ -937,7 +948,7 @@ where
         })?;
 
         let account_hash = message_integrity
-            .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
+            .verify(&self.auth_secret, username.name(), now_utc)
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
 
@@ -1502,6 +1513,7 @@ mod tests {
     #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {
         let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
@@ -1514,7 +1526,7 @@ mod tests {
         );
 
         server.set_accounts([account]);
-        let nonce = issue_nonce(&mut server, client, now);
+        let nonce = issue_nonce(&mut server, client, now, now_utc);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
             auth::hash_account_id(&account)
@@ -1531,7 +1543,7 @@ mod tests {
                 UDP_TRANSPORT,
             ))],
         );
-        server.handle_client_input(&allocate, client, now);
+        server.handle_client_input(&allocate, client, now, now_utc);
 
         let Some(Command::CreateAllocation { port, .. }) = server.next_command() else {
             panic!("the relay creates an allocation for an authenticated request");
@@ -1552,7 +1564,7 @@ mod tests {
                 Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
             ],
         );
-        server.handle_client_input(&channel_bind, client, now);
+        server.handle_client_input(&channel_bind, client, now, now_utc);
 
         assert_eq!(
             server.next_command(),
@@ -1596,7 +1608,12 @@ mod tests {
         assert_eq!(server.next_command(), None);
     }
 
-    fn issue_nonce(server: &mut Server<StdRng>, client: ClientSocket, now: Instant) -> Nonce {
+    fn issue_nonce(
+        server: &mut Server<StdRng>,
+        client: ClientSocket,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Nonce {
         let mut allocate =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
         allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
@@ -1604,7 +1621,7 @@ mod tests {
         let bytes = MessageEncoder::new()
             .encode_into_bytes(allocate)
             .expect("a well-formed ALLOCATE encodes");
-        server.handle_client_input(&bytes, client, now);
+        server.handle_client_input(&bytes, client, now, now_utc);
 
         let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
             panic!("the relay answers an unauthenticated ALLOCATE");

@@ -80,3 +80,16 @@ if [ ! -s coverage.ec ]; then
 fi
 
 echo "    $(wc -c <coverage.ec) bytes"
+
+# Tests that photograph a system screen the app cannot render itself leave the pictures next to
+# the execution data, in the same private directory only `run-as` reaches.
+echo "==> Collecting the screenshots..."
+rm -rf emulator-screenshots
+mkdir -p emulator-screenshots
+
+# The digest tells whether a capture is stable from one run to the next, and the dimensions
+# whether it matches the rendered screenshots it is meant to sit next to.
+for name in $(adb shell run-as "$APP_PACKAGE" ls files/screenshots 2>/dev/null | tr -d '\r'); do
+    adb shell run-as "$APP_PACKAGE" cat "files/screenshots/$name" >"emulator-screenshots/$name"
+    echo "    $(sha256sum "emulator-screenshots/$name" | cut -c1-16)  $(file -b "emulator-screenshots/$name" | cut -d, -f2 | xargs)  $name"
+done

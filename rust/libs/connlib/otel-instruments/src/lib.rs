@@ -211,6 +211,16 @@ pub fn relay_responses() -> Counter<u64> {
         .build()
 }
 
+/// Counter of relayed packets by incoming IP version and ECN codepoint.
+/// Includes Not-ECT packets to measure the proportion of ECN-capable traffic.
+pub fn relay_packets() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.packets")
+        .with_description("The number of relayed packets")
+        .with_unit("{packet}")
+        .build()
+}
+
 /// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
 ///
 /// Both call-sites build the instrument from this function so the metric definition

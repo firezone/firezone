@@ -2,22 +2,18 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
   alias Portal.Changes.Change
   alias Portal.Group
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
-  import PortalWeb.Groups.Components
+  alias PortalWeb.Groups.Components, as: GroupComponents
 
   @member_page_size 10
 
   import Ecto.Changeset
 
-  import PortalWeb.Policies.Components,
-    only: [
-      map_condition_params: 2,
-      maybe_drop_unsupported_conditions: 2,
-      available_conditions: 1
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -31,13 +27,14 @@ defmodule PortalWeb.Groups do
       |> assign(page_title: "Groups", selected_group: nil)
       |> assign_async(:groups_count, fn -> {:ok, %{groups_count: Database.count_groups(subject)}} end)
       |> assign(base_group_assigns(socket))
-      |> assign_live_table("groups",
+      |> assign(groups: [], groups_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
+      |> LiveTable.assign_live_table("groups",
         query_module: Database,
         sortable_fields: [
           {:groups, :name},
           {:member_counts, :count}
         ],
-        callback: &handle_groups_update!/2
+        loader: &load_groups/2
       )
 
     {:ok, socket}
@@ -46,7 +43,7 @@ defmodule PortalWeb.Groups do
   # Add Group Panel
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     changeset = changeset(%Portal.Group{}, %{})
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -60,7 +57,7 @@ defmodule PortalWeb.Groups do
 
   # Edit Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_group_with_actors(id, socket.assigns.subject) do
       nil ->
@@ -73,7 +70,7 @@ defmodule PortalWeb.Groups do
 
   # Show Group Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
     tab = parse_group_tab(Map.get(params, "tab", "members"))
 
     if selected_group_matches?(socket, id) do
@@ -91,7 +88,7 @@ defmodule PortalWeb.Groups do
 
   # Default handler
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -134,11 +131,10 @@ defmodule PortalWeb.Groups do
              "table_row_click",
              "change_limit"
            ],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("confirm_delete_group", _params, socket) do
@@ -152,21 +148,17 @@ defmodule PortalWeb.Groups do
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when socket.assigns.group_panel.view == :edit_form do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when socket.assigns.group_panel.view == :new_form do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_group) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -283,12 +275,7 @@ defmodule PortalWeb.Groups do
         %{"tab" => tab},
         %{assigns: %{selected_group: %Group{} = group}} = socket
       ) do
-    params = Map.put(socket.assigns.query_params, "tab", tab)
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/groups/#{group}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group}", tab: tab))}
   end
 
   def handle_event("switch_group_tab", _params, %{assigns: %{selected_group: nil}} = socket) do
@@ -341,7 +328,7 @@ defmodule PortalWeb.Groups do
         Enum.find(socket.assigns.group_resources.available_resources, &(&1.id == id))
       end)
       |> Enum.reject(&is_nil/1)
-      |> Enum.map(&available_conditions/1)
+      |> Enum.map(&PolicyComponents.available_conditions/1)
       |> case do
         [] -> []
         lists -> Enum.reduce(lists, &(Enum.filter(&2, fn c -> c in &1 end)))
@@ -364,6 +351,13 @@ defmodule PortalWeb.Groups do
      |> merge_state(:grant_conditions, active_conditions: active)}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn conditions ->
+       Map.update!(conditions, :postures, &Postures.handle_event(event, params, &1))
+     end)}
+  end
+
   def handle_event("submit_grant_resource", params, socket) do
     group = socket.assigns.selected_group
     selected_resource_ids = socket.assigns.group_resources.grant_selected_resource_ids
@@ -371,8 +365,9 @@ defmodule PortalWeb.Groups do
 
     condition_attrs =
       policy_params
-      |> map_condition_params(empty_values: :drop)
-      |> maybe_drop_unsupported_conditions(socket)
+      |> PolicyComponents.map_condition_params(empty_values: :drop)
+      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.grant_conditions.postures)
       |> Map.put("group_id", group.id)
 
     result =
@@ -652,8 +647,8 @@ defmodule PortalWeb.Groups do
           socket =
             socket
             |> put_flash(:success, "Group deleted successfully")
-            |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups")
+            |> LiveTable.reload_live_table!("groups")
+            |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))
 
           {:noreply, socket}
 
@@ -681,8 +676,8 @@ defmodule PortalWeb.Groups do
           socket
           |> assign(selected_group: group)
           |> put_flash(:success, "Group created successfully")
-          |> reload_live_table!("groups")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
+          |> LiveTable.reload_live_table!("groups")
+          |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group.id}"))
 
         {:noreply, socket}
 
@@ -717,8 +712,8 @@ defmodule PortalWeb.Groups do
             socket
             |> assign(selected_group: updated_group)
             |> put_flash(:success, "Group updated successfully")
-            |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
+            |> LiveTable.reload_live_table!("groups")
+            |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group.id}"))
 
           {:noreply, socket}
 
@@ -741,7 +736,7 @@ defmodule PortalWeb.Groups do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   defp edit_group_panel(socket, group, id) do
@@ -762,7 +757,7 @@ defmodule PortalWeb.Groups do
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+       |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{id}"))}
     end
   end
 
@@ -797,51 +792,49 @@ defmodule PortalWeb.Groups do
     {:noreply, socket}
   end
 
-  def handle_groups_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <- Database.list_groups(socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         groups: groups,
-         groups_metadata: metadata
-       )}
+  defp load_groups(subject, list_opts) do
+    with {:ok, groups, metadata} <- Database.list_groups(subject, list_opts) do
+      {:ok, %{groups: groups, groups_metadata: metadata}}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-team-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-team-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Groups</:title>
         <:description>
           Collections of users.
         </:description>
         <:action>
-          <.docs_action path="/deploy/groups" />
-          <.button
+          <Navigation.docs_action path="/deploy/groups" />
+          <Form.button
             style="primary"
             icon="ri-add-line"
-            patch={~p"/#{@account}/groups/new"}
+            patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/new")}
           >
             New Group
-          </.button>
+          </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@groups_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="groups"
+          loading={@loading_by_table_id["groups"]}
+          query_error={@query_error_by_table_id["groups"]}
           rows={@groups}
           row_id={&"group-#{&1.group.id}"}
           row_click={fn row -> ~p"/#{@account}/groups/#{row.group.id}?#{@query_params}" end}
@@ -854,7 +847,7 @@ defmodule PortalWeb.Groups do
         >
           <:col :let={row} field={{:groups, :name}} label="Name" class="w-full">
             <div class="flex items-center gap-3">
-              <.provider_icon provider={provider_type_from_group(row)} size="md" variant="circle" />
+              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="md" variant="circle" />
               <div class="min-w-0">
                 <div class="flex items-center gap-1.5 font-medium text-heading group-hover:text-brand transition-colors">
                   <span class="truncate">{row.group.name}</span>
@@ -893,7 +886,7 @@ defmodule PortalWeb.Groups do
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-team-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-team-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No groups yet</p>
@@ -901,20 +894,20 @@ defmodule PortalWeb.Groups do
                   Create a Group of Actors to use in Policies.
                 </p>
               </div>
-              <.link
-                patch={~p"/#{@account}/groups/new"}
+              <Navigation.link
+                patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
+              </Navigation.link>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
-      <.group_panel
+      <GroupComponents.group_panel
         account={@account}
         group={@selected_group}
-        query_params={@query_params}
+        edit_path={@selected_group && LiveTable.live_table_path(assigns, ~p"/#{@account}/groups/#{@selected_group.id}/edit")}
         flash={@flash}
         panel={@group_panel}
         form_state={@group_form}
@@ -993,6 +986,7 @@ defmodule PortalWeb.Groups do
     Map.merge(
       %{
         providers: [],
+        postures: Postures.for_account(socket.assigns.account),
         timezone: timezone,
         active_conditions: [],
         conditions_dropdown_open?: false,
@@ -1145,8 +1139,7 @@ defmodule PortalWeb.Groups do
     if return_to = handle_return_to(socket) do
       push_navigate(socket, to: return_to)
     else
-      params = Map.drop(socket.assigns.query_params, ["tab"])
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
+      push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))
     end
   end
 
@@ -1491,32 +1484,6 @@ defmodule PortalWeb.Groups do
       |> Enum.reject(&is_nil/1)
     end
 
-    def count_total_members(subject) do
-      member_counts_query =
-        from(m in Portal.Membership,
-          group_by: [m.account_id, m.group_id],
-          select: %{account_id: m.account_id, group_id: m.group_id, count: count(m.actor_id)}
-        )
-
-      from(g in Portal.Group, as: :groups)
-      |> join(:left, [groups: g], mc in subquery(member_counts_query),
-        on: mc.group_id == g.id and mc.account_id == g.account_id,
-        as: :member_counts
-      )
-      |> where(
-        [groups: g],
-        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-      )
-      |> select([member_counts: mc], sum(coalesce(mc.count, 0)))
-      |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        count -> count
-      end
-    end
-
     def cursor_fields do
       [
         {:groups, :asc, :inserted_at},
@@ -1713,7 +1680,7 @@ defmodule PortalWeb.Groups do
 
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled]a)
+        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
@@ -1731,6 +1698,7 @@ defmodule PortalWeb.Groups do
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]

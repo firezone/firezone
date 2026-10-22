@@ -45,7 +45,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "does nothing while the subscriptions are fresh", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -55,7 +59,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "renews subscriptions that expire soon", %{account: account} do
-      directory = fresh_directory(account, 2)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 2, :day)
+        )
       stub_graph()
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -71,7 +79,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "recreates a subscription Graph no longer knows", %{account: account} do
-      directory = fresh_directory(account, 2)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 2, :day)
+        )
       stub_graph(missing: ["existing-users"])
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -82,7 +94,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "renew action renews even when fresh", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       assert :ok = perform_job(Subscriptions, Map.put(ensure_args(directory), :action, "renew"))
@@ -92,7 +108,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "recreate action replaces only the removed subscription", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       args =
@@ -180,7 +200,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     test "deletes the given subscriptions and clears them from the directory", %{
       account: account
     } do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       assert :ok = perform_job(Subscriptions, delete_args(directory))
@@ -195,7 +219,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "leaves newer subscriptions alone", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       args = %{delete_args(directory) | subscription_ids: ["old-users", "old-groups"]}
@@ -205,7 +233,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "clears only the fields this job matched", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph()
 
       args = %{delete_args(directory) | subscription_ids: ["existing-users", "old-groups"]}
@@ -218,7 +250,11 @@ defmodule Portal.Entra.SubscriptionsTest do
     end
 
     test "returns an error when a deletion fails so Oban retries", %{account: account} do
-      directory = fresh_directory(account, 20)
+      directory =
+        subscribed_entra_directory_fixture(
+          account: account,
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        )
       stub_graph(refuse_delete: ["existing-groups"])
 
       assert {:error, {:delete_subscriptions, ["existing-groups"]}} =
@@ -240,16 +276,6 @@ defmodule Portal.Entra.SubscriptionsTest do
 
   defp ensure_args(directory) do
     %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
-  end
-
-  defp fresh_directory(account, days_left) do
-    entra_directory_fixture(
-      account: account,
-      webhook_secret: "secret",
-      users_subscription_id: "existing-users",
-      groups_subscription_id: "existing-groups",
-      subscriptions_expire_at: DateTime.add(DateTime.utc_now(), days_left, :day)
-    )
   end
 
   defp reload(directory) do

@@ -1,6 +1,6 @@
 defmodule PortalWeb.Devices do
   use PortalWeb, :live_view
-  import PortalWeb.Devices.Components
+  alias PortalWeb.Devices.Components, as: DeviceComponents
   alias Portal.{Presence.Devices, ComponentVersions}
   alias Portal.Changes.Change
   alias Portal.Device
@@ -31,26 +31,28 @@ defmodule PortalWeb.Devices do
         device_posture: [],
         device_certificate: nil,
         posture_providers_connected?: false,
-        serials_by_device: %{}
+        serials_by_device: %{},
+        devices: [],
+        devices_metadata: %Portal.Repo.OffsetPaginator.Metadata{}
       )
       |> assign(base_device_assigns())
-      |> assign_live_table("devices",
+      |> LiveTable.assign_live_table("devices",
         query_module: Database,
         sortable_fields: [
-          {:devices, :name},
+          {:devices, :slug},
           {:devices, :last_seen_version},
           {:devices, :last_seen_at},
           {:devices, :inserted_at},
           {:devices, :last_seen_user_agent}
         ],
-        callback: &handle_devices_update!/2
+        loader: &load_devices/2
       )
 
     {:ok, socket}
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
@@ -82,7 +84,7 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
@@ -99,7 +101,7 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -112,48 +114,50 @@ defmodule PortalWeb.Devices do
      |> assign(base_device_assigns())}
   end
 
-  def handle_devices_update!(socket, list_opts) do
+  defp load_devices(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
-    with {:ok, devices, metadata} <- Database.list_devices(socket.assigns.subject, list_opts) do
+    with {:ok, devices, metadata} <- Database.list_devices(subject, list_opts) do
       {:ok,
-       assign(socket,
+       %{
          devices: devices,
          devices_metadata: metadata,
-         serials_by_device: Database.serial_index(devices, socket.assigns.subject)
-       )}
+         serials_by_device: Database.serial_index(devices, subject)
+       }}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-computer-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Devices</:title>
         <:description>
           End-user devices and servers that access your protected Resources.
         </:description>
         <:action>
-          <.docs_action path="/deploy/clients" />
+          <Navigation.docs_action path="/deploy/clients" />
         </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           stale={@stale}
           id="devices"
+          loading={@loading_by_table_id["devices"]}
+          query_error={@query_error_by_table_id["devices"]}
           rows={@devices}
           row_id={&"device-#{&1.id}"}
           row_click={fn device -> ~p"/#{@account}/devices/#{device.id}?#{@query_params}" end}
@@ -166,14 +170,14 @@ defmodule PortalWeb.Devices do
           metadata={@devices_metadata}
           class="flex-1 min-h-0"
         >
-          <:col :let={device} field={{:devices, :name}} label="Device" class="w-80">
+          <:col :let={device} field={{:devices, :slug}} label="Device" class="w-80">
             <div class="flex items-center gap-2">
               <span class="mr-2">
-                <.device_os_icon device={device} />
+                <DeviceComponents.device_os_icon device={device} />
               </span>
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
-                  {device.name}
+                  {device.slug}
                 </div>
                 <div class="font-mono text-[10px] text-subtle mt-0.5">
                   {device.id}
@@ -182,7 +186,7 @@ defmodule PortalWeb.Devices do
             </div>
           </:col>
           <:col :let={device} label="Owner">
-            <.actor_name_and_role
+            <DeviceComponents.actor_name_and_role
               account={@account}
               actor={device.actor}
               class="text-sm"
@@ -190,16 +194,16 @@ defmodule PortalWeb.Devices do
             />
           </:col>
           <:col :let={device} label="Serial" class="w-44">
-            <.serial_cell serial={Map.get(@serials_by_device, device.id)} />
+            <DeviceComponents.serial_cell serial={Map.get(@serials_by_device, device.id)} />
           </:col>
           <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
-            <.version
+            <DeviceComponents.version
               current={device.last_seen_version}
               latest={ComponentVersions.client_version(device)}
             />
           </:col>
           <:col :let={device} label="Status" class="w-28">
-            <.device_status_badge device={device} />
+            <DeviceComponents.device_status_badge device={device} />
           </:col>
           <:col
             :let={device}
@@ -208,7 +212,7 @@ defmodule PortalWeb.Devices do
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={device.last_seen_at} />
+              <Core.relative_datetime datetime={device.last_seen_at} />
             </span>
           </:col>
           <:col
@@ -218,13 +222,13 @@ defmodule PortalWeb.Devices do
             class="hidden lg:table-cell"
           >
             <span class="text-xs text-subtle">
-              <.relative_datetime datetime={device.inserted_at} />
+              <Core.relative_datetime datetime={device.inserted_at} />
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-computer-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No devices yet</p>
@@ -234,10 +238,10 @@ defmodule PortalWeb.Devices do
               </div>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.device_panel
+      <DeviceComponents.device_panel
         account={@account}
         device={@selected_device}
         panel={device_panel_state(assigns)}
@@ -310,11 +314,10 @@ defmodule PortalWeb.Devices do
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event(
@@ -322,15 +325,7 @@ defmodule PortalWeb.Devices do
         %{"tab" => tab},
         %{assigns: %{selected_device: %Device{} = device}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{device}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{device}", tab: tab))}
   end
 
   def handle_event("switch_device_tab", _params, %{assigns: %{selected_device: nil}} = socket) do
@@ -338,11 +333,9 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}?#{params}"
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -355,16 +348,12 @@ defmodule PortalWeb.Devices do
 
   def handle_event("open_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"))}
   end
 
   def handle_event("cancel_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("change_device_edit_form", %{"device" => attrs}, socket) do
@@ -383,8 +372,8 @@ defmodule PortalWeb.Devices do
         {:noreply,
          socket
          |> put_flash(:success, "Device updated successfully.")
-         |> reload_live_table!("devices")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/devices/#{updated_client.id}")}
+         |> LiveTable.reload_live_table!("devices")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{updated_client.id}"))}
 
       {:error, changeset} ->
         {:noreply,
@@ -397,15 +386,12 @@ defmodule PortalWeb.Devices do
   def handle_event("handle_keydown", _params, socket)
       when socket.assigns.device_panel.view == :edit_device do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_device) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -430,7 +416,7 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device \"#{device.name}\" was verified.")
          |> assign_updated_selected_device(updated_client)
          |> merge_state(:device_confirm, unverify?: false)
-         |> reload_live_table!("devices")}
+         |> LiveTable.reload_live_table!("devices")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to verify device.")}
@@ -455,7 +441,7 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device \"#{device.name}\" was unverified.")
          |> assign_updated_selected_device(updated_client)
          |> merge_state(:device_confirm, unverify?: false)
-         |> reload_live_table!("devices")}
+         |> LiveTable.reload_live_table!("devices")}
 
       {:error, _} ->
         {:noreply,
@@ -474,8 +460,8 @@ defmodule PortalWeb.Devices do
          socket
          |> put_flash(:success, "Device \"#{device.name}\" was deleted.")
          |> merge_state(:device_confirm, delete?: false)
-         |> reload_live_table!("devices")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/devices")}
+         |> LiveTable.reload_live_table!("devices")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
 
       {:error, _} ->
         {:noreply, merge_state(socket, :device_confirm, delete?: false)}
@@ -508,7 +494,7 @@ defmodule PortalWeb.Devices do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/devices?#{socket.assigns.query_params}")}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
@@ -544,8 +530,8 @@ defmodule PortalWeb.Devices do
       ) do
     rendered_client_ids = Enum.map(socket.assigns.devices, & &1.id)
 
-    if presence_updates_any_id?(event, rendered_client_ids) do
-      socket = reload_live_table!(socket, "devices")
+    if LiveTable.presence_updates_any_id?(event, rendered_client_ids) do
+      socket = LiveTable.reload_live_table!(socket, "devices")
       {:noreply, socket}
     else
       {:noreply, socket}
@@ -555,11 +541,7 @@ defmodule PortalWeb.Devices do
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.devices, change) do
-      socket
-    else
-      assign(socket, stale: true)
-    end
+    LiveTable.mark_stale_unless_reflected(socket, "devices", socket.assigns.devices, change)
   end
 
   defmodule Database do
@@ -573,11 +555,9 @@ defmodule PortalWeb.Devices do
     alias Portal.PolicyAuthorization
     alias Portal.Group
     alias Portal.Resource
-    alias Portal.StaticDevicePoolMember
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
     alias Portal.PostureProvider
-    alias Portal.{Defender, Intune, Iru, Santa, SentinelOne}
 
     def count_devices(subject) do
       from(d in Device, as: :devices)
@@ -675,8 +655,8 @@ defmodule PortalWeb.Devices do
       import Ecto.Changeset
 
       device
-      |> cast(attrs, [:name])
-      |> validate_required([:name])
+      |> cast(attrs, [:name, :slug])
+      |> validate_required([:name, :slug])
       |> Portal.Device.changeset()
     end
 
@@ -746,14 +726,11 @@ defmodule PortalWeb.Devices do
             [Resource.t()]
     def list_device_pools(%Device{} = device, subject) do
       from(r in Resource, as: :resources)
-      |> join(:inner, [resources: r], m in StaticDevicePoolMember,
-        on: m.resource_id == r.id and m.account_id == r.account_id,
-        as: :members
+      |> where([resources: r], r.type == :device_pool)
+      |> where(
+        [resources: r],
+        fragment("jsonb_exists(? #> '{device,value}', ?)", r.device_membership_criteria, ^device.id)
       )
-      |> where([members: m], m.device_id == ^device.id)
-      # The REST API can retype a pool without clearing its members, so filter on
-      # the resource rather than trusting the membership rows alone.
-      |> where([resources: r], r.type == :static_device_pool)
       |> order_by([resources: r], asc: r.name)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -825,6 +802,7 @@ defmodule PortalWeb.Devices do
          [devices: devices, actors: actors],
          fulltext_search(actors.name, ^search_term) or
            fulltext_search(devices.name, ^search_term) or
+           fulltext_search(devices.slug, ^search_term) or
            fulltext_search(actors.email, ^search_term)
        )}
     end
@@ -956,22 +934,14 @@ defmodule PortalWeb.Devices do
             }
           ]
     def list_posture_for_device(%Device{type: :client} = device, subject) do
-      keys = match_keys(device)
-      providers = list_posture_providers(subject)
+      providers_by_id = subject |> list_posture_providers() |> Map.new(&{&1.id, &1})
 
-      if keys == [] or providers == [] do
-        []
-      else
-        types = providers |> Enum.map(& &1.type) |> Enum.uniq()
-        matched = Enum.flat_map(types, &match_posture(&1, keys, subject))
-        providers_by_id = Map.new(providers, &{&1.id, &1})
-
-        (matched ++ link_defender_posture(types, matched, subject))
-        |> Enum.flat_map(&posture_entry(&1, providers_by_id))
-        |> Enum.group_by(& &1.provider.id)
-        |> Enum.map(fn {_provider_id, entries} -> best_posture_entry(entries) end)
-        |> Enum.sort_by(&{provider_type_rank(&1.type), String.downcase(&1.provider.name)})
-      end
+      device
+      |> Portal.Devices.Posture.match()
+      |> Enum.flat_map(&posture_entry(&1, providers_by_id))
+      |> Enum.group_by(& &1.provider.id)
+      |> Enum.map(fn {_provider_id, entries} -> best_posture_entry(entries) end)
+      |> Enum.sort_by(&{provider_type_rank(&1.type), String.downcase(&1.provider.name)})
     end
 
     def list_posture_for_device(_device, _subject), do: []
@@ -986,7 +956,8 @@ defmodule PortalWeb.Devices do
       end
     end
 
-    defp best_posture_entry(entries), do: Enum.min_by(entries, &rung_rank(&1.matched_on))
+    defp best_posture_entry(entries),
+      do: Enum.min_by(entries, &Portal.Devices.Posture.rung_rank(&1.matched_on))
 
     @doc """
     Whether the account has connected a posture provider at all.
@@ -1053,9 +1024,9 @@ defmodule PortalWeb.Devices do
     end
 
     defp mdm_serial_rows(type, mdm_device_ids, subject) do
-      [field_name] = rung_fields(type, :mdm_device_id)
+      [field_name] = Portal.Devices.Posture.rung_fields(type, :mdm_device_id)
 
-      from(d in posture_schema(type),
+      from(d in Portal.Devices.Posture.schema(type),
         where: field(d, ^field_name) in ^mdm_device_ids and not is_nil(d.serial_number),
         select: {field(d, ^field_name), d.serial_number}
       )
@@ -1172,19 +1143,6 @@ defmodule PortalWeb.Devices do
     # facts rather than with false ones.
     defp normalize_certificate_status(_other), do: nil
 
-    # Ordered strongest first: the head of this list is what a matched row is
-    # credited to.
-    defp match_keys(%Device{} = device) do
-      Enum.reject(
-        [
-          mdm_device_id: device.last_attested_mdm_device_id,
-          attested_serial: device.last_attested_device_serial,
-          device_serial: device.device_serial
-        ],
-        fn {_rung, value} -> is_nil(value) end
-      )
-    end
-
     defp list_posture_providers(subject) do
       from(p in PostureProvider, order_by: [asc: p.name])
       |> Safe.scoped(subject)
@@ -1195,107 +1153,12 @@ defmodule PortalWeb.Devices do
       end
     end
 
-    defp match_posture(type, keys, subject) do
-      case rung_conditions(type, keys) do
-        [] ->
-          []
-
-        conditions ->
-          from(d in posture_schema(type), where: ^Enum.reduce(conditions, &dynamic(^&1 or ^&2)))
-          |> Safe.scoped(subject)
-          |> Safe.all()
-          |> case do
-            rows when is_list(rows) ->
-              Enum.map(rows, &{type, &1, matched_rung(type, keys, &1), nil})
-
-            _refused ->
-              []
-          end
-      end
-    end
-
-    defp link_defender_posture(types, matched, subject) do
-      if :defender in types do
-        matched
-        |> Enum.flat_map(fn
-          {:intune, %{entra_device_id: entra_id}, rung, _via} when is_binary(entra_id) ->
-            [{entra_id, rung}]
-
-          _other ->
-            []
-        end)
-        |> Enum.sort_by(fn {_entra_id, rung} -> rung_rank(rung) end)
-        |> Enum.uniq_by(fn {entra_id, _rung} -> entra_id end)
-        |> match_defender_by_entra_id(subject)
-      else
-        []
-      end
-    end
-
-    defp match_defender_by_entra_id([], _subject), do: []
-
-    defp match_defender_by_entra_id(entra_ids, subject) do
-      rung_by_entra_id = Map.new(entra_ids)
-
-      from(d in Defender.Device, where: d.entra_device_id in ^Map.keys(rung_by_entra_id))
-      |> Safe.scoped(subject)
-      |> Safe.all()
-      |> case do
-        rows when is_list(rows) ->
-          for row <- rows, rung = Map.get(rung_by_entra_id, row.entra_device_id) do
-            {:defender, row, rung, :intune}
-          end
-
-        _refused ->
-          []
-      end
-    end
-
-    defp rung_conditions(type, keys) do
-      for {rung, value} <- keys,
-          field_name <- rung_fields(type, rung),
-          do: dynamic([d], field(d, ^field_name) == ^value)
-    end
-
-    defp matched_rung(type, keys, row) do
-      Enum.find_value(keys, fn {rung, value} ->
-        if Enum.any?(rung_fields(type, rung), &(Map.fetch!(row, &1) == value)), do: rung
-      end)
-    end
-
-    defp posture_schema(:intune), do: Intune.Device
-    defp posture_schema(:iru), do: Iru.Device
-    defp posture_schema(:defender), do: Defender.Device
-    defp posture_schema(:santa), do: Santa.Device
-    defp posture_schema(:sentinelone), do: SentinelOne.Device
-
-    # Which columns of a provider's posture row each rung is compared
-    # against. Both the query and the credit given to a row it returns are
-    # built from this, so they can never disagree.
-    #
-    # Only an MDM issues a device id a certificate attests, so neither EDR
-    # answers that rung. Defender answers none of them: its machine entity
-    # carries no hardware serial either, which is why it is reached through
-    # Intune instead.
-    defp rung_fields(:intune, :mdm_device_id), do: [:intune_id]
-    defp rung_fields(:intune, _serial_rung), do: [:serial_number]
-    defp rung_fields(:iru, :mdm_device_id), do: [:iru_id]
-    defp rung_fields(:iru, _serial_rung), do: [:serial_number]
-    defp rung_fields(:defender, _rung), do: []
-    defp rung_fields(:santa, :mdm_device_id), do: []
-    defp rung_fields(:santa, _serial_rung), do: [:serial_number]
-    defp rung_fields(:sentinelone, :mdm_device_id), do: []
-    defp rung_fields(:sentinelone, _serial_rung), do: [:serial_number]
-
-    defp rung_rank(:mdm_device_id), do: 0
-    defp rung_rank(:attested_serial), do: 1
-    defp rung_rank(:device_serial), do: 2
-
     defp provider_type_rank(:intune), do: 0
     defp provider_type_rank(:iru), do: 1
     defp provider_type_rank(:defender), do: 2
     defp provider_type_rank(:santa), do: 3
     defp provider_type_rank(:sentinelone), do: 4
+    defp provider_type_rank(:sophos), do: 5
 
   end
 end

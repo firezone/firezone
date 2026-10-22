@@ -20,11 +20,7 @@ defmodule Portal.Crl.Scheduler do
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling certificate revocation list refresh jobs")
 
-    if Portal.Features.enabled?(:trust_anchors) do
-      Database.queue_sync_jobs()
-    else
-      {:ok, :skipped}
-    end
+    Database.queue_sync_jobs()
   end
 
   defmodule Database do

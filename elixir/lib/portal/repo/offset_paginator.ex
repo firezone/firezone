@@ -18,6 +18,7 @@ defmodule Portal.Repo.OffsetPaginator do
             offset: non_neg_integer(),
             limit: non_neg_integer(),
             count: non_neg_integer(),
+            count_limited: boolean(),
             has_previous_page: boolean(),
             has_next_page: boolean()
           }
@@ -27,6 +28,7 @@ defmodule Portal.Repo.OffsetPaginator do
               offset: 0,
               limit: nil,
               count: nil,
+              count_limited: false,
               has_previous_page: false,
               has_next_page: false
   end

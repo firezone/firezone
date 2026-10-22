@@ -6,7 +6,7 @@ defmodule Portal.Analytics.PostHogTest do
   setup do
     Portal.Config.put_env_override(:portal, PostHog,
       enabled: true,
-      endpoint: "https://posthog.test/i/v0/e/",
+      host: "https://posthog.test",
       project_api_key: "phc_test",
       req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
     )
@@ -31,12 +31,135 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert_receive {:posthog_request, conn, body}
     assert conn.method == "POST"
+    assert conn.host == "posthog.test"
     assert conn.request_path == "/i/v0/e/"
     assert body["api_key"] == "phc_test"
     assert body["event"] == "Portal Attribution Received"
     assert body["properties"]["distinct_id"] == "anonymous-id"
     assert body["properties"]["website_path"] == "/pricing"
     assert body["properties"]["$process_person_profile"] == false
+  end
+
+  test "preserves a path prefix on the configured host" do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: true,
+      host: "https://proxy.test/posthog/",
+      project_api_key: "phc_test",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    test_pid = self()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      send(test_pid, {:posthog_request, conn})
+      Req.Test.json(conn, %{"status" => "ok"})
+    end)
+
+    assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+
+    assert_receive {:posthog_request, conn}
+    assert conn.host == "proxy.test"
+    assert conn.request_path == "/posthog/i/v0/e/"
+  end
+
+  test "does not send events when disabled" do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: false,
+      host: nil,
+      project_api_key: nil,
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("unexpected PostHog request") end)
+
+    assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+    assert :ok = PostHog.batch([%{"event" => "Account Snapshot", "properties" => %{}}])
+  end
+
+  test "posts batches to the configured batch endpoint" do
+    test_pid = self()
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:posthog_request, conn, JSON.decode!(body)})
+      Req.Test.json(conn, %{"status" => "Ok"})
+    end)
+
+    event = %{"event" => "Account Snapshot", "properties" => %{"distinct_id" => "account-id"}}
+
+    assert :ok = PostHog.batch([event])
+
+    assert_receive {:posthog_request, conn, body}
+    assert conn.host == "posthog.test"
+    assert conn.request_path == "/batch/"
+    assert body == %{
+             "api_key" => "phc_test",
+             "batch" => [put_in(event, ["properties", "web_external_url"], nil)]
+           }
+  end
+
+  test "does not send empty batches" do
+    Req.Test.stub(__MODULE__, fn _conn -> flunk("unexpected PostHog request") end)
+
+    assert :ok = PostHog.batch([])
+  end
+
+  test "returns an error when PostHog rejects a batch" do
+    Req.Test.expect(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 400, "") end)
+
+    assert {:error, {:http_status, 400}} =
+             PostHog.batch([%{"event" => "Account Snapshot", "properties" => %{}}])
+  end
+
+  describe "web_external_url" do
+    setup do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:posthog_body, JSON.decode!(body)})
+        Req.Test.json(conn, %{"status" => "Ok"})
+      end)
+
+      :ok
+    end
+
+    test "is added to single events when configured" do
+      put_web_external_url("https://app.example.com")
+
+      assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+
+      assert_receive {:posthog_body, %{"properties" => %{"web_external_url" => "https://app.example.com"}}}
+    end
+
+    test "is added to every batched event" do
+      put_web_external_url("https://app.example.com")
+
+      assert :ok =
+               PostHog.batch([
+                 %{"event" => "Account Snapshot", "properties" => %{"distinct_id" => "a"}},
+                 %{
+                   "event" => "$groupidentify",
+                   "properties" => %{"distinct_id" => "a", "$group_set" => %{"name" => "Acme"}}
+                 }
+               ])
+
+      assert_receive {:posthog_body, %{"batch" => [snapshot, identify]}}
+      assert snapshot["properties"]["web_external_url"] == "https://app.example.com"
+      assert identify["properties"]["web_external_url"] == "https://app.example.com"
+
+      assert identify["properties"]["$group_set"] == %{"name" => "Acme"}
+    end
+  end
+
+  defp put_web_external_url(url) do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: true,
+      host: "https://posthog.test",
+      project_api_key: "phc_test",
+      web_external_url: url,
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
   end
 
   test "builds an identify event that aliases the website visitor to the actor" do
@@ -66,8 +189,9 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert properties["$anon_distinct_id"] == attribution["distinct_id"]
     assert properties["$process_person_profile"] == true
-    assert properties["$set"]["email"] == actor.email
     assert properties["$set"]["account_id"] == account.id
+    refute Map.has_key?(properties["$set"], "email")
+    refute Map.has_key?(properties["$set"], "name")
     assert properties["$set_once"]["initial_website_path"] == "/pricing"
   end
 end

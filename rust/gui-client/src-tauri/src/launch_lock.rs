@@ -6,11 +6,11 @@
 //! know to hand off to the running instance instead of binding their
 //! own pipe server.
 //!
-//! Same code path on Linux (`flock` via `fd-lock`) and Windows
-//! (`LockFileEx` via `fd-lock`). The lock is in-memory kernel state
-//! attached to the open file descriptor / handle, so a sudden power
-//! loss or crash releases it automatically on the next boot — there's
-//! no PID-file-style stale-owner problem.
+//! Same code path on Linux (`flock`) and Windows (`LockFileEx`) via
+//! [`File::try_lock`]. The lock is in-memory kernel state attached to
+//! the open file descriptor / handle, so a sudden power loss or crash
+//! releases it automatically on the next boot. There's no
+//! PID-file-style stale-owner problem.
 //!
 //! The file's content is irrelevant; only the *presence of the lock*
 //! is observed. We never read the file from the second instance, so
@@ -18,7 +18,6 @@
 //! don't matter.
 
 use anyhow::{Context, Result};
-use fd_lock::{RwLock as FdRwLock, RwLockWriteGuard as FdRwLockWriteGuard};
 use std::{
     fs::{File, OpenOptions},
     path::{Path, PathBuf},
@@ -29,11 +28,7 @@ use std::{
 /// (graceful, panic, or `kill -9`), so the presence of the lock is
 /// also a liveness signal.
 pub struct LaunchLock {
-    // The `'static` lifetime is a deliberate leak: this struct lives
-    // for the whole process when held. `fd_lock::RwLock` owns the
-    // `std::fs::File` and the guard borrows from it; leaking the
-    // `RwLock` makes the borrow `'static`.
-    _guard: FdRwLockWriteGuard<'static, File>,
+    _file: File,
 }
 
 /// Outcome of [`acquire`] / [`acquire_at`].
@@ -72,12 +67,8 @@ fn acquire_at(path: &Path) -> Result<FirstInstance> {
         .open(path)
         .with_context(|| format!("Failed to open launch lock `{}`", path.display()))?;
 
-    // Leak the `RwLock` so the guard's borrow is `'static`; the
-    // first-instance state lives for the whole process either way.
-    let lock: &'static mut FdRwLock<File> = Box::leak(Box::new(FdRwLock::new(file)));
-
-    match lock.try_write() {
-        Ok(guard) => Ok(FirstInstance::Yes(LaunchLock { _guard: guard })),
+    match file.try_lock() {
+        Ok(()) => Ok(FirstInstance::Yes(LaunchLock { _file: file })),
         Err(_) => Ok(FirstInstance::No),
     }
 }
@@ -99,11 +90,11 @@ mod tests {
     /// - After dropping the first guard, a fresh `acquire_at` succeeds
     ///   again — confirming the lock is released cleanly.
     ///
-    /// Cross-platform: `fd-lock` uses `flock` (per open-file-description)
-    /// on Linux and `LockFileEx` (per handle) on Windows; both treat
-    /// "second open + try_lock from the same process" as a real
-    /// conflict, so we don't need to spawn a child process to exercise
-    /// the contention path.
+    /// Cross-platform: `File::try_lock` uses `flock` (per
+    /// open-file-description) on Linux and `LockFileEx` (per handle) on
+    /// Windows; both treat "second open + try_lock from the same process"
+    /// as a real conflict, so we don't need to spawn a child process to
+    /// exercise the contention path.
     #[test]
     fn second_acquire_observes_first() {
         let tmp = tempfile::tempdir().unwrap();

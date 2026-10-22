@@ -6,7 +6,13 @@ defmodule PortalAPI.Schemas.OktaDirectory do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Okta.Directory, internal: [:error_email_count, :is_verified]}
+             for: Portal.Okta.Directory,
+             internal: [
+               :error_email_count,
+               :is_verified,
+               :webhook_received_at,
+               :webhook_verified_at
+             ]}
     OpenApiSpex.schema(%{
       title: "OktaDirectory",
       description: "Okta Directory",

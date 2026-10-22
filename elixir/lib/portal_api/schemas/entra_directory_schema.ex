@@ -12,7 +12,8 @@ defmodule PortalAPI.Schemas.EntraDirectory do
                :groups_subscription_id,
                :is_verified,
                :subscriptions_expire_at,
-               :users_subscription_id
+               :users_subscription_id,
+               :webhook_received_at
              ]}
     OpenApiSpex.schema(%{
       title: "EntraDirectory",

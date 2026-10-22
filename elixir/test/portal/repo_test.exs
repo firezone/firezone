@@ -41,6 +41,7 @@ defmodule Portal.RepoTest.AccountQuery do
 end
 
 defmodule Portal.RepoTest do
+  import Ecto.Query
   use Portal.DataCase, async: true
   import Portal.Repo
   import Portal.AccountFixtures
@@ -76,6 +77,63 @@ defmodule Portal.RepoTest do
 
       assert list_offset(queryable, query_module, page: [limit: -1]) ==
                {:ok, [], %{empty_metadata | limit: 1}}
+    end
+
+    test "caps counts without restricting pagination and preserves filters", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      for _ <- 1..5, do: actor_fixture(account: account)
+      actor_fixture(account: account_fixture())
+      queryable = where(queryable, [actors: actor], actor.account_id == ^account.id)
+
+      for {cap, expected_count, limited?} <- [{3, 3, true}, {5, 5, true}, {6, 5, false}] do
+        assert {:ok, rows, metadata} =
+                 list_offset(queryable, query_module,
+                   count_limit: cap,
+                   page: [limit: 2, offset: 4]
+                 )
+
+        assert length(rows) == 1
+        assert metadata.count == expected_count
+        assert metadata.count_limited == limited?
+        refute metadata.has_next_page
+        assert metadata.previous_offset == 2
+      end
+
+      assert {:ok, [], metadata} =
+               list_offset(where(queryable, false), query_module, count_limit: 3)
+
+      assert metadata.count == 0
+      refute metadata.count_limited
+    end
+
+    test "cancels the query and returns :query_timeout when the statement budget is used up", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      actor_fixture(account: account)
+
+      slow =
+        where(
+          queryable,
+          [actors: actor],
+          actor.account_id == ^account.id and fragment("pg_sleep(0.5)::text IS NOT NULL")
+        )
+
+      assert list_offset(slow, query_module, statement_timeout: 50, timeout: 5_000) ==
+               {:error, :query_timeout}
+
+      # The connection survives the cancelled statement.
+      assert {:ok, [_actor], _metadata} =
+               list_offset(
+                 where(queryable, [actors: actor], actor.account_id == ^account.id),
+                 query_module,
+                 statement_timeout: 5_000,
+                 timeout: 10_000
+               )
     end
 
     test "returns paged results with offset metadata", %{

@@ -71,7 +71,6 @@ defmodule Portal.TrustAnchorFixtures do
   @ec_ca_der_path Path.join(@fixtures_dir, "ec_ca.der")
   @ec_ca_pem_path Path.join(@fixtures_dir, "ec_ca.pem")
   @ed25519_ca_der_path Path.join(@fixtures_dir, "ed25519_ca.der")
-  @ed25519_ca_pem_path Path.join(@fixtures_dir, "ed25519_ca.pem")
   @p384_leaf_der_path Path.join(@fixtures_dir, "p384_leaf.der")
 
   @doc """
@@ -174,13 +173,6 @@ defmodule Portal.TrustAnchorFixtures do
   """
   def sample_p384_leaf_der do
     File.read!(@p384_leaf_der_path)
-  end
-
-  @doc """
-  Returns the synthetic Ed25519 CA certificate as PEM text.
-  """
-  def sample_ed25519_ca_pem do
-    File.read!(@ed25519_ca_pem_path)
   end
 
   @doc """

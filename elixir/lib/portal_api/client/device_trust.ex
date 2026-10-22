@@ -57,7 +57,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     "intune-id" => :last_attested_mdm_device_id,
     "ws1-uuid" => :last_attested_mdm_device_id,
     "jamf-id" => :last_attested_mdm_device_id,
-    "kandji-id" => :last_attested_mdm_device_id
+    "kandji-id" => :last_attested_mdm_device_id,
+    "iru-id" => :last_attested_mdm_device_id
   }
 
   @typed_uri_regex ~r{^firezone://([^/]+)/(.+)$}i
@@ -198,7 +199,8 @@ defmodule PortalAPI.Client.DeviceTrust do
         %{der: der, leaf: leaf, account_id: account_id, identity: identity},
         context
       ) do
-    with {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
+    with :ok <- ensure_x509_auth_feature_enabled(),
+         {:ok, account, auth_provider} <- Database.fetch_x509_account(account_id),
          {:ok, anchors} <- fetch_anchors(account.id),
          :ok <- validate_leaf(leaf, der, anchors),
          :ok <- ensure_account_enabled(account),
@@ -333,14 +335,17 @@ defmodule PortalAPI.Client.DeviceTrust do
   end
 
   defp fetch_anchors(subject) do
-    anchors =
-      if Portal.Features.enabled?(:trust_anchors),
-        do: Database.fetch_anchors(subject),
-        else: []
-
-    case anchors do
+    case Database.fetch_anchors(subject) do
       [] -> {:error, :no_trust_anchors}
       anchors -> {:ok, anchors}
+    end
+  end
+
+  defp ensure_x509_auth_feature_enabled do
+    if Portal.Features.enabled?(:x509_auth) do
+      :ok
+    else
+      {:error, :x509_authentication_not_found}
     end
   end
 

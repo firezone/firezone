@@ -10,6 +10,17 @@
 // value conversion.
 export const DatetimeRangeFilter = {
   mounted() {
+    this.bound = new WeakSet();
+    this.sync();
+  },
+
+  updated() {
+    this.sync();
+  },
+
+  // The From/To inputs only exist while the "Custom" preset is selected, so
+  // look them up on every update and bind any that are new.
+  sync() {
     this.bounds = ["from", "to"].map((slot) => ({
       slot,
       canonical: this.el.querySelector(`[data-canonical="${slot}"]`),
@@ -18,10 +29,6 @@ export const DatetimeRangeFilter = {
 
     this.renderDisplay();
     this.bindDisplayInputs();
-  },
-
-  updated() {
-    this.renderDisplay();
   },
 
   mode() {
@@ -49,7 +56,8 @@ export const DatetimeRangeFilter = {
 
   bindDisplayInputs() {
     for (const { canonical, display } of this.bounds) {
-      if (!canonical || !display) continue;
+      if (!canonical || !display || this.bound.has(display)) continue;
+      this.bound.add(display);
       display.addEventListener("change", () => {
         // Chrome reports an incomplete datetime as empty and fires `change`
         // on blur. Treat that as "the user isn't done yet" rather than

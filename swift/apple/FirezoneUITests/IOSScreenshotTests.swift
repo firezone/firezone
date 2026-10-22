@@ -14,11 +14,18 @@
 
   @MainActor
   final class IOSScreenshotTests: XCTestCase {
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
+
+    /// A field every parsed certificate carries, so the Device Trust tab can be
+    /// told from the one that was showing before it.
+    private static let certificateAnchor = "Signing Algorithm"
 
     /// The scenarios describing the states of the certificate tab. Each image
     /// carries the name of the scenario it was taken from.
@@ -108,13 +115,37 @@
       deliver(app, as: "resource-details-internet", in: appearance)
     }
 
+    func testDevicePoolDetails() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "connected")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Office network"], on: "session")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
+      try waitFor(app.staticTexts["Connected Devices"], on: "device-pool-details")
+      deliver(app, as: "device-pool-details", in: appearance)
+    }
+
+    func testDevicePoolDetailsEmpty() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "empty-device-pool")
+      defer { app.terminate() }
+
+      try waitFor(app.staticTexts["Spare hardware"], on: "session")
+      try open(app.staticTexts["Spare hardware"], in: app, name: "an empty device pool")
+      try waitFor(app.staticTexts["No connected devices"], on: "device-pool-details-empty")
+      deliver(app, as: "device-pool-details-empty", in: appearance)
+    }
+
     func testDeviceDetails() throws {
       let appearance = try currentAppearance()
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
       try waitFor(app.staticTexts["Office network"], on: "session")
-      try open(app.staticTexts["bench-controller-01"], in: app, name: "a connected device")
+      try open(app.staticTexts["Lab hardware"], in: app, name: "a device pool")
+      let device = app.staticTexts["bench-controller-01.firezone.network"]
+      try open(device, in: app, name: "a connected device")
       try waitFor(app.staticTexts["Tunnel IPs"], on: "device-details")
       deliver(app, as: "device-details", in: appearance)
     }
@@ -124,12 +155,10 @@
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
-      try waitFor(app.buttons["Settings"], on: "settings")
-      app.buttons["Settings"].tap()
-      try waitFor(app.navigationBars["Settings"], on: "settings")
+      try openSettings(in: app, on: "settings")
 
       for tab in Self.settingsTabs {
-        try selectTab(tab.label, in: app)
+        try selectTab(tab.label, showing: tab.showing, in: app)
         deliver(app, as: "settings-\(tab.name)", in: appearance)
       }
     }
@@ -142,15 +171,16 @@
         let app = launchApp(scenario: scenario)
         defer { app.terminate() }
 
-        try waitFor(app.buttons["Settings"], on: scenario)
-        app.buttons["Settings"].tap()
-        try waitFor(app.navigationBars["Settings"], on: scenario)
-        try selectTab("Device Trust", in: app)
+        try openSettings(in: app, on: scenario)
+        try selectTab("Device Trust", showing: Self.certificateAnchor, in: app)
         deliver(app, as: scenario, in: appearance)
       }
     }
+  }
 
-    private func launchApp(scenario: String) -> XCUIApplication {
+  @MainActor
+  extension XCTestCase {
+    func launchApp(scenario: String) -> XCUIApplication {
       let app = XCUIApplication()
       app.launchArguments = ["--mock-tunnel", "--mock-scenario", scenario]
       app.launch()
@@ -158,7 +188,7 @@
       return app
     }
 
-    private func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
+    fileprivate func open(_ row: XCUIElement, in app: XCUIApplication, name: String) throws {
       guard row.waitForExistence(timeout: 10) else {
         throw IOSScreenshotError.screenDidNotAppear(name)
       }
@@ -176,7 +206,7 @@
     /// it and comes to rest a little further along each time. Pressing before the
     /// drag makes it a scroll, but the drag still hands the list a velocity of its
     /// own, so the finger has to come to a stop before it lifts.
-    private func scrollDown(in app: XCUIApplication) {
+    fileprivate func scrollDown(in app: XCUIApplication) {
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
 
@@ -188,9 +218,15 @@
       )
     }
 
-    /// SwiftUI has drawn the iOS tab bar as different controls across releases,
-    /// so the first kind that answers to `label` wins.
-    private func selectTab(_ label: String, in app: XCUIApplication) throws {
+    /// Opens the tab named `label` and waits for `anchor`, which only its own
+    /// content carries.
+    ///
+    /// SwiftUI has drawn the iOS tab bar as different controls across releases, so
+    /// the first kind that answers to `label` wins. The tab's own selected trait
+    /// would be the cheaper signal, but these controls do not report it.
+    func selectTab(
+      _ label: String, showing anchor: String, in app: XCUIApplication
+    ) throws {
       let candidates = [
         app.tabBars.buttons[label],
         app.buttons[label],
@@ -200,7 +236,34 @@
         throw IOSScreenshotError.tabNotFound(label)
       }
 
-      tab.tap()
+      guard tap(tab, until: app.descendants(matching: .any)[anchor]) else {
+        throw IOSScreenshotError.tabDidNotOpen(label)
+      }
+    }
+
+    /// Opens the Settings sheet from the button the session screen's toolbar carries.
+    func openSettings(in app: XCUIApplication, on screen: String) throws {
+      let button = app.buttons["Settings"]
+      try waitFor(button, on: screen)
+
+      guard tap(button, until: app.navigationBars["Settings"]) else {
+        throw IOSScreenshotError.screenDidNotAppear(screen)
+      }
+    }
+
+    /// Presses `control` until `anchor` is on screen, and says whether it ever was.
+    ///
+    /// A press that lands while the screen it asks for is still arriving is dropped
+    /// without a word, as is one a banner SpringBoard laid over the app caught, and
+    /// both leave the wait that follows with nothing to wait for.
+    func tap(_ control: XCUIElement, until anchor: XCUIElement) -> Bool {
+      for _ in 0..<3 {
+        control.tap()
+
+        if anchor.waitForExistence(timeout: 10) { return true }
+      }
+
+      return false
     }
 
     /// Opens the account menu and waits for `item`, one of the controls it holds.
@@ -208,7 +271,7 @@
     /// The menu itself is an icon carrying no text, so it is taken as the
     /// navigation bar button that is not Settings, and SwiftUI has drawn the items
     /// it holds as different controls across releases.
-    private func openAccountMenu(
+    fileprivate func openAccountMenu(
       showing item: String,
       in app: XCUIApplication,
       on screen: String
@@ -224,7 +287,7 @@
 
     /// Blocks until `element` is on screen, so a capture cannot catch the spinner
     /// the app shows while it loads its state.
-    private func waitFor(_ element: XCUIElement, on screen: String) throws {
+    func waitFor(_ element: XCUIElement, on screen: String) throws {
       guard element.waitForExistence(timeout: 30) else {
         throw IOSScreenshotError.screenDidNotAppear(screen)
       }
@@ -235,7 +298,7 @@
     /// An appearance belongs to the device rather than to a launch, and
     /// `XCUIDevice.appearance` is ignored under `xcodebuild`, so CI sets it with
     /// `simctl ui` and runs the whole suite once per appearance.
-    private func currentAppearance() throws -> Appearance {
+    fileprivate func currentAppearance() throws -> Appearance {
       let name = try XCTUnwrap(
         ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"],
         "SCREENSHOT_APPEARANCE is not set"
@@ -251,5 +314,6 @@
   private enum IOSScreenshotError: Error {
     case screenDidNotAppear(String)
     case tabNotFound(String)
+    case tabDidNotOpen(String)
   }
 #endif

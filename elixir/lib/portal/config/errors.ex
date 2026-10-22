@@ -1,6 +1,5 @@
 defmodule Portal.Config.Errors do
   alias Portal.Config.Definition
-  require Logger
 
   def raise_error!(errors) do
     errors
@@ -85,13 +84,6 @@ defmodule Portal.Config.Errors do
         #{doc}
         """
     end
-  end
-
-  def legacy_key_used(key, legacy_key, removed_at) do
-    Logger.warning(
-      "A legacy configuration option '#{legacy_key}' is used and it will be removed in v#{removed_at}. " <>
-        "Please use '#{Portal.Config.Resolver.env_key(key)}' configuration option instead."
-    )
   end
 
   def invalid_spec(key, opts) do

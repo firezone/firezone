@@ -9,7 +9,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
   def api_token_creation_form(assigns) do
     ~H"""
     <div>
-      <.input
+      <Form.input
         label="Name"
         field={@form[:name]}
         placeholder="E.g. 'GitHub Actions' or 'Terraform'"
@@ -22,7 +22,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
     </div>
 
     <div class="mt-4">
-      <.input
+      <Form.input
         label="Expires At"
         type="date"
         field={@form[:expires_at]}
@@ -42,7 +42,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
   def api_token_scopes(assigns) do
     ~H"""
     <div class="mt-6">
-      <.scope_picker scopes={@scopes} field_name="api_token[scopes][]" error={@error} />
+      <Page.scope_picker scopes={@scopes} field_name="api_token[scopes][]" error={@error} />
     </div>
     """
   end
@@ -55,11 +55,11 @@ defmodule PortalWeb.Settings.ApiClients.Components do
     <div class="flex flex-col gap-4">
       <p class="text-sm font-semibold text-heading">Your API Token</p>
 
-      <.code_block
+      <Core.code_block
         id="code-api-token"
         class="text-xs rounded-md [&_code]:overflow-x-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
         phx-no-format
-      ><%= @encoded_token %></.code_block>
+      ><%= @encoded_token %></Core.code_block>
 
       <div class="rounded border border-warning-light bg-warning-light px-4 py-3 text-xs text-warning">
         Store this token in a safe place. <strong>It won't be shown again.</strong>

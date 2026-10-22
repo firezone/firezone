@@ -27,11 +27,62 @@ defmodule PortalWeb.SignInTest do
       assert html =~ "Send code"
     end
 
+    test "renders a GitHub sign-in button when a GitHub provider is configured",
+         %{conn: conn, account: account} do
+      provider = github_provider_fixture(account: account, name: "GitHub")
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert html =~ "/#{account.slug}/sign_in/github/#{provider.id}"
+      assert html =~ "ri-github-fill"
+    end
+
+    test "badges only the last used sign-in method", %{conn: conn, account: account} do
+      github = github_provider_fixture(account: account, name: "GitHub")
+      _google = google_provider_fixture(account: account, name: "Google")
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
+      refute html =~ "Last used"
+
+      conn = PortalWeb.Cookie.LastUsedProvider.put(conn, github.id)
+      cookie = conn.resp_cookies["last_used_provider"].value
+
+      {:ok, _lv, html} =
+        build_conn()
+        |> Plug.Test.put_req_cookie("last_used_provider", cookie)
+        |> live(~p"/#{account}/sign_in")
+
+      assert length(String.split(html, "Last used")) == 2
+    end
+
+    test "does not badge the last used method when it is the only one",
+         %{conn: conn, account: account} do
+      github = github_provider_fixture(account: account, name: "GitHub")
+
+      conn = PortalWeb.Cookie.LastUsedProvider.put(conn, github.id)
+      cookie = conn.resp_cookies["last_used_provider"].value
+
+      {:ok, _lv, html} =
+        build_conn()
+        |> Plug.Test.put_req_cookie("last_used_provider", cookie)
+        |> live(~p"/#{account}/sign_in")
+
+      refute html =~ "Last used"
+    end
+
     test "does not show email OTP form when no providers configured",
          %{conn: conn, account: account} do
       {:ok, _lv, html} = live(conn, ~p"/#{account}/sign_in")
 
       refute html =~ "Send code"
+    end
+
+    test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#auth-brand-mobile", "Firezone")
+      assert has_element?(lv, "#auth-card", "Sign in to #{account.name}")
+      assert has_element?(lv, "#auth-trust-mobile", "WireGuard encrypted")
     end
 
     test "shows the client sign-in hint for browser sign-in", %{conn: conn, account: account} do

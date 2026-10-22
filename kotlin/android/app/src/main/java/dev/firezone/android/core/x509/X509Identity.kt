@@ -17,16 +17,11 @@ class X509IdentityException(
     cause: Throwable? = null,
 ) : Exception(message, cause)
 
-/**
- * The TLS identity Firezone presents to the portal, together with its parsed leaf certificate.
- *
- * [certificate] is `null` when the parser did not understand the leaf, which limits what we can say
- * about the identity, not what we present.
- */
+/** The TLS identity Firezone presents to the portal, together with its parsed leaf certificate. */
 data class LoadedX509Identity(
     val alias: String,
     val tlsIdentity: ClientTlsIdentity,
-    val certificate: ParsedCertificate?,
+    val certificate: ParsedCertificate,
 )
 
 /**
@@ -42,9 +37,9 @@ class X509Identity
         private val keyChain: KeyChain,
     ) {
         /**
-         * Loads the identity stored under [alias], or `null` when no alias is configured.
+         * Loads the identity stored under [alias], or `null` when no alias is known.
          *
-         * @throws X509IdentityException if an alias is configured but yields no usable identity.
+         * @throws X509IdentityException if an alias is known but yields no device certificate.
          */
         fun load(alias: String?): LoadedX509Identity? {
             if (alias == null) {
@@ -72,12 +67,22 @@ class X509Identity
                         exception,
                     )
                 }
-            val certificate = parseClientCertificate(tlsIdentity.certificateChain().first())
+            val certificate =
+                parseClientCertificate(tlsIdentity.certificateChain().first())
+                    ?: throw X509IdentityException("The certificate of alias '$alias' could not be parsed.")
+
+            // The desktop clients only ever pick up a certificate by this name, so one under any
+            // other is not the device certificate whatever the alias says.
+            if (!certificate.isDeviceCertificate) {
+                throw X509IdentityException(
+                    "Alias '$alias' holds a certificate for '${certificate.subjectCn ?: "nobody"}', not a device certificate.",
+                )
+            }
 
             Log.i(
                 TAG,
                 "Loaded the client identity of alias '$alias' " +
-                    "(certificates=${chain.size}, fingerprint=${certificate?.fingerprint ?: "unparsed"})",
+                    "(certificates=${chain.size}, fingerprint=${certificate.fingerprint})",
             )
 
             return LoadedX509Identity(

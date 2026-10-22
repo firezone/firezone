@@ -8,6 +8,7 @@ defmodule Portal.Santa.ErrorHandler do
 
   @disable_transient_errors_after_hours 24
 
+  @doc "Returns `:disabled` when this error disables the provider, or `:ok` otherwise."
   def handle(%Santa.SyncError{error: error}, provider_id) do
     action(classify(error), format(error), provider_id)
   end
@@ -103,7 +104,7 @@ defmodule Portal.Santa.ErrorHandler do
     end
 
     def update_provider(provider, attrs) do
-      {:ok, _provider} =
+      {:ok, updated_provider} =
         provider
         |> Ecto.Changeset.cast(attrs, [
           :errored_at,
@@ -115,7 +116,11 @@ defmodule Portal.Santa.ErrorHandler do
         |> Safe.unscoped()
         |> Safe.update()
 
-      :ok
+      if updated_provider.is_disabled and not provider.is_disabled do
+        :disabled
+      else
+        :ok
+      end
     end
   end
 end

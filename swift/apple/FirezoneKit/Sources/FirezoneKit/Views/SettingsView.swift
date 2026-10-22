@@ -10,26 +10,6 @@ import Combine
 import OSLog
 import SwiftUI
 
-enum SettingsViewError: Error {
-  case logFolderIsUnavailable
-  case configurationNotInitialized
-
-  var localizedDescription: String {
-    switch self {
-    case .logFolderIsUnavailable:
-      return """
-          Log folder is unavailable.
-          Try restarting your device or reinstalling Firezone if this issue persists.
-        """
-    case .configurationNotInitialized:
-      return """
-          Configuration is not initialized.
-          Try restarting your device or reinstalling Firezone if this issue persists.
-        """
-    }
-  }
-}
-
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
@@ -62,8 +42,12 @@ public struct SettingsView: View {
   @State private var selectedTab: Tab
 
   #if os(iOS)
-    @State private var logTempZipFileURL: URL?
-    @State private var isPresentingExportLogShareSheet = false
+    private struct LogArchive: Identifiable {
+      let url: URL
+      var id: URL { url }
+    }
+
+    @State private var exportedLogArchive: LogArchive?
   #endif
 
   private struct PlaceholderText {
@@ -201,9 +185,7 @@ public struct SettingsView: View {
         .padding(20)
         Spacer()
         HStack(spacing: 5) {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
+          BuildLabel()
           Spacer()
           Button(
             "Reset to Defaults",
@@ -447,9 +429,7 @@ public struct SettingsView: View {
         }
         Spacer()
         HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
+          BuildLabel()
           Spacer()
         }
         .padding([.leading, .bottom], 20)
@@ -496,8 +476,7 @@ public struct SettingsView: View {
                   Task {
                     do {
                       let archiveURL = try await store.exportLogs()
-                      self.logTempZipFileURL = archiveURL
-                      self.isPresentingExportLogShareSheet = true
+                      self.exportedLogArchive = LogArchive(url: archiveURL)
                     } catch {
                       Log.error(error)
                       viewModel.isExportingLogs = false
@@ -505,23 +484,20 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .sheet(isPresented: $isPresentingExportLogShareSheet) {
-                if let logfileURL = self.logTempZipFileURL {
+              .sheet(
+                item: $exportedLogArchive,
+                onDismiss: {
+                  viewModel.isExportingLogs = false
+                },
+                content: { archive in
                   ShareSheetView(
-                    localFileURL: logfileURL,
+                    localFileURL: archive.url,
                     completionHandler: {
-                      self.isPresentingExportLogShareSheet = false
-                      viewModel.isExportingLogs = false
-                      self.logTempZipFileURL = nil
+                      self.exportedLogArchive = nil
                     }
                   )
-                  .onDisappear {
-                    self.isPresentingExportLogShareSheet = false
-                    viewModel.isExportingLogs = false
-                    self.logTempZipFileURL = nil
-                  }
                 }
-              }
+              )
               Spacer()
             }
           }
@@ -786,3 +762,20 @@ struct FormTextField: View {
     }
   }
 #endif
+
+private struct BuildLabel: View {
+  var body: some View {
+    HStack(spacing: 0) {
+      Text("Build: ")
+        .foregroundColor(.gray)
+      if let gitSha = BundleHelper.gitSha,
+        let url = URL(string: "https://github.com/firezone/firezone/commit/\(gitSha)")
+      {
+        Link(String(gitSha.prefix(8)), destination: url)
+      } else {
+        Text("unknown")
+          .foregroundColor(.gray)
+      }
+    }
+  }
+}

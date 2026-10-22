@@ -4,6 +4,8 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
+  import Portal.RepoQueryHelpers
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -47,13 +49,19 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
         identity_fixture(account: account, directory: base_directory, issuer: issuer, idp_id: id)
       end
 
-      group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "group-1",
+        nested_group_idp_ids: ["group-nested"]
+      )
 
       conn =
         post_notifications(conn, directory, [
           change("Users", "user-1", "updated"),
           change("Users", "user-1", "updated"),
           change("Groups", "group-1", "updated"),
+          change("Groups", "group-nested", "updated"),
           change("Users", "user-2", "deleted"),
           change("Users", "user-unknown", "updated"),
           change("Groups", "group-unknown", "updated")
@@ -62,7 +70,12 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert response(conn, 202) == ""
 
       jobs = all_enqueued(worker: Entra.WebhookSync)
-      assert length(jobs) == 3
+      assert length(jobs) == 4
+
+      assert_enqueued(
+        worker: Entra.WebhookSync,
+        args: %{resource: "group", resource_id: "group-nested", change_type: "updated"}
+      )
 
       assert_enqueued(
         worker: Entra.WebhookSync,
@@ -105,6 +118,79 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert job.args["resource_id"] == "group-new"
     end
 
+    test "admits nested groups through the nesting index in a large directory", %{
+      conn: conn,
+      directory: directory
+    } do
+      base_directory = Portal.Repo.get_by!(Portal.Directory, id: directory.id)
+      account = Portal.Repo.get!(Portal.Account, directory.account_id)
+      bulk_groups_fixture(base_directory, 2000)
+
+      group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "group-1",
+        nested_group_idp_ids: ["group-nested"]
+      )
+
+      Portal.Repo.query!("ANALYZE groups")
+
+      statements =
+        capture_statements(fn ->
+          post_notifications(conn, directory, [change("Groups", "group-nested", "updated")])
+        end)
+
+      {sql, params} = Enum.find(statements, fn {sql, _params} -> String.contains?(sql, "&&") end)
+
+      assert indexed_plan(sql, params) =~ "groups_nested_group_idp_ids_index"
+
+      assert_enqueued(
+        worker: Entra.WebhookSync,
+        args: %{resource: "group", resource_id: "group-nested", change_type: "updated"}
+      )
+    end
+
+    test "records when a delivery was last accepted", %{conn: conn, directory: directory} do
+      assert is_nil(directory.webhook_received_at)
+
+      conn = post_notifications(conn, directory, [change("Users", "user-unknown", "updated")])
+
+      assert response(conn, 202) == ""
+      assert Portal.Repo.get_by!(Entra.Directory, id: directory.id).webhook_received_at
+    end
+
+    test "queues unknown users and groups while a job for the directory is running", %{
+      conn: conn,
+      directory: directory
+    } do
+      executing_job(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
+
+      conn =
+        post_notifications(conn, directory, [
+          change("Users", "user-unknown", "deleted"),
+          change("Groups", "group-unknown", "updated")
+        ])
+
+      assert response(conn, 202) == ""
+      assert length(all_enqueued(worker: Entra.WebhookSync)) == 2
+    end
+
+    test "queues a recovery sync behind the running one for a missed notification", %{
+      conn: conn,
+      directory: directory
+    } do
+      running =
+        executing_job(
+          Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id})
+        )
+
+      conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
+
+      assert response(conn, 202) == ""
+      assert [job] = all_enqueued(worker: Entra.Sync)
+      assert job.id != running.id
+    end
+
     test "queues subscription maintenance for lifecycle events", %{
       conn: conn,
       directory: directory
@@ -139,12 +225,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       directory: directory
     } do
       args = %{account_id: directory.account_id, directory_id: directory.id}
-      {:ok, job} = Oban.insert(Entra.Sync.new(args))
-
-      Portal.Repo.update_all(
-        from(j in Oban.Job, where: j.id == ^job.id),
-        set: [state: "executing"]
-      )
+      executing_job(Entra.Sync.new(args))
 
       conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
       assert response(conn, 202) == ""

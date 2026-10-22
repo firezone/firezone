@@ -1,0 +1,32 @@
+name: Create release review lock
+description: Lock a draft release before submitting it for store review
+inputs:
+  release-name:
+    description: Name of the release draft to lock
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare the review lock
+      id: review-lock
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_NAME: ${{ inputs.release-name }}
+      run: |
+        set -euo pipefail
+        touch "$RUNNER_TEMP/review-lock"
+        exists=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" | \
+          jq --arg name "release-review-$RELEASE_NAME" 'any(.[].artifacts[]; .name == $name)')
+        echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+    # Record the lock before contacting the store, even if submission later fails.
+    - name: Lock the release for review
+      if: steps.review-lock.outputs.exists != 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: release-review-${{ inputs.release-name }}
+        path: ${{ runner.temp }}/review-lock
+        if-no-files-found: error
+        retention-days: 90

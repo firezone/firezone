@@ -1,0 +1,31 @@
+[package]
+name = "tunnel-bench"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+bufferpool = { workspace = true }
+bytecodec = { workspace = true }
+connlib-model = { workspace = true }
+criterion = { workspace = true }
+dns-types = { workspace = true }
+flow-tracker = { workspace = true }
+ip-packet = { workspace = true }
+mimalloc = { workspace = true }
+serde_json = { workspace = true }
+snownet = { workspace = true }
+socket-factory = { workspace = true }
+stun_codec = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+tun = { workspace = true }
+tunnel = { workspace = true }
+tunnel-proto = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = { workspace = true }
+
+[lints]
+workspace = true

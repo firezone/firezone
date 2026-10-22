@@ -98,6 +98,29 @@ pub fn relay_datapath_xdp() -> KeyValue {
     KeyValue::new("relay.datapath", "xdp")
 }
 
+/// Incoming OSI network-layer protocol for a raw IP version number.
+pub fn network_type_for_ip_version(version: u8) -> KeyValue {
+    match version {
+        4 => network_type_ipv4(),
+        6 => network_type_ipv6(),
+        _ => KeyValue::new("network.type", "unknown"),
+    }
+}
+
+/// Incoming IP ECN codepoint. `network.ecn` is a custom attribute, not an OTel standard.
+pub fn network_ecn(ecn: u8) -> KeyValue {
+    KeyValue::new(
+        "network.ecn",
+        match ecn {
+            0 => "not_ect",
+            1 => "ect1",
+            2 => "ect0",
+            3 => "ce",
+            _ => "unknown",
+        },
+    )
+}
+
 /// Caps how many layers of an error's source chain are recorded as attributes.
 const MAX_ERROR_LAYERS: usize = 5;
 
@@ -234,6 +257,29 @@ mod tests {
             io_error_type(&error),
             KeyValue::new("error.type", "io::ErrorKind::NetworkUnreachable")
         );
+    }
+
+    #[test]
+    fn maps_network_types() {
+        for (version, expected) in [(4, "ipv4"), (6, "ipv6"), (0, "unknown")] {
+            assert_eq!(
+                network_type_for_ip_version(version),
+                KeyValue::new("network.type", expected)
+            );
+        }
+    }
+
+    #[test]
+    fn maps_ecn_codepoints() {
+        for (ecn, expected) in [
+            (0, "not_ect"),
+            (1, "ect1"),
+            (2, "ect0"),
+            (3, "ce"),
+            (4, "unknown"),
+        ] {
+            assert_eq!(network_ecn(ecn), KeyValue::new("network.ecn", expected));
+        }
     }
 }
 

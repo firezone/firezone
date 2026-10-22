@@ -39,6 +39,15 @@ defmodule Portal.RemoteIp.XForwardedForParserTest do
                [{1, 2, 3, 4}, {5, 6, 7, 8}]
     end
 
+    test "normalizes IPv4-mapped IPv6 addresses to IPv4" do
+      assert XForwardedForParser.parse("::ffff:107.197.104.68") == [{107, 197, 104, 68}]
+      assert XForwardedForParser.parse("::ffff:107.197.104.68:53859") == [{107, 197, 104, 68}]
+      assert XForwardedForParser.parse("[::ffff:107.197.104.68]:53859") == [{107, 197, 104, 68}]
+
+      assert XForwardedForParser.parse("::ffff:107.197.104.68, ::ffff:10.115.8.5") ==
+               [{107, 197, 104, 68}, {10, 115, 8, 5}]
+    end
+
     test "filters out truly invalid values" do
       assert XForwardedForParser.parse("not-an-ip") == []
     end

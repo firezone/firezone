@@ -105,7 +105,7 @@ jobs:
         run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
 
       - name: Upload artifact to GitHub
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: firezone-loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
           path: |
@@ -114,7 +114,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: github.ref == 'refs/heads/main'
-        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}

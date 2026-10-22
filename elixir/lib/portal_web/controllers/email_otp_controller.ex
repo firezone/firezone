@@ -71,6 +71,7 @@ defmodule PortalWeb.EmailOTPController do
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
+         false <- client_seat_restricted?(account, actor_id, context_type),
          {:ok, passcode} <-
            Authentication.verify_one_time_passcode(
              account.id,
@@ -94,7 +95,11 @@ defmodule PortalWeb.EmailOTPController do
 
   defp handle_verify_result(conn, {:ok, result}, params) do
     context_type = context_type(params)
-    conn = PortalWeb.Cookie.EmailOTP.delete(conn)
+    conn =
+      conn
+      |> PortalWeb.Cookie.EmailOTP.delete()
+      |> PortalWeb.Cookie.LastUsedProvider.put(params["auth_provider_id"])
+
     :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, result.email})
     signed_in(conn, context_type, result.account, result.actor, result.session_or_token, params)
   end
@@ -214,6 +219,13 @@ defmodule PortalWeb.EmailOTPController do
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
 
+  defp client_seat_restricted?(account, actor_id, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_seat_restricted?(account, actor_id)
+  end
+
+  defp client_seat_restricted?(_account, _actor_id, _context_type), do: false
+
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
@@ -235,12 +247,18 @@ defmodule PortalWeb.EmailOTPController do
 
         :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+
+        :oauth ->
+          PortalWeb.Cookie.OAuthSession.lifetime_secs()
       end
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      t when t in [:portal, :oauth] ->
+      # Approving an app connection. A short lived session of its own, held in
+      # its own cookie, so it neither grants portal access nor is satisfied by
+      # portal access.
         Authentication.create_portal_session(
           actor,
           provider.id,
@@ -282,6 +300,18 @@ defmodule PortalWeb.EmailOTPController do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, actor, session, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], actor)
+    )
   end
 
   # Context: :gui_client
@@ -383,6 +413,7 @@ defmodule PortalWeb.EmailOTPController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client

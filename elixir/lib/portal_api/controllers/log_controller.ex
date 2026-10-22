@@ -77,11 +77,9 @@ defmodule PortalAPI.LogController do
       limit: [
         in: :query,
         description: """
-        Maximum number of Logs to return per page. Defaults to 50.
-        Values greater than 100 are capped to 100, and values less than 1
-        are raised to 1.
+        Maximum number of Logs to return per page, from 1 to 100. Defaults to 50.
         """,
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 50
       ],
       page_cursor: [
@@ -262,8 +260,8 @@ defmodule PortalAPI.LogController do
 
   defp parse_uuid(value, name) when is_binary(value) do
     case Ecto.UUID.cast(value) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
+      {:ok, uuid} when byte_size(value) == 36 -> {:ok, uuid}
+      _ -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
     end
   end
 

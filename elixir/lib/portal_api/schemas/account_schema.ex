@@ -29,6 +29,7 @@ defmodule PortalAPI.Schemas.Account do
       properties: %{
         users: PortalAPI.Schemas.Account.LimitSchema,
         monthly_active_users: PortalAPI.Schemas.Account.LimitSchema,
+        adhoc_service_accounts: PortalAPI.Schemas.Account.LimitSchema,
         service_accounts: PortalAPI.Schemas.Account.LimitSchema,
         account_admin_users: PortalAPI.Schemas.Account.LimitSchema,
         sites: PortalAPI.Schemas.Account.LimitSchema
@@ -52,8 +53,11 @@ defmodule PortalAPI.Schemas.Account do
                :limit_usage,
                :lock_enabled_at,
                :metadata,
+               :outdated_gateway_last_sent_at,
                :scheduled_deletion_at,
                :seats_limit_exceeded,
+               :seats_warning_last_sent_at,
+               :seats_warning_level,
                :service_accounts_limit_exceeded,
                :sites_limit_exceeded,
                :updated_at,

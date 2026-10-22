@@ -448,7 +448,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
         <aside class="w-56 shrink-0 flex flex-col border-r border-border-strong bg-canvas">
           <%!-- Search --%>
           <div class="flex items-center gap-2 px-4 py-3">
-            <.icon name="ri-search-line" class="w-5 h-5" />
+            <Core.icon name="ri-search-line" class="w-5 h-5" />
             <input
               type="text"
               value={@search}
@@ -512,7 +512,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
                     !@dark_canvas && "text-muted hover:text-secondary hover:bg-canvas"
                   ]}
                 >
-                  <.icon name="ri-contrast-line" class="w-5 h-5" />
+                  <Core.icon name="ri-contrast-line" class="w-5 h-5" />
                 </button>
                 <button
                   phx-click="toggle_controls"
@@ -524,7 +524,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
                     !@controls_open && "text-muted hover:text-secondary hover:bg-canvas"
                   ]}
                 >
-                  <.icon name="ri-menu-line" class="w-3 h-3" />
+                  <Core.icon name="ri-menu-line" class="w-3 h-3" />
                   <span>Controls</span>
                 </button>
               </div>
@@ -592,7 +592,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
                 class="text-muted hover:text-secondary w-5 h-5 flex items-center justify-center rounded hover:bg-canvas text-xs transition-colors"
                 title="Close controls"
               >
-                <.icon name="ri-close-line" class="" />
+                <Core.icon name="ri-close-line" class="" />
               </button>
             </div>
             <div class="flex-1 overflow-y-auto">
@@ -666,16 +666,16 @@ defmodule PortalWeb.Dev.ComponentsLive do
   # Canvas renders the selected component with current props
   defp canvas_component(%{component_id: "badge"} = assigns) do
     ~H"""
-    <.badge type={@props["type"]}>{@props["label"]}</.badge>
+    <Core.badge type={@props["type"]}>{@props["label"]}</Core.badge>
     """
   end
 
   defp canvas_component(%{component_id: "button"} = assigns) do
     ~H"""
-    <.button style={@props["style"]} size={@props["size"]} disabled={@props["disabled"]}>
-      <.icon :if={@props["icon"] not in [nil, ""]} name={@props["icon"]} class="w-4 h-4" />
+    <Form.button style={@props["style"]} size={@props["size"]} disabled={@props["disabled"]}>
+      <Core.icon :if={@props["icon"] not in [nil, ""]} name={@props["icon"]} class="w-4 h-4" />
       {@props["label"]}
-    </.button>
+    </Form.button>
     """
   end
 
@@ -684,7 +684,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
     assigns = assign(assigns, :style, style)
 
     ~H"""
-    <.icon_button
+    <Form.icon_button
       icon={@props["icon"]}
       title={@props["title"]}
       style={@style}
@@ -701,7 +701,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
       |> assign(:dot, Map.get(assigns.props, "dot", true))
 
     ~H"""
-    <.status_badge style={@style} dot={@dot}>{@props["label"]}</.status_badge>
+    <Core.status_badge style={@style} dot={@dot}>{@props["label"]}</Core.status_badge>
     """
   end
 
@@ -710,22 +710,22 @@ defmodule PortalWeb.Dev.ComponentsLive do
 
     ~H"""
     <div class="w-96">
-      <.flash kind={@kind} style="inline" title={@props["title"]}>
+      <Core.flash kind={@kind} style="inline" title={@props["title"]}>
         {@props["message"]}
-      </.flash>
+      </Core.flash>
     </div>
     """
   end
 
   defp canvas_component(%{component_id: "ping_icon"} = assigns) do
     ~H"""
-    <.ping_icon color={@props["color"]} />
+    <Core.ping_icon color={@props["color"]} />
     """
   end
 
   defp canvas_component(%{component_id: "toggle"} = assigns) do
     ~H"""
-    <.toggle
+    <Core.toggle
       id="canvas-toggle"
       name="canvas-toggle"
       value="true"
@@ -740,24 +740,24 @@ defmodule PortalWeb.Dev.ComponentsLive do
 
   defp canvas_component(%{component_id: "code"} = assigns) do
     ~H"""
-    <.code>{@props["content"]}</.code>
+    <Core.code>{@props["content"]}</Core.code>
     """
   end
 
   defp canvas_component(%{component_id: "code_block"} = assigns) do
     ~H"""
     <div class="w-96">
-      <.code_block id="canvas-code-block">{@props["content"]}</.code_block>
+      <Core.code_block id="canvas-code-block">{@props["content"]}</Core.code_block>
     </div>
     """
   end
 
   defp canvas_component(%{component_id: "dual_badge"} = assigns) do
     ~H"""
-    <.dual_badge type={@props["type"]}>
+    <Core.dual_badge type={@props["type"]}>
       <:left>{@props["left"]}</:left>
       <:right>{@props["right"]}</:right>
-    </.dual_badge>
+    </Core.dual_badge>
     """
   end
 
@@ -765,7 +765,7 @@ defmodule PortalWeb.Dev.ComponentsLive do
     assigns = assign(assigns, :schema, %{online?: assigns.props["online"] == "true", last_seen_at: nil})
 
     ~H"""
-    <.connection_status schema={@schema} class="" />
+    <Core.connection_status schema={@schema} class="" />
     """
   end
 
@@ -773,39 +773,39 @@ defmodule PortalWeb.Dev.ComponentsLive do
     assigns = assign(assigns, :schema, %{online?: assigns.props["online"] == "true"})
 
     ~H"""
-    <.online_icon schema={@schema} />
+    <Core.online_icon schema={@schema} />
     """
   end
 
   defp canvas_component(%{component_id: "icon"} = assigns) do
     ~H"""
-    <.icon name={@props["name"]} class="w-8 h-8 text-primary" />
+    <Core.icon name={@props["name"]} class="w-8 h-8 text-primary" />
     """
   end
 
   defp canvas_component(%{component_id: "copy"} = assigns) do
     ~H"""
-    <.copy id="canvas-copy" class="flex items-center gap-2 font-mono text-sm text-primary">
+    <Core.copy id="canvas-copy" class="flex items-center gap-2 font-mono text-sm text-primary">
       {@props["content"]}
-    </.copy>
+    </Core.copy>
     """
   end
 
   defp canvas_component(%{component_id: "page_header"} = assigns) do
     ~H"""
     <div class="w-full max-w-2xl rounded overflow-hidden border border-border">
-      <.page_header>
+      <Page.page_header>
         <:icon :if={@props["icon"] not in [nil, ""]}>
-          <.icon name={@props["icon"]} class="w-8 h-8 text-brand" />
+          <Core.icon name={@props["icon"]} class="w-8 h-8 text-brand" />
         </:icon>
         <:title>{@props["title"]}</:title>
         <:description :if={@props["description"] not in [nil, ""]}>
           {@props["description"]}
         </:description>
         <:action :if={@props["show_action"]}>
-          <.button style="primary" icon="ri-add-line">Add</.button>
+          <Form.button style="primary" icon="ri-add-line">Add</Form.button>
         </:action>
-      </.page_header>
+      </Page.page_header>
     </div>
     """
   end
@@ -813,36 +813,36 @@ defmodule PortalWeb.Dev.ComponentsLive do
   defp canvas_component(%{component_id: "vertical_table"} = assigns) do
     ~H"""
     <div class="w-full max-w-lg rounded overflow-hidden border border-border">
-      <.vertical_table>
-        <.vertical_table_row>
+      <Table.vertical_table>
+        <Table.vertical_table_row>
           <:label>Name</:label>
           <:value>corp-gateway-1</:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
+        </Table.vertical_table_row>
+        <Table.vertical_table_row>
           <:label>Status</:label>
-          <:value><.status_badge style={:success}>Online</.status_badge></:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
+          <:value><Core.status_badge style={:success}>Online</Core.status_badge></:value>
+        </Table.vertical_table_row>
+        <Table.vertical_table_row>
           <:label>Version</:label>
           <:value>1.4.2</:value>
-        </.vertical_table_row>
-        <.vertical_table_row>
+        </Table.vertical_table_row>
+        <Table.vertical_table_row>
           <:label>Last Seen</:label>
           <:value>2 minutes ago</:value>
-        </.vertical_table_row>
-      </.vertical_table>
+        </Table.vertical_table_row>
+      </Table.vertical_table>
     </div>
     """
   end
 
   defp canvas_component(%{component_id: "step"} = assigns) do
     ~H"""
-    <.step>
+    <Core.step>
       <:title>{@props["title"]}</:title>
       <:content>
         <p class="text-sm text-neutral-600">Follow the instructions below to complete this step.</p>
       </:content>
-    </.step>
+    </Core.step>
     """
   end
 

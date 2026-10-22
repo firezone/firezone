@@ -14,6 +14,12 @@ defmodule PortalWeb.OIDCController do
   @invalid_json_error_message "Discovery document contains invalid JSON. Please verify the Discovery Document URI returns valid OpenID Connect configuration."
   @unverified_email_error "Your identity provider did not return email_verified=true for your account. Please verify your email with the identity provider or contact your administrator."
   @constant_execution_time Application.compile_env(:portal, :constant_execution_time, 3000)
+  @pending_verification_timeout Application.compile_env(
+                                  :portal,
+                                  :pending_verification_timeout,
+                                  5_000
+                                )
+  @sign_up_provider_types ~w[google github]
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -22,11 +28,43 @@ defmodule PortalWeb.OIDCController do
     provider_redirect(conn, account, provider, params)
   end
 
+  # Starts a sign-up round trip with an identity provider. The verified identity
+  # is handed to the sign-up LiveView through the session; see PortalWeb.SignUp.
+  @spec sign_up(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def sign_up(conn, %{"auth_provider_type" => provider_type})
+      when provider_type in @sign_up_provider_types do
+    verification_type = sign_up_verification_type(provider_type)
+    state_type = PortalWeb.OIDC.verification_state_type(verification_type)
+
+    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(verification_type, []),
+         verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
+         state = PortalWeb.OIDC.sign_verification_state(nil, state_type),
+         {:ok, uri} <-
+           PortalWeb.OIDC.build_verification_uri(verification_type, config, verifier, state) do
+      conn
+      |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: verifier})
+      |> redirect(external: uri)
+    else
+      {:error, reason} ->
+        Logger.warning("Sign-up authorization URI error",
+          provider_type: provider_type,
+          reason: inspect(reason)
+        )
+
+        redirect_to_sign_up_with_error(conn, sign_up_unavailable_error(provider_type))
+    end
+  end
+
+  def sign_up(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
+
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def callback(conn, %{"state" => state, "code" => code}) do
+  def callback(conn, %{"state" => state, "code" => code} = params) do
+    # RFC 9207 issuer of the authorization response; only GitHub flows check it.
+    iss = params["iss"]
+
     case parse_callback_state(state) do
       {:oidc_verification, lv_pid_string} ->
-        handle_oidc_verification(conn, code, lv_pid_string)
+        handle_oidc_verification(conn, code, iss, lv_pid_string)
 
       {:entra_tenant_proof,
        verification_type,
@@ -51,24 +89,51 @@ defmodule PortalWeb.OIDCController do
           verification_ref
         )
 
+      {:sign_up, provider_type} ->
+        handle_sign_up_callback(conn, code, iss, state, provider_type)
+
       _ ->
-        handle_authentication_callback(conn, state, code)
+        handle_authentication_callback(conn, state, code, iss)
     end
   end
 
   def callback(conn, %{"state" => state, "error" => _error} = params) do
     case parse_callback_state(state) do
       {:entra_auth_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "entra-auth-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:entra_directory_sync, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "entra-directory-sync",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:intune_posture_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "intune-posture-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:defender_posture_provider, lv_pid_string, verification_ref} ->
-        handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref)
+        handle_entra_admin_consent_error(
+          conn,
+          params,
+          "defender-posture-provider",
+          lv_pid_string,
+          verification_ref
+        )
 
       {:entra_tenant_proof,
        verification_type,
@@ -93,6 +158,9 @@ defmodule PortalWeb.OIDCController do
           lv_pid_string,
           verification_ref
         )
+
+      {:sign_up, provider_type} ->
+        handle_sign_up_authorization_error(conn, params, state, provider_type)
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -164,10 +232,10 @@ defmodule PortalWeb.OIDCController do
     handle_error(conn, {:error, :invalid_callback_params})
   end
 
-  defp handle_authentication_callback(conn, state, code) do
+  defp handle_authentication_callback(conn, state, code, iss) do
     case load_auth_context(conn, state) do
       {:ok, auth_context} ->
-        run_authentication_flow(auth_context, code)
+        run_authentication_flow(auth_context, code, iss)
 
       error ->
         handle_error(conn, error)
@@ -210,7 +278,7 @@ defmodule PortalWeb.OIDCController do
 
   defp verify_state(_cookie_state, _callback_state), do: {:error, :state_mismatch}
 
-  defp run_authentication_flow(auth_context, code) do
+  defp run_authentication_flow(auth_context, code, iss) do
     %{
       conn: conn,
       verifier: verifier,
@@ -221,13 +289,28 @@ defmodule PortalWeb.OIDCController do
 
     with :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          :ok <- ensure_client_sign_in_allowed(account, context_type),
-         {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
-         {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"], verifier),
-         userinfo = fetch_userinfo(provider, tokens["access_token"]),
+         {:ok, claims, userinfo, tokens} <- fetch_claims(provider, code, verifier, iss),
          {:ok, identity_result} <- resolve_identity(account, provider, claims, userinfo) do
       finish_resolved_identity(auth_context, identity_result, tokens)
     else
       error -> handle_error(conn, error)
+    end
+  end
+
+  # GitHub has no ID token; its claims are built from the GitHub API instead.
+  defp fetch_claims(%Portal.GitHub.AuthProvider{} = provider, code, verifier, iss) do
+    {:ok, config} = PortalWeb.OIDC.config_for_provider(provider)
+
+    with {:ok, claims, {:ok, userinfo}} <-
+           PortalWeb.GitHub.verify_callback(config, code, verifier, iss) do
+      {:ok, claims, userinfo, %{}}
+    end
+  end
+
+  defp fetch_claims(provider, code, verifier, _iss) do
+    with {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
+         {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"], verifier) do
+      {:ok, claims, fetch_userinfo(provider, tokens["access_token"]), tokens}
     end
   end
 
@@ -243,8 +326,10 @@ defmodule PortalWeb.OIDCController do
          tokens
        ) do
     with :ok <- check_admin(identity, context_type),
+         :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, identity, provider, params) do
+      conn = Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, identity, session_or_token, provider, tokens, params)
     else
       error -> handle_error(conn, error)
@@ -263,6 +348,7 @@ defmodule PortalWeb.OIDCController do
          _tokens
        ) do
     with :ok <- check_actor(actor, context_type),
+         :ok <- ensure_client_seat_available(account, actor, context_type),
          {:ok, conn} <-
            start_owner_verification(conn, account, provider, actor, identity_profile, params) do
       conn
@@ -272,7 +358,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    opts = authorization_opts(provider)
+    opts = authorization_opts(provider, params)
 
     case PortalWeb.OIDC.authorization_uri(provider, opts) do
       {:ok, uri, state, verifier} ->
@@ -323,7 +409,13 @@ defmodule PortalWeb.OIDCController do
 
   defp authorization_error_message(reason), do: discovery_error_message(reason)
 
-  defp authorization_opts(provider) do
+  # An OAuth grant is a step-up operation. Starting a new OIDC round trip is
+  # not enough by itself because an IdP session can otherwise complete it
+  # silently; prompt=login requires a fresh authentication ceremony.
+  defp authorization_opts(_provider, %{"as" => "oauth"}),
+    do: [additional_params: %{prompt: "login"}]
+
+  defp authorization_opts(provider, _params) do
     if provider.__struct__ in [
          Portal.Google.AuthProvider,
          Portal.Entra.AuthProvider,
@@ -390,6 +482,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp resolve_identity(account, provider, claims, userinfo) do
+    claims = maybe_select_actor_email(account, provider, claims)
     email_claim = Map.get(provider, :email_claim)
 
     with {:ok, identity_profile} <-
@@ -397,6 +490,22 @@ defmodule PortalWeb.OIDCController do
       resolve_identity(account, provider, identity_profile)
     end
   end
+
+  # A GitHub user can have several verified addresses, and the primary one is
+  # often personal. Link with the verified address that belongs to an actor in
+  # this account, falling back to the primary address.
+  defp maybe_select_actor_email(
+         account,
+         %Portal.GitHub.AuthProvider{},
+         %{"verified_emails" => [_ | _] = verified_emails} = claims
+       ) do
+    case Database.fetch_active_actor_email(account.id, claims["iss"], claims["sub"], verified_emails) do
+      {:ok, email} -> Map.merge(claims, %{"email" => email, "email_verified" => true})
+      {:error, :not_found} -> claims
+    end
+  end
+
+  defp maybe_select_actor_email(_account, _provider, claims), do: claims
 
   defp resolve_identity(account, provider, identity_profile) do
     case email_verification_method(provider) do
@@ -448,7 +557,19 @@ defmodule PortalWeb.OIDCController do
   # to surface any misbehavior. Entra does not set email_verified, so we cannot check it.
   # Generic OIDC providers send it inconsistently, so we let the admin choose via
   # email_verification_method (none/claim/proof).
+  # GitHub never re-checks an address after verifying it once, and the customer does
+  # not control the GitHub account, so a stale or recycled email would otherwise link
+  # to whoever holds that address in Firezone today. Proof (the default) requires a
+  # code sent to the actor's email on the first link. The admin who signed up with
+  # GitHub is linked at sign-up, so they match by GitHub user ID and never see it.
+  # GitHub's "none" still requires a GitHub-verified email: anyone can add an
+  # unverified address to a GitHub account, so trusting one would allow takeover.
   defp email_verification_method(%Portal.Google.AuthProvider{}), do: :claim
+
+  defp email_verification_method(%Portal.GitHub.AuthProvider{email_verification_method: :none}),
+    do: :claim
+
+  defp email_verification_method(%Portal.GitHub.AuthProvider{}), do: :proof
   defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
 
   defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
@@ -590,7 +711,7 @@ defmodule PortalWeb.OIDCController do
            Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]),
          {:ok, account} <- Database.fetch_account_by_id_or_slug(params["account_id_or_slug"]),
          {:ok, provider} <-
-           Database.fetch_provider(account.id, "oidc", params["auth_provider_id"]) do
+           Database.fetch_proof_provider(account.id, params["auth_provider_id"]) do
       sign_in_params = sanitize(cookie.params)
       conn = put_pending_identity_error_context(conn, account, provider.id, sign_in_params)
 
@@ -638,6 +759,7 @@ defmodule PortalWeb.OIDCController do
              entered_code
            ),
          :ok <- check_admin(identity, context_type),
+         :ok <- ensure_client_seat_available(account, identity.actor, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, identity, provider, params) do
       {:ok,
        %{
@@ -657,7 +779,11 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp handle_verify_identity_result(_conn, {:ok, result}, _params) do
-    conn = Cookie.PendingIdentity.delete_all(result.conn, result.pending_identity_ids)
+    conn =
+      result.conn
+      |> Cookie.PendingIdentity.delete_all(result.pending_identity_ids)
+      |> Cookie.LastUsedProvider.put(result.provider.id)
+
     :ok = Portal.Mailer.RateLimiter.reset_rate_limit({:oidc_identity_verification, result.email})
 
     signed_in(
@@ -738,6 +864,17 @@ defmodule PortalWeb.OIDCController do
 
   defp ensure_client_sign_in_allowed(_account, _context_type), do: :ok
 
+  defp ensure_client_seat_available(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    if Portal.Billing.client_seat_restricted?(account, actor.id) do
+      {:error, :client_sign_in_restricted}
+    else
+      :ok
+    end
+  end
+
+  defp ensure_client_seat_available(_account, _actor, _context_type), do: :ok
+
   defp create_session_or_token(conn, identity, provider, params) do
     type = context_type(params)
     context = authentication_context(conn, type)
@@ -751,7 +888,10 @@ defmodule PortalWeb.OIDCController do
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      t when t in [:portal, :oauth] ->
+      # Approving an app connection. A short lived session of its own, held in
+      # its own cookie, so it neither grants portal access nor is satisfied by
+      # portal access.
         Portal.Authentication.create_portal_session(
           identity.actor,
           provider.id,
@@ -789,12 +929,28 @@ defmodule PortalWeb.OIDCController do
     provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
   end
 
+  defp session_lifetime_secs(_provider, _schema, :oauth) do
+    PortalWeb.Cookie.OAuthSession.lifetime_secs()
+  end
+
   # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, identity, session, _provider, _tokens, params) do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, identity.actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, identity, session, _provider, _tokens, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], identity.actor)
+    )
   end
 
   # Context: :gui_client
@@ -822,6 +978,7 @@ defmodule PortalWeb.OIDCController do
     )
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
@@ -951,12 +1108,112 @@ defmodule PortalWeb.OIDCController do
     })
   end
 
-  defp handle_oidc_verification(conn, code, lv_pid_string) do
+  defp handle_sign_up_callback(conn, code, iss, state, provider_type) do
+    verification_type = sign_up_verification_type(provider_type)
+
+    with {:ok, cookie} <- fetch_sign_up_cookie(conn),
+         :ok <- verify_state(cookie.state, state),
+         {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(verification_type, []),
+         {:ok, claims, userinfo_result} <-
+           PortalWeb.OIDC.verify_callback(config, code, cookie.verifier, iss: iss),
+         {:ok, profile} <- IdentityProfile.build(claims, userinfo(userinfo_result), nil),
+         :ok <- enforce_verified_email(profile) do
+      conn
+      |> Cookie.SignUpState.delete()
+      |> put_session(
+        PortalWeb.SignUp.session_key(),
+        PortalWeb.SignUp.session_identity(profile, provider_type)
+      )
+      |> redirect(to: ~p"/sign_up/#{provider_type}")
+    else
+      {:error, reason} ->
+        maybe_log_verification_error(reason)
+
+        conn
+        |> Cookie.SignUpState.delete()
+        |> redirect_to_sign_up_with_error(sign_up_error_message(provider_type, reason))
+    end
+  end
+
+  defp sign_up_verification_type(provider_type), do: "#{provider_type}_sign_up"
+
+  defp sign_up_provider_name("google"), do: "Google"
+  defp sign_up_provider_name("github"), do: "GitHub"
+
+  defp fetch_sign_up_cookie(conn) do
+    case Cookie.SignUpState.fetch(conn) do
+      %Cookie.SignUpState{} = cookie -> {:ok, cookie}
+      nil -> {:error, :oidc_state_not_found}
+    end
+  end
+
+  defp userinfo({:ok, userinfo}) when is_map(userinfo), do: userinfo
+  defp userinfo(_result), do: %{}
+
+  defp redirect_to_sign_up_with_error(conn, error) do
+    conn
+    |> put_flash(:error, error)
+    |> redirect(to: ~p"/sign_up")
+  end
+
+  defp sign_up_unavailable_error(provider_type) do
+    "#{sign_up_provider_name(provider_type)} sign-in is unavailable right now. " <>
+      "Please try again later or sign up with email."
+  end
+
+  # The signed state alone is not browser-bound, so the cookie is required here
+  # too. Provider error text is logged, never shown, so a crafted callback link
+  # cannot put attacker-chosen words on the page.
+  defp handle_sign_up_authorization_error(conn, params, state, provider_type) do
+    error =
+      with {:ok, cookie} <- fetch_sign_up_cookie(conn),
+           :ok <- verify_state(cookie.state, state) do
+        sign_up_authorization_error(provider_type, params)
+      else
+        {:error, reason} -> sign_up_error_message(provider_type, reason)
+      end
+
+    conn
+    |> Cookie.SignUpState.delete()
+    |> redirect_to_sign_up_with_error(error)
+  end
+
+  defp sign_up_authorization_error(provider_type, %{"error" => "access_denied"}),
+    do: "#{sign_up_provider_name(provider_type)} sign-in was cancelled. Please try again."
+
+  defp sign_up_authorization_error(provider_type, params) do
+    Logger.info("Sign-up authorization error",
+      provider_type: provider_type,
+      error: params["error"],
+      error_description: params["error_description"]
+    )
+
+    "#{sign_up_provider_name(provider_type)} sign-in failed. Please try again."
+  end
+
+  defp sign_up_error_message(_provider_type, reason)
+       when reason in [:oidc_state_not_found, :state_mismatch],
+       do: "Your sign-up session has timed out. Please try again."
+
+  defp sign_up_error_message(provider_type, reason)
+       when reason in [:email_not_verified, :email_verified_missing] do
+    name = sign_up_provider_name(provider_type)
+    "#{name} did not confirm your email address. Please verify it with #{name} and try again."
+  end
+
+  defp sign_up_error_message(provider_type, %Ecto.Changeset{}) do
+    "#{sign_up_provider_name(provider_type)} returned invalid profile data. " <>
+      "Please try again or sign up with email."
+  end
+
+  defp sign_up_error_message(_provider_type, reason), do: verification_error_message(reason)
+
+  defp handle_oidc_verification(conn, code, iss, lv_pid_string) do
     result =
       lv_pid_string
       |> PortalWeb.OIDC.deserialize_pid()
       |> request_pending_verification()
-      |> verify_oidc_callback(code, lv_pid_string)
+      |> verify_oidc_callback(code, iss, lv_pid_string)
 
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
@@ -1423,7 +1680,46 @@ defmodule PortalWeb.OIDCController do
     redirect_with_entra_verification_result(conn, result)
   end
 
-  defp handle_entra_admin_consent_error(conn, params, lv_pid_string, verification_ref) do
+  defp handle_entra_admin_consent_error(
+         conn,
+         %{"error_description" => description} = params,
+         verification_type,
+         lv_pid_string,
+         verification_ref
+       ) do
+    with {:ok, tenant_id} <- PortalWeb.OIDC.entra_service_principal_exists_tenant(description),
+         {:ok, %{config: config, verifier: verifier}} <-
+           lv_pid_string
+           |> PortalWeb.OIDC.deserialize_pid()
+           |> peek_pending_verification(verification_ref) do
+      redirect_to_entra_tenant_proof(
+        conn,
+        config,
+        verifier,
+        tenant_id,
+        lv_pid_string,
+        verification_ref,
+        verification_type,
+        true
+      )
+    else
+      _ ->
+        handle_entra_verification_error(
+          conn,
+          entra_authorization_error_message(params),
+          lv_pid_string,
+          verification_ref
+        )
+    end
+  end
+
+  defp handle_entra_admin_consent_error(
+         conn,
+         params,
+         _verification_type,
+         lv_pid_string,
+         verification_ref
+       ) do
     handle_entra_verification_error(
       conn,
       entra_authorization_error_message(params),
@@ -1462,9 +1758,11 @@ defmodule PortalWeb.OIDCController do
   defp verify_oidc_callback(
          {:ok, %{config: config, verifier: verifier} = pending},
          code,
+         iss,
          lv_pid_string
        ) do
-    with {:ok, claims, userinfo_result} <- PortalWeb.OIDC.verify_callback(config, code, verifier),
+    with {:ok, claims, userinfo_result} <-
+           PortalWeb.OIDC.verify_callback(config, code, verifier, iss: iss),
          :ok <- verify_email_verified_claim(pending, claims, userinfo_result) do
       %{
         ok: true,
@@ -1484,7 +1782,7 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp verify_oidc_callback({:error, reason}, _code, lv_pid_string) do
+  defp verify_oidc_callback({:error, reason}, _code, _iss, lv_pid_string) do
     %{ok: false, error: pending_verification_error_message(reason), lv_pid: lv_pid_string}
   end
 
@@ -1526,7 +1824,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, pending} when is_map(pending) -> {:ok, pending}
       {:pending_verification, _} -> {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
@@ -1542,7 +1840,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, _} ->
         {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
@@ -1558,7 +1856,7 @@ defmodule PortalWeb.OIDCController do
       {:pending_verification, _} ->
         {:error, :not_found}
     after
-      5_000 -> {:error, :timeout}
+      @pending_verification_timeout -> {:error, :timeout}
     end
   end
 
@@ -1614,6 +1912,9 @@ defmodule PortalWeb.OIDCController do
 
   defp parse_verified_callback_state(%{type: "oidc-auth-provider", lv_pid: lv_pid}),
     do: {:oidc_verification, lv_pid}
+
+  defp parse_verified_callback_state(%{type: "google-sign-up"}), do: {:sign_up, "google"}
+  defp parse_verified_callback_state(%{type: "github-sign-up"}), do: {:sign_up, "github"}
 
   defp parse_verified_callback_state(%{
          type: "entra-auth-provider",
@@ -1867,6 +2168,21 @@ defmodule PortalWeb.OIDCController do
       end
     end
 
+    # Only providers that can require proof of email ownership have pending identities.
+    def fetch_proof_provider(account_id, id) do
+      with {:ok, id} <- Ecto.UUID.cast(id),
+           %AuthProvider{type: type} <-
+             from(p in AuthProvider,
+               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github]
+             )
+             |> Safe.unscoped()
+             |> Safe.one() do
+        fetch_provider(account_id, Atom.to_string(type), id)
+      else
+        _ -> {:error, :not_found}
+      end
+    end
+
     def fetch_active_identity_by_idp(account_id, issuer, idp_id) do
       from(identity in ExternalIdentity,
         join: actor in assoc(identity, :actor),
@@ -1901,6 +2217,32 @@ defmodule PortalWeb.OIDCController do
       |> case do
         nil -> {:error, :actor_not_found}
         actor -> {:ok, actor}
+      end
+    end
+
+    # Prefers the actor already linked to this identity, so a user whose
+    # addresses match several actors keeps signing in as the same one.
+    def fetch_active_actor_email(account_id, issuer, idp_id, emails) do
+      emails = Enum.map(emails, &(&1 |> trim_email() |> String.downcase()))
+
+      from(actor in Portal.Actor,
+        left_join: identity in ExternalIdentity,
+        on:
+          identity.account_id == actor.account_id and identity.actor_id == actor.id and
+            identity.issuer == ^issuer and identity.idp_id == ^idp_id,
+        where: actor.account_id == ^account_id,
+        where: actor.type in [:account_admin_user, :account_user],
+        where: actor.is_disabled == false,
+        where: fragment("lower(?)", actor.email) in ^emails,
+        order_by: [desc: not is_nil(identity.id), asc: actor.inserted_at],
+        select: actor.email,
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        email -> {:ok, email}
       end
     end
 

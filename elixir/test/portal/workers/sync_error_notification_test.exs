@@ -212,12 +212,12 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "notifies admins when an Intune provider is disabled by a sync error" do
-      enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
 
-      provider = intune_posture_provider_fixture(account: account)
+      provider =
+        intune_posture_provider_fixture(account: account, synced_at: DateTime.add(DateTime.utc_now(), -2, :hour))
 
       Portal.Intune.ErrorHandler.handle(
         Portal.Intune.SyncError.exception(
@@ -256,7 +256,6 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "notifies admins when an Iru provider is disabled by a sync error" do
-      enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
@@ -288,7 +287,6 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "notifies admins when a Defender provider is disabled by a sync error" do
-      enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
@@ -320,7 +318,6 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
     end
 
     test "notifies admins when a Santa provider is disabled by a sync error" do
-      enable_device_posture()
       account = device_posture_account_fixture()
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
@@ -349,21 +346,7 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.text_body =~ "Workshop API key"
     end
 
-    test "does not email when the global device_posture flag is off" do
-      enable_device_posture()
-      account = device_posture_account_fixture()
-      provider = errored_intune_provider(account)
-
-      enable_device_posture(false)
-
-      assert :ok = perform_job(SyncErrorNotification, notification_args("intune", "daily"))
-
-      assert collect_queued_emails(account.id) == []
-      assert error_email_count(provider) == 0
-    end
-
     test "does not email an account whose device_posture feature is off" do
-      enable_device_posture()
       account = account_fixture(features: %{device_posture: false})
       provider = errored_intune_provider(account)
 

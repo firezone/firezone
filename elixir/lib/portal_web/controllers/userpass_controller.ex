@@ -28,10 +28,12 @@ defmodule PortalWeb.UserpassController do
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
          %Portal.Actor{} = actor <- fetch_actor(account, email),
+         false <- client_seat_restricted?(account, actor, context_type),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
          :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
+      conn = PortalWeb.Cookie.LastUsedProvider.put(conn, provider.id)
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
       error -> handle_error(conn, error, params)
@@ -73,6 +75,13 @@ defmodule PortalWeb.UserpassController do
 
   defp client_sign_in_restricted?(_account, _context_type), do: false
 
+  defp client_seat_restricted?(account, actor, context_type)
+       when context_type in [:gui_client, :headless_client] do
+    Portal.Billing.client_seat_restricted?(account, actor.id)
+  end
+
+  defp client_seat_restricted?(_account, _actor, _context_type), do: false
+
   defp create_session_or_token(conn, actor, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
@@ -94,12 +103,18 @@ defmodule PortalWeb.UserpassController do
 
         :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+
+        :oauth ->
+          PortalWeb.Cookie.OAuthSession.lifetime_secs()
       end
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      # Approving an app connection gets a session of its own, kept in its own
+      # cookie and expiring quickly, so it neither grants portal access nor is
+      # satisfied by portal access.
+      t when t in [:portal, :oauth] ->
         Portal.Authentication.create_portal_session(
           actor,
           provider.id,
@@ -141,6 +156,18 @@ defmodule PortalWeb.UserpassController do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, actor, session, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], actor)
+    )
   end
 
   # Context: :gui_client
@@ -223,6 +250,7 @@ defmodule PortalWeb.UserpassController do
     |> halt()
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client

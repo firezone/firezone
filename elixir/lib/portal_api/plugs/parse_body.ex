@@ -13,7 +13,14 @@ defmodule PortalAPI.Plugs.ParseBody do
   def call(conn, opts) do
     Plug.Parsers.call(conn, opts)
   rescue
-    Plug.Parsers.ParseError ->
-      PortalAPI.ProblemDetails.send(conn, 400, "The request body could not be parsed.")
+    exception in Plug.Conn.WrapperError ->
+      case exception do
+        %{kind: :error, reason: %Plug.Parsers.ParseError{}, conn: conn} -> parse_error(conn)
+        _ -> reraise(exception, __STACKTRACE__)
+      end
+  end
+
+  defp parse_error(conn) do
+    PortalAPI.ProblemDetails.send(conn, 400, "The request body could not be parsed.")
   end
 end

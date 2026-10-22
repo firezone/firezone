@@ -1,5 +1,5 @@
 defmodule Portal.Changes.Hooks.SantaPostureProviders do
-  @moduledoc "Broadcasts Santa posture provider changes without publishing device rewrites."
+  @moduledoc "Broadcasts Santa posture provider changes. Device rows have hooks of their own."
 
   @behaviour Portal.Changes.Hooks
   alias Portal.{Changes.Change, PubSub}

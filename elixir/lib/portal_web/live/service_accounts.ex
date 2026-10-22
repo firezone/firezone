@@ -2,7 +2,7 @@ defmodule PortalWeb.ServiceAccounts do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
-  import PortalWeb.Actors.Components
+  alias PortalWeb.Actors.Components, as: ActorComponents
 
   alias Portal.Actor
   alias Portal.Authentication
@@ -34,13 +34,14 @@ defmodule PortalWeb.ServiceAccounts do
         portal_sessions_subscribed_actor_id: nil
       )
       |> assign(base_actor_assigns())
-      |> assign_live_table("actors",
+      |> assign(actors: [], actors_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
+      |> LiveTable.assign_live_table("actors",
         query_module: Database,
         sortable_fields: [
           {:actors, :name},
           {:actors, :updated_at}
         ],
-        callback: &handle_actors_update!/2
+        loader: &load_actors/2
       )
 
     {:ok, socket}
@@ -48,7 +49,7 @@ defmodule PortalWeb.ServiceAccounts do
 
   # New Service Account Panel
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
     changeset = changeset(%Actor{type: :service_account}, %{})
 
     {:noreply,
@@ -62,7 +63,7 @@ defmodule PortalWeb.ServiceAccounts do
 
   # Show Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     if selected_actor_matches?(socket, id) do
       socket =
@@ -86,7 +87,7 @@ defmodule PortalWeb.ServiceAccounts do
   # Edit Panel
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     with {:ok, actor} <- Database.get_actor(id, socket.assigns.subject) do
-      socket = handle_live_tables_params(socket, params, uri)
+      socket = LiveTable.handle_live_tables_params(socket, params, uri)
       changeset = changeset(actor, %{})
       groups = Database.get_groups_for_actor(actor.id, socket.assigns.subject)
 
@@ -117,7 +118,7 @@ defmodule PortalWeb.ServiceAccounts do
 
   # Default handler — list view
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     socket =
       socket
@@ -129,30 +130,25 @@ defmodule PortalWeb.ServiceAccounts do
 
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, %{assigns: %{actor_panel: %{creating_actor: true}}} = socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/service_accounts?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts"))}
   end
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/service_accounts?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts"))}
   end
 
   def handle_event("handle_keydown", _params, %{assigns: %{live_action: :edit}} = socket)
       when not is_nil(socket.assigns.selected_actor) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_actor) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/service_accounts?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts"))}
   end
 
   def handle_event(
@@ -160,8 +156,7 @@ defmodule PortalWeb.ServiceAccounts do
         _params,
         %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
       ) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/service_accounts?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -169,22 +164,17 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   def handle_event("open_new_actor_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/service_accounts/new")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/new"))}
   end
 
   def handle_event("open_actor_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to:
-         ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}/edit"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}/edit"))}
   end
 
   def handle_event("cancel_actor_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}"
-     )}
+     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{socket.assigns.selected_actor.id}"))}
   end
 
   def handle_event("validate", %{"actor" => attrs} = params, socket) do
@@ -319,10 +309,8 @@ defmodule PortalWeb.ServiceAccounts do
           socket =
             socket
             |> apply_group_membership_changes(actor, socket.assigns.subject)
-            |> reload_live_table!("actors")
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/service_accounts/#{actor.id}"
-            )
+            |> LiveTable.reload_live_table!("actors")
+            |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{actor.id}"))
 
           {:noreply, socket}
 
@@ -330,11 +318,9 @@ defmodule PortalWeb.ServiceAccounts do
           socket =
             socket
             |> apply_group_membership_changes(actor, socket.assigns.subject)
-            |> reload_live_table!("actors")
+            |> LiveTable.reload_live_table!("actors")
             |> merge_state(:actor_related, created_token: encoded_token)
-            |> push_patch(
-              to: ~p"/#{socket.assigns.account}/service_accounts/#{actor.id}"
-            )
+            |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{actor.id}"))
 
           {:noreply, socket}
 
@@ -372,10 +358,8 @@ defmodule PortalWeb.ServiceAccounts do
         {:noreply,
          socket
          |> put_flash(:success, "Service account updated successfully.")
-         |> reload_live_table!("actors")
-         |> push_patch(
-           to: ~p"/#{socket.assigns.account}/service_accounts/#{updated_actor.id}"
-         )}
+         |> LiveTable.reload_live_table!("actors")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{updated_actor.id}"))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}
@@ -404,8 +388,8 @@ defmodule PortalWeb.ServiceAccounts do
       {:noreply,
        socket
        |> put_flash(:success, "Service account deleted successfully")
-       |> reload_live_table!("actors")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/service_accounts")}
+       |> LiveTable.reload_live_table!("actors")
+       |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts"))}
     else
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Service account not found")}
@@ -428,7 +412,7 @@ defmodule PortalWeb.ServiceAccounts do
            |> Database.update(socket.assigns.subject) do
       socket =
         socket
-        |> reload_live_table!("actors")
+        |> LiveTable.reload_live_table!("actors")
         |> merge_state(:actor_panel, confirm_disable_actor: false)
         |> maybe_update_actor_assign(id, updated_actor)
 
@@ -456,7 +440,7 @@ defmodule PortalWeb.ServiceAccounts do
         {:ok, updated_actor} ->
           socket =
             socket
-            |> reload_live_table!("actors")
+            |> LiveTable.reload_live_table!("actors")
             |> maybe_update_actor_assign(id, updated_actor)
 
           {:noreply, put_flash(socket, :success_inline, "Service account enabled successfully")}
@@ -482,12 +466,7 @@ defmodule PortalWeb.ServiceAccounts do
         %{"tab" => tab},
         %{assigns: %{selected_actor: %Actor{} = actor}} = socket
       ) do
-    params = Map.put(socket.assigns.query_params, "tab", tab)
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/service_accounts/#{actor}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/service_accounts/#{actor}", tab: tab))}
   end
 
   def handle_event("change_tab", _params, %{assigns: %{selected_actor: nil}} = socket) do
@@ -621,45 +600,47 @@ defmodule PortalWeb.ServiceAccounts do
 
   def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
-  def handle_actors_update!(socket, list_opts) do
-    with {:ok, actors, metadata} <- Database.list_actors(socket.assigns.subject, list_opts) do
-      {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
+  defp load_actors(subject, list_opts) do
+    with {:ok, actors, metadata} <- Database.list_actors(subject, list_opts) do
+      {:ok, %{actors: actors, actors_metadata: metadata}}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-robot-3-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-robot-3-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Service Accounts</:title>
         <:description>
           Non-human accounts used for automated access to resources.
         </:description>
         <:action>
-          <.docs_action path="/deploy/service-accounts" />
+          <Navigation.docs_action path="/deploy/service-accounts" />
         </:action>
         <:action>
-          <.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">
             New Service Account
-          </.button>
+          </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@actors_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           id="actors"
+          loading={@loading_by_table_id["actors"]}
+          query_error={@query_error_by_table_id["actors"]}
           rows={@actors}
           row_id={&"actor-#{&1.id}"}
           row_click={fn actor ->
@@ -677,7 +658,7 @@ defmodule PortalWeb.ServiceAccounts do
         >
           <:col :let={actor} field={{:actors, :name}} label="name">
             <div class="flex items-center gap-2.5">
-              <.actor_type_icon_with_badge actor={actor} />
+              <ActorComponents.actor_type_icon_with_badge actor={actor} />
               <div>
                 <div class="font-medium text-heading group-hover:text-brand transition-colors">
                   {actor.name}
@@ -689,12 +670,12 @@ defmodule PortalWeb.ServiceAccounts do
             </div>
           </:col>
           <:col :let={actor} label="status" class="w-32">
-            <.actor_status_badge is_disabled={actor.is_disabled} />
+            <ActorComponents.actor_status_badge is_disabled={actor.is_disabled} />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-robot-3-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-robot-3-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">
@@ -704,18 +685,18 @@ defmodule PortalWeb.ServiceAccounts do
                   No service accounts have been created yet.
                 </p>
               </div>
-              <.link
-                patch={~p"/#{@account}/service_accounts/new"}
+              <Navigation.link
+                patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/service_accounts/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Service Account
+              </Navigation.link>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.actor_panel
+      <ActorComponents.actor_panel
         account={@account}
         actor={@selected_actor}
         query_params={@query_params}
@@ -779,11 +760,7 @@ defmodule PortalWeb.ServiceAccounts do
   end
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.actors, change) do
-      socket
-    else
-      assign(socket, stale: true)
-    end
+    LiveTable.mark_stale_unless_reflected(socket, "actors", socket.assigns.actors, change)
   end
 
   defp default_token_expiration do

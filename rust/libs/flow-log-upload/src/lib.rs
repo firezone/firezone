@@ -386,7 +386,7 @@ fn unix_now() -> u64 {
 /// Writes `bytes` to `path`, readable only by the owner (the spool holds Bearer
 /// tokens).
 fn write_owner_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    std::fs::write(path, bytes)?;
+    atomicfs::write(path, bytes)?;
     set_owner_only(path)
 }
 

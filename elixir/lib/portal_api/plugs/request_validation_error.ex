@@ -27,16 +27,31 @@ defmodule PortalAPI.Plugs.RequestValidationError do
       PortalAPI.ProblemDetails.send(
         conn,
         400,
-        "The request could not be processed: " <> Enum.map_join(request_errors, ", ", &request_message/1)
+        "The request could not be processed: " <>
+          Enum.map_join(request_errors, ", ", &request_message/1)
       )
     end
   end
 
   defp put_field_error(%Error{} = error, acc) do
     [_wrapper | path] = path(error)
-    {parents, [leaf]} = Enum.split(path, -1)
-    keys = Enum.map(parents, &Access.key(&1, %{})) ++ [Access.key(leaf, [])]
-    update_in(acc, keys, &[message(error) | &1])
+    put_error(acc, path, message(error))
+  end
+
+  # Union schemas can report errors at both a field and its descendants.
+  # Prefer the field's own errors so every node stays either a map or a list
+  # of messages, regardless of the order in which OpenAPI reports errors.
+  defp put_error(errors, _path, _message) when is_list(errors), do: errors
+
+  defp put_error(errors, [leaf], message) do
+    Map.update(errors, leaf, [message], fn
+      messages when is_list(messages) -> [message | messages]
+      _children -> [message]
+    end)
+  end
+
+  defp put_error(errors, [parent | rest], message) do
+    Map.put(errors, parent, put_error(Map.get(errors, parent, %{}), rest, message))
   end
 
   defp path(%Error{path: path}), do: Enum.map(path, &to_string/1)
@@ -62,6 +77,7 @@ defmodule PortalAPI.Plugs.RequestValidationError do
   defp message(%Error{reason: :invalid_type}), do: "is invalid"
   defp message(%Error{reason: :invalid_enum}), do: "is invalid"
   defp message(%Error{reason: :invalid_format}), do: "is invalid"
+  defp message(%Error{reason: :one_of}), do: "is invalid"
   defp message(%Error{reason: :unexpected_field}), do: "is not a known parameter"
   defp message(%Error{reason: :min_length, length: n}), do: "should be at least #{n} character(s)"
   defp message(%Error{reason: :max_length, length: n}), do: "should be at most #{n} character(s)"

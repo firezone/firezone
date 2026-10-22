@@ -21,7 +21,7 @@ defmodule PortalAPI.GatewayController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Gateways returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to the Gateway with this exact name", type: :string],
       ipv4: [in: :query, description: "Filter to the Gateway with this exact tunnel IPv4 address", type: :string],
@@ -135,13 +135,17 @@ defmodule PortalAPI.GatewayController do
     name = get_in(params, ["gateway", "name"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, token, _encoded_token} <- Database.provision_gateway(site, name, subject) do
+         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
-      |> json(JSON.encode(%{gateway | provisioned_token: token}, schema: PortalAPI.Schemas.Gateway.Schema))
+      |> json(
+        JSON.encode(%{gateway | provisioned_token: encoded_token},
+          schema: PortalAPI.Schemas.Gateway.Schema
+        )
+      )
     else
       error -> Error.handle(conn, error)
     end

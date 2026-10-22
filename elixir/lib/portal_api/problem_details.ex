@@ -9,6 +9,23 @@ defmodule PortalAPI.ProblemDetails do
   @content_type "application/problem+json"
 
   @doc """
+  Sends HTTP 429 with the same retry delay in the header and response body.
+
+  MCP transports may expose only the error body to their consumers, so include
+  the delay in both human-readable detail and a numeric extension in seconds.
+  """
+  @spec rate_limited(Plug.Conn.t(), non_neg_integer()) :: Plug.Conn.t()
+  def rate_limited(conn, retry_after_ms) do
+    retry_after = max(ceil(retry_after_ms / 1000), 1)
+
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(retry_after))
+    |> send(429, "Rate limit exceeded. Retry after #{retry_after} seconds.", %{
+      retry_after_seconds: retry_after
+    })
+  end
+
+  @doc """
   Sends an RFC 9457 problem details JSON response.
 
   `status` is an integer HTTP status code.

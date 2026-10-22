@@ -4,6 +4,7 @@ package dev.firezone.android.features.auth.ui
 import android.content.ActivityNotFoundException
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -13,13 +14,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.Log
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
+import dev.firezone.android.features.auth.ui.compose.AuthScreen
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
+class AuthActivity : AppCompatActivity() {
     private val viewModel: AuthViewModel by viewModels()
     private val authTabLauncher =
         AuthTabIntent.registerActivityResultLauncher(this) { result ->
@@ -28,6 +32,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        setContent {
+            FirezoneTheme {
+                AuthScreen()
+            }
+        }
 
         setupActionObservers()
         if (savedInstanceState == null) {
@@ -55,6 +65,13 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun launchAuthTab(url: String) {
+        val standIn = DebugOverrides.authCallback(Uri.parse(url).getQueryParameter("state"))
+        if (standIn != null) {
+            viewModel.processAuthCallback(standIn)
+
+            return
+        }
+
         try {
             AuthTabIntent
                 .Builder()
@@ -89,7 +106,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun completeAuthFlow() {
-        TunnelService.start(this)
+        TunnelService.start(this, TunnelService.StartSource.AUTH_TAB)
         startActivity(mainActivityHandoffIntent(this))
         finish()
     }

@@ -16,10 +16,6 @@
 # can show readable, deobfuscated stack traces.
 -keepattributes SourceFile,LineNumberTable
 
-# rustls-platform-verifier's Kotlin component is only reached via JNI from
-# libconnlib.so, so R8 sees no references to it and would strip it.
--keep,includedescriptorclasses class org.rustls.platformverifier.** { *; }
-
 # The UniFFI-generated bindings are loaded through JNA, which resolves classes,
 # fields and native methods reflectively by name at runtime.
 -keep,includedescriptorclasses class uniffi.connlib.** { *; }

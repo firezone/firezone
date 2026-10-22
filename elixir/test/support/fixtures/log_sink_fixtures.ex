@@ -499,4 +499,16 @@ defmodule Portal.LogSinkFixtures do
 
     splunk_log_sink
   end
+
+  @doc "Generate a Splunk sink disabled after a sync error."
+  def errored_splunk_log_sink_fixture(attrs \\ %{}) do
+    attrs
+    |> Enum.into(%{
+      is_disabled: true,
+      disabled_reason: "Sync error",
+      error_message: "Splunk HEC returned HTTP 403: Invalid token (code 4)",
+      errored_at: DateTime.utc_now()
+    })
+    |> splunk_log_sink_fixture()
+  end
 end

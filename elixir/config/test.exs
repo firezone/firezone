@@ -1,5 +1,7 @@
 import Config
 
+config :sentry, test_mode: true
+
 ###############################
 ##### Portal ##################
 ###############################
@@ -82,11 +84,11 @@ config :portal, Portal.Billing,
     "prod_test_starter",
     # Team
     "prod_test_team",
+    # Business
+    "prod_test_business",
     # Enterprise
     "prod_test_enterprise"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_test_adhoc_device"
+  ]
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
@@ -168,7 +170,8 @@ config :portal, Portal.Microsoft.Graph.APIClient,
   token_base_url: "https://login.microsoftonline.com",
   applications: [
     entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
-    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"]
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"],
+    windows_updates: [client_id: "test_windows_updates_client_id", client_secret: nil]
   ],
   req_opts: [
     plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
@@ -205,6 +208,12 @@ config :portal, Portal.SentinelOne.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Sophos.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Workers.SyncErrorNotification, []
 
 config :portal, Portal.Workers.LogSinkErrorNotification, []
@@ -219,6 +228,14 @@ config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
 config :portal, :revocation_endpoint_queue, enabled: false
+
+config :portal, Portal.OSReleases, reload_every: false
+
+config :portal, Portal.OSReleases.Sync,
+  req_opts: [
+    plug: {Req.Test, Portal.OSReleases.Sync},
+    retry: false
+  ]
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -253,6 +270,21 @@ config :portal, Portal.Crl.Sync,
     plug: {Req.Test, Portal.Crl.Sync}
   ]
 
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ],
+  # Req.Test never connects, but the mandatory protection still resolves before
+  # handing a request to its adapter. Use a known-public answer so metadata
+  # tests can keep descriptive fake hostnames (and localhost origin fixtures).
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
 config :portal, Portal.Ocsp.Sync,
   req_opts: [
     retry: false,
@@ -266,6 +298,17 @@ config :portal, Portal.Google.AuthProvider,
   req_opts: [
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.GitHub.AuthProvider,
+  client_id: "test_github_client_id",
+  client_secret: "test_github_client_secret",
+  authorize_endpoint: "https://github.test/login/oauth/authorize",
+  token_endpoint: "https://github.test/login/oauth/access_token",
+  api_endpoint: "https://api.github.test",
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.GitHub}
   ]
 
 config :portal, Portal.Google.SyncAuthorization,
@@ -311,10 +354,20 @@ config :portal, PortalWeb.Endpoint,
   url: [port: 13_100],
   server: true
 
+# Poll quickly so tests waiting on the getting started guide don't sit idle
+config :portal, PortalWeb.GettingStarted, poll_interval_ms: 20
+
 # Keep the endpoint limiter effectively disabled in general tests to avoid
 # cross-test interference from shared localhost IPs. Dedicated rate-limit tests
 # override this config with strict values.
 config :portal, PortalWeb.RateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
+# MCP controller tests share the loopback source IP, so dedicated limiter tests
+# pass strict values directly while the general suite uses a practically
+# unbounded bucket.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
@@ -337,6 +390,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ]
 
 config :portal, :constant_execution_time, 1
+config :portal, :pending_verification_timeout, 1_000
 
 ###############################
 ##### PortalAPI Endpoint ######
@@ -373,7 +427,7 @@ config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :geolix,
   databases: [
-    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+    %{id: :city, adapter: Portal.Test.GeoAdapter, data: %{}}
   ]
 
 default_assert_receive_timeout = 1_000
@@ -397,3 +451,14 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :sentry,
   environment_name: :test
+
+# Test-only destinations; production ad configuration comes from runtime env vars.
+config :portal, Portal.Analytics.OpenAI,
+  api_key: nil,
+  pixel_id: "test-openai-pixel",
+  endpoint: "https://bzr.openai.com/v1/events",
+  req_opts: [retry: false]
+
+config :portal, Portal.Analytics.GoogleAds,
+  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]

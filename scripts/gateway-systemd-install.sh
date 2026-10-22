@@ -8,13 +8,13 @@ FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
 RUST_LOG=${RUST_LOG:-info}
 
 # mark:current-gateway-version
-GATEWAY_VERSION="1.6.0"
+GATEWAY_VERSION="1.6.3"
 # mark:gateway-x86_64-sha256
-GATEWAY_X86_64_SHA256="eb3f69a9c510da31b29ef3eca9c1f14bdfcab76665cf450ef1a453677414c521"
+GATEWAY_X86_64_SHA256="c8e774118539c784b07d3b79217bf3a70913a5a6923ae185f44c0cb19f857cc6"
 # mark:gateway-aarch64-sha256
-GATEWAY_AARCH64_SHA256="3e47e7235ea347a2e05a2a9ab991a2ab5f52a21b8cc5be5bd88c0e7cbd91b63f"
+GATEWAY_AARCH64_SHA256="8f8ea894db3f4e2bbd8b79957f1075382e0863c220c82263563d0eb6d436bd1f"
 # mark:gateway-armv7-sha256
-GATEWAY_ARMV7_SHA256="99d7226daa5a23dc63a51562530b961a2f5e707ca9b9d19c1b62fdb67c21776e"
+GATEWAY_ARMV7_SHA256="7dce114a1b6035412289958a1b1a14f224d03700dc541a249a580f37d96c3988"
 
 # Optional environment variables to configure logging and tracing
 FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
@@ -40,9 +40,11 @@ if [ -z "$FIREZONE_ID" ]; then
     FIREZONE_ID=$(legacy_unit_environment FIREZONE_ID)
 fi
 
-if [ -z "$FIREZONE_ID" ]; then
-    echo "FIREZONE_ID is required"
-    exit 1
+# FIREZONE_ID is optional. Without one the Gateway generates an ID and keeps it in
+# its state directory, so only pin it in the unit when one was given or migrated.
+firezone_id_environment=""
+if [ -n "$FIREZONE_ID" ]; then
+    firezone_id_environment="Environment=\"FIREZONE_ID=$FIREZONE_ID\""
 fi
 
 if [ -z "$FIREZONE_TOKEN" ] && ! sudo test -s "$TOKEN_FILE"; then
@@ -112,7 +114,7 @@ StateDirectoryMode=0700
 
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
-Environment="FIREZONE_ID=$FIREZONE_ID"
+$firezone_id_environment
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
 Environment="RUST_LOG_STYLE=never"
@@ -131,6 +133,9 @@ TimeoutStartSec=15s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
+# 78 is \`EX_CONFIG\` from \`sysexits.h\`: the portal refused the token, so restarting
+# cannot help until an operator installs a new one.
+RestartPreventExitStatus=78
 
 #####################
 # HARDENING OPTIONS #

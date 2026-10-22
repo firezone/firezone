@@ -21,9 +21,9 @@ defmodule PortalAPI.RateLimitTest do
       )
 
     actor = actor_fixture(type: :api_client, account: account)
-    _resources = for _ <- 1..3, do: resource_fixture(account: account)
+    resources = for _ <- 1..3, do: resource_fixture(account: account)
 
-    %{account: account, actor: actor}
+    %{account: account, actor: actor, resources: resources}
   end
 
   describe "REST API rate limit" do
@@ -57,13 +57,22 @@ defmodule PortalAPI.RateLimitTest do
 
       [retry_after] = get_resp_header(resp_conn, "retry-after")
       assert String.to_integer(retry_after) >= 1
+      body = json_response(resp_conn, 429)
+      assert body == %{
+               "type" => "about:blank",
+               "status" => 429,
+               "title" => "Too Many Requests",
+               "detail" =>
+                 "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
+             }
     end
 
     test "rejects a rate-limited malformed JSON request before decoding it", %{
       conn: conn,
-      actor: actor
+      actor: actor,
+      resources: [resource | _]
     } do
-      assert %{"data" => _data, "metadata" => _metadata} = call_api(conn, actor) |> json_response(200)
+      assert json_response(delete_resource(conn, actor, resource), 200)
 
       conn =
         conn
@@ -73,6 +82,41 @@ defmodule PortalAPI.RateLimitTest do
 
       assert %{"status" => 429} = json_response(conn, 429)
     end
+
+    test "charges reads and writes to separate buckets", %{
+      conn: conn,
+      actor: actor,
+      resources: [first, second | _]
+    } do
+      assert json_response(call_api(conn, actor), 200)
+      assert json_response(call_api(conn, actor), 429)
+
+      assert json_response(delete_resource(conn, actor, first), 200)
+      assert json_response(delete_resource(conn, actor, second), 429)
+    end
+
+    test "uses the account read limits for reads only", %{conn: conn} do
+      account =
+        account_fixture(
+          limits: %{
+            monthly_active_users_count: 100,
+            api_capacity: @rate_limit_capacity,
+            api_refill_rate: @rate_limit_refill_rate,
+            api_read_capacity: @rate_limit_capacity * 2,
+            api_read_refill_rate: @rate_limit_refill_rate
+          }
+        )
+
+      actor = actor_fixture(type: :api_client, account: account)
+      [first, second] = for _ <- 1..2, do: resource_fixture(account: account)
+
+      assert json_response(call_api(conn, actor), 200)
+      assert json_response(call_api(conn, actor), 200)
+      assert json_response(call_api(conn, actor), 429)
+
+      assert json_response(delete_resource(conn, actor, first), 200)
+      assert json_response(delete_resource(conn, actor, second), 429)
+    end
   end
 
   defp call_api(conn, actor) do
@@ -80,5 +124,12 @@ defmodule PortalAPI.RateLimitTest do
     |> authorize_conn(actor)
     |> put_req_header("content-type", "application/json")
     |> get("/resources")
+  end
+
+  defp delete_resource(conn, actor, resource) do
+    conn
+    |> authorize_conn(actor)
+    |> put_req_header("content-type", "application/json")
+    |> delete("/resources/#{resource.id}")
   end
 end

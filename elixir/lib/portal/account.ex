@@ -56,6 +56,8 @@ defmodule Portal.Account do
     has_many :santa_devices, Portal.Santa.Device
     has_many :sentinelone_posture_providers, Portal.SentinelOne.PostureProvider
     has_many :sentinelone_devices, Portal.SentinelOne.Device
+    has_many :sophos_posture_providers, Portal.Sophos.PostureProvider
+    has_many :sophos_devices, Portal.Sophos.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
@@ -66,6 +68,7 @@ defmodule Portal.Account do
 
     has_many :google_directories, Portal.Google.Directory
     has_many :google_auth_providers, Portal.Google.AuthProvider
+    has_many :github_auth_providers, Portal.GitHub.AuthProvider
     has_many :okta_directories, Portal.Okta.Directory
     has_many :okta_auth_providers, Portal.Okta.AuthProvider
     has_many :entra_directories, Portal.Entra.Directory
@@ -86,6 +89,12 @@ defmodule Portal.Account do
     # Tracks when the last limit exceeded email was sent (for throttling)
     field :warning_last_sent_at, :utc_datetime_usec
 
+    # Tracks the last seat warning email sent (Business plan): when, and which
+    # state it described, so a worse state is not held back by the weekly throttle
+    field :seats_warning_last_sent_at, :utc_datetime_usec
+    field :outdated_gateway_last_sent_at, :utc_datetime_usec
+    field :seats_warning_level, Ecto.Enum, values: [:approaching, :at_limit, :over]
+
     field :disabled_reason, :string
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
@@ -102,7 +111,8 @@ defmodule Portal.Account do
 
   def changeset(changeset) do
     changeset
-    |> validate_length(:name, min: 3, max: 64)
+    |> validate_length(:name, min: 3, message: "too short")
+    |> validate_length(:name, max: 64, message: "too long")
     |> validate_length(:slug, min: 3, max: 100)
     |> validate_length(:key, is: 6)
     |> validate_key_format()
@@ -146,18 +156,11 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
-  # All plan entitlements except device posture are account-local. Device posture
-  # additionally has a deployment-wide rollout flag in the features table.
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :device_posture do
+  for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
       account_feature_enabled?(account, unquote(feature))
     end
-  end
-
-  def device_posture_enabled?(account) do
-    Portal.Features.enabled?(:device_posture) and
-      account_feature_enabled?(account, :device_posture)
   end
 
   defp account_feature_enabled?(account, feature) do
@@ -171,13 +174,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
+    field :marketing_attribution, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    # No scalar fields to cast, but cast/3 is required to populate params for cast_embed.
-    |> cast(attrs, [])
+    |> cast(attrs, [:marketing_attribution])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end
@@ -190,10 +193,12 @@ defmodule Portal.Account.Metadata.Stripe do
   embedded_schema do
     field :customer_id, :string
     field :subscription_id, :string
+    field :subscription_status, :string
     field :product_name, :string
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
     field :support_type, :string
+    embeds_many :add_ons, Portal.Account.Metadata.Stripe.AddOn, on_replace: :delete
   end
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
@@ -201,10 +206,28 @@ defmodule Portal.Account.Metadata.Stripe do
     |> cast(attrs, [
       :customer_id,
       :subscription_id,
+      :subscription_status,
       :product_name,
       :billing_email,
       :trial_ends_at,
       :support_type
     ])
+    |> cast_embed(:add_ons, with: &Portal.Account.Metadata.Stripe.AddOn.changeset/2)
+  end
+end
+
+defmodule Portal.Account.Metadata.Stripe.AddOn do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :name, :string
+    field :quantity, :integer
+    field :limit, :string
+  end
+
+  def changeset(add_on \\ %__MODULE__{}, attrs) do
+    cast(add_on, attrs, [:name, :quantity, :limit])
   end
 end

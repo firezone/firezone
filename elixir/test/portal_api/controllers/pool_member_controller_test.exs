@@ -1,13 +1,12 @@
 defmodule PortalAPI.PoolMemberControllerTest do
   use PortalAPI.ConnCase, async: true
 
-  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.ResourceFixtures
 
-  alias Portal.StaticDevicePoolMember
+  alias Portal.Resource.DeviceMembershipCriteria
 
   setup do
     account = account_fixture()
@@ -17,18 +16,18 @@ defmodule PortalAPI.PoolMemberControllerTest do
   end
 
   defp member_ids(resource) do
-    Repo.all(
-      from(m in StaticDevicePoolMember,
-        where: m.resource_id == ^resource.id,
-        select: m.device_id
-      )
-    )
-    |> Enum.sort()
+    {:ok, device_ids} =
+      Portal.Resource
+      |> Repo.get_by!(id: resource.id, account_id: resource.account_id)
+      |> Map.fetch!(:device_membership_criteria)
+      |> DeviceMembershipCriteria.device_ids()
+
+    device_ids
   end
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
       conn = get(conn, "/resources/#{pool.id}/pool_members")
 
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
@@ -40,7 +39,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       client2 = client_fixture(account: account)
       _unrelated = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, devices: [client1, client2])
+      pool = device_pool_resource_fixture(account: account, devices: [client1, client2])
 
       conn =
         conn
@@ -57,7 +56,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       account: account,
       actor: api_actor
     } do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -66,6 +65,22 @@ defmodule PortalAPI.PoolMemberControllerTest do
         |> get("/resources/#{pool.id}/pool_members")
 
       assert %{"data" => []} = json_response(conn, 200)
+    end
+
+    test "rejects a pool holding each actor's own devices", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      pool = own_devices_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources/#{pool.id}/pool_members")
+
+      assert %{"status" => 400} = json_response(conn, 400)
     end
 
     test "rejects a Resource that is not a device pool", %{
@@ -104,9 +119,9 @@ defmodule PortalAPI.PoolMemberControllerTest do
       other_client = client_fixture(account: other_account)
 
       other_pool =
-        static_device_pool_resource_fixture(account: other_account, devices: [other_client])
+        device_pool_resource_fixture(account: other_account, devices: [other_client])
 
-      _local_pool = static_device_pool_resource_fixture(account: account)
+      _local_pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -124,7 +139,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       drop = client_fixture(account: account)
       add = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, devices: [keep, drop])
+      pool = device_pool_resource_fixture(account: account, devices: [keep, drop])
 
       conn =
         conn
@@ -141,7 +156,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
 
     test "an empty list clears the pool", %{conn: conn, account: account, actor: api_actor} do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [client])
+      pool = device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -153,39 +168,22 @@ defmodule PortalAPI.PoolMemberControllerTest do
       assert member_ids(pool) == []
     end
 
-    test "keeps the membership row for a client that stays", %{
+    test "rejects a pool holding each actor's own devices", %{
       conn: conn,
       account: account,
       actor: api_actor
     } do
-      keep = client_fixture(account: account)
-      add = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [keep])
+      pool = own_devices_pool_resource_fixture(account: account)
+      client = client_fixture(account: account)
 
-      original_row_id =
-        Repo.one!(
-          from(m in StaticDevicePoolMember,
-            where: m.resource_id == ^pool.id and m.device_id == ^keep.id,
-            select: m.id
-          )
-        )
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{pool.id}/pool_members", pool_members: [%{"device_id" => client.id}])
 
-      conn
-      |> authorize_conn(api_actor)
-      |> put_req_header("content-type", "application/json")
-      |> put("/resources/#{pool.id}/pool_members",
-        pool_members: [%{"device_id" => keep.id}, %{"device_id" => add.id}]
-      )
-      |> json_response(200)
-
-      # An unchanged member must not be deleted and reinserted - that
-      # would churn the replication stream the data plane consumes.
-      assert Repo.one!(
-               from(m in StaticDevicePoolMember,
-                 where: m.resource_id == ^pool.id and m.device_id == ^keep.id,
-                 select: m.id
-               )
-             ) == original_row_id
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "own devices"
     end
 
     # Regression: malformed entries used to be dropped silently. A body
@@ -197,7 +195,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       keep = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [keep])
+      pool = device_pool_resource_fixture(account: account, devices: [keep])
 
       for {label, body} <- [
             {"entry with no device_id", [%{}]},
@@ -227,7 +225,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [client])
+      pool = device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -240,7 +238,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
     end
 
     test "rejects an unknown device id", %{conn: conn, account: account, actor: api_actor} do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
       unknown = Ecto.UUID.generate()
 
       conn =
@@ -260,7 +258,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
     test "rejects a gateway device id", %{conn: conn, account: account, actor: api_actor} do
       site = Portal.SiteFixtures.site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site)
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -280,7 +278,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       other_client = client_fixture(account: account_fixture())
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -318,7 +316,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       account: account,
       actor: api_actor
     } do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -340,7 +338,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       drop = client_fixture(account: account)
       add = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, devices: [keep, drop])
+      pool = device_pool_resource_fixture(account: account, devices: [keep, drop])
 
       conn =
         conn
@@ -361,7 +359,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [client])
+      pool = device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -377,7 +375,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
     test "removing a non-member is a no-op", %{conn: conn, account: account, actor: api_actor} do
       member = client_fixture(account: account)
       stranger = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [member])
+      pool = device_pool_resource_fixture(account: account, devices: [member])
 
       conn =
         conn
@@ -396,7 +394,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -417,7 +415,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [client])
+      pool = device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -435,7 +433,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       member = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, devices: [member])
+      pool = device_pool_resource_fixture(account: account, devices: [member])
 
       conn =
         conn
@@ -461,7 +459,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
         actor: api_actor
       } do
         member = client_fixture(account: account)
-        pool = static_device_pool_resource_fixture(account: account, devices: [member])
+        pool = device_pool_resource_fixture(account: account, devices: [member])
 
         conn =
           conn
@@ -480,7 +478,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       account: account,
       actor: api_actor
     } do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn

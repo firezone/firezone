@@ -1,12 +1,175 @@
 defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
 
+  defmodule DeviceMembershipCriteria do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "DeviceMembershipCriteria",
+      description: """
+      Who a `device_pool` Resource holds. Required for a device pool, absent for every
+      other Resource type.
+
+      The object has exactly one key, naming where the field lives: `device` is the
+      Client row itself, and `actor_group` is a group the Client's owner belongs to.
+      The value is one rule comparing a field against either a literal or an attribute
+      of the Actor asking for access. More sources can be added later without changing
+      the rules already stored.
+
+      The four rules the API accepts, and who each one holds:
+
+          {"device": {"field": "id", "op": "in", "value": ["<client id>", ...]}}
+          {"device": {"field": "actor_id", "op": "eq", "value": {"subject": "actor_id"}}}
+          {"device": {"field": "account_id", "op": "eq", "value": {"subject": "account_id"}}}
+          {"actor_group": {"field": "id", "op": "eq", "value": "<group id>"}}
+
+      In order: exactly the Clients named, the asking Actor's own Clients, every Client
+      in the Account, and the Clients of every Actor in one Group.
+
+      Editing the list of Clients the first rule names drops the connections to the
+      Clients removed and leaves every other connection through the pool alone.
+
+      Every other change to this field is a breaking update, because any Client can move
+      in or out of the pool: every active connection through the pool is dropped, and
+      Clients reconnect to the members they may still reach.
+
+      Clients older than the device-pool protocol only understand a pool that names its
+      members, so they are sent the first rule and never the other three.
+      """,
+      type: :object,
+      example: %{
+        "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
+      },
+      oneOf: [
+        %Schema{
+          title: "DeviceMembershipListedDevices",
+          description: "Exactly the Clients named",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{
+              "field" => "id",
+              "op" => "in",
+              "value" => [
+                "7cb89288-1fb3-433e-a522-2d087e45988d",
+                "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+              ]
+            }
+          },
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["id"]},
+                op: %Schema{type: :string, enum: ["in"]},
+                value: %Schema{
+                  type: :array,
+                  description: "Client IDs",
+                  items: %Schema{type: :string, format: :uuid}
+                }
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
+        },
+        %Schema{
+          title: "DeviceMembershipOwnDevices",
+          description: "The Clients of the Actor asking for access",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
+          },
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["actor_id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{
+                  type: :object,
+                  additionalProperties: false,
+                  properties: %{subject: %Schema{type: :string, enum: ["actor_id"]}},
+                  required: [:subject]
+                }
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
+        },
+        %Schema{
+          title: "DeviceMembershipAllDevices",
+          description: "Every Client in the Account",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "device" => %{
+              "field" => "account_id",
+              "op" => "eq",
+              "value" => %{"subject" => "account_id"}
+            }
+          },
+          properties: %{
+            device: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["account_id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{
+                  type: :object,
+                  additionalProperties: false,
+                  properties: %{subject: %Schema{type: :string, enum: ["account_id"]}},
+                  required: [:subject]
+                }
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:device]
+        },
+        %Schema{
+          title: "DeviceMembershipActorGroup",
+          description: "The Clients of every Actor in one Group",
+          type: :object,
+          additionalProperties: false,
+          example: %{
+            "actor_group" => %{
+              "field" => "id",
+              "op" => "eq",
+              "value" => "b3a1c6e2-5f4d-4e7a-9c8b-1d2e3f4a5b6c"
+            }
+          },
+          properties: %{
+            actor_group: %Schema{
+              type: :object,
+              additionalProperties: false,
+              properties: %{
+                field: %Schema{type: :string, enum: ["id"]},
+                op: %Schema{type: :string, enum: ["eq"]},
+                value: %Schema{type: :string, format: :uuid, description: "Group ID"}
+              },
+              required: [:field, :op, :value]
+            }
+          },
+          required: [:actor_group]
+        }
+      ]
+    })
+  end
+
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Resource, internal: [:account_id, :inserted_at, :updated_at]}
+             for: Portal.Resource,
+             internal: [:account_id, :inserted_at, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Resource",
       description: "Resource",
@@ -23,7 +186,7 @@ defmodule PortalAPI.Schemas.Resource do
           example: "10.0.0.10",
           type: :string,
           nullable: true,
-          description: "Resource address. Null for `static_device_pool` Resources."
+          description: "Resource address. Null for `device_pool` Resources."
         },
         address_description: %Schema{
           example: "Production Database",
@@ -35,11 +198,11 @@ defmodule PortalAPI.Schemas.Resource do
           example: "ip",
           type: :string,
           description:
-            "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` " <>
-              "is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created " <>
-              "through the API.",
-          enum: ["cidr", "ip", "dns", "internet", "static_device_pool", "dynamic_device_pool"]
+            "Resource type. A `device_pool` has no `address` and no `site_id`; who it " <>
+              "holds is `device_membership_criteria`.",
+          enum: ["cidr", "ip", "dns", "internet", "device_pool"]
         },
+        device_membership_criteria: PortalAPI.Schemas.Resource.DeviceMembershipCriteria,
         ip_stack: %Schema{
           type: :string,
           description: "IP stack type. Only supported for DNS resources.",
@@ -49,7 +212,7 @@ defmodule PortalAPI.Schemas.Resource do
           example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
           title: "SiteID",
           description:
-            "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "Site to connect the Resource to. Required for all types except device pools.",
           type: :string,
           format: :uuid
         },
@@ -65,9 +228,17 @@ defmodule PortalAPI.Schemas.Resource do
       required: [:address, :address_description, :filters, :id, :name, :type]
     })
 
-    def map(%Portal.Resource{filters: filters}, _map) do
-      %{filters: Enum.map(filters, &%{protocol: &1.protocol, ports: &1.ports})}
+    def map(%Portal.Resource{filters: filters} = resource, _map) do
+      %{
+        filters: Enum.map(filters, &%{protocol: &1.protocol, ports: &1.ports}),
+        device_membership_criteria: render_criteria(resource.device_membership_criteria)
+      }
     end
+
+    defp render_criteria(nil), do: nil
+
+    defp render_criteria(criteria),
+      do: Portal.Resource.DeviceMembershipCriteria.to_map(criteria)
   end
 
   defmodule Filter do
@@ -106,22 +277,14 @@ defmodule PortalAPI.Schemas.Resource do
     OpenApiSpex.schema(%{
       title: "ResourceCreateRequest",
       description:
-        "POST body for creating a Resource. `site_id` is required.\n\n" <>
-          "Device pools (`static_device_pool`) cannot currently be created through this " <>
-          "API - create them in the admin portal. Existing pools can be read, updated, " <>
-          "deleted, and have their members managed here as normal.",
+        "POST body for creating a Resource. `site_id` is required for every type " <>
+          "except `device_pool`, which needs `device_membership_criteria` instead.",
       type: :object,
       properties: %{
         resource: %Schema{
           type: :object,
           properties: %{
             name: %Schema{
-              # static_device_pool is deliberately absent: pools cannot be
-              # created or converted to through this API for now. It stays
-              # in the response schema below, since existing pools are
-              # still returned. See
-              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
-              # for what to change to re-enable it.
               example: "Prod DB",
               type: :string,
               description: "Resource name"
@@ -129,7 +292,9 @@ defmodule PortalAPI.Schemas.Resource do
             address: %Schema{
               example: "10.0.0.10",
               type: :string,
-              description: "Resource address.",
+              description:
+                "Resource address. Required for `cidr`, `ip` and `dns`. " <>
+                  "`device_pool` and `internet` Resources ignore it.",
               nullable: true
             },
             address_description: %Schema{
@@ -141,8 +306,10 @@ defmodule PortalAPI.Schemas.Resource do
             type: %Schema{
               example: "ip",
               type: :string,
-              description: "Resource type. `internet` is accepted only in the Internet Site.",
-              enum: ["cidr", "ip", "dns", "internet"]
+              description:
+                "Resource type. `internet` is accepted only in the Internet Site. " <>
+                  "`device_pool` takes no `site_id` and no `address`.",
+              enum: ["cidr", "ip", "dns", "internet", "device_pool"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -154,8 +321,9 @@ defmodule PortalAPI.Schemas.Resource do
               example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required. " <>
-                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "Site to connect the Resource to. Required for all types except `device_pool`, " <>
+                  "which takes none. The Internet Site is reserved for the Internet Resource " <>
+                  "and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true
@@ -168,7 +336,8 @@ defmodule PortalAPI.Schemas.Resource do
               description:
                 "Traffic filters restricting the protocols and ports the Resource exposes",
               items: Resource.Filter
-            }
+            },
+            device_membership_criteria: Resource.DeviceMembershipCriteria
           },
           required: [:name, :type]
         }
@@ -193,10 +362,6 @@ defmodule PortalAPI.Schemas.Resource do
           type: :object,
           properties: %{
             name: %Schema{
-              # A pool may restate its own type but nothing can be converted
-              # into one through this API for now. See
-              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
-              # for what to change to re-enable it.
               example: "Prod DB",
               type: :string,
               description: "Resource name"
@@ -204,7 +369,9 @@ defmodule PortalAPI.Schemas.Resource do
             address: %Schema{
               example: "10.0.0.10",
               type: :string,
-              description: "Resource address.",
+              description:
+                "Resource address. Required for `cidr`, `ip` and `dns`. " <>
+                  "`device_pool` and `internet` Resources ignore it.",
               nullable: true
             },
             address_description: %Schema{
@@ -218,8 +385,8 @@ defmodule PortalAPI.Schemas.Resource do
               type: :string,
               description:
                 "Resource type. `internet` is accepted only in the Internet Site. " <>
-                  "`static_device_pool` is accepted only on a Resource that already is one.",
-              enum: ["cidr", "ip", "dns", "internet", "static_device_pool"]
+                  "`device_pool` takes no `site_id` and no `address`.",
+              enum: ["cidr", "ip", "dns", "internet", "device_pool"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -231,8 +398,9 @@ defmodule PortalAPI.Schemas.Resource do
               example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
-                "Site to connect the Resource to. Required. " <>
-                  "The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "Site to connect the Resource to. Required for all types except `device_pool`, " <>
+                  "which takes none. The Internet Site is reserved for the Internet Resource " <>
+                  "and cannot be used.",
               type: :string,
               format: :uuid,
               nullable: true
@@ -245,7 +413,8 @@ defmodule PortalAPI.Schemas.Resource do
               description:
                 "Traffic filters restricting the protocols and ports the Resource exposes",
               items: Resource.Filter
-            }
+            },
+            device_membership_criteria: Resource.DeviceMembershipCriteria
           }
         }
       },

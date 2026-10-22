@@ -3,14 +3,12 @@ defmodule Portal.Intune.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
-  import Portal.DevicePostureFixtures
   import Portal.IntuneFixtures
 
   alias Portal.Intune.{Device, PostureProvider, Sync}
   alias Portal.Microsoft.Graph.APIClient
 
   setup do
-    enable_device_posture()
     Req.Test.stub(APIClient, fn conn -> Req.Test.json(conn, %{"error" => "not mocked"}) end)
     :ok
   end
@@ -19,12 +17,12 @@ defmodule Portal.Intune.SyncTest do
     provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
-      managed_device(%{
+      intune_api_device_fixture(%{
         "id" => "managed-device-1",
         "serialNumber" => "serial-one",
         "deviceName" => "Alice's Surface"
       }),
-      managed_device(%{
+      intune_api_device_fixture(%{
         "id" => "managed-device-2",
         "serialNumber" => "SERIAL-TWO",
         "deviceName" => "Bob's Mac"
@@ -54,7 +52,7 @@ defmodule Portal.Intune.SyncTest do
   test "stores every property Microsoft Graph returns for a managed device" do
     provider = intune_posture_provider_fixture()
 
-    stub_managed_devices([full_managed_device()])
+    stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
@@ -68,7 +66,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.operating_system == "Operating System value"
     assert device.compliance_state == "compliant"
     assert device.management_state == "managed"
-    assert device.jail_broken == "Jail Broken value"
+    assert device.jail_broken == true
     assert device.management_agent == "mdm"
     assert device.os_version == "Os Version value"
     assert device.eas_activated == true
@@ -92,7 +90,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.compliance_grace_period_expiration_at == ~U[2017-01-01 07:56:44.951111Z]
     assert device.serial_number == "Serial Number value"
     assert device.phone_number == "Phone Number value"
-    assert device.android_security_patch_level == "Android Security Patch Level value"
+    assert device.android_security_patch_level == ~D[2024-05-05]
     assert device.user_display_name == "User Display Name value"
     assert device.wifi_mac_address == "Wi Fi Mac Address value"
     assert device.subscriber_carrier == "Subscriber Carrier value"
@@ -125,25 +123,23 @@ defmodule Portal.Intune.SyncTest do
     assert device.attestation_identity_key == "Attestation Identity Key value"
     assert device.attestation_reset_count == 10
     assert device.attestation_restart_count == 12
-    assert device.attestation_data_execution_policy == "Data Execution Policy value"
-    assert device.attestation_bit_locker_status == "Bit Locker Status value"
+    assert device.attestation_data_execution_policy_enabled == true
+    assert device.attestation_bit_locker_enabled == true
     assert device.attestation_boot_manager_version == "Boot Manager Version value"
     assert device.attestation_code_integrity_check_version == "Code Integrity Check Version value"
-    assert device.attestation_secure_boot == "Secure Boot value"
-    assert device.attestation_boot_debugging == "Boot Debugging value"
+    assert device.attestation_secure_boot == true
+    assert device.attestation_boot_debugging == false
 
-    assert device.attestation_operating_system_kernel_debugging ==
-             "Operating System Kernel Debugging value"
+    assert device.attestation_operating_system_kernel_debugging == false
 
-    assert device.attestation_code_integrity == "Code Integrity value"
-    assert device.attestation_test_signing == "Test Signing value"
-    assert device.attestation_safe_mode == "Safe Mode value"
-    assert device.attestation_windows_pe == "Windows PE value"
+    assert device.attestation_code_integrity == true
+    assert device.attestation_test_signing == false
+    assert device.attestation_safe_mode == false
+    assert device.attestation_windows_pe == false
 
-    assert device.attestation_early_launch_anti_malware_driver_protection ==
-             "Early Launch Anti Malware Driver Protection value"
+    assert device.attestation_early_launch_anti_malware_driver_protection == true
 
-    assert device.attestation_virtual_secure_mode == "Virtual Secure Mode value"
+    assert device.attestation_virtual_secure_mode == true
     assert device.attestation_pcr_hash_algorithm == "Pcr Hash Algorithm value"
     assert device.attestation_boot_app_security_version == "Boot App Security Version value"
     assert device.attestation_boot_manager_security_version == "Boot Manager Security Version value"
@@ -157,7 +153,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.attestation_boot_revision_list_info == "Boot Revision List Info value"
     assert device.attestation_operating_system_rev_list_info == "Operating System Rev List Info value"
     assert device.attestation_health_status_mismatch_info == "Health Status Mismatch Info value"
-    assert device.attestation_supported_status == "Health Attestation Supported Status value"
+    assert device.attestation_supported == true
 
     assert [%{"actionName" => "Action Name value", "actionState" => "pending"}] =
              device.device_action_results
@@ -165,7 +161,7 @@ defmodule Portal.Intune.SyncTest do
 
   test "every column except our own bookkeeping is filled from the Graph payload" do
     provider = intune_posture_provider_fixture()
-    stub_managed_devices([full_managed_device()])
+    stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
 
@@ -186,7 +182,7 @@ defmodule Portal.Intune.SyncTest do
     provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
-      managed_device(%{
+      intune_api_device_fixture(%{
         "id" => "managed-device",
         "easActivationDateTime" => "0001-01-01T00:00:00Z",
         "exchangeLastSuccessfulSyncDateTime" => "0001-01-01T00:00:00Z",
@@ -219,7 +215,7 @@ defmodule Portal.Intune.SyncTest do
     provider = intune_posture_provider_fixture()
 
     stub_managed_devices([
-      managed_device(%{
+      intune_api_device_fixture(%{
         "id" => "managed-device",
         "configurationManagerClientEnabledFeatures" => nil,
         "deviceHealthAttestationState" => nil,
@@ -257,7 +253,7 @@ defmodule Portal.Intune.SyncTest do
 
     assert device.device_enrollment_type == "androidEnterpriseFullyManaged"
     assert device.management_agent == "googleCloudDevicePolicyController"
-    assert device.jail_broken == "Unknown"
+    assert is_nil(device.jail_broken)
   end
 
   test "follows every page of managed devices" do
@@ -269,11 +265,11 @@ defmodule Portal.Intune.SyncTest do
           Req.Test.json(conn, %{"access_token" => "graph-token"})
 
         conn.query_string =~ "skiptoken" ->
-          Req.Test.json(conn, %{"value" => [managed_device(%{"id" => "page-two-device"})]})
+          Req.Test.json(conn, %{"value" => [intune_api_device_fixture(%{"id" => "page-two-device"})]})
 
         true ->
           Req.Test.json(conn, %{
-            "value" => [managed_device(%{"id" => "page-one-device"})],
+            "value" => [intune_api_device_fixture(%{"id" => "page-one-device"})],
             "@odata.nextLink" =>
               "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?$skiptoken=abc"
           })
@@ -294,7 +290,7 @@ defmodule Portal.Intune.SyncTest do
 
     devices =
       Enum.map(1..999, fn i ->
-        managed_device(%{"id" => "managed-device-#{i}", "serialNumber" => "SN#{i}"})
+        intune_api_device_fixture(%{"id" => "managed-device-#{i}", "serialNumber" => "SN#{i}"})
       end)
 
     stub_managed_devices(devices)
@@ -307,7 +303,7 @@ defmodule Portal.Intune.SyncTest do
     provider = intune_posture_provider_fixture()
     stale = intune_device_fixture(provider: provider, intune_id: "stale-device")
 
-    stub_managed_devices([managed_device(%{"id" => "current-device"})])
+    stub_managed_devices([intune_api_device_fixture(%{"id" => "current-device"})])
 
     assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     refute Repo.get_by(Device, account_id: stale.account_id, intune_id: stale.intune_id)
@@ -317,11 +313,11 @@ defmodule Portal.Intune.SyncTest do
   test "updates the existing row for a managed device on later syncs" do
     provider = intune_posture_provider_fixture()
 
-    stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "Before"})])
+    stub_managed_devices([intune_api_device_fixture(%{"id" => "managed-device", "deviceName" => "Before"})])
     assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
     first = Repo.get_by!(Device, intune_id: "managed-device")
 
-    stub_managed_devices([managed_device(%{"id" => "managed-device", "deviceName" => "After"})])
+    stub_managed_devices([intune_api_device_fixture(%{"id" => "managed-device", "deviceName" => "After"})])
     assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
 
     assert Repo.aggregate(Device, :count) == 1
@@ -338,7 +334,7 @@ defmodule Portal.Intune.SyncTest do
         error_email_count: 4
       )
 
-    stub_managed_devices([managed_device(%{"id" => "managed-device"})])
+    stub_managed_devices([intune_api_device_fixture(%{"id" => "managed-device"})])
 
     assert :ok = perform_job(Sync, %{account_id: provider.account_id, posture_provider_id: provider.id})
 
@@ -362,7 +358,7 @@ defmodule Portal.Intune.SyncTest do
   test "does not sync an provider belonging to another account" do
     provider = intune_posture_provider_fixture()
     other_account = Portal.AccountFixtures.account_fixture()
-    stub_managed_devices([full_managed_device()])
+    stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok =
              perform_job(Sync, %{
@@ -375,7 +371,7 @@ defmodule Portal.Intune.SyncTest do
 
   test "skips a job queued without an account id" do
     provider = intune_posture_provider_fixture()
-    stub_managed_devices([full_managed_device()])
+    stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok = perform_job(Sync, %{posture_provider_id: provider.id})
 
@@ -385,21 +381,7 @@ defmodule Portal.Intune.SyncTest do
   test "does not sync an account that lost the device_posture feature" do
     downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
     provider = intune_posture_provider_fixture(account: downgraded)
-    stub_managed_devices([full_managed_device()])
-
-    assert :ok =
-             perform_job(Sync, %{
-               account_id: provider.account_id,
-               posture_provider_id: provider.id
-             })
-
-    assert Repo.aggregate(Device, :count) == 0
-  end
-
-  test "does not sync when the global device_posture flag is off" do
-    enable_device_posture(false)
-    provider = intune_posture_provider_fixture()
-    stub_managed_devices([full_managed_device()])
+    stub_managed_devices([full_intune_api_device_fixture()])
 
     assert :ok =
              perform_job(Sync, %{
@@ -434,6 +416,35 @@ defmodule Portal.Intune.SyncTest do
     end
   end
 
+  describe "backoff/1" do
+    test "waits for a fresh grant to take effect when Intune denies access" do
+      for status <- [401, 403] do
+        error = sync_error(:list_managed_devices, %Req.Response{status: status})
+
+        assert Sync.backoff(failed_job(error)) == 15 * 60
+      end
+    end
+
+    test "uses the default backoff for every other failure" do
+      for error <- [
+            sync_error(:get_access_token, %Req.Response{status: 401}),
+            sync_error(:list_managed_devices, %Req.Response{status: 503}),
+            sync_error(:validate_managed_devices, :missing_device_id),
+            %RuntimeError{message: "boom"}
+          ] do
+        assert Sync.backoff(failed_job(error)) < 60
+      end
+    end
+  end
+
+  defp sync_error(step, error) do
+    Portal.Intune.SyncError.exception(provider_id: Ecto.UUID.generate(), step: step, error: error)
+  end
+
+  defp failed_job(reason) do
+    %Oban.Job{attempt: 1, max_attempts: 3, unsaved_error: %{kind: :error, reason: reason, stacktrace: []}}
+  end
+
   defp stub_managed_devices(devices) do
     Req.Test.stub(APIClient, fn conn ->
       if String.ends_with?(conn.request_path, "/oauth2/v2.0/token") do
@@ -442,138 +453,5 @@ defmodule Portal.Intune.SyncTest do
         Req.Test.json(conn, %{"value" => devices})
       end
     end)
-  end
-
-  # The example response from the List managedDevices reference, so the mapping
-  # can be checked against the documented payload.
-  defp full_managed_device do
-    %{
-      "id" => "705c034c",
-      "userId" => "User Id value",
-      "deviceName" => "Device Name value",
-      "managedDeviceOwnerType" => "company",
-      "deviceActionResults" => [
-        %{
-          "actionName" => "Action Name value",
-          "actionState" => "pending",
-          "startDateTime" => "2016-12-31T23:58:46.7156189-08:00",
-          "lastUpdatedDateTime" => "2017-01-01T00:00:56.8321556-08:00"
-        }
-      ],
-      "enrolledDateTime" => "2016-12-31T23:59:43.797191-08:00",
-      "lastSyncDateTime" => "2017-01-01T00:02:49.3205976-08:00",
-      "operatingSystem" => "Operating System value",
-      "complianceState" => "compliant",
-      "managementState" => "managed",
-      "jailBroken" => "Jail Broken value",
-      "managementAgent" => "mdm",
-      "osVersion" => "Os Version value",
-      "easActivated" => true,
-      "easDeviceId" => "Eas Device Id value",
-      "easActivationDateTime" => "2016-12-31T23:59:43.4878784-08:00",
-      "azureADRegistered" => true,
-      "deviceEnrollmentType" => "userEnrollment",
-      "emailAddress" => "Email Address value",
-      "azureADDeviceId" => "Azure ADDevice Id value",
-      "deviceRegistrationState" => "registered",
-      "deviceCategoryDisplayName" => "Device Category Display Name value",
-      "isSupervised" => true,
-      "exchangeLastSuccessfulSyncDateTime" => "2017-01-01T00:00:45.8803083-08:00",
-      "exchangeAccessState" => "unknown",
-      "exchangeAccessStateReason" => "unknown",
-      "isEncrypted" => true,
-      "userPrincipalName" => "User Principal Name value",
-      "model" => "Model value",
-      "manufacturer" => "Manufacturer value",
-      "imei" => "Imei value",
-      "complianceGracePeriodExpirationDateTime" => "2016-12-31T23:56:44.951111-08:00",
-      "serialNumber" => "Serial Number value",
-      "phoneNumber" => "Phone Number value",
-      "androidSecurityPatchLevel" => "Android Security Patch Level value",
-      "userDisplayName" => "User Display Name value",
-      "configurationManagerClientEnabledFeatures" => %{
-        "inventory" => true,
-        "modernApps" => true,
-        "resourceAccess" => true,
-        "deviceConfiguration" => true,
-        "compliancePolicy" => true,
-        "windowsUpdateForBusiness" => true
-      },
-      "wiFiMacAddress" => "Wi Fi Mac Address value",
-      "deviceHealthAttestationState" => %{
-        "lastUpdateDateTime" => "Last Update Date Time value",
-        "contentNamespaceUrl" => "https://example.com/namespace/",
-        "deviceHealthAttestationStatus" => "Device Health Attestation Status value",
-        "contentVersion" => "Content Version value",
-        "issuedDateTime" => "2016-12-31T23:58:22.1231038-08:00",
-        "attestationIdentityKey" => "Attestation Identity Key value",
-        "resetCount" => 10,
-        "restartCount" => 12,
-        "dataExcutionPolicy" => "Data Execution Policy value",
-        "bitLockerStatus" => "Bit Locker Status value",
-        "bootManagerVersion" => "Boot Manager Version value",
-        "codeIntegrityCheckVersion" => "Code Integrity Check Version value",
-        "secureBoot" => "Secure Boot value",
-        "bootDebugging" => "Boot Debugging value",
-        "operatingSystemKernelDebugging" => "Operating System Kernel Debugging value",
-        "codeIntegrity" => "Code Integrity value",
-        "testSigning" => "Test Signing value",
-        "safeMode" => "Safe Mode value",
-        "windowsPE" => "Windows PE value",
-        "earlyLaunchAntiMalwareDriverProtection" =>
-          "Early Launch Anti Malware Driver Protection value",
-        "virtualSecureMode" => "Virtual Secure Mode value",
-        "pcrHashAlgorithm" => "Pcr Hash Algorithm value",
-        "bootAppSecurityVersion" => "Boot App Security Version value",
-        "bootManagerSecurityVersion" => "Boot Manager Security Version value",
-        "tpmVersion" => "Tpm Version value",
-        "pcr0" => "Pcr0 value",
-        "secureBootConfigurationPolicyFingerPrint" =>
-          "Secure Boot Configuration Policy Finger Print value",
-        "codeIntegrityPolicy" => "Code Integrity Policy value",
-        "bootRevisionListInfo" => "Boot Revision List Info value",
-        "operatingSystemRevListInfo" => "Operating System Rev List Info value",
-        "healthStatusMismatchInfo" => "Health Status Mismatch Info value",
-        "healthAttestationSupportedStatus" => "Health Attestation Supported Status value"
-      },
-      "subscriberCarrier" => "Subscriber Carrier value",
-      "meid" => "Meid value",
-      "totalStorageSpaceInBytes" => 8,
-      "freeStorageSpaceInBytes" => 7,
-      "managedDeviceName" => "Managed Device Name value",
-      "partnerReportedThreatState" => "activated",
-      "requireUserEnrollmentApproval" => true,
-      "managementCertificateExpirationDate" => "2016-12-31T23:57:59.9789653-08:00",
-      "iccid" => "Iccid value",
-      "udid" => "Udid value",
-      "notes" => "Notes value",
-      "ethernetMacAddress" => "Ethernet Mac Address value",
-      "physicalMemoryInBytes" => 5,
-      "enrollmentProfileName" => "Enrollment Profile Name value"
-    }
-  end
-
-  defp managed_device(overrides) do
-    Map.merge(
-      %{
-        "id" => "managed-device",
-        "deviceName" => "Managed Device",
-        "managedDeviceName" => "managed-device",
-        "serialNumber" => "SERIAL",
-        "azureADDeviceId" => Ecto.UUID.generate(),
-        "userPrincipalName" => "owner@example.com",
-        "userDisplayName" => "Device Owner",
-        "operatingSystem" => "Windows",
-        "osVersion" => "11.0",
-        "model" => "Surface Laptop",
-        "manufacturer" => "Microsoft",
-        "complianceState" => "compliant",
-        "managementAgent" => "mdm",
-        "isEncrypted" => true,
-        "enrolledDateTime" => "2026-08-01T01:02:03Z",
-        "lastSyncDateTime" => "2026-08-02T01:02:03Z"
-      },
-      overrides
-    )
   end
 end

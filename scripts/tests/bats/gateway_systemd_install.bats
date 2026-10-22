@@ -169,6 +169,19 @@ refute_file_contains() {
     [ "$(file_mode "$(token_file)")" = "400" ]
 }
 
+@test "gateway-systemd-install: installs without FIREZONE_ID and leaves it out of the unit" {
+    run env \
+        FIREZONE_TOKEN="test-secret-token" \
+        "$SCRIPT"
+
+    [ "$status" -eq 0 ]
+    [ -f "$(service_file)" ]
+
+    refute_file_contains 'FIREZONE_ID' "$(service_file)"
+    grep -q '^StateDirectory=firezone$' "$(service_file)"
+    grep -q '^LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token$' "$(service_file)"
+}
+
 @test "gateway-systemd-install: unit provisions the state directory" {
     run env \
         FIREZONE_ID="test-gateway-id" \
@@ -191,7 +204,8 @@ refute_file_contains() {
     [ -f "$(init_script)" ]
 
     grep -q '^ARTIFACT_BASE_URL="https://www.firezone.dev/dl/firezone-gateway"$' "$(init_script)"
-    grep -q '^GATEWAY_VERSION="1.6.0"$' "$(init_script)"
+    # mark:current-gateway-version
+    grep -q '^GATEWAY_VERSION="1.6.3"$' "$(init_script)"
     grep -q 'download_url="$ARTIFACT_BASE_URL/$GATEWAY_VERSION/$arch"' "$(init_script)"
     [ "$(grep -Ec 'expected_sha256="[0-9a-f]{64}"' "$(init_script)")" -eq 3 ]
     grep -q 'failed checksum verification' "$(init_script)"

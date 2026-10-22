@@ -5,7 +5,8 @@ defmodule PortalAPI.Schemas.Group do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Group, internal: [:account_id, :type]}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Group, internal: [:account_id, :nested_group_idp_ids]}
     OpenApiSpex.schema(%{
       title: "Group",
       description: "Group",
@@ -50,6 +51,16 @@ defmodule PortalAPI.Schemas.Group do
           description: "Last sync timestamp for synced groups",
           nullable: true
         },
+        type: %Schema{
+          example: "static",
+          type: :string,
+          enum: ["managed", "static"],
+          readOnly: true,
+          description:
+            "`managed` for the built-in Everyone Group, which includes every user and admin " <>
+              "Actor implicitly, has no explicit memberships, and cannot be updated or deleted. " <>
+              "`static` for every other Group."
+        },
         inserted_at: %Schema{
           example: "2024-01-15T10:30:00Z",
           type: :string,
@@ -72,6 +83,7 @@ defmodule PortalAPI.Schemas.Group do
         :inserted_at,
         :name,
         :synced_at,
+        :type,
         :updated_at
       ]
     })

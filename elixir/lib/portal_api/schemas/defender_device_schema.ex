@@ -35,7 +35,6 @@ defmodule PortalAPI.Schemas.DefenderDevice do
       :rbac_group_id,
       :rbac_group_name,
       :is_potential_duplication,
-      :merged_into_machine_id,
       :is_excluded,
       :exclusion_reason,
       :vm_id,
@@ -59,6 +58,9 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                         %Schema{type: :string, format: :uuid, nullable: nullable}
 
                       :string ->
+                        %Schema{type: :string, nullable: nullable}
+
+                      Portal.Types.IP ->
                         %Schema{type: :string, nullable: nullable}
 
                       :boolean ->
@@ -88,7 +90,13 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                   {field, schema}
                 end)
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Defender.Device}
+    # Left off the API and out of the posture grammar:
+    # - merged_into_machine_id: the record that survived when Defender merged a duplicate
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Defender.Device,
+             internal: ~w[
+               merged_into_machine_id
+             ]a}
     OpenApiSpex.schema(%{
       title: "DefenderDevice",
       description: "Device synced from Microsoft Defender for Endpoint",

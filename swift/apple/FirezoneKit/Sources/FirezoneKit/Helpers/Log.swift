@@ -47,13 +47,19 @@ public final class Log {
   }
 
   nonisolated(unsafe) private static var isCLI = false
+  nonisolated(unsafe) private static var mirrorsLog = false
 
-  /// Tags logs as coming from the CLI and mirrors them to stderr.
+  /// Tags logs as coming from the CLI and, with `debug`, mirrors them to stderr.
   ///
   /// The CLI is the app's own binary under another name, so nothing about the bundle
   /// tells them apart. Call once at startup, before logging anything.
-  public static func useCLIOutput() {
+  ///
+  /// The log is the app talking to itself, and a command that fails throws, so none of
+  /// it reaches the terminal by default. `debug` mirrors all of it, which is what to
+  /// ask someone for.
+  public static func useCLIOutput(debug: Bool = false) {
     isCLI = true
+    mirrorsLog = debug
   }
 
   private static var processName: String {
@@ -143,11 +149,11 @@ public final class Log {
     writeToStderr(.error, message)
   }
 
-  public static func error(_ err: Error) {
-    error(err.localizedDescription)
+  public static func error(_ err: Error, fileID: String = #fileID, function: String = #function) {
+    error(Telemetry.fallbackDescription(of: err) ?? err.localizedDescription)
 
     if shouldCaptureError(err) {
-      Telemetry.capture(err)
+      Telemetry.capture(err, fileID: fileID, function: function)
     }
   }
 
@@ -191,11 +197,16 @@ public final class Log {
     guard let directory = directory
     else { return }
 
-    try FileManager.default.removeItem(at: directory)
+    let fileManager = FileManager.default
+    let items = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    for item in items {
+      try fileManager.removeItem(at: item)
+    }
   }
 
   private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
-    guard isCLI else { return }
+    guard mirrorsLog else { return }
+
     var line = "\(severity.rawValue) \(message)\n"
     line.withUTF8 { buffer in
       _ = fwrite(buffer.baseAddress, 1, buffer.count, stderr)
@@ -218,13 +229,13 @@ public final class Log {
 }
 
 extension FileManager {
-  enum FileManagerError: Error {
+  enum FileManagerError: LocalizedError {
     case invalidURL(URL, Error)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
-      case .invalidURL(let url, let error):
-        return "Unable to get resource value for '\(url)': \(error)"
+      case .invalidURL(_, let error):
+        return "Unable to get resource value: \(error.localizedDescription)"
       }
     }
   }

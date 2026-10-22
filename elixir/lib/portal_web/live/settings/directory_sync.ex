@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     PubSub
   }
 
+  alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -46,16 +47,31 @@ defmodule PortalWeb.Settings.DirectorySync do
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
-        page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        page_title: "Directory Sync"
       )
 
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :directories)
     end
 
-    {:ok, init(socket, new: true)}
+    {:ok, init_if_connected(socket)}
+  end
+
+  defp refresh_hook_directory(%{assigns: %{live_action: :hook, directory: directory}} = socket) do
+    case Database.reload(directory, socket.assigns.subject) do
+      nil -> push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")
+      directory -> assign(socket, directory: directory)
+    end
+  end
+
+  defp refresh_hook_directory(socket), do: socket
+
+  # The static render shows a skeleton instead, so the directories are only
+  # queried once, by the connected mount.
+  defp init_if_connected(socket) do
+    if connected?(socket),
+      do: init(socket, new: true),
+      else: assign(socket, directories: nil, verification_error: nil, open_directory_actions_id: nil)
   end
 
   defp init(socket, opts \\ []) do
@@ -127,6 +143,21 @@ defmodule PortalWeb.Settings.DirectorySync do
        form: to_form(changeset),
        public_jwk: public_jwk,
        is_legacy: is_legacy,
+       okta_setup_tab: "ui",
+       open_directory_actions_id: nil
+     )}
+  end
+
+  def handle_params(%{"type" => "okta", "id" => id}, _url, %{assigns: %{live_action: :hook}} = socket) do
+    directory = Database.get_directory!(Okta.Directory, id, socket.assigns.subject)
+
+    {:noreply,
+     socket
+     |> clear_verification_state()
+     |> assign(
+       directory: directory,
+       type: "okta",
+       okta_setup_tab: "ui",
        open_directory_actions_id: nil
      )}
   end
@@ -143,8 +174,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
 
+  def handle_event("okta_setup_tab", %{"tab" => tab}, socket)
+      when tab in ["ui", "curl", "terraform"] do
+    {:noreply, assign(socket, :okta_setup_tab, tab)}
+  end
+
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
-      when socket.assigns.live_action in [:select_type, :new, :edit] do
+      when socket.assigns.live_action in [:select_type, :new, :edit, :hook] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
 
@@ -321,6 +357,18 @@ defmodule PortalWeb.Settings.DirectorySync do
           {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
       end
     end
+  end
+
+  def handle_event("reverify_webhook", %{"id" => id}, socket) do
+    directory = Database.get_directory!(Okta.Directory, id, socket.assigns.subject)
+
+    {:ok, _directory} =
+      directory
+      |> change(webhook_verified_at: nil)
+      |> Database.update_directory(socket.assigns.subject)
+
+    {:noreply,
+     push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync/okta/#{id}/hook")}
   end
 
   def handle_event("toggle_directory_actions", %{"id" => id}, socket) do
@@ -505,7 +553,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_info(:directories_changed, socket) do
-    {:noreply, init(socket)}
+    {:noreply, socket |> init() |> refresh_hook_directory()}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -567,11 +615,9 @@ defmodule PortalWeb.Settings.DirectorySync do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.idp_sync_enabled?(@account) do %>
@@ -579,69 +625,85 @@ defmodule PortalWeb.Settings.DirectorySync do
           <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
             <div class="flex items-center gap-2">
               <h2 class="text-xs font-semibold text-heading">Directories</h2>
-              <span class="text-xs text-subtle tabular-nums">
+              <span :if={@directories} class="text-xs text-subtle tabular-nums">
                 {length(@directories)}
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <.docs_action path="/directory-sync" />
-              <.link
+              <Navigation.docs_action path="/directory-sync" />
+              <Navigation.link
                 patch={~p"/#{@account}/settings/directory_sync/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+              </Navigation.link>
             </div>
           </div>
 
           <div class="flex-1 overflow-auto">
-            <%= if Enum.empty?(@directories) do %>
-              <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
-                <p class="text-sm">No directories configured.</p>
-                <.link
-                  patch={~p"/#{@account}/settings/directory_sync/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
-                </.link>
-              </div>
-            <% else %>
-              <table class="w-full text-sm border-collapse">
-                <thead class="sticky top-0 z-10 bg-raised">
-                  <tr class="border-b border-border-strong">
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
-                      Directory
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Status
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
-                      Tenant
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Identities
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                      Groups
-                    </th>
-                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
-                    </th>
-                    <th class="px-6 py-2.5 w-14"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <.directory_row
-                    :for={directory <- @directories}
-                    type={directory_type(directory)}
-                    account={@account}
-                    directory={directory}
-                    subject={@subject}
-                    most_recent_job={directory.most_recent_job}
-                    open_directory_actions_id={@open_directory_actions_id}
-                  />
-                </tbody>
-              </table>
+            <%= cond do %>
+              <% is_nil(@directories) -> %>
+                <SettingsComponents.skeleton id="directories-skeleton" />
+              <% Enum.empty?(@directories) -> %>
+                <div class="flex items-center justify-center h-full">
+                  <div class="flex flex-col items-center gap-3 py-16">
+                    <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                      <Core.icon name="ri-loop-left-line" class="w-5 h-5 text-subtle" />
+                    </div>
+                    <div class="text-center">
+                      <p class="text-sm font-medium text-heading">No directories yet</p>
+                      <p class="text-xs text-subtle mt-0.5">
+                        Connect a directory to sync actors and groups automatically.
+                      </p>
+                    </div>
+                    <Navigation.link
+                      patch={~p"/#{@account}/settings/directory_sync/new"}
+                      class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                    >
+                      <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a directory
+                    </Navigation.link>
+                  </div>
+                </div>
+              <% true -> %>
+                <table class="w-full text-sm border-collapse">
+                  <thead class="sticky top-0 z-10 bg-raised">
+                    <tr class="border-b border-border-strong">
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-64">
+                        Directory
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Status
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-48">
+                        Tenant
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Identities
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                        Groups
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Full Sync
+                      </th>
+                      <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                        Last Update
+                      </th>
+                      <th class="px-6 py-2.5 w-14"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <.directory_row
+                      :for={directory <- @directories}
+                      type={directory_type(directory)}
+                      account={@account}
+                      directory={directory}
+                      subject={@subject}
+                      most_recent_job={directory.most_recent_job}
+                      open_directory_actions_id={@open_directory_actions_id}
+                    />
+                  </tbody>
+                </table>
             <% end %>
           </div>
         </div>
@@ -663,7 +725,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <h2 class="text-sm font-semibold text-heading">Select Directory Type</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="mb-4 text-xs text-subtle">
@@ -671,46 +733,46 @@ defmodule PortalWeb.Settings.DirectorySync do
               </p>
               <ul class="flex flex-col gap-2">
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/directory_sync/google/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="google" size="xl" />
+                      <Core.provider_icon provider="google" size="xl" />
                       <span class="text-sm font-medium text-heading">Google</span>
                     </span>
                     <span class="text-xs text-body">
                       Sync users and groups from Google Workspace.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/directory_sync/entra/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="entra" size="xl" />
+                      <Core.provider_icon provider="entra" size="xl" />
                       <span class="text-sm font-medium text-heading">Entra</span>
                     </span>
                     <span class="text-xs text-body">
                       Sync users and groups from Microsoft Entra ID.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
                 <li>
-                  <.link
+                  <Navigation.link
                     patch={~p"/#{@account}/settings/directory_sync/okta/new"}
                     class={select_type_classes()}
                   >
                     <span class="flex items-center gap-3 w-2/5 shrink-0">
-                      <.provider_icon provider="okta" size="xl" />
+                      <Core.provider_icon provider="okta" size="xl" />
                       <span class="text-sm font-medium text-heading">Okta</span>
                     </span>
                     <span class="text-xs text-body">
                       Sync users and groups from Okta.
                     </span>
-                  </.link>
+                  </Navigation.link>
                 </li>
               </ul>
             </div>
@@ -723,22 +785,22 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
               <div class="flex items-center gap-2">
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/directory_sync/new"}
                   class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
                   title="Back"
                 >
-                  <.icon name="ri-arrow-left-line" class="w-4 h-4" />
-                </.link>
+                  <Core.icon name="ri-arrow-left-line" class="w-4 h-4" />
+                </Navigation.link>
                 <div class="flex items-center gap-2">
-                  <.provider_icon provider={@type} size="md" />
+                  <Core.provider_icon provider={@type} size="md" />
                   <h2 class="text-sm font-semibold text-heading">
                     Add {titleize(@type)} Directory
                   </h2>
-                  <.docs_action path={"/directory-sync/#{@type}"} />
+                  <Navigation.docs_action path={"/directory-sync/#{@type}"} />
                 </div>
               </div>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <.directory_form
@@ -750,19 +812,19 @@ defmodule PortalWeb.Settings.DirectorySync do
                 public_jwk={assigns[:public_jwk]}
               />
             </div>
-            <.panel_footer>
-              <.panel_footer_button phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button
+              </Form.panel_footer_button>
+              <Form.panel_footer_button
                 form="directory-form"
                 type="submit"
                 style="primary"
                 disabled={not @form.source.valid?}
               >
                 Create
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </div>
         </div>
 
@@ -783,18 +845,18 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={@live_action == :edit and assigns[:form] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <.panel_header title={"Edit #{assigns[:directory_name]}"} variant="plain">
-              <:leading><.provider_icon provider={@type} size="md" /></:leading>
-              <:adornment><.docs_action path={"/directory-sync/#{@type}"} /></:adornment>
-            </.panel_header>
+            <Form.panel_header title={"Edit #{assigns[:directory_name]}"} variant="plain">
+              <:leading><Core.provider_icon provider={@type} size="md" /></:leading>
+              <:adornment><Navigation.docs_action path={"/directory-sync/#{@type}"} /></:adornment>
+            </Form.panel_header>
             <div class="flex-1 overflow-y-auto px-5 py-4">
-              <.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
+              <Core.flash :if={assigns[:is_legacy]} kind={:warning_inline} class="mb-4">
                 This directory uses legacy credentials and needs to be updated to use Firezone's shared service account.
-                <.website_link path="/kb/">Read the docs</.website_link>
+                <Navigation.website_link path="/kb/">Read the docs</Navigation.website_link>
                 to setup domain-wide delegation, then click <strong>Verify Now</strong>
                 and <strong>Save</strong>
                 below.
-              </.flash>
+              </Core.flash>
               <.directory_form
                 verification_error={@verification_error}
                 verifying={assigns[:verifying] || false}
@@ -802,13 +864,14 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type={@type}
                 submit_event="submit_directory"
                 public_jwk={assigns[:public_jwk]}
+                okta_setup_tab={@okta_setup_tab}
               />
             </div>
-            <.panel_footer>
-              <.panel_footer_button phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button
+              </Form.panel_footer_button>
+              <Form.panel_footer_button
                 form="directory-form"
                 type="submit"
                 style="primary"
@@ -817,8 +880,58 @@ defmodule PortalWeb.Settings.DirectorySync do
                 }
               >
                 Save
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
+          </div>
+        </div>
+
+        <div
+          id="hook-directory-panel"
+          class={[
+            "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+            "bg-elevated border-l border-border-strong",
+            "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+            "transition-transform duration-200 ease-in-out",
+            (@live_action == :hook && assigns[:directory] != nil && "translate-x-0") ||
+              "translate-x-full"
+          ]}
+          phx-window-keydown="handle_keydown"
+          phx-key="Escape"
+        >
+          <div
+            :if={@live_action == :hook and assigns[:directory] != nil}
+            class="flex flex-col h-full overflow-hidden"
+          >
+            <Form.panel_header title="Set up the Okta event hook" variant="plain">
+              <:leading><Core.provider_icon provider="okta" size="md" /></:leading>
+              <:adornment><Navigation.docs_action path="/directory-sync/okta" /></:adornment>
+            </Form.panel_header>
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <p class="text-sm text-body">
+                Okta can send changes to Firezone as they happen. Without an event hook, changes
+                arrive with the next full sync. This page updates as soon as Okta verifies the hook.
+              </p>
+              <div class="mt-4 p-4 border border-border bg-raised rounded">
+                <.okta_event_hook_details
+                  directory={@directory}
+                  setup_tab={@okta_setup_tab}
+                />
+              </div>
+            </div>
+            <Form.panel_footer>
+              <Form.panel_footer_button phx-click="close_panel">
+                Continue without event hooks
+              </Form.panel_footer_button>
+              <Core.initial_connection_status
+                type="the event hook"
+                waiting="Waiting for Okta to verify..."
+                done="Verified, click to continue"
+                size="sm"
+                skip_confirm="Close before Okta has verified the hook?"
+                navigate={~p"/#{@account}/settings/directory_sync"}
+                connected?={not is_nil(@directory.webhook_verified_at)}
+              />
+            </Form.panel_footer>
           </div>
         </div>
       <% else %>
@@ -828,7 +941,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <h2 class="text-xs font-semibold text-heading">Directories</h2>
             </div>
             <div class="flex items-center gap-2">
-              <.docs_action path="/directory-sync" />
+              <Navigation.docs_action path="/directory-sync" />
             </div>
           </div>
 
@@ -853,7 +966,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                      Last Update
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -862,7 +978,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                   <tr class="border-b border-border">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon provider="google" size="lg" />
+                        <Core.provider_icon provider="google" size="lg" />
                         <div class="min-w-0">
                           <span class="text-sm font-medium text-heading">
                             Google Workspace
@@ -874,7 +990,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </div>
                     </td>
                     <td class="px-6 py-3 w-28">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success">
                         Active
                       </span>
                     </td>
@@ -884,12 +1000,13 @@ defmodule PortalWeb.Settings.DirectorySync do
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">42</td>
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">8</td>
                     <td class="px-6 py-3 w-40 text-xs text-body">2 hours ago</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">5 minutes ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
                   <tr class="border-b border-border">
                     <td class="px-6 py-3">
                       <div class="flex items-center gap-3">
-                        <.provider_icon provider="entra" size="lg" />
+                        <Core.provider_icon provider="entra" size="lg" />
                         <div class="min-w-0">
                           <span class="text-sm font-medium text-heading">
                             Microsoft Entra
@@ -901,7 +1018,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       </div>
                     </td>
                     <td class="px-6 py-3 w-28">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success">
                         Active
                       </span>
                     </td>
@@ -915,6 +1032,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     </td>
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">15</td>
                     <td class="px-6 py-3 w-40 text-xs text-body">1 hour ago</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">5 minutes ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
                 </tbody>
@@ -923,7 +1041,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
             <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
               <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-                <.icon name="ri-loop-left-line" class="w-8 h-8" />
+                <Core.icon name="ri-loop-left-line" class="w-8 h-8" />
                 <div class="flex flex-col items-center gap-1 text-center">
                   <p class="text-sm font-medium text-heading">
                     Automate User & Group Management
@@ -932,13 +1050,13 @@ defmodule PortalWeb.Settings.DirectorySync do
                     Connect your identity provider to automatically sync users and groups.
                   </p>
                 </div>
-                <.button
+                <Form.button
                   style="primary"
                   icon="ri-sparkling-fill"
                   navigate={~p"/#{@account}/settings/account"}
                 >
                   Upgrade to Unlock
-                </.button>
+                </Form.button>
               </div>
             </div>
           </div>
@@ -947,6 +1065,253 @@ defmodule PortalWeb.Settings.DirectorySync do
     </div>
     """
   end
+
+  attr :type, :string, required: true
+  attr :directory, :any, required: true
+
+  defp webhook_activity(%{type: "okta", directory: %{webhook_verified_at: nil}} = assigns) do
+    ~H"""
+    <Core.popover>
+      <:target>
+        <span class="inline-flex items-center gap-1 text-xs text-warning">
+          <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" /> Not set up
+        </span>
+      </:target>
+      <:content>
+        Okta can send user and group changes as they happen. Set up the event hook from
+        the row menu.
+      </:content>
+    </Core.popover>
+    """
+  end
+
+  defp webhook_activity(assigns) do
+    ~H"""
+    <Core.popover>
+      <:target>
+        <span class="text-xs text-body underline underline-offset-2 decoration-1 decoration-dotted">
+          <Core.relative_datetime datetime={@directory.webhook_received_at} popover={false} />
+        </span>
+      </:target>
+      <:content>
+        <p>{receives(@type)}</p>
+        <p :if={@directory.webhook_received_at} class="mt-1">
+          Last received {@directory.webhook_received_at}.
+        </p>
+        <p :if={is_nil(@directory.webhook_received_at)} class="mt-1">Nothing received yet.</p>
+      </:content>
+    </Core.popover>
+    """
+  end
+
+  attr :directory, :any, required: true
+
+  defp okta_event_hook_status(%{directory: %{webhook_verified_at: nil}} = assigns) do
+    ~H"""
+    <span class="text-xs text-subtle">Not verified</span>
+    """
+  end
+
+  defp okta_event_hook_status(assigns) do
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-success">
+      <Core.icon name="ri-check-line" class="w-3.5 h-3.5" />
+      Verified <Core.relative_datetime datetime={@directory.webhook_verified_at} />
+    </span>
+    """
+  end
+
+  attr :directory, :any, required: true
+  attr :setup_tab, :string, required: true
+
+  defp okta_event_hook_details(assigns) do
+    ~H"""
+    <p class="mb-3 text-xs text-body">
+      Choose a way to set up the event hook.
+    </p>
+    <div class="flex border-b border-border mb-3" role="tablist">
+      <button
+        :for={{tab, label, icon} <- [{"ui", "Okta Admin Console", "ri-window-line"}, {"curl", "cURL", "ri-terminal-line"}, {"terraform", "Terraform", "icon-terraform"}]}
+        type="button"
+        role="tab"
+        aria-selected={to_string(@setup_tab == tab)}
+        phx-click="okta_setup_tab"
+        phx-value-tab={tab}
+        class={[
+          "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+          @setup_tab == tab && "border-brand text-brand",
+          @setup_tab != tab &&
+            "border-transparent text-body hover:text-heading hover:border-border-strong"
+        ]}
+      >
+        <Core.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+        {label}
+      </button>
+    </div>
+    <ol :if={@setup_tab == "ui"} class="list-decimal list-inside space-y-3 text-xs text-body">
+      <li>
+        In the Okta Admin Console, go to <strong>Workflow → Event Hooks</strong>
+        and click <strong>Create Event Hook</strong>.
+      </li>
+      <li>
+        <strong>Name:</strong> enter any name, for example <code>Firezone</code>.
+      </li>
+      <li>
+        <strong>URL:</strong> paste this endpoint.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-url" value={Okta.Webhooks.endpoint_url(@directory.id)} />
+        </div>
+      </li>
+      <li>
+        <strong>Authentication field:</strong> enter this header name.
+        <div class="mt-1 ml-5"><.copy_value id="okta-hook-header" value="Authorization" /></div>
+      </li>
+      <li>
+        <strong>Authentication secret:</strong> paste this value.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-secret" value={@directory.webhook_secret} />
+        </div>
+      </li>
+      <li><strong>Custom header fields:</strong> leave empty.</li>
+      <li>
+        <strong>Subscribe to events:</strong> paste each of these names into the picker and
+        select the match. There are {length(Okta.Webhooks.events())} of them.
+        <div class="mt-1 ml-5 space-y-1">
+          <.copy_value
+            :for={{type, name} <- Okta.Webhooks.events()}
+            id={"okta-hook-event-#{String.replace(type, ".", "-")}"}
+            value={name}
+            hint={type}
+          />
+        </div>
+      </li>
+      <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
+    </ol>
+    <div :if={@setup_tab == "curl"}>
+      <p class="text-xs text-body">
+        Replace <code>OKTA_API_TOKEN</code> with an API token from
+        <strong>Security → API → Tokens</strong> in Okta. Then click
+        <strong>Verify</strong> next to the new hook in Okta.
+      </p>
+      <Core.code_block id="okta-hook-curl" class="mt-2 rounded text-xs">{okta_hook_curl(@directory)}</Core.code_block>
+    </div>
+    <div :if={@setup_tab == "terraform"}>
+      <p class="text-xs text-body">
+        Add these resources to a configuration that uses the official
+        <code>okta/okta</code> provider. Applying it creates and verifies the event hook.
+      </p>
+      <Core.code_block id="okta-hook-terraform" class="mt-2 rounded text-xs">{okta_hook_terraform(@directory)}</Core.code_block>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+  attr :hint, :string, default: nil
+
+  defp copy_value(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="CopyClipboard"
+      class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised"
+    >
+      <span id={"#{@id}-text"} class="hidden">{@value}</span>
+      <div class="flex-1 min-w-0">
+        <code class="block text-xs font-mono text-body break-all">{@value}</code>
+        <code :if={@hint} class="block text-[10px] font-mono text-subtle break-all">{@hint}</code>
+      </div>
+      <button
+        type="button"
+        data-copy-to-clipboard-target={"#{@id}-text"}
+        class="shrink-0 text-subtle hover:text-heading transition-colors"
+        title="Copy to clipboard"
+      >
+        <span id={"#{@id}-default-message"}>
+          <Core.icon name="ri-clipboard-line" class="w-4 h-4" />
+        </span>
+        <span id={"#{@id}-success-message"} class="hidden">
+          <Core.icon name="ri-check-line" class="w-4 h-4 text-success" />
+        </span>
+      </button>
+    </div>
+    """
+  end
+
+  defp okta_hook_curl(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join(",\n", fn {type, _name} -> ~s(        "#{type}") end)
+
+    """
+    curl -X POST "https://#{directory.okta_domain}/api/v1/eventHooks" \\
+      -H "Authorization: SSWS ${OKTA_API_TOKEN}" \\
+      -H "Accept: application/json" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "Firezone",
+        "events": {
+          "type": "EVENT_TYPE",
+          "items": [
+    #{events}
+          ]
+        },
+        "channel": {
+          "type": "HTTP",
+          "version": "1.0.0",
+          "config": {
+            "uri": "#{Okta.Webhooks.endpoint_url(directory.id)}",
+            "authScheme": {
+              "type": "HEADER",
+              "key": "Authorization",
+              "value": "#{directory.webhook_secret}"
+            }
+          }
+        }
+      }'
+    """
+  end
+
+  defp okta_hook_terraform(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join("\n", fn {type, _name} -> ~s(    "#{type}",) end)
+
+    """
+    resource "okta_event_hook" "firezone" {
+      name = "Firezone"
+      events = [
+    #{events}
+      ]
+
+      channel = {
+        type    = "HTTP"
+        version = "1.0.0"
+        uri     = "#{Okta.Webhooks.endpoint_url(directory.id)}"
+      }
+
+      auth = {
+        type  = "HEADER"
+        key   = "Authorization"
+        value = "#{directory.webhook_secret}"
+      }
+    }
+
+    resource "okta_event_hook_verification" "firezone" {
+      event_hook_id = okta_event_hook.firezone.id
+    }
+    """
+  end
+
+  defp receives("entra") do
+    "Microsoft Entra sends user and group changes as they happen."
+  end
+
+  defp receives("google") do
+    "Google sends user changes as they happen. Group changes come with the full sync."
+  end
+
+  defp receives("okta"), do: "Okta sends user and group changes as they happen."
 
   attr :type, :string, required: true
   attr :account, :any, required: true
@@ -964,7 +1329,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     <tr class="border-b border-border hover:bg-raised">
       <td class="px-6 py-3">
         <div class="flex items-center gap-3">
-          <.provider_icon provider={@type} size="lg" />
+          <Core.provider_icon provider={@type} size="lg" />
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span
@@ -973,7 +1338,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               >
                 {@directory.name}
               </span>
-              <.badge :if={@is_legacy} type="warning">LEGACY</.badge>
+              <Core.badge :if={@is_legacy} type="warning">LEGACY</Core.badge>
             </div>
             <span class="text-xs text-subtle font-mono">{@directory.id}</span>
           </div>
@@ -988,60 +1353,63 @@ defmodule PortalWeb.Settings.DirectorySync do
         </span>
       </td>
       <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
-        <.link
+        <Navigation.link
           navigate={~p"/#{@account}/actors?actors_filter[directory_id]=#{@directory.id}"}
           class="hover:underline"
         >
           {@directory.actors_count}
-        </.link>
+        </Navigation.link>
       </td>
       <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">
-        <.link
+        <Navigation.link
           navigate={~p"/#{@account}/groups?groups_filter[directory_id]=#{@directory.id}"}
           class="hover:underline"
         >
           {@directory.groups_count}
-        </.link>
+        </Navigation.link>
       </td>
       <td class="px-6 py-3 w-40">
         <%= case @most_recent_job do %>
           <% %{state: "executing"} = job -> %>
             <span class="flex items-center gap-1.5 text-xs text-brand">
-              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 animate-spin" />
+              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 animate-spin" />
               syncing ({format_duration(job.elapsed_seconds)})
             </span>
           <% %{state: state} when state in ["available", "scheduled"] -> %>
             <span class="flex items-center gap-1.5 text-xs text-subtle">
-              <.icon name="ri-time-line" class="w-3.5 h-3.5" /> queued
+              <Core.icon name="ri-time-line" class="w-3.5 h-3.5" /> queued
             </span>
           <% %{state: "completed"} = job -> %>
             <span class="text-xs text-body">
-              <.relative_datetime datetime={job.completed_at} />
+              <Core.relative_datetime datetime={job.completed_at} />
             </span>
           <% _ -> %>
             <%= if @directory.synced_at do %>
               <span class="text-xs text-body">
-                <.relative_datetime datetime={@directory.synced_at} />
+                <Core.relative_datetime datetime={@directory.synced_at} />
               </span>
             <% else %>
               <span class="text-xs text-subtle">Never</span>
             <% end %>
         <% end %>
       </td>
+      <td class="px-6 py-3 w-40">
+        <.webhook_activity type={@type} directory={@directory} />
+      </td>
       <td class="px-6 py-3 w-14">
         <div class="flex justify-end">
-          <.actions_dropdown
+          <Core.actions_dropdown
             open={@open_directory_actions_id == @directory.id}
             close_event="close_directory_actions"
             phx-click="toggle_directory_actions"
             phx-value-id={@directory.id}
           >
-            <.link
+            <Navigation.link
               patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-            </.link>
+              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+            </Navigation.link>
             <button
               type="button"
               phx-click="sync_directory"
@@ -1049,16 +1417,35 @@ defmodule PortalWeb.Settings.DirectorySync do
               disabled={@directory.is_disabled or @directory.has_active_job}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+              <Core.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+            </button>
+            <button
+              :if={@type == "okta"}
+              type="button"
+              phx-click="reverify_webhook"
+              phx-value-id={@directory.id}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              {if @directory.webhook_verified_at, do: "Re-verify event hook", else: "Set up event hook"}
             </button>
             <div class="my-1 border-t border-border"></div>
-            <.button_with_confirmation
+            <Navigation.link
+              :if={@directory.is_disabled and @directory.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <Core.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </Navigation.link>
+            <Form.button_with_confirmation
+              :if={not (@directory.is_disabled and @directory.disabled_reason == "Sync error")}
               id={"toggle-directory-#{@directory.id}"}
               on_confirm="toggle_directory"
               on_confirm_id={@directory.id}
               class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body border-0 bg-transparent"
             >
-              <.icon
+              <Core.icon
                 name={
                   if @directory.is_disabled,
                     do: "ri-checkbox-circle-line",
@@ -1084,23 +1471,23 @@ defmodule PortalWeb.Settings.DirectorySync do
                 {if @directory.is_disabled, do: "Enable", else: "Disable"}
               </:dialog_confirm_button>
               <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </.button_with_confirmation>
+            </Form.button_with_confirmation>
             <div class="my-1 border-t border-border"></div>
-            <.button_with_confirmation
+            <Form.button_with_confirmation
               id={"delete-directory-#{@directory.id}"}
               on_confirm="delete_directory"
               on_confirm_id={@directory.id}
               class="flex justify-start items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error border-0 bg-transparent"
             >
-              <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+              <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
               <:dialog_title>Delete Directory</:dialog_title>
               <:dialog_content>
                 <.deletion_stats directory={@directory} subject={@subject} />
               </:dialog_content>
               <:dialog_confirm_button>Delete</:dialog_confirm_button>
               <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-            </.button_with_confirmation>
-          </.actions_dropdown>
+            </Form.button_with_confirmation>
+          </Core.actions_dropdown>
         </div>
       </td>
     </tr>
@@ -1113,7 +1500,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     ~H"""
     <%= cond do %>
       <% @directory.is_disabled and @directory.disabled_reason == "Sync error" -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-danger-light text-danger">
           Error
         </span>
       <% @directory.is_disabled -> %>
@@ -1121,11 +1508,11 @@ defmodule PortalWeb.Settings.DirectorySync do
           Disabled
         </span>
       <% @directory.errored_at -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-warning-light text-warning">
           Warning
         </span>
       <% @directory.is_verified -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-success-light text-success">
           Active
         </span>
       <% true -> %>
@@ -1198,6 +1585,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :verification_error, :any, default: nil
   attr :verifying, :boolean, default: false
   attr :public_jwk, :any, default: nil
+  attr :okta_setup_tab, :string, default: "ui"
 
   defp directory_form(assigns) do
     ~H"""
@@ -1215,7 +1603,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             Name <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:name]}
             type="text"
             autocomplete="off"
@@ -1284,7 +1672,7 @@ defmodule PortalWeb.Settings.DirectorySync do
         </fieldset>
 
         <div :if={@type == "entra"}>
-          <.input
+          <Form.input
             field={@form[:email_field]}
             type="select"
             label="Email Field"
@@ -1294,7 +1682,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             ]}
             required
           />
-          <p class="mt-1 text-xs text-neutral-600">
+          <p class="mt-1 text-xs text-subtle">
             The Microsoft Graph user field to use as the primary email during directory sync.
           </p>
         </div>
@@ -1306,7 +1694,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             Impersonation Email <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:impersonation_email]}
             type="text"
             autocomplete="off"
@@ -1408,7 +1796,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </p>
           </div>
           <input type="hidden" name={@form[:orgunit_sync_enabled].name} value="false" />
-          <.toggle
+          <Core.toggle
             id={@form[:orgunit_sync_enabled].id}
             name={@form[:orgunit_sync_enabled].name}
             value="true"
@@ -1429,7 +1817,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             </p>
           </div>
           <input type="hidden" name={@form[:sync_all_domains].name} value="false" />
-          <.toggle
+          <Core.toggle
             id={@form[:sync_all_domains].id}
             name={@form[:sync_all_domains].name}
             value="true"
@@ -1444,7 +1832,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             Okta Domain <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:okta_domain]}
             type="text"
             autocomplete="off"
@@ -1464,7 +1852,7 @@ defmodule PortalWeb.Settings.DirectorySync do
           >
             Client ID <span class="text-error">*</span>
           </label>
-          <.input
+          <Form.input
             field={@form[:client_id]}
             type="text"
             autocomplete="off"
@@ -1489,7 +1877,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               </p>
             </div>
             <div class="ml-4">
-              <.button
+              <Form.button
                 type="button"
                 phx-click="generate_keypair"
                 icon="ri-key-line"
@@ -1497,13 +1885,13 @@ defmodule PortalWeb.Settings.DirectorySync do
                 size="sm"
               >
                 Generate Keypair
-              </.button>
+              </Form.button>
             </div>
           </div>
 
           <%= if Map.get(assigns, :public_jwk) do %>
             <div class="mt-4">
-              <.json_view id="okta-public-jwk" value={@public_jwk} />
+              <JSONView.json_view id="okta-public-jwk" value={@public_jwk} />
               <p class="mt-2 text-xs text-subtle">
                 Copy this public key and add it to your Okta application's JWKS configuration.
               </p>
@@ -1516,12 +1904,30 @@ defmodule PortalWeb.Settings.DirectorySync do
         </div>
 
         <div
+          :if={@type == "okta" and @form.source.data.id}
+          class="p-4 border border-border bg-raised rounded"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-heading">Event Hook</h3>
+            <.okta_event_hook_status directory={@form.source.data} />
+          </div>
+          <p class="mt-1 text-xs text-body">
+            An event hook in Okta sends changes to Firezone as they happen. No extra API scopes
+            are needed.
+          </p>
+          <.okta_event_hook_details
+            directory={@form.source.data}
+            setup_tab={@okta_setup_tab}
+          />
+        </div>
+
+        <div
           :if={@type in ["google", "entra", "okta"]}
           class="p-4 border border-border bg-raised rounded"
         >
-          <.flash :if={@verification_error} kind={:error}>
+          <Core.flash :if={@verification_error} kind={:error}>
             {@verification_error}
-          </.flash>
+          </Core.flash>
           <div class="flex items-center justify-between">
             <div class="flex-1">
               <h3 class="text-sm font-semibold text-heading">Directory Verification</h3>
@@ -1580,12 +1986,12 @@ defmodule PortalWeb.Settings.DirectorySync do
     <div id={@id <> "-open-url"} phx-hook={@opens_url? && "OpenURL"}>
       <div
         :if={verified?(@form)}
-        class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+        class="flex items-center text-success bg-success-light px-4 py-2 rounded-sm"
       >
-        <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
+        <Core.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
         <span class="font-medium">Verified</span>
       </div>
-      <.button
+      <Form.button
         :if={not verified?(@form) and ready_to_verify?(@form) and not @verifying}
         type="button"
         id={@id <> "-verify-button"}
@@ -1595,23 +2001,23 @@ defmodule PortalWeb.Settings.DirectorySync do
         {@button_attrs}
       >
         Verify Now
-      </.button>
-      <.button
+      </Form.button>
+      <Form.button
         :if={not verified?(@form) and @verifying}
         type="button"
         style="primary"
         disabled
       >
         Verifying...
-      </.button>
-      <.button
+      </Form.button>
+      <Form.button
         :if={not verified?(@form) and not ready_to_verify?(@form)}
         type="button"
         style="primary"
         disabled
       >
         Verify Now
-      </.button>
+      </Form.button>
     </div>
     """
   end
@@ -1785,15 +2191,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  # A watch channel belongs to the Workspace customer it was opened in.
+  # Verifying against another domain or admin closes it and lets the next
+  # sync open a fresh one.
+  defp forget_subscriptions_on_tenant_change(changeset, %Google.Directory{} = directory) do
+    if get_change(changeset, :domain) || get_change(changeset, :impersonation_email) do
+      unsubscribe_webhooks(directory)
+
+      changeset
+      |> put_change(:users_channel_id, nil)
+      |> put_change(:users_resource_id, nil)
+      |> put_change(:channel_expires_at, nil)
+    else
+      changeset
+    end
+  end
+
   defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
 
   defp queue_initial_sync(
-         {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         {:ok, %{is_verified: true, is_disabled: false} = directory} = result,
          %{assigns: %{account: %{features: %{idp_sync: true}}}}
        ) do
     args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
-    case Oban.insert(Entra.Sync.new(args)) do
+    case Oban.insert(sync_module(directory).new(args)) do
       {:ok, _job} ->
         result
 
@@ -1839,6 +2261,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     :ok
   end
 
+  defp unsubscribe_webhooks(%Google.Directory{users_channel_id: channel_id} = directory)
+       when is_binary(channel_id) do
+    args = %{
+      "action" => "stop",
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "impersonation_email" => directory.impersonation_email,
+      "channel_id" => channel_id,
+      "resource_id" => directory.users_resource_id
+    }
+
+    case Oban.insert(Google.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Google webhook cleanup job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
   defp unsubscribe_webhooks(_directory), do: :ok
 
   defp subscribe_webhooks(%Entra.Directory{} = directory) do
@@ -1862,7 +2309,38 @@ defmodule PortalWeb.Settings.DirectorySync do
     :ok
   end
 
+  defp subscribe_webhooks(%Google.Directory{} = directory) do
+    args = %{
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "action" => "ensure"
+    }
+
+    case Oban.insert(Google.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Google webhook subscription job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
   defp subscribe_webhooks(_directory), do: :ok
+
+  defp handle_submit({:ok, %Okta.Directory{} = directory}, %{assigns: %{live_action: :new}} = socket) do
+    {:noreply,
+     socket
+     |> init()
+     |> put_flash(:success, "Directory saved. Create the event hook in Okta to get changes as they happen.")
+     |> push_patch(
+       to: ~p"/#{socket.assigns.account}/settings/directory_sync/okta/#{directory.id}/hook"
+     )}
+  end
 
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,

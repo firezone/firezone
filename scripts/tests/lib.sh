@@ -3,7 +3,7 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -T client-1 "$@"
+    docker compose exec -T primary-client "$@"
 }
 
 function gateway() {
@@ -18,8 +18,8 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
-function client2() {
-    docker compose exec -T client-2 "$@"
+function pool_member() {
+    docker compose exec -T pool-member "$@"
 }
 
 function client_curl() {
@@ -163,7 +163,7 @@ function get_flow_field() {
 # recovery that happens afterwards.
 function last_wg_handshake_ms() {
     local raw
-    raw=$(docker compose logs client-1 --since 60s 2>/dev/null |
+    raw=$(docker compose logs primary-client --since 60s 2>/dev/null |
         grep "Completed wireguard handshake" |
         tail -n 1 |
         grep -oP 'duration_since_intent=\K[^ ]+')

@@ -12,6 +12,14 @@ defmodule PortalAPI.MembershipController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Memberships",
+    description: """
+    Lists the Actors in a Group.
+
+    The built-in Everyone Group has no explicit memberships. For it, this \
+    lists every user and admin Actor in the account, which is who the Group \
+    grants access to. Service accounts and API clients are never members of \
+    the Everyone Group.
+    """,
     parameters: [
       group_id: [
         in: :path,
@@ -21,7 +29,7 @@ defmodule PortalAPI.MembershipController do
       limit: [
         in: :query,
         description: "Limit Memberships returned",
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 10
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
@@ -34,9 +42,10 @@ defmodule PortalAPI.MembershipController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"group_id" => group_id} = params) do
+    subject = conn.assigns.subject
+
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         list_opts = Keyword.put(list_opts, :filter, group_id: group_id),
-         {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
+         {:ok, actors, metadata} <- list_members(group_id, subject, list_opts) do
       json(conn, JSON.encode(actors, metadata, schema: PortalAPI.Schemas.Membership.Schema))
     else
       error -> Error.handle(conn, error)
@@ -169,6 +178,16 @@ defmodule PortalAPI.MembershipController do
     Error.handle(conn, {:error, :bad_request})
   end
 
+  defp list_members(group_id, subject, list_opts) do
+    case Database.fetch_group(group_id, subject) do
+      {:ok, %Portal.Group{type: :managed}} ->
+        Database.list_built_in_group_members(subject, list_opts)
+
+      _other ->
+        Database.list_actors(subject, Keyword.put(list_opts, :filter, group_id: group_id))
+    end
+  end
+
   defp validate_group_editable(group) do
     if is_nil(group.directory_id) and group.type == :static do
       :ok
@@ -221,7 +240,7 @@ defmodule PortalAPI.MembershipController do
   end
 
   defp valid_actor_id?(value) when is_binary(value) do
-    match?({:ok, _uuid}, Ecto.UUID.cast(value))
+    match?({:ok, _uuid}, Ecto.UUID.dump(value))
   end
 
   defp valid_actor_id?(_value), do: false
@@ -237,6 +256,12 @@ defmodule PortalAPI.MembershipController do
 
     def list_actors(subject, opts) do
       from(a in Actor, as: :actors)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def list_built_in_group_members(subject, opts) do
+      from(a in Actor, as: :actors, where: a.type in [:account_user, :account_admin_user])
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end

@@ -8,6 +8,7 @@ defmodule Portal.Sentinel.SyncTest do
 
   import Ecto.Query
 
+  alias Portal.Fixture
   alias Portal.LogSinkCursor
   alias Portal.Sentinel
 
@@ -195,7 +196,7 @@ defmodule Portal.Sentinel.SyncTest do
           assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
-      refute log_output =~ "cannot be delivered"
+      refute Fixture.logged_lines(log_output, sink.id) =~ "cannot be delivered"
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0

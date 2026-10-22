@@ -1,16 +1,16 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 use tunnel_proto::{
-    dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    dns::{self, is_subdomain},
+    messages::{UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{FlowId, ProbeId, Route, TcpFlow},
     reference::PrivateKey,
-    resource::{CidrResource, Resource},
+    resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
+    stub_portal::PeerAuthorization,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,31 +23,20 @@ use std::{
 pub enum Transition {
     AddResource(Resource),
     RemoveResource(ResourceId),
-    ChangeCidrResourceAddress {
-        resource: CidrResource,
-        new_address: IpNetwork,
-    },
-    MoveResourceToNewSite {
-        resource: Resource,
-        new_site: Site,
-    },
-    ChangeFiltersOfResource {
-        resource: Resource,
-        new_filters: Vec<Filter>,
-    },
-    ChangeResourceType {
-        old_resource: Resource,
-        new_resource: Resource,
-    },
-    UpdateStaticDevicePool {
+    EditResource(ResourceEdit),
+    /// Replaces the member list of a pool that lists its members; `revoked` are the
+    /// portal's peer authorizations through it towards a client that left.
+    UpdateDevicePoolMembers {
         pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
+        members: BTreeSet<ClientId>,
+        revoked: Vec<PeerAuthorization>,
     },
     SetInternetResourceState {
         client_id: ClientId,
         active: bool,
     },
-    SendIcmpPacket {
+    SendIcmpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
@@ -55,7 +44,13 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
-    SendUdpPacket {
+    SendIcmpPacketOnExistingFlow {
+        flow_id: FlowId,
+        seq: Seq,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
@@ -63,17 +58,28 @@ pub enum Transition {
         dport: DPort,
         probe_id: ProbeId,
     },
+    SendUdpPacketOnExistingFlow {
+        flow_id: FlowId,
+        probe_id: ProbeId,
+    },
+    /// Opens a TCP connection; its SYN is the probe, which the resource accepts.
     ConnectTcp {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
     },
-    SendDnsQuery {
-        client_id: ClientId,
-        query: DnsQuery,
+    /// Writes `len` random bytes from `seed` to an existing TCP connection; the resource echoes them.
+    SendTcpData {
+        flow_id: FlowId,
+        len: u16,
+        seed: u64,
+        probe_id: ProbeId,
     },
+    SendDnsQueries(Vec<(ClientId, DnsQuery)>),
     SendDnsResourcePtrQuery {
         client_id: ClientId,
         record_domain: DomainName,
@@ -106,9 +112,33 @@ pub enum Transition {
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
-    Idle,
+    Idle {
+        duration: Duration,
+    },
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+    /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
+    /// while its existing allocations keep working.
+    ExhaustRelayPorts(RelayId),
+    /// The relay has ports again, without the portal telling anyone.
+    FreeRelayPorts(RelayId),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
+    ///
+    /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
+    /// The Client recovers through the Gateway's `no_authorization` p2p control event.
+    RevokeGatewayAuthorization(ResourceId),
+    /// Expires inbound authorizations at the receiving client while the sender retains its own.
+    ExpirePeerAuthorizations {
+        client: ClientId,
+        peer: ClientId,
+        pools: BTreeSet<ResourceId>,
+    },
+    /// Revokes one of several peer authorizations on the receiver while the sender retains its own.
+    RevokePeerAuthorization {
+        client: ClientId,
+        peer: ClientId,
+        pool: ResourceId,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -116,21 +146,22 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Returns whether assertions should discard stale packets before applying this transition.
-    pub fn should_clear_packets(&self) -> bool {
+    /// Whether the DNS queries and responses that accumulate across transitions are stale
+    /// once this transition is applied.
+    pub fn clears_packets(&self) -> bool {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).clears_packets(),
+            Transition::UpdateDevicePoolMembers { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
-            Transition::SendIcmpPacket { .. } => false,
-            Transition::SendUdpPacket { .. } => false,
+            Transition::SendIcmpPacketOnNewFlow { .. } => false,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => false,
+            Transition::SendUdpPacketOnNewFlow { .. } => false,
+            Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
-            Transition::SendDnsQuery { .. } => false,
+            Transition::SendTcpData { .. } => false,
+            Transition::SendDnsQueries(_) => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
             Transition::UpdateSystemDnsServers { .. } => false,
             Transition::UpdateUpstreamDo53Servers(_) => false,
@@ -141,10 +172,212 @@ impl Transition {
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
             Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
+            Transition::Idle { .. } => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::ExhaustRelayPorts(_) => false,
+            Transition::FreeRelayPorts(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::RevokeGatewayAuthorization(_) => true,
+            Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
+        }
+    }
+
+    /// Returns whether the TCP connection `flow` survives this transition.
+    ///
+    /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
+    /// survives as long as the client reaches its resource through the same Gateway with
+    /// the same authorization.
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+        let (client_id, route) = (flow.client_id, flow.route);
+
+        match self {
+            Transition::AddResource(Resource::Dns(added)) => match &flow.dst {
+                Destination::DomainName { name, .. } => !is_subdomain(name, &added.address),
+                Destination::IpAddr(_) => true,
+            },
+            Transition::AddResource(Resource::Cidr(added)) => match &flow.dst {
+                Destination::DomainName { .. } => true,
+                Destination::IpAddr(ip) => !added.address.contains(*ip),
+            },
+            Transition::AddResource(Resource::Internet(_)) => true,
+            Transition::AddResource(Resource::DevicePool(_)) => true,
+            Transition::RemoveResource(_) => self.retains_flow(client_id, route, false),
+            Transition::EditResource(_) => self.retains_flow(client_id, route, false),
+            Transition::UpdateDevicePoolMembers { .. } => true,
+            Transition::SetInternetResourceState { .. } => {
+                self.retains_flow(client_id, route, false)
+            }
+            Transition::SendIcmpPacketOnNewFlow { .. } => true,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
+            Transition::SendDnsQueries(_) => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient { .. } => true,
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
+            Transition::DeployNewRelays(_) => true,
+            Transition::PartitionRelaysFromPortal => true,
+            Transition::Idle { .. } => true,
+            Transition::RebootRelaysWhilePartitioned(_) => true,
+            Transition::ExhaustRelayPorts(_) => true,
+            Transition::FreeRelayPorts(_) => true,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {
+                self.retains_flow(client_id, route, false)
+            }
+            Transition::RevokeGatewayAuthorization(_) => self.retains_flow(client_id, route, false),
+            Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
+            Transition::UpdateDnsRecords { domain, .. } => match &flow.dst {
+                Destination::DomainName { name, .. } => name != domain,
+                Destination::IpAddr(_) => true,
+            },
+        }
+    }
+
+    /// Returns whether a flow remains predictable across this transition.
+    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, iceless: bool) -> bool {
+        match self {
+            Transition::AddResource(_) => match route {
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => true,
+                Route::Peer(_) => true,
+            },
+            Transition::RemoveResource(resource) => match route {
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
+            },
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).retains_flow(route),
+            Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+                Route::Peer(peer) => !revoked.iter().any(|authorization| {
+                    let parties = (authorization.initiator, authorization.target);
+
+                    parties == (client_id, peer) || parties == (peer, client_id)
+                }),
+            },
+            Transition::SetInternetResourceState {
+                client_id: changed, ..
+            } => client_id != *changed,
+            Transition::SendIcmpPacketOnNewFlow { .. } => true,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendTcpData { .. } => true,
+            Transition::SendDnsQueries(_) => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient {
+                client_id: changed, ..
+            } => match route {
+                Route::Resource { .. } => iceless || client_id != *changed,
+                Route::Gateway(_) => iceless || client_id != *changed,
+                Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+            },
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient {
+                client_id: restarted,
+                ..
+            } => match route {
+                Route::Resource { .. } => client_id != *restarted,
+                Route::Gateway(_) => client_id != *restarted,
+                Route::Peer(peer) => client_id != *restarted && peer != *restarted,
+            },
+            Transition::DeployNewRelays(_) => iceless,
+            Transition::PartitionRelaysFromPortal => false,
+            Transition::Idle { .. } => true,
+            Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::ExhaustRelayPorts(_) => true,
+            Transition::FreeRelayPorts(_) => true,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
+            },
+            Transition::RevokeGatewayAuthorization(resource) => match route {
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => true,
+            },
+            Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+            },
+            Transition::RevokePeerAuthorization { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+            },
+            Transition::UpdateDnsRecords { .. } => true,
+        }
+    }
+}
+
+fn is_device_pool(resource: &Resource) -> bool {
+    match resource {
+        Resource::Dns(_) => false,
+        Resource::Cidr(_) => false,
+        Resource::Internet(_) => false,
+        Resource::DevicePool(_) => true,
+    }
+}
+
+impl EditEffect<'_> {
+    fn clears_packets(&self) -> bool {
+        match self {
+            EditEffect::Metadata => false,
+            EditEffect::Filters { affects_tcp, .. } => *affects_tcp,
+            EditEffect::Access { affects_tcp, .. } => *affects_tcp,
+            EditEffect::DevicePoolRouting => false,
+            EditEffect::Type { old, .. } => match old {
+                Resource::Dns(_) => true,
+                Resource::Cidr(_) => false,
+                Resource::Internet(_) => false,
+                Resource::DevicePool(_) => false,
+            },
+        }
+    }
+
+    fn retains_flow(&self, route: Route) -> bool {
+        match (self, route) {
+            (EditEffect::Metadata, _) => true,
+            (
+                EditEffect::Filters { resource_id, .. } | EditEffect::Access { resource_id, .. },
+                Route::Resource { resource, .. },
+            ) => resource != *resource_id,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Peer(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Resource { .. }) => true,
+            (EditEffect::DevicePoolRouting, Route::Gateway(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Peer(_)) => false,
+            (EditEffect::Type { old, .. }, Route::Resource { resource, .. }) => {
+                resource != old.id()
+            }
+            (EditEffect::Type { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
+                !is_device_pool(old) && !is_device_pool(new)
+            }
         }
     }
 }
@@ -156,6 +389,7 @@ pub(crate) struct DnsQuery {
     pub(crate) query_id: u16,
     pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
+    pub(crate) edns: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

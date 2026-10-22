@@ -4,12 +4,49 @@ defmodule Portal.Authentication.Subject do
 
   @type actor :: %Portal.Actor{}
 
+  @typedoc """
+  Present fields from the device's last attestation. The issuer is base64-encoded
+  DER and the timestamp is ISO 8601; absent values are omitted rather than nil.
+  """
+  @type attestation :: %{
+          optional(:attested_device_serial) => String.t(),
+          optional(:attested_device_uuid) => String.t(),
+          optional(:attested_mdm_device_id) => String.t(),
+          optional(:attested_cert_serial) => String.t(),
+          optional(:attested_cert_fingerprint) => String.t(),
+          optional(:attested_cert_issuer) => String.t(),
+          optional(:attested_at) => String.t()
+        }
+
+  @typedoc "The JSON-safe subject snapshot written to logs."
+  @type snapshot :: %{
+          :actor_id => Ecto.UUID.t(),
+          :actor_name => String.t(),
+          :actor_email => String.t() | nil,
+          :actor_type => String.t(),
+          :auth_provider_id => Ecto.UUID.t() | nil,
+          :ip => String.t() | nil,
+          :ip_region => String.t() | nil,
+          :ip_city => String.t() | nil,
+          :ip_lat => float() | nil,
+          :ip_lon => float() | nil,
+          :user_agent => String.t() | nil,
+          optional(:attested_device_serial) => String.t(),
+          optional(:attested_device_uuid) => String.t(),
+          optional(:attested_mdm_device_id) => String.t(),
+          optional(:attested_cert_serial) => String.t(),
+          optional(:attested_cert_fingerprint) => String.t(),
+          optional(:attested_cert_issuer) => String.t(),
+          optional(:attested_at) => String.t()
+        }
+
   @type t :: %__MODULE__{
           actor: actor(),
           account: %Portal.Account{},
           credential: Credential.t(),
           expires_at: DateTime.t(),
-          context: Context.t()
+          context: Context.t(),
+          attestation: attestation()
         }
 
   @enforce_keys [:actor, :account, :credential, :expires_at, :context]
@@ -17,9 +54,39 @@ defmodule Portal.Authentication.Subject do
             account: nil,
             credential: nil,
             expires_at: nil,
-            context: nil
+            context: nil,
+            attestation: %{}
 
-  @spec to_map(t()) :: map()
+  @attestation_fields [
+    last_attested_device_serial: :attested_device_serial,
+    last_attested_device_uuid: :attested_device_uuid,
+    last_attested_mdm_device_id: :attested_mdm_device_id,
+    last_attested_cert_serial: :attested_cert_serial,
+    last_attested_cert_fingerprint: :attested_cert_fingerprint,
+    last_attested_cert_issuer: :attested_cert_issuer,
+    last_attested_at: :attested_at
+  ]
+
+  @doc "Snapshots the device's last attestation, omitting absent fields."
+  @spec with_device(t(), Portal.Device.t()) :: t()
+  def with_device(%__MODULE__{} = subject, %Portal.Device{} = device) do
+    attestation =
+      for {field, key} <- @attestation_fields,
+          value = Map.fetch!(device, field),
+          not is_nil(value),
+          into: %{} do
+        {key, encode_attestation(key, value)}
+      end
+
+    %{subject | attestation: attestation}
+  end
+
+  # The issuer is a DER-encoded X.509 Name and must be safe for JSON logs.
+  defp encode_attestation(:attested_cert_issuer, value), do: Base.encode64(value)
+  defp encode_attestation(:attested_at, value), do: DateTime.to_iso8601(value)
+  defp encode_attestation(_key, value), do: value
+
+  @spec to_map(t()) :: snapshot()
   def to_map(%__MODULE__{} = subject) do
     %{
       actor_id: subject.actor.id,
@@ -34,6 +101,7 @@ defmodule Portal.Authentication.Subject do
       ip_lon: subject.context.remote_ip_location_lon,
       user_agent: subject.context.user_agent
     }
+    |> Map.merge(subject.attestation)
   end
 
   defp format_ip(nil), do: nil

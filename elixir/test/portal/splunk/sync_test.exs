@@ -416,17 +416,20 @@ defmodule Portal.Splunk.SyncTest do
       sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
       assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
-      # 1752480000.0 JSON-encodes as 1.75248e9, which HEC rejects with
-      # "Error in handling indexed fields (code 15)".
+      # Stay inside retention while choosing a round timestamp whose float
+      # JSON encoding uses scientific notation, which HEC rejects (code 15).
+      seconds = div(System.os_time(:second), 1_000_000) * 1_000_000
+      assert JSON.encode!(seconds * 1.0) =~ "e"
+
       session_log_fixture(
         account: account,
-        timestamp: DateTime.from_unix!(1_752_480_000_000_000, :microsecond)
+        timestamp: DateTime.from_unix!(seconds * 1_000_000, :microsecond)
       )
 
       assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:hec, _conn, [event]}
-      assert event["time"] == "1752480000.000"
+      assert event["time"] == "#{seconds}.000"
     end
 
     test "an indexed-fields rejection parks the stream and pages us", %{account: account} do

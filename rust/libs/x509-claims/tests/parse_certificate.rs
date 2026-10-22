@@ -24,6 +24,7 @@ fn recognizes_rsa_client_identity() {
         parse_certificate(RSA_LEAF, now()).expect("fixture should be a valid RSA certificate");
 
     assert_eq!(metadata.subject_cn.as_deref(), Some(SUBJECT_CN));
+    assert!(metadata.is_device_certificate());
     assert!(metadata.has_client_auth_eku);
     assert!(metadata.digital_signature_allowed);
     assert!(metadata.is_currently_valid());
@@ -88,6 +89,22 @@ fn extracts_typed_mdm_device_id_like_the_portal() {
         Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
     );
     assert_eq!(metadata.device_serial.valid(), Some("C02XK1ZGJGH5"));
+}
+
+#[test]
+fn accepts_iru_and_kandji_mdm_device_ids() {
+    for attribute in ["iru-id", "kandji-id"] {
+        let uri = format!("firezone://{attribute}/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3");
+        let der = certificate_with_uri_sans(&[&uri]);
+        let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+        assert_eq!(
+            metadata.mdm_device_id.valid(),
+            Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+        );
+        assert!(metadata.is_device_certificate());
+        assert!(metadata.unrecognised_claims.is_empty());
+    }
 }
 
 #[test]

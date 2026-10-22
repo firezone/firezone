@@ -69,6 +69,16 @@ defmodule PortalAPI.Sockets do
           "due to exceeding billing limits. Please contact your administrator to add more seats."
       )
 
+  def handle_error(conn, :connected_devices_limit_reached),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        403,
+        :connected_devices_limit_reached,
+        "This user has reached the number of devices that can be connected at the same time. " <>
+          "Disconnect another device and try again."
+      )
+
   def handle_error(conn, :account_disabled),
     do: ProblemDetails.send_with_code(conn, 403, :account_disabled, "The account is disabled")
 
@@ -162,18 +172,9 @@ defmodule PortalAPI.Sockets do
     )
   end
 
-  def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
-    remote_ip = real_ip(x_headers, peer_data)
+  def auth_context(%{user_agent: user_agent, x_headers: x_headers} = connect_info, type) do
+    remote_ip = Portal.Sockets.remote_ip(connect_info)
     Portal.Authentication.Context.build(remote_ip, user_agent, x_headers, type)
-  end
-
-  defp real_ip(x_headers, peer_data) do
-    real_ip =
-      if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts())
-      end
-
-    real_ip || peer_data.address
   end
 
   @session_field_limits %{

@@ -8,6 +8,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   import Portal.FeaturesFixtures
   import Portal.TokenFixtures
   import Portal.PortalSessionFixtures
+  import Portal.PolicyFixtures
   import Portal.TrustAnchorFixtures
 
   alias Portal.EmailOTP
@@ -171,12 +172,29 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "provider listing" do
+    test "loads the providers only after the socket connects", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/authentication") |> html_response(200)
+      assert static =~ ~s(id="providers-skeleton")
+      refute static =~ provider.id
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/authentication")
+      assert html =~ provider.id
+      refute html =~ ~s(id="providers-skeleton")
+    end
+
     test "renders X.509 with a trust-anchor warning when the feature is enabled", %{
       account: account,
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       provider = x509_provider_fixture(account: account)
 
       {:ok, lv, html} =
@@ -208,7 +226,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       _provider = x509_provider_fixture(account: account)
       _anchor = trust_anchor_fixture(account: account)
 
@@ -221,7 +239,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       refute html =~ "No devices will be able to use this authentication provider"
     end
 
-    test "hides X.509 when trust anchors are globally disabled", %{
+    test "hides X.509 when X.509 authentication is globally disabled", %{
       account: account,
       actor: actor,
       conn: conn
@@ -266,6 +284,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication")
 
       assert html =~ "My Google Provider"
+    end
+
+    test "renders github provider", %{account: account, actor: actor, conn: conn} do
+      github_provider_fixture(account: account, name: "My GitHub Provider")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      assert html =~ "My GitHub Provider"
+      assert html =~ "ri-github-fill"
     end
 
     test "renders entra provider", %{account: account, actor: actor, conn: conn} do
@@ -467,6 +497,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/google/new']") !=
                []
 
+      assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/github/new']") !=
+               []
+
       assert Floki.find(parsed, "a[href='/#{account.slug}/settings/authentication/entra/new']") !=
                []
 
@@ -615,6 +648,99 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/google/new")
 
       assert html =~ "Verify Now"
+    end
+  end
+
+  # =============================================================================
+  # New GitHub Provider Tests
+  # =============================================================================
+
+  describe "new github provider" do
+    test "renders new github provider form", %{account: account, actor: actor, conn: conn} do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      assert html =~ "Add GitHub Provider"
+      assert html =~ "Sign in with your GitHub account to verify the configuration."
+      assert html =~ "Verify Now"
+      refute html =~ "Redirect URI"
+
+      parsed = Floki.parse_fragment!(html)
+      radios = "input[name='auth_provider[email_verification_method]']"
+      assert parsed |> Floki.find(radios) |> Floki.attribute("value") == ["proof", "none"]
+      assert parsed |> Floki.find(radios <> "[checked]") |> Floki.attribute("value") == ["proof"]
+    end
+
+    test "does not verify when the callback has no GitHub issuer", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.GitHub.stub()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      lv |> element("#verify-button") |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      callback_conn = get(build_conn(), ~p"/auth/oidc/callback", %{"state" => state, "code" => "c"})
+      get(build_conn(), redirected_to(callback_conn))
+
+      refute_received {:github_token_request, _params}
+
+      html = render(lv)
+      assert html =~ "Verify Now"
+      refute html =~ "Verified"
+    end
+
+    test "verifies with GitHub and creates the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.GitHub.stub()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/new")
+
+      lv |> element("#verify-button") |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      %URI{host: "github.test", query: query} = URI.parse(url)
+      %{"state" => state, "prompt" => "select_account"} = URI.decode_query(query)
+
+      callback_conn =
+        get(build_conn(), ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "code" => "c",
+          "iss" => "https://github.com/login/oauth"
+        })
+
+      get(build_conn(), redirected_to(callback_conn))
+
+      html = render(lv)
+      assert html =~ "Verified"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      provider = Portal.Repo.get_by!(Portal.GitHub.AuthProvider, account_id: account.id)
+      assert provider.issuer == "https://github.com/login/oauth"
+      assert provider.name == "GitHub"
+      assert provider.email_verification_method == :proof
+      refute provider.is_default
+
+      parent = Portal.Repo.get_by!(Portal.AuthProvider, id: provider.id)
+      assert parent.type == :github
     end
   end
 
@@ -875,6 +1001,52 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       assert html =~ "Authentication provider saved successfully"
+    end
+  end
+
+  describe "edit github provider" do
+    test "switches email verification to None without re-verifying", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = github_provider_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/#{provider.id}/edit")
+
+      assert html =~ "Verified"
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{email_verification_method: "none"}})
+      |> render_change()
+
+      assert render(lv) =~ "Verified"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/authentication")
+
+      assert Portal.Repo.reload!(provider).email_verification_method == :none
+    end
+
+    test "rejects an unknown email verification method", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = github_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/github/#{provider.id}/edit")
+
+      render_change(lv, "validate", %{"auth_provider" => %{"email_verification_method" => "claim"}})
+      render_submit(lv, "submit_provider", %{})
+
+      assert Portal.Repo.reload!(provider).email_verification_method == :proof
     end
   end
 
@@ -1337,6 +1509,63 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       refute html =~ "Provider To Delete"
     end
 
+    test "warns how many policies reference the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      other_provider = github_provider_fixture(account: account)
+
+      for operator <- [:is_in, :is_not_in] do
+        policy_fixture(
+          account: account,
+          conditions: [%{property: :auth_provider_id, operator: operator, values: [provider.id]}]
+        )
+      end
+
+      policy_fixture(
+        account: account,
+        conditions: [
+          %{property: :auth_provider_id, operator: :is_in, values: [other_provider.id]}
+        ]
+      )
+
+      policy_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("delete", provider.id)
+
+      assert has_element?(
+               lv,
+               "#provider-#{provider.id}-policy-warning",
+               "2 policies reference this provider and will need to be updated."
+             )
+    end
+
+    test "does not warn when no policy references the provider", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = google_provider_fixture(account: account)
+      policy_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication")
+
+      lv |> request_confirm("delete", provider.id)
+
+      assert render(lv) =~ "Delete this provider?"
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
+    end
+
     test "cannot delete provider user is signed in with", %{
       account: account,
       actor: actor,
@@ -1384,7 +1613,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       provider = x509_provider_fixture(account: account)
 
       {:ok, lv, _html} =

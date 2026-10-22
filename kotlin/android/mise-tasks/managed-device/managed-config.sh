@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Point the app's managed configuration at a certificate alias, or clear it"
-#USAGE flag "--alias <alias>" help="Alias to configure; the configuration is cleared when omitted"
+#MISE description="Require, forbid or unset the device certificate in the app's managed configuration"
+#USAGE flag "--certificate <true|false>" help="Whether the app must present a device certificate; the configuration is cleared when omitted"
 set -Eeuo pipefail
 # Any failure `set -e` would swallow names itself, so no death is ever silent.
 trap 'echo "error: ${BASH_SOURCE[0]}:${LINENO}: command failed with exit $?: ${BASH_COMMAND}" >&2' ERR
@@ -11,19 +11,19 @@ source "${SCRIPT_DIR}/lib.sh"
 
 require_parsed_flags "$@"
 
-# X509_CERTIFICATE_ALIAS_RESTRICTION in `core/data/Repository.kt`.
-RESTRICTION_KEY="x509CertificateAlias"
+# X509_CERTIFICATE_RESTRICTION in `core/data/Repository.kt`.
+RESTRICTION_KEY="deviceCertificate"
 
 require_adb
 require_owner
 
-if [ -z "${usage_alias:-}" ]; then
+if [ -z "${usage_certificate:-}" ]; then
     echo "==> Clearing the app's managed configuration..."
     provision -a dev.firezone.dpc.SET_RESTRICTIONS --es package "$APP_PACKAGE"
 else
-    echo "==> Configuring ${RESTRICTION_KEY}=${usage_alias}..."
+    echo "==> Configuring ${RESTRICTION_KEY}=${usage_certificate}..."
     provision -a dev.firezone.dpc.SET_RESTRICTIONS \
-        --es package "$APP_PACKAGE" --es key "$RESTRICTION_KEY" --es value "$usage_alias"
+        --es package "$APP_PACKAGE" --es key "$RESTRICTION_KEY" --ez flag "$usage_certificate"
 fi
 
 echo

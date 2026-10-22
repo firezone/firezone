@@ -6,31 +6,41 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
-  case providerConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case credentialNotConfigured
+public enum PacketTunnelProviderError: Int, Error, CustomNSError, LocalizedError {
+  case providerConfigurationIsInvalid = 0
+  case firezoneIdIsInvalid = 1
+  case credentialNotConfigured = 2
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
   }
 
-  public var errorCode: Int {
-    switch self {
-    case .providerConfigurationIsInvalid: 0
-    case .firezoneIdIsInvalid: 1
-    case .credentialNotConfigured: 2
-    }
+  public var errorCode: Int { rawValue }
+
+  public var errorDescription: String? { message }
+
+  public static func isCredentialNotConfigured(_ error: any Error) -> Bool {
+    let expected = credentialNotConfigured as NSError
+    let actual = error as NSError
+    return actual.domain == expected.domain && actual.code == expected.code
   }
 
-  public var errorDescription: String? {
+  /// `LocalizedError` is a Swift witness, so it is lost when the error crosses to
+  /// another process: the network extension hands one to its completion handler and
+  /// the app receives an `NSError` carrying only the domain and code, which Foundation
+  /// renders as "The operation couldn't be completed." User info survives the trip.
+  public var errorUserInfo: [String: Any] {
+    [NSLocalizedDescriptionKey: message]
+  }
+
+  private var message: String {
     switch self {
     case .providerConfigurationIsInvalid:
-      return "The VPN profile is missing the settings the tunnel needs to start."
+      "The VPN profile is missing the settings the tunnel needs to start."
     case .firezoneIdIsInvalid:
-      return "The device identifier could not be read."
+      "The device identifier could not be read."
     case .credentialNotConfigured:
-      return "A sign-in token is not configured."
+      "A sign-in token is not configured."
     }
   }
 }

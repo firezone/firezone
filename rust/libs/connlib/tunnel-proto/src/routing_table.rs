@@ -9,9 +9,9 @@ use connlib_model::ResourceId;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Protocol, UnsupportedProtocol};
-use lru::LruCache;
+use itertools::Itertools as _;
 
-use crate::filter_engine::FilterEngine;
+use crate::{cache::Cache, filter_engine::FilterEngine};
 
 /// How many IP + port combinations we will at most cache for fast routing table lookups.
 ///
@@ -21,30 +21,73 @@ use crate::filter_engine::FilterEngine;
 /// in parallel which ought to be enough for most people. Very likely, other packet processing will
 /// be the culprit for low throughput if we have more than 1024 connections, plus the cache uses an LRU
 /// eviction pattern, thus prioritizing the most recently used connections.
-const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+pub(crate) const MAX_CACHE_ENTRIES: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
     fn resource_id(&self) -> ResourceId;
 
-    /// An entry-level tie-breaker applied after [`filter`](RouteEntry::filter)
-    /// but before the network prefix-length comparison.
+    /// Compares how specifically two entries describe their destination.
+    ///
+    /// Takes precedence over the network prefix length.
     fn specificity(&self, other: &Self) -> Ordering {
         let _ = other;
         Ordering::Equal
     }
 }
 
+type MatchKey = (IpAddr, FilterProtocol, FilterMode);
+
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, Option<Protocol>), Option<T>>,
+    match_cache: Cache<MatchKey, Option<Vec<T>>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum FilterMode {
+    Apply,
+    #[cfg(any(test, feature = "malicious-behaviour"))]
+    Ignore,
+}
+
+impl FilterMode {
+    fn allows(
+        self,
+        filter: &FilterEngine,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> bool {
+        match self {
+            Self::Apply => filter.apply(protocol).is_ok(),
+            #[cfg(any(test, feature = "malicious-behaviour"))]
+            Self::Ignore => true,
+        }
+    }
+}
+
+/// Protocol classes distinguished by the filter engine.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum FilterProtocol {
+    Supported(Protocol),
+    OtherIcmp,
+    OtherIp,
+}
+
+impl From<&Result<Protocol, UnsupportedProtocol>> for FilterProtocol {
+    fn from(protocol: &Result<Protocol, UnsupportedProtocol>) -> Self {
+        match protocol {
+            Ok(protocol) => Self::Supported(*protocol),
+            Err(UnsupportedProtocol::UnsupportedIcmpv4Type(_)) => Self::OtherIcmp,
+            Err(UnsupportedProtocol::UnsupportedIcmpv6Type(_)) => Self::OtherIcmp,
+            Err(UnsupportedProtocol::UnsupportedIpPayload(_)) => Self::OtherIp,
+        }
+    }
 }
 
 impl<T> Default for RoutingTable<T> {
     fn default() -> Self {
         Self {
             inner: IpNetworkTable::new(),
-            match_cache: LruCache::new(MAX_CACHE_ENTRIES),
+            match_cache: Cache::new(MAX_CACHE_ENTRIES),
         }
     }
 }
@@ -104,56 +147,24 @@ where
         self.inner.retain(|_, entries| !entries.is_empty());
     }
 
-    /// Removes entries for `network` for which `predicate` returns true.
+    /// Returns address matches, or `None` if no network covers `ip`.
     ///
-    /// Drops the network from the table if no entries remain.
-    pub(crate) fn remove(&mut self, network: IpNetwork, predicate: impl Fn(&T) -> bool) {
-        self.match_cache.clear();
-
-        let Some(entries) = self.inner.exact_match_mut(network) else {
-            return;
-        };
-
-        for ele in entries.extract_if(.., |e| predicate(e)) {
-            drop(ele);
-        }
-
-        if entries.is_empty() {
-            self.inner.remove(network);
-        }
-    }
-
-    /// Returns the single "best" entry whose network covers `ip` for the given `protocol`.
-    ///
-    /// Most importantly, this will always return an entry if the IP is present in the
-    /// routing table, **even if the filter doesn't allow the packet**.
-    ///
-    /// The filter, entry-specificity, prefix-length etc are only used to sort the entries.
-    /// It is the responsibility of the caller to additionally check whether the returned, "best"
-    /// entry does in fact allow the given protocol.
+    /// Entries whose filter denies the traffic are excluded. The remaining ones are ordered by
+    /// specificity, prefix length, filter breadth and resource ID, most specific first.
+    /// An empty list means that the address is covered but traffic is denied.
     pub(crate) fn matches(
         &mut self,
         ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> Option<&T> {
-        self.match_cache
-            .get_or_insert((ip, protocol.clone().ok()), || {
-                let (_, entry) = self
-                    .inner
-                    .matches(ip)
-                    .flat_map(|(network, entries)| {
-                        entries.iter().map(move |entry| (network, entry))
-                    })
-                    .max_by(|(l_net, l_entry), (r_net, r_entry)| {
-                        by_filter(protocol.clone(), l_entry.filter(), r_entry.filter())
-                            .then(l_entry.specificity(r_entry))
-                            .then(by_netmask(l_net, r_net))
-                            .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
-                    })?;
+        filter_mode: FilterMode,
+    ) -> Option<&[T]> {
+        let key = (ip, FilterProtocol::from(&protocol), filter_mode);
 
-                Some(entry.clone())
+        self.match_cache
+            .get_or_insert_with(key, || {
+                sorted_matches(&self.inner, ip, protocol, filter_mode)
             })
-            .as_ref()
+            .as_deref()
     }
 
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -161,20 +172,35 @@ where
     }
 }
 
-/// Compares two [`FilterEngine`]s for a given protocol.
-///
-/// A filter that *permits* the protocol is considered greater than one that does not.
-/// If both permit or both reject, the result is [`Ordering::Equal`].
-fn by_filter(
+fn sorted_matches<T>(
+    table: &IpNetworkTable<BTreeSet<T>>,
+    ip: IpAddr,
     protocol: Result<Protocol, UnsupportedProtocol>,
-    l: &FilterEngine,
-    r: &FilterEngine,
-) -> Ordering {
-    match (l.apply(protocol.clone()).is_ok(), r.apply(protocol).is_ok()) {
-        (true, true) | (false, false) => Ordering::Equal,
-        (true, false) => Ordering::Greater,
-        (false, true) => Ordering::Less,
-    }
+    filter_mode: FilterMode,
+) -> Option<Vec<T>>
+where
+    T: RouteEntry,
+{
+    let mut entries = table
+        .matches(ip)
+        .flat_map(|(network, entries)| entries.iter().map(move |entry| (network, entry)))
+        .peekable();
+    entries.peek()?;
+
+    Some(
+        entries
+            .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
+            .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
+                l_entry
+                    .specificity(r_entry)
+                    .then(by_netmask(l_net, r_net))
+                    .then(r_entry.filter().breadth().cmp(&l_entry.filter().breadth()))
+                    .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
+                    .reverse()
+            })
+            .map(|(_, entry)| entry.clone())
+            .collect(),
+    )
 }
 
 /// Compares two networks by their prefix length (netmask).
@@ -182,7 +208,7 @@ fn by_filter(
 /// A longer prefix (e.g. `/32`) is considered greater than a shorter one (e.g. `/24`).
 ///
 /// [`IpNetwork::netmask`] returns the prefix length as a plain `u8`, so a
-/// higher value already means a more-specific network — no reversal needed.
+/// higher value already means a more-specific network, so no reversal is needed.
 fn by_netmask(l: &IpNetwork, r: &IpNetwork) -> Ordering {
     l.netmask().cmp(&r.netmask())
 }
@@ -215,50 +241,140 @@ mod tests {
         let mut t = RoutingTable::new();
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
 
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R1));
-        assert!(t.matches(ip("192.168.0.1"), tcp(80)).is_none());
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R1)
+        );
+        assert!(
+            t.matches(ip("192.168.0.1"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
-    fn matches_longer_prefix_wins() {
-        let mut t = RoutingTable::new();
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        t.upsert(net("10.20.0.0/16"), entry(1, R2, permit_all()));
+    fn matches_returns_all_entries_in_preference_order() {
+        let mut table = RoutingTable::new();
+        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_tcp(443)));
+        table.upsert(net("10.20.0.0/16"), entry(1, R2, permit_all()));
+        table.upsert(net("10.20.0.0/16"), entry(1, R3, permit_tcp(443)));
 
-        assert_eq!(t.matches(ip("10.20.0.1"), tcp(80)).map(|e| e.id), Some(R2));
-        assert_eq!(t.matches(ip("10.99.0.1"), tcp(80)).map(|e| e.id), Some(R1));
+        let matches = &table
+            .matches(ip("10.20.0.1"), tcp(443), FilterMode::Apply)
+            .unwrap();
+        assert_eq!(
+            matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
+            vec![R3, R2, R1]
+        );
+
+        let matches = &table
+            .matches(ip("10.20.0.1"), tcp(80), FilterMode::Apply)
+            .unwrap();
+        assert_eq!(
+            matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
+            vec![R2]
+        );
     }
 
     #[test]
-    fn matches_filter_wins_then_lexical_id() {
-        let mut t = RoutingTable::new();
-        // R1: only TCP/443. R2: only TCP/80.
-        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_tcp(443)));
-        t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
+    fn filter_mode_is_applied_before_breadth_ordering() {
+        let mut table = RoutingTable::new();
+        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
+        table.upsert(net("10.20.0.0/16"), entry(1, R2, FilterEngine::DenyAll));
+        table.upsert(net("10.0.0.0/8"), entry(1, R3, permit_tcp(80)));
 
-        // Only R1's filter matches TCP/443 → R1 wins despite lower ID.
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(443)).map(|e| e.id), Some(R1));
-        // Only R2's filter matches TCP/80 → R2 wins.
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
-        // Neither matches TCP/9999; both are equal on filter → higher lexical ID (R2) wins.
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(9999)).map(|e| e.id), Some(R2));
+        let ids = |table: &mut RoutingTable<TestEntry>, mode| {
+            table
+                .matches(ip("10.20.0.1"), tcp(80), mode)
+                .unwrap()
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
+        assert_eq!(ids(&mut table, FilterMode::Ignore), vec![R2, R3, R1]);
+        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
     }
 
     #[test]
-    fn dns_more_specific_pattern_wins_but_filter_beats_it() {
+    fn denied_matches_are_distinct_from_missing_routes() {
+        let mut table = RoutingTable::new();
+        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_tcp(443)));
+
+        assert!(
+            table
+                .matches(ip("192.168.0.1"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
+        assert!(
+            table
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .is_empty()
+        );
+
+        table.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
+        assert_eq!(
+            table
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
+                .unwrap()[0]
+                .id,
+            R2
+        );
+        table.remove_by_id(R2);
+        assert!(
+            table
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn cache_distinguishes_unsupported_icmp_from_other_ip_protocols() {
+        use ip_packet::{Icmpv4Type, IpProtocol, icmpv4};
+
+        let mut table = RoutingTable::new();
+        table.upsert(
+            net("10.0.0.0/8"),
+            entry(1, R1, FilterEngine::new(&[crate::messages::Filter::Icmp])),
+        );
+        let icmp = Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+        ));
+        let other_ip = Err(UnsupportedProtocol::UnsupportedIpPayload(IpProtocol::IGMP));
+
+        for protocol in [icmp.clone(), other_ip.clone(), icmp, other_ip] {
+            let expected = matches!(protocol, Err(UnsupportedProtocol::UnsupportedIcmpv4Type(_)));
+            assert_eq!(
+                !table
+                    .matches(ip("10.0.0.1"), protocol, FilterMode::Apply)
+                    .unwrap()
+                    .is_empty(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn more_specific_pattern_wins_if_its_filter_allows_the_traffic() {
         let mut t = RoutingTable::<TestEntry>::new();
         let net = ip("1.2.3.4").into();
-
-        // R1: higher specificity (exact), R2: lower specificity (wildcard).
-        // Both permit TCP/80; R1 wins on specificity.
-        t.upsert(net, entry(2, R1, permit_tcp(80)));
+        t.upsert(net, entry(2, R1, permit_all()));
         t.upsert(net, entry(1, R2, permit_tcp(80)));
-        assert_eq!(t.matches(ip("1.2.3.4"), tcp(80)).map(|e| e.id), Some(R1));
+        t.upsert(net, entry(3, R3, permit_tcp(443)));
 
-        // R3: lower specificity than R1, but the only entry that permits TCP/443.
-        // A matching filter beats a non-matching one regardless of specificity.
-        t.upsert(net, entry(1, R3, permit_tcp(443)));
-        assert_eq!(t.matches(ip("1.2.3.4"), tcp(443)).map(|e| e.id), Some(R3));
+        let ids = |t: &mut RoutingTable<TestEntry>, port| {
+            t.matches(ip("1.2.3.4"), tcp(port), FilterMode::Apply)
+                .unwrap()
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&mut t, 80), vec![R1, R2]);
+        assert_eq!(ids(&mut t, 443), vec![R3, R1]);
     }
 
     #[test]
@@ -268,34 +384,28 @@ mod tests {
         t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_all()));
 
         t.remove_by_id(R1);
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R2)
+        );
 
         t.remove_by_id(R3); // never inserted – no-op
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R2)
+        );
 
         t.remove_by_id(R2);
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
-    }
-
-    #[test]
-    fn remove() {
-        let mut t = RoutingTable::new();
-        let n = net("10.0.0.0/8");
-
-        t.upsert(n, entry(1, R1, permit_all()));
-        t.upsert(n, entry(1, R2, permit_all()));
-
-        // Predicate-based removal keeps non-matching entries.
-        t.remove(n, |e| e.id == R1);
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
-
-        // Removing the last entry drops the network from the table.
-        t.remove(n, |e| e.id == R2);
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
-        assert_eq!(t.networks().count(), 0);
-
-        // Calling on an unknown network is a no-op.
-        t.remove(net("192.168.0.0/16"), |_| true);
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
@@ -303,12 +413,21 @@ mod tests {
         let mut t = RoutingTable::new();
 
         // Use an IP that is not covered by any network yet.
-        // Populate the cache with a None (no route exists).
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        // Cache the empty result.
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
 
-        // Inserting a covering network must evict the cached None.
+        // Inserting a covering network must evict the cached result.
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R1));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R1)
+        );
     }
 
     #[test]
@@ -317,12 +436,24 @@ mod tests {
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
 
         // Warm the cache: R1 is the winner for TCP/80.
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R1));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R1)
+        );
 
         // Insert a more-specific entry on the same network; the cached result
         // must be evicted so the new winner is returned.
         t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R2)
+        );
     }
 
     #[test]
@@ -331,16 +462,30 @@ mod tests {
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
         t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_all()));
 
-        // Warm the cache: R2 wins the tie-break (higher lexical ID).
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R2));
+        // Warm the cache with both matching entries.
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .len(),
+            2
+        );
 
         // Removing R2 must evict the cached result; R1 should now be returned.
         t.remove_by_id(R2);
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).map(|e| e.id), Some(R1));
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .first()
+                .map(|e| e.id),
+            Some(R1)
+        );
 
         // Removing the last entry must evict the cache too; expect a miss.
         t.remove_by_id(R1);
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
@@ -433,7 +578,11 @@ mod benches {
         let ip = ip("1.2.3.4");
         let proto = Ok(Protocol::Tcp(0));
 
-        bencher.bench_local(|| table.matches(ip, proto.clone()).is_some());
+        bencher.bench_local(|| {
+            table
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
+        });
     }
 
     /// Benchmark `matches` against a table with `N` **distinct /32 networks**
@@ -461,7 +610,11 @@ mod benches {
         let ip = ip(&format!("10.{a}.{b}.{c}"));
         let proto = Ok(Protocol::Tcp(80));
 
-        bencher.bench_local(|| table.matches(ip, proto.clone()).is_some());
+        bencher.bench_local(|| {
+            table
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
+        });
     }
 
     /// Benchmark `matches` against a table with `N` **nested CIDR prefixes**
@@ -486,7 +639,11 @@ mod benches {
         let ip = ip("10.0.0.1");
         let proto = Ok(Protocol::Tcp(80));
 
-        bencher.bench_local(|| table.matches(ip, proto.clone()).is_some());
+        bencher.bench_local(|| {
+            table
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
+        });
     }
 
     // A minimal entry mirroring the one in the test module.

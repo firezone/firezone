@@ -13,6 +13,9 @@ defmodule Portal.Application do
     # Attach Oban Sentry reporter
     Portal.Telemetry.Reporter.Oban.attach()
 
+    # Send portal page views and actions to PostHog (a no-op unless it's configured)
+    :ok = PortalWeb.Analytics.attach()
+
     # OpenTelemetry setup
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])
@@ -57,11 +60,15 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
+      Portal.OSReleases,
       Portal.ClockDriftAlarm,
       OpenIDConnect.Document.Cache
     ]
 
     endpoint_children = [
+      # Builds the MCP tool table from the API spec; must be ready before the
+      # API endpoint starts serving /mcp.
+      PortalAPI.MCP.Tools,
       # Give Phoenix socket drain enough time to gracefully close channel topics
       # before transports are force-terminated.
       {PortalWeb.Endpoint, shutdown: 40_000},
@@ -197,7 +204,8 @@ defmodule Portal.Application do
     # generating the OpenAPI spec without a Postgres service). Oban 2.22+
     # verifies migrations at supervisor start, which requires a live DB.
     if Portal.Config.env_var_to_config!(:oban_enabled) do
-      [{Portal.Oban, Application.fetch_env!(:portal, Oban)}]
+      # The rescuer stops after Oban, once the jobs Oban killed are gone.
+      [Portal.DirectorySync.Rescuer, {Portal.Oban, Application.fetch_env!(:portal, Oban)}]
     else
       []
     end

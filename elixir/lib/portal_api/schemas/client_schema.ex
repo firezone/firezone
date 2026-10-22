@@ -10,6 +10,7 @@ defmodule PortalAPI.Schemas.Client do
              internal: [
                :account_id,
                :attested?,
+               :posture,
                :client_token_id,
                :firezone_id_merged?,
                :gateway_token_id,
@@ -51,6 +52,14 @@ defmodule PortalAPI.Schemas.Client do
           example: "John's Macbook Air",
           type: :string,
           description: "Client Name"
+        },
+        slug: %Schema{
+          example: "johns-macbook-air",
+          type: :string,
+          nullable: true,
+          description:
+            "DNS label the Client is reached at under `firezone.network`, unique within " <>
+              "the Account. Null until the Client connects once."
         },
         ipv4: %Schema{
           example: "100.64.0.1",
@@ -95,7 +104,7 @@ defmodule PortalAPI.Schemas.Client do
           example: "johns-macbook.example.com",
           type: :string,
           nullable: true,
-          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
+          description: "Client hostname"
         },
         last_attested_device_serial: %Schema{
           example: "GCCFX0DBQ6L5",
@@ -160,7 +169,11 @@ defmodule PortalAPI.Schemas.Client do
           type: :string,
           format: :"date-time",
           nullable: true,
-          description: "Timestamp of the latest connection"
+          description:
+            "When the latest connection started. It is not updated while the Client stays " <>
+              "connected, so check `online` too. Every Client has connected at least once, " <>
+              "when it was created. Null when the Client has not connected since this field " <>
+              "started to be recorded in February 2026."
         },
         last_seen_version: %Schema{
           example: "1.5.0",
@@ -227,6 +240,7 @@ defmodule PortalAPI.Schemas.Client do
         :hostname,
         :id,
         :identifier_for_vendor,
+        :slug,
         :ipv4,
         :ipv6,
         :last_attested_at,
@@ -269,6 +283,14 @@ defmodule PortalAPI.Schemas.Client do
           example: "John's Macbook Air",
           type: :string,
           description: "Client Name"
+        },
+        slug: %Schema{
+          example: "johns-macbook-air",
+          type: :string,
+          description:
+            "DNS label the Client is reached at under `firezone.network`, unique within " <>
+              "the Account. One to 63 lowercase letters, digits or hyphens, starting and " <>
+              "ending with a letter or digit. Left as it is when omitted."
         }
       },
       required: [:name]

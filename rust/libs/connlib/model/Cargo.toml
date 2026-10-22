@@ -5,9 +5,9 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
-boringtun = { workspace = true }
 derive_more = { workspace = true, features = ["from"] }
 ip_network = { workspace = true, features = ["serde"] }
+sanstun = { workspace = true }
 serde = { workspace = true, features = ["derive", "std"] }
 uuid = { workspace = true, features = ["std", "v4", "serde"] }
 

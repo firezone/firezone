@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -151,22 +153,21 @@ class RepositoryManagedConfigurationTest {
         }
 
     @Test
-    fun `revoking managed settings preserves the user certificate alias`() =
+    fun `the certificate alias counts unless the administrator turned certificates off`() =
         runBlocking {
-            repository.saveX509CertificateAliasSync("user-alias")
-            val managedRestrictions =
-                Bundle().apply {
-                    putString(AUTH_URL_KEY, "https://managed.example.com")
-                    putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
-                }
-            repository.saveManagedConfiguration(managedRestrictions).first()
+            repository.saveX509CertificateAliasSync("device-alias")
 
-            assertEquals("managed-alias", repository.getX509CertificateAliasSync(managedRestrictions))
+            assertEquals("device-alias", repository.getX509CertificateAliasSync(Bundle()))
+            assertFalse(repository.isX509CertificateRequired(Bundle()))
 
-            val revokedRestrictions = Bundle()
-            repository.saveManagedConfiguration(revokedRestrictions).first()
+            val required = Bundle().apply { putBoolean(X509_CERTIFICATE_RESTRICTION, true) }
+            assertEquals("device-alias", repository.getX509CertificateAliasSync(required))
+            assertTrue(repository.isX509CertificateRequired(required))
 
-            assertEquals("user-alias", repository.getX509CertificateAliasSync(revokedRestrictions))
+            val off = Bundle().apply { putBoolean(X509_CERTIFICATE_RESTRICTION, false) }
+            assertNull(repository.getX509CertificateAliasSync(off))
+            assertTrue(repository.isX509CertificateOff(off))
+            assertFalse(repository.isX509CertificateRequired(off))
         }
 
     private fun allManagedConfig(): Bundle =

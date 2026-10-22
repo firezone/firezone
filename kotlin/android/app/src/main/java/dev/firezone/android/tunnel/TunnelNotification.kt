@@ -140,6 +140,17 @@ object TunnelNotification {
     }
 
     /**
+     * Shows the error notification for a VPN permission only the user can hand back.
+     */
+    fun showVpnPermissionRequiredNotification(context: Context) {
+        showErrorNotification(
+            context,
+            "VPN permission required",
+            "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
+        )
+    }
+
+    /**
      * Ensures a notification channel exists with the given parameters.
      * Creates the channel if it doesn't already exist.
      */

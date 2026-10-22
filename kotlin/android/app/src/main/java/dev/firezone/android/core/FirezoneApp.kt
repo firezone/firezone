@@ -2,28 +2,35 @@
 package dev.firezone.android.core
 
 import android.app.Application
-import android.content.Context
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.configureLogger
 import uniffi.connlib.drainFlowLogs
 import java.io.IOException
+import javax.inject.Inject
 import kotlin.concurrent.thread
 
 @HiltAndroidApp
 class FirezoneApp : Application() {
+    @Inject
+    internal lateinit var repo: Lazy<Repository>
+
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize Telemetry as early as possible
-        Telemetry.start(this)
+        // Initialize Telemetry as early as possible. Reading the config touches the Keystore,
+        // which can fail; that must not keep Sentry from reporting it.
+        val apiUrl = runCatching { repo.get().getConfigSync().apiUrl }.getOrDefault(BuildConfig.API_URL)
+        Telemetry.start(this, apiUrl)
 
         // Disable Crashlytics for debug builds
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
@@ -31,9 +38,6 @@ class FirezoneApp : Application() {
         // Load the native library immediately after FirebaseCrashlytics
         // so we catch any issues with the native library early on.
         System.loadLibrary("connlib")
-
-        // Wires connlib's TLS stack (rustls) to Android's trust store; required before any TLS handshake.
-        initRustlsPlatformVerifier(this)
 
         val flowLogsDir = TunnelService.flowLogsDir(this)
 
@@ -66,8 +70,5 @@ class FirezoneApp : Application() {
 
     companion object {
         private const val TAG: String = "FirezoneApp"
-
-        @JvmStatic
-        external fun initRustlsPlatformVerifier(context: Context)
     }
 }

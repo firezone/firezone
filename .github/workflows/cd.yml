@@ -117,7 +117,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth
-      pull-requests: write # post perf result comments
       checks: write # Bencher check annotations
 
   # To have proper test coverage, we need to run `rust` and `elixir` on `main`.
@@ -135,11 +134,13 @@ jobs:
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
 
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -150,6 +151,7 @@ jobs:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise

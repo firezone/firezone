@@ -112,6 +112,44 @@ defmodule PortalAPI.MembershipControllerTest do
 
       assert MapSet.subset?(data_ids, membership_ids)
     end
+
+    test "returns each member's email", %{conn: conn, account: account, actor: api_actor} do
+      group = group_fixture(account: account)
+      member = actor_fixture(account: account, type: :account_user, email: "jane@example.com")
+      membership_fixture(account: account, group: group, actor: member)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}/memberships")
+
+      assert %{"data" => [%{"id" => id, "email" => "jane@example.com"}]} =
+               json_response(conn, 200)
+
+      assert id == member.id
+    end
+
+    test "lists every user and admin for the built-in Everyone group", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = managed_group_fixture(account: account, name: "Everyone")
+      user = actor_fixture(account: account, type: :account_user)
+      admin = actor_fixture(account: account, type: :account_admin_user)
+      actor_fixture(account: account, type: :service_account)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}/memberships")
+
+      data_ids = Enum.map(json_response(conn, 200)["data"], & &1["id"])
+
+      assert equal_ids?(data_ids, [user.id, admin.id])
+    end
   end
 
   describe "update_patch/2" do
@@ -629,6 +667,41 @@ defmodule PortalAPI.MembershipControllerTest do
   end
 
   describe "input validation" do
+    test "rejects 16-byte actor IDs in PUT and both PATCH lists", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = group_fixture(account: account)
+      actor = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: actor, group: group)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+
+      response =
+        put(conn, "/groups/#{group.id}/memberships",
+          memberships: [%{"actor_id" => "warehouse worker"}]
+        )
+
+      assert %{"validation_errors" => %{"0" => %{"actor_id" => ["is invalid"]}}} =
+               json_response(response, 422)
+
+      for field <- ["add", "remove"] do
+        response =
+          patch(conn, "/groups/#{group.id}/memberships",
+            memberships: %{field => ["warehouse worker"]}
+          )
+
+        assert %{"validation_errors" => %{^field => %{"0" => ["is invalid"]}}} =
+                 json_response(response, 422)
+      end
+
+      assert Repo.get_by!(Portal.Membership, account_id: account.id, id: membership.id).actor_id == actor.id
+    end
+
     test "PATCH rejects a malformed uuid in remove", %{
       conn: conn,
       account: account,

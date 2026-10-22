@@ -19,10 +19,6 @@ defmodule Portal.Billing do
     fetch_config!(:plan_product_ids)
   end
 
-  def adhoc_device_product_id do
-    fetch_config!(:adhoc_device_product_id)
-  end
-
   # Limits and Features
 
   @doc """
@@ -98,10 +94,10 @@ defmodule Portal.Billing do
 
   @doc """
   Returns the plan type for the account based on the Stripe product name.
-  Returns :enterprise, :team, :starter, or :unknown.
+  Returns :enterprise, :business, :team, :starter, or :unknown.
   """
   @spec plan_type(Portal.Account.t() | String.t() | nil) ::
-          :enterprise | :team | :starter | :unknown
+          :enterprise | :business | :team | :starter | :unknown
   def plan_type(%Portal.Account{metadata: %{stripe: %{product_name: product_name}}}),
     do: plan_type(product_name)
 
@@ -110,6 +106,7 @@ defmodule Portal.Billing do
   def plan_type(product_name) when is_binary(product_name) do
     cond do
       String.starts_with?(product_name, "Enterprise") -> :enterprise
+      product_name == "Business" -> :business
       product_name == "Team" -> :team
       product_name == "Starter" -> :starter
       true -> :unknown
@@ -119,12 +116,69 @@ defmodule Portal.Billing do
   def plan_type(nil), do: :unknown
 
   @spec paid_plan?(Portal.Account.t()) :: boolean()
-  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :enterprise]
+  def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :business, :enterprise]
 
   def users_limit_exceeded?(%Portal.Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
   end
+
+  @no_active_actors %{users: 0, service_accounts: 0}
+
+  @doc """
+  Monthly active seats: distinct enabled users, admins and service accounts
+  with a client device seen in the last month. Up to `adhoc_service_accounts_count`
+  active service accounts take no seat, the others take one each.
+  """
+  @spec count_monthly_active_users(Portal.Account.t()) :: non_neg_integer()
+  def count_monthly_active_users(%Portal.Account{} = account) do
+    monthly_active_usage(account).seats
+  end
+
+  @doc """
+  The seats used, as `count_monthly_active_users/1` returns them, and the active
+  service accounts that take no seat because of `adhoc_service_accounts_count`.
+  """
+  @spec monthly_active_usage(Portal.Account.t()) :: %{
+          seats: non_neg_integer(),
+          adhoc_service_accounts: non_neg_integer()
+        }
+  def monthly_active_usage(%Portal.Account{} = account) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    seats = seats_used(account, counts)
+    service_accounts_in_seats = seats - counts.users
+
+    %{seats: seats, adhoc_service_accounts: counts.service_accounts - service_accounts_in_seats}
+  end
+
+  @doc """
+  Same as `count_monthly_active_users/1` for many accounts at once, as a map of
+  account id to count.
+  """
+  @spec count_monthly_active_users_by_account([Portal.Account.t()]) :: %{
+          Ecto.UUID.t() => non_neg_integer()
+        }
+  def count_monthly_active_users_by_account(accounts) do
+    counts =
+      accounts
+      |> Enum.map(& &1.id)
+      |> Database.count_monthly_active_actors_by_account()
+
+    Map.new(accounts, fn account ->
+      {account.id, seats_used(account, Map.get(counts, account.id, @no_active_actors))}
+    end)
+  end
+
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: nil}}, counts), do: counts.users
+
+  defp seats_used(%{limits: %{adhoc_service_accounts_count: adhoc}}, counts),
+    do: counts.users + max(counts.service_accounts - adhoc, 0)
+
+  defp seats_used(_account, counts), do: counts.users + counts.service_accounts
 
   def seats_limit_exceeded?(%Portal.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
@@ -133,7 +187,7 @@ defmodule Portal.Billing do
 
   def can_create_users?(%Portal.Account{} = account) do
     users_count = Database.count_users_for_account(account)
-    active_users_count = Database.count_1m_active_users_for_account(account)
+    active_users_count = count_monthly_active_users(account)
 
     cond do
       not Portal.Account.active?(account) ->
@@ -202,6 +256,26 @@ defmodule Portal.Billing do
          api_clients_count < account.limits.api_clients_count)
   end
 
+  @doc """
+  Returns `true` when connecting `device_id` would put the actor over its
+  `connected_devices_per_actor` limit. A `nil` limit means unlimited. The device
+  itself is not counted, so a client that reconnects is never refused.
+  """
+  @spec connected_devices_limit_reached?(Portal.Account.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+          boolean()
+  def connected_devices_limit_reached?(%Portal.Account{} = account, actor_id, device_id) do
+    case account.limits && account.limits.connected_devices_per_actor do
+      nil ->
+        false
+
+      limit ->
+        connected =
+          Portal.Presence.Devices.online_client_ids_for_actor(account.id, actor_id, device_id)
+
+        length(connected) >= limit
+    end
+  end
+
   @type actor_enable_limit_error ::
           :users_limit_reached
           | :admin_users_limit_reached
@@ -266,6 +340,7 @@ defmodule Portal.Billing do
   `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block sign-ins.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_sign_in_restricted?(Portal.Account.t()) :: boolean()
@@ -280,11 +355,75 @@ defmodule Portal.Billing do
   limits exceeded), `false` otherwise.
 
   Note: seats_limit_exceeded is a soft limit - it doesn't block connections.
+  The Business plan enforces seats per user, see `client_seat_restricted?/2`.
   A warning is logged by CheckAccountLimits worker when first exceeded.
   """
   @spec client_connect_restricted?(Portal.Account.t()) :: boolean()
   def client_connect_restricted?(%Portal.Account{} = account) do
     account.users_limit_exceeded or account.service_accounts_limit_exceeded
+  end
+
+  @doc """
+  Business plan seat enforcement for a single user. Returns `true` only when the
+  user is not yet a monthly active user and every seat is already taken, so
+  the user would push the account past its limit. Users who are already active
+  are never restricted. Other plans are never restricted.
+  """
+  @spec client_seat_restricted?(Portal.Account.t(), Ecto.UUID.t()) :: boolean()
+  def client_seat_restricted?(%Portal.Account{} = account, actor_id) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    plan_type(account) == :business and is_integer(limit) and
+      not Database.actor_active_in_last_month?(account, actor_id) and
+      seats_used_with_actor(account, actor_id) > limit
+  end
+
+  defp seats_used_with_actor(account, actor_id) do
+    counts =
+      [account.id]
+      |> Database.count_monthly_active_actors_by_account()
+      |> Map.get(account.id, @no_active_actors)
+
+    counts =
+      if Database.service_account?(account, actor_id) do
+        Map.update!(counts, :service_accounts, &(&1 + 1))
+      else
+        Map.update!(counts, :users, &(&1 + 1))
+      end
+
+    seats_used(account, counts)
+  end
+
+  @low_seats_threshold 0.1
+
+  @doc """
+  Whether the account's plan sends seat limit warning emails to its admins.
+  """
+  @spec seats_warning_plan?(Portal.Account.t()) :: boolean()
+  def seats_warning_plan?(%Portal.Account{} = account), do: plan_type(account) == :business
+
+  @doc """
+  Where a Business or Enterprise account stands against its monthly active seat limit.
+
+    * `:approaching` - fewer than 10% of seats remain, at least one is free
+    * `:at_limit` - every seat is used; Business blocks new users from here
+    * `:over` - more active users than seats
+    * `:clear` - plenty of seats remain
+
+  Returns `nil` for other plans and for accounts without a seat limit.
+  """
+  @spec seats_warning_level(Portal.Account.t(), non_neg_integer()) ::
+          :approaching | :at_limit | :over | :clear | nil
+  def seats_warning_level(%Portal.Account{} = account, active_users_count) do
+    limit = account.limits && account.limits.monthly_active_users_count
+
+    cond do
+      plan_type(account) not in [:business, :enterprise] or not is_integer(limit) -> nil
+      active_users_count > limit -> :over
+      active_users_count == limit -> :at_limit
+      (limit - active_users_count) / limit < @low_seats_threshold -> :approaching
+      true -> :clear
+    end
   end
 
   @doc """
@@ -301,7 +440,7 @@ defmodule Portal.Billing do
         users_limit_exceeded:
           users_limit_exceeded?(account, Database.count_users_for_account(account)),
         seats_limit_exceeded:
-          seats_limit_exceeded?(account, Database.count_1m_active_users_for_account(account)),
+          seats_limit_exceeded?(account, count_monthly_active_users(account)),
         service_accounts_limit_exceeded:
           service_accounts_limit_exceeded?(
             account,
@@ -431,8 +570,10 @@ defmodule Portal.Billing do
 
     case APIClient.fetch_customer_subscriptions(secret_key, customer_id) do
       {:ok, %{"data" => subscriptions}} ->
-        Enum.reduce_while(subscriptions, :ok, fn %{"id" => subscription_id}, :ok ->
-          cancel_subscription_by_id(secret_key, customer_id, subscription_id)
+        subscriptions
+        |> Enum.reject(&(&1["status"] == "incomplete_expired"))
+        |> Enum.reduce_while(:ok, fn subscription, :ok ->
+          cancel_subscription(secret_key, customer_id, subscription)
         end)
 
       {:error, reason} ->
@@ -448,6 +589,43 @@ defmodule Portal.Billing do
   def list_all_subscriptions do
     secret_key = fetch_config!(:secret_key)
     APIClient.list_all_subscriptions(secret_key)
+  end
+
+  defp cancel_subscription(secret_key, customer_id, %{"id" => subscription_id} = subscription) do
+    case cancel_subscription_by_id(secret_key, customer_id, subscription_id) do
+      {:cont, :ok} -> keep_collecting_debt(secret_key, customer_id, subscription)
+      {:halt, error} -> {:halt, error}
+    end
+  end
+
+  # Canceling turns off collection of open invoices; keep collecting what is already owed.
+  defp keep_collecting_debt(secret_key, customer_id, %{"id" => subscription_id, "status" => status})
+       when status in ["past_due", "unpaid"] do
+    with {:ok, %{"data" => invoices}} <-
+           APIClient.fetch_open_subscription_invoices(secret_key, subscription_id),
+         :ok <- resume_invoice_collection(secret_key, invoices) do
+      {:cont, :ok}
+    else
+      {:error, reason} ->
+        Logger.error("Cannot resume collection of a canceled Stripe subscription's invoices",
+          customer_id: customer_id,
+          subscription_id: subscription_id,
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :retry_later}}
+    end
+  end
+
+  defp keep_collecting_debt(_secret_key, _customer_id, _subscription), do: {:cont, :ok}
+
+  defp resume_invoice_collection(secret_key, invoices) do
+    Enum.reduce_while(invoices, :ok, fn %{"id" => invoice_id}, :ok ->
+      case APIClient.update_invoice_auto_advance(secret_key, invoice_id, true) do
+        {:ok, _invoice} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp cancel_subscription_by_id(secret_key, customer_id, subscription_id) do
@@ -526,6 +704,59 @@ defmodule Portal.Billing do
     false
   end
 
+  # Everything sign-up gives a new account, for one that predates it or was created some
+  # other way. Each step is skipped when the row is already there, so it is safe to re-run.
+  defp ensure_defaults_exist(%Portal.Account{} = account) do
+    with {:ok, account} <- ensure_internet_site_and_resource_exist(account) do
+      ensure_self_device_pool_exists(account)
+    end
+  end
+
+  defp ensure_self_device_pool_exists(%Portal.Account{} = account) do
+    pool =
+      case Database.fetch_self_device_pool(account) do
+        {:ok, pool} ->
+          pool
+
+        {:error, :not_found} ->
+          {:ok, pool} = Database.create_self_device_pool(account)
+          pool
+      end
+
+    group =
+      case Database.fetch_account_owner_group(account) do
+        {:ok, group} ->
+          group
+
+        {:error, :not_found} ->
+          {:ok, group} = Database.create_account_owner_group(account)
+          group
+      end
+
+    :ok = ensure_account_owner_membership_exists(account, group)
+
+    case Database.fetch_self_device_pool_policy(account, group, pool) do
+      {:ok, _policy} ->
+        {:ok, account}
+
+      {:error, :not_found} ->
+        {:ok, _policy} = Database.create_self_device_pool_policy(account, group, pool)
+        {:ok, account}
+    end
+  end
+
+  # The account's oldest admin is the closest thing an existing account has to the actor who
+  # created it. An account without one is left alone; the group is there for the first admin.
+  defp ensure_account_owner_membership_exists(%Portal.Account{} = account, group) do
+    with {:ok, actor} <- Database.fetch_oldest_admin(account),
+         {:error, :not_found} <- Database.fetch_membership(account, group, actor) do
+      {:ok, _membership} = Database.create_membership(account, group, actor)
+      :ok
+    else
+      _other -> :ok
+    end
+  end
+
   defp ensure_internet_site_and_resource_exist(%Portal.Account{} = account) do
     # Ensure Internet site exists
     site =
@@ -595,13 +826,13 @@ defmodule Portal.Billing do
   def provision_account(%Portal.Account{} = account) do
     with true <- enabled?(),
          true <- not account_provisioned?(account),
-         {:ok, account} <- ensure_internet_site_and_resource_exist(account),
+         {:ok, account} <- ensure_defaults_exist(account),
          {:ok, account} <- create_customer(account),
          {:ok, account} <- create_subscription(account) do
       {:ok, account}
     else
       false ->
-        ensure_internet_site_and_resource_exist(account)
+        ensure_defaults_exist(account)
 
       {:error, reason} ->
         {:error, reason}
@@ -737,21 +968,49 @@ defmodule Portal.Billing do
       |> Safe.aggregate(:count)
     end
 
-    def count_1m_active_users_for_account(%Account{} = account) do
+    def actor_active_in_last_month?(%Account{} = account, actor_id) do
+      from(d in Device,
+        where: d.account_id == ^account.id,
+        where: d.actor_id == ^actor_id,
+        where: d.type == :client,
+        where: d.last_seen_at > ago(1, "month")
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def service_account?(%Account{} = account, actor_id) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.id == ^actor_id,
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def count_monthly_active_actors_by_account(account_ids) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id == ^account.id)
+      |> where([devices: d], d.account_id in ^account_ids)
       |> where([devices: d], d.last_seen_at > ago(1, "month"))
       |> join(:inner, [devices: d], a in Actor,
         on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([devices: d], d.actor_id)
-      |> distinct(true)
+      |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
+      |> group_by([devices: d], d.account_id)
+      |> select([devices: d, actor: a], {
+        d.account_id,
+        %{
+          users: filter(count(d.actor_id, :distinct), a.type != :service_account),
+          service_accounts: filter(count(d.actor_id, :distinct), a.type == :service_account)
+        }
+      })
       |> Safe.unscoped()
-      |> Safe.aggregate(:count)
+      |> Safe.all()
+      |> Map.new()
     end
 
     def count_sites_for_account(account) do
@@ -830,6 +1089,120 @@ defmodule Portal.Billing do
         type: :internet,
         site_id: site.id
       }
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_self_device_pool(%Account{} = account) do
+      from(r in Portal.Resource,
+        where: r.account_id == ^account.id,
+        where: r.type == :device_pool
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def create_self_device_pool(%Account{} = account) do
+      %Portal.Resource{account_id: account.id}
+      |> Ecto.Changeset.cast(Portal.Resource.self_device_pool_attrs(), [
+        :type,
+        :device_membership_criteria,
+        :name
+      ])
+      |> Portal.Resource.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_account_owner_group(%Account{} = account) do
+      %{name: name} = Portal.Group.account_owner_attrs()
+
+      from(g in Portal.Group,
+        where: g.account_id == ^account.id,
+        where: g.name == ^name
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        group -> {:ok, group}
+      end
+    end
+
+    def create_account_owner_group(%Account{} = account) do
+      %Portal.Group{account_id: account.id}
+      |> Ecto.Changeset.cast(Portal.Group.account_owner_attrs(), [:name, :type])
+      |> Portal.Group.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_self_device_pool_policy(%Account{} = account, group, resource) do
+      from(p in Portal.Policy,
+        where: p.account_id == ^account.id,
+        where: p.group_id == ^group.id,
+        where: p.resource_id == ^resource.id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        policy -> {:ok, policy}
+      end
+    end
+
+    def create_self_device_pool_policy(%Account{} = account, group, resource) do
+      %Portal.Policy{account_id: account.id}
+      |> Ecto.Changeset.cast(
+        %{
+          group_id: group.id,
+          resource_id: resource.id,
+          description: "Lets the account owner reach their own devices."
+        },
+        [:group_id, :resource_id, :description]
+      )
+      |> Portal.Policy.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_oldest_admin(%Account{} = account) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account.id,
+        where: a.type == :account_admin_user,
+        order_by: [asc: a.inserted_at, asc: a.id],
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
+    end
+
+    def fetch_membership(%Account{} = account, group, actor) do
+      from(m in Portal.Membership,
+        where: m.account_id == ^account.id,
+        where: m.group_id == ^group.id,
+        where: m.actor_id == ^actor.id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        membership -> {:ok, membership}
+      end
+    end
+
+    def create_membership(%Account{} = account, group, actor) do
+      %Portal.Membership{account_id: account.id}
+      |> Ecto.Changeset.cast(%{group_id: group.id, actor_id: actor.id}, [:group_id, :actor_id])
+      |> Portal.Membership.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end

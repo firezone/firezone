@@ -5,11 +5,15 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.os.UserHandle
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import dev.firezone.android.core.presentation.MainActivity
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 // The tunnel runs as a `systemExempted` foreground service, which the platform only lets an app
@@ -25,10 +29,41 @@ fun grantNotificationPermission() {
     shell("pm grant ${packageName()} android.permission.POST_NOTIFICATIONS")
 }
 
-// The same entry point the splash screen and the boot receiver use, so `startedByUser` is set
+// Back to the state of a fresh install, where `VpnService.prepare` hands out the consent dialog.
+fun revokeVpnConsent() {
+    shell("appops set ${packageName()} ACTIVATE_VPN default")
+}
+
+// `pm revoke` kills the process it takes a runtime permission from, and that process is the test.
+// The platform keeps one door open for tests, behind permissions only the shell holds.
+fun revokeNotificationPermission() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+
+    instrumentation.uiAutomation.adoptShellPermissionIdentity(
+        "android.permission.REVOKE_RUNTIME_PERMISSIONS",
+        "android.permission.REVOKE_POST_NOTIFICATIONS_WITHOUT_KILL",
+    )
+
+    try {
+        val userId = UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
+
+        Class
+            .forName("android.permission.PermissionManager")
+            .getMethod("revokePostNotificationPermissionWithoutKillForTest", String::class.java, Int::class.javaPrimitiveType)
+            .invoke(context.getSystemService("permission"), context.packageName, userId)
+    } finally {
+        instrumentation.uiAutomation.dropShellPermissionIdentity()
+    }
+
+    // Once the user has answered the dialog, the system answers for them from then on.
+    shell("pm clear-permission-flags ${packageName()} android.permission.POST_NOTIFICATIONS user-set user-fixed")
+}
+
+// The same entry point the splash screen uses, so `startedByUser` is set
 // the way it is in production.
 fun startTunnelService() {
-    TunnelService.start(InstrumentationRegistry.getInstrumentation().targetContext)
+    TunnelService.start(InstrumentationRegistry.getInstrumentation().targetContext, TunnelService.StartSource.CONNECT_ON_START)
 }
 
 // Enters through the launcher, so that the splash screen's own routing decides which screen the
@@ -89,6 +124,48 @@ fun awaitResumed(activity: Class<out Activity>) {
     }
 }
 
+// Reads the accessibility tree rather than Compose's own test rule. The rule waits for the
+// composition to go idle and has no deadline of its own, and idleness is driven by frames, so an
+// emulator that stops producing them leaves the wait with nothing to end it.
+fun awaitTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
+    val found =
+        UiDevice
+            .getInstance(InstrumentationRegistry.getInstrumentation())
+            .wait(Until.hasObject(selector(text, substring)), TimeUnit.SECONDS.toMillis(20))
+
+    if (found != true) {
+        throw AssertionError("Timed out waiting for \"$text\" on screen, showing ${resumedActivity()}")
+    }
+}
+
+/** Taps whatever carries [text], once it is there. */
+fun clickTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
+    awaitTextOnScreen(text, substring)
+
+    UiDevice
+        .getInstance(InstrumentationRegistry.getInstrumentation())
+        .findObject(selector(text, substring))
+        ?.click()
+        ?: throw AssertionError("\"$text\" left the screen before it could be tapped")
+}
+
+/** Whether [text] is on screen now, for asserting that something is absent. */
+fun isTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+): Boolean = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).hasObject(selector(text, substring))
+
+private fun selector(
+    text: String,
+    substring: Boolean,
+) = if (substring) By.textContains(text) else By.text(text)
+
 private fun isResumed(activity: Class<out Activity>): Boolean {
     var resumed = false
 
@@ -134,6 +211,34 @@ fun stopTunnelService() {
         }
 
         Thread.sleep(50)
+    }
+}
+
+// Photographs the display, system dialogs included, into the app's private files where
+// `emulator-tests.sh` collects it. The status bar is pinned through SystemUI's demo mode for the
+// duration, so a clock or a battery level does not make two pictures of the same screen differ.
+fun photographScreen(name: String) {
+    val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
+    directory.mkdirs()
+
+    shell("settings put global sysui_demo_allowed 1")
+    shell("am broadcast -a com.android.systemui.demo -e command enter")
+    shell("am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200")
+    shell("am broadcast -a com.android.systemui.demo -e command battery -e plugged false -e level 100")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e fully true")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e mobile hide")
+    shell("am broadcast -a com.android.systemui.demo -e command notifications -e visible false")
+    shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide")
+
+    try {
+        // The broadcasts land asynchronously, and the status bar redraws after them.
+        Thread.sleep(1_000)
+
+        if (!UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(directory, "$name.png"))) {
+            throw AssertionError("Could not photograph the screen for $name")
+        }
+    } finally {
+        shell("am broadcast -a com.android.systemui.demo -e command exit")
     }
 }
 

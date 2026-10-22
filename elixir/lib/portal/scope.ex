@@ -43,7 +43,7 @@ defmodule Portal.Scope do
     policies: [:read, :write],
     auth_providers: [:read],
     directories: [:read],
-    posture_providers: [:read],
+    posture_providers: [:read, :write],
     logs: [:read]
   ]
 
@@ -160,7 +160,7 @@ defmodule Portal.Scope do
     end
   end
 
-def description(:account), do: "Read the account's details and limits."
+  def description(:account), do: "Read the account's details and limits."
   def description(:actors), do: "List, create, edit and delete actors."
 
   def description(:auth_providers),
@@ -193,7 +193,7 @@ def description(:account), do: "Read the account's details and limits."
     do: "List, create, edit and delete the policies granting access."
 
   def description(:posture_providers),
-    do: "List posture providers and the devices they report."
+    do: "List posture providers and the devices they report, and rename, disable or delete providers."
 
   def description(:resources),
     do: "List, create, edit and delete resources and their pool members."
@@ -223,6 +223,23 @@ def description(:account), do: "Read the account's details and limits."
   end
 
   def preset(_other), do: []
+
+  @doc """
+  Groups scopes by entity, keeping only the highest level granted for each.
+
+  A consent screen reads better as one row per thing than as one row per scope,
+  and `write` already implies `read`, so listing both would say the same thing
+  twice.
+  """
+  def grouped(scopes) do
+    expanded = expand(scopes)
+
+    for {entity, supported} <- @levels_by_entity,
+        granted = Enum.filter(supported, &(to_string(entity, &1) in expanded)),
+        granted != [] do
+      {entity, if(:write in granted, do: :write, else: :read)}
+    end
+  end
 
   @doc "Renders scopes back into a space delimited parameter."
   def encode(scopes), do: Enum.join(scopes, " ")

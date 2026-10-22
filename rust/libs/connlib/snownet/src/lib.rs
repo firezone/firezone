@@ -6,27 +6,17 @@
 mod agent;
 mod allocation;
 mod backoff;
-mod buffer;
 mod candidate;
 mod channel_data;
-mod index;
+mod crypto;
 mod node;
 mod utils;
 
 pub use allocation::RelaySocket;
-pub use buffer::{BufferProvider, Reservation, TransmitBuffer};
+pub use crypto::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
 pub use node::{
-    Credentials, EncapsulateInfo, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting,
-    Transmit, UnknownConnection,
+    ConnectionPath, Credentials, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
+    UnknownConnection,
 };
 
-pub fn is_wireguard(payload: &[u8]) -> bool {
-    boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()
-}
-
-pub(crate) fn is_handshake(payload: &[u8]) -> bool {
-    use boringtun::noise::Packet;
-
-    boringtun::noise::Tunn::parse_incoming_packet(payload)
-        .is_ok_and(|p| matches!(p, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)))
-}
+bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (ip_packet::MAX_FZ_PAYLOAD, "snownet"), batch: 64);

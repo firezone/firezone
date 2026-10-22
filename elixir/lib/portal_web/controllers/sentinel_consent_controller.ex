@@ -62,6 +62,17 @@ defmodule PortalWeb.SentinelConsentController do
 
   # Entra reports a failed consent with `admin_consent=True` and an `error` in
   # the same redirect, so the error has to be matched first.
+  defp handle_admin_consent(
+         conn,
+         %{"error" => _error, "error_description" => description} = params,
+         verification
+       ) do
+    case OIDC.entra_service_principal_exists_tenant(description) do
+      {:ok, tenant_id} -> start_tenant_proof(conn, verification, tenant_id, true)
+      :error -> render_declined(conn, error_message(params))
+    end
+  end
+
   defp handle_admin_consent(conn, %{"error" => _error} = params, _verification) do
     render_declined(conn, error_message(params))
   end

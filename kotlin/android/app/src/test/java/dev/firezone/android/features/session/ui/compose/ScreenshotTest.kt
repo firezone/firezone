@@ -4,22 +4,31 @@ package dev.firezone.android.features.session.ui.compose
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Favorites
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceUiModel
-import dev.firezone.android.tunnel.model.ConnectedDevice
+import dev.firezone.android.tunnel.mockResources
+import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.ResourceType
+import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.tunnel.model.toModel
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,11 +46,11 @@ import org.robolectric.annotation.GraphicsMode
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class ScreenshotTest {
-    // Only the captures that have to drive the UI compose through this rule: the sheets and the
-    // scrolled list.
+    // Only the captures that have to drive the UI compose through this rule: the sheets, the device
+    // pool screens and the scrolled list.
     @get:Rule
     val composeRule = createComposeRule()
 
@@ -58,10 +67,7 @@ class ScreenshotTest {
     @Test
     fun sessionScreenWithoutResources() =
         capture("session-screen-no-resources") {
-            SessionScreenSample(
-                resources = persistentListOf(),
-                connectedDevices = persistentListOf(),
-            )
+            SessionScreenSample(resources = persistentListOf())
         }
 
     // Any row part-way down does; it is scrolled to by index rather than by swipe because a fling
@@ -88,14 +94,22 @@ class ScreenshotTest {
     }
 
     @Test
-    fun resourceDetailsInternet() = captureSheet("resource-details-internet", rowText = "Internet Resource")
+    fun resourceDetailsInternet() = captureAfterTapping("resource-details-internet", rowText = "Internet Resource")
 
     @Test
-    fun resourceDetails() = captureSheet("resource-details", rowText = "Engineering wiki")
+    fun resourceDetails() = captureAfterTapping("resource-details", rowText = "Engineering wiki")
 
-    // The first sample device belongs to two pools, so the sheet shows the plural row.
     @Test
-    fun deviceDetails() = captureSheet("device-details", rowText = "bench-controller-01")
+    fun devicePoolDetails() = captureAfterTapping("device-pool-details", rowText = "Lab hardware")
+
+    @Test
+    fun devicePoolDetailsEmpty() =
+        capture("device-pool-details-empty") {
+            DevicePoolScreen(pool = emptyDevicePool, onSelectDevice = {}, onBack = {})
+        }
+
+    @Test
+    fun deviceDetails() = captureAfterTapping("device-details", rowText = "Lab hardware", thenText = "bench-controller-01.firezone.network")
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun capture(
@@ -109,13 +123,21 @@ class ScreenshotTest {
     // above misses; photographing the whole screen composites the list, the scrim and the
     // sheet the way the live app draws them.
     @OptIn(ExperimentalRoborazziApi::class)
-    private fun captureSheet(
+    private fun captureAfterTapping(
         name: String,
         rowText: String,
+        thenText: String? = null,
     ) {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        composeRule
+            .onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasText(rowText, substring = true))
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
+        thenText?.let {
+            composeRule.onNodeWithText(it).performClick()
+            composeRule.waitForIdle()
+        }
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
     }
 }
@@ -123,13 +145,11 @@ class ScreenshotTest {
 @Composable
 private fun SessionScreenSample(
     resources: ImmutableList<ResourceUiModel> = sampleResources,
-    connectedDevices: ImmutableList<ConnectedDevice> = sampleConnectedDevices,
     favorites: Favorites = Favorites(HashSet()),
 ) {
     SessionScreen(
         actorName = "Jane Doe",
         resources = resources,
-        connectedDevices = connectedDevices,
         favorites = favorites,
         onToggleInternet = {},
         onAddFavorite = {},
@@ -138,3 +158,22 @@ private fun SessionScreenSample(
         onEndSession = {},
     )
 }
+
+// The deployment `MockFixtures` describes, converted the way the service converts a real one, so
+// the galleries and the mock launch cannot drift apart.
+private val sampleResources: ImmutableList<ResourceUiModel> =
+    mockResources.map { ResourceUiModel(it.toModel(), ResourceState.ENABLED) }.toImmutableList()
+
+private val emptyDevicePool =
+    ResourceUiModel(
+        Resource(
+            type = ResourceType.DevicePool,
+            id = "2f3e8a61-5b7d-4c09-9e14-6a8d0c2b7f53",
+            address = null,
+            addressDescription = null,
+            sites = emptyList(),
+            name = "Spare hardware",
+            status = StatusEnum.UNKNOWN,
+        ),
+        ResourceState.ENABLED,
+    )

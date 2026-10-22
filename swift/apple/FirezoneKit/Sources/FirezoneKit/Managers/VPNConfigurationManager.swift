@@ -67,11 +67,11 @@ public final class NETunnelProviderManagerFactory: TunnelProviderManagerFactory 
 
 // MARK: - VPNConfigurationManager
 
-enum VPNConfigurationManagerError: Error {
+enum VPNConfigurationManagerError: LocalizedError {
   case managerNotInitialized
   case savedProtocolConfigurationIsInvalid
 
-  var localizedDescription: String {
+  var errorDescription: String? {
     switch self {
     case .managerNotInitialized:
       return "NETunnelProviderManager is not yet initialized. Race condition?"
@@ -280,6 +280,15 @@ public final class VPNConfigurationManager {
       authURL: configuration.authURL,
       accountSlug: configuration.accountSlug
     )
+  }
+
+  /// Whether the Internet Resource is switched on in the profile the app shares with
+  /// the headless client.
+  public func internetResourceEnabled() throws -> Bool {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return configuration.internetResourceEnabled
   }
 
   func providerConfiguration() throws -> [String: String] {

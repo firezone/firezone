@@ -37,4 +37,4 @@ runs:
           --health-interval 10s \
           --health-timeout 5s \
           --health-retries 5 \
-          --detach postgres:${{ inputs.version }} postgres -c "wal_level=logical"
+          --detach postgres:${{ inputs.version }} postgres -c "wal_level=logical" -c "max_locks_per_transaction=256"

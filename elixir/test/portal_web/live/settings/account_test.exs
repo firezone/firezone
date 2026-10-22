@@ -6,6 +6,8 @@ defmodule PortalWeb.Settings.AccountTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
+  import Portal.DeviceFixtures
   import Portal.ObanJobFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SubjectFixtures
@@ -27,6 +29,69 @@ defmodule PortalWeb.Settings.AccountTest do
                    to: ~p"/#{account}/sign_in?#{%{redirect_to: path}}",
                    flash: %{"error" => "You must sign in to access that page."}
                  }}}
+    end
+  end
+
+  describe "usage" do
+    test "counts usage only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/account") |> html_response(200)
+      assert static =~ ~s(id="usage-skeleton")
+      refute static =~ ~s(id="usage")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      assert has_element?(lv, "#usage", "Admins")
+      refute has_element?(lv, "#usage-skeleton")
+    end
+  end
+
+  describe "limits banner" do
+    for {flags, message} <- [
+          {%{users_limit_exceeded: true}, "users."},
+          {%{users_limit_exceeded: true, seats_limit_exceeded: true},
+           "users, monthly active users."}
+        ] do
+      test "renders a complete warning for #{message}", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        account =
+          update_account(
+            account,
+            Map.put(unquote(Macro.escape(flags)), :metadata, %{
+              stripe: %{customer_id: "cus_test", product_name: "Enterprise"}
+            })
+          )
+
+        {:ok, _lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/account")
+
+        alerts = html |> Floki.parse_document!() |> Floki.find("[role=alert]")
+        text = alerts |> Floki.text() |> String.replace(~r/\s+/, " ")
+
+        assert text =~ "Your account has exceeded the following limits: #{unquote(message)}"
+        assert text =~ "Please check your billing information to continue using Firezone."
+
+        assert Floki.find(alerts, "a[href='/#{account.slug}/settings/account']") != []
+      end
+    end
+
+    test "does not show a warning when no limits are exceeded", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Your account has exceeded the following limits:"
+      refute html =~ "check your billing information"
     end
   end
 
@@ -116,6 +181,80 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Usage"
+      refute html =~ "Ad hoc Service Accounts"
+    end
+
+    test "hides seats when the plan has no active seat limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{monthly_active_users_count: nil}})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Seats"
+      refute html =~ "Monthly Active Users"
+    end
+
+    test "renders seats when the plan has an active seat limit", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 25}})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Seats"
+      assert html =~ "0 / 25"
+    end
+
+    test "renders add-ons and ad hoc service account usage", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 100, adhoc_service_accounts_count: 10_000},
+          metadata: %{
+            stripe: %{
+              customer_id: "cus_test",
+              product_name: "Enterprise",
+              add_ons: [
+                %{
+                  name: "Ad hoc service account + device",
+                  quantity: 10_000,
+                  limit: "adhoc_service_accounts_count"
+                }
+              ]
+            }
+          }
+        })
+
+      service_account = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: service_account)
+      client_session_fixture(account: account, actor: service_account, client: client)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert html =~ "Add-ons"
+      assert html =~ "Ad hoc service account + device"
+      assert html =~ "× 10000"
+      assert html =~ "Ad hoc Service Accounts"
+      assert html =~ "1 / 10000"
+      assert html =~ "Seats"
+      assert html =~ "0 / 100"
     end
   end
 
@@ -152,7 +291,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
         |> render_change()
 
-      assert html =~ "should be at least 3 character(s)"
+      assert html =~ "too short"
     end
 
     test "saves updated account name", %{conn: conn, account: account, actor: actor} do
@@ -177,6 +316,11 @@ defmodule PortalWeb.Settings.AccountTest do
   end
 
   describe "delete account" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
+      :ok
+    end
+
     test "shows confirm delete dialog on click", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
@@ -244,6 +388,90 @@ defmodule PortalWeb.Settings.AccountTest do
       assert length(recipients) == 2
       assert email.subject == "Firezone Account Scheduled for Deletion"
       assert email.text_body =~ Calendar.strftime(account.scheduled_deletion_at, "%B %-d, %Y")
+    end
+
+    test "prompts for feedback after scheduling deletion", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      html =
+        lv
+        |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+        |> render_submit()
+
+      assert html =~ "Sorry Firezone didn&#39;t work out"
+      assert html =~ "Anything you&#39;d like to share about your experience?"
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          deletion_feedback: %{feedback: "  Too hard to set up  "}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      assert [email] = feedback_emails(account.id)
+      assert email.text_body =~ "Too hard to set up"
+    end
+
+    test "skipping the feedback prompt sends nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html = render_click(lv, "skip_deletion_feedback")
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      assert [] == feedback_emails(account.id)
+    end
+
+    test "submitting empty feedback closes the prompt without sending", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          deletion_feedback: %{feedback: "   "}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      assert [] == feedback_emails(account.id)
     end
 
     test "sends aborted deletion email when cancellation restores the account", %{
@@ -453,6 +681,11 @@ defmodule PortalWeb.Settings.AccountTest do
       assert scheduled_job.state == "scheduled"
       assert collect_queued_emails(account.id) == []
     end
+  end
 
+  defp feedback_emails(account_id) do
+    account_id
+    |> collect_queued_emails()
+    |> Enum.filter(&({nil, "feedback@example.com"} in &1.to or {"", "feedback@example.com"} in &1.to))
   end
 end

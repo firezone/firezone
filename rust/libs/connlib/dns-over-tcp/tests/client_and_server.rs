@@ -87,6 +87,10 @@ fn concurrent_queries_with_same_id() {
         results[1].query.domain(),
         "the two same-ID queries must be de-multiplexed to their distinct domains"
     );
+    assert_ne!(
+        results[0].token, results[1].token,
+        "the two same-ID queries must have distinct tokens"
+    );
 
     for query_result in &results {
         let response = query_result.result.as_ref().unwrap();

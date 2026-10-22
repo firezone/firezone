@@ -120,11 +120,13 @@ defmodule PortalAPI.Client.Socket do
 
   defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
     with false <- Portal.Billing.client_connect_restricted?(subject.account),
+         false <- Portal.Billing.client_seat_restricted?(subject.account, subject.actor.id),
          {:ok, public_key} <- validate_public_key(attrs),
          changeset = insert_changeset(subject.actor, subject, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
          {:ok, proof} <- attest_device(proof, connect_info, subject),
-         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject) do
+         {:ok, client, attested?} <- Database.resolve_client(changeset, proof, subject),
+         :ok <- check_connected_devices(subject, client) do
       version = derive_version(subject.context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
@@ -137,6 +139,10 @@ defmodule PortalAPI.Client.Socket do
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")
         {:error, :limits_exceeded}
+
+      {:error, :connected_devices_limit_reached} ->
+        OpenTelemetry.Tracer.set_status(:error, "connected_devices_limit_reached")
+        {:error, :connected_devices_limit_reached}
 
       {:error, :device_untrusted} ->
         OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
@@ -155,6 +161,18 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, inspect(changeset))
         Logger.debug("Error connecting client websocket: #{inspect(changeset)}")
         {:error, changeset}
+    end
+  end
+
+  defp check_connected_devices(subject, client) do
+    if Portal.Billing.connected_devices_limit_reached?(
+         subject.account,
+         subject.actor.id,
+         client.id
+       ) do
+      {:error, :connected_devices_limit_reached}
+    else
+      :ok
     end
   end
 
@@ -292,7 +310,7 @@ defmodule PortalAPI.Client.Socket do
       Batch.insert_all(SessionLog, log_entries,
         label: "client session log",
         fk_partitions: %{
-          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+          "session_logs_partitioned_account_id_fkey" => {:simple, :account_id, Portal.Account}
         }
       )
 
@@ -345,13 +363,21 @@ defmodule PortalAPI.Client.Socket do
 
   defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
-    |> assign(:subject, subject)
-    |> assign(:client, %{client | attested?: attested?})
+    |> assign(:subject, Authentication.Subject.with_device(subject, client))
+    |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
     |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+  end
+
+  defp posture_rows(client, subject) do
+    if Portal.Account.device_posture_enabled?(subject.account) do
+      Portal.Devices.Posture.rows_by_type(client)
+    else
+      %{}
+    end
   end
 
   # The certificate this session is riding on, so a revocation learned later can
@@ -566,7 +592,7 @@ defmodule PortalAPI.Client.Socket do
       if client = find_by_firezone_id(actor_id, firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
-        with {:ok, client} <- changeset |> Safe.scoped(subject) |> Safe.insert() do
+        with {:ok, client} <- insert_with_slug(changeset, subject) do
           {:ok, client, false}
         end
       end
@@ -576,11 +602,32 @@ defmodule PortalAPI.Client.Socket do
       result =
         changeset
         |> Ecto.Changeset.put_change(:firezone_id, nil)
-        |> Safe.scoped(subject)
-        |> Safe.insert()
+        |> insert_with_slug(subject)
 
       with {:ok, client} <- result do
         {:ok, client, true}
+      end
+    end
+
+    # A concurrent first connect of two same-named devices can race for a slug, so a
+    # unique violation on it is retried with a fresh probe.
+    defp insert_with_slug(changeset, subject, attempt \\ 1) do
+      subject = Authentication.Subject.with_device(subject, Ecto.Changeset.apply_changes(changeset))
+
+      changeset
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+      |> case do
+        {:error, %Ecto.Changeset{errors: errors} = failed} when attempt < 3 ->
+          if Keyword.has_key?(errors, :slug) do
+            insert_with_slug(changeset, subject, attempt + 1)
+          else
+            {:error, failed}
+          end
+
+        result ->
+          result
       end
     end
 

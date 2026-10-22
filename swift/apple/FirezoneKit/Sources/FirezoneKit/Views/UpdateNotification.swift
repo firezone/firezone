@@ -7,26 +7,24 @@
 #if os(macOS)
   import Foundation
   import Combine
-  import UserNotifications
-  import Cocoa
 
   /// The one thing the UI needs from the update check.
   ///
-  /// `UpdateChecker` reaches the network, installs a repeating timer and registers with
-  /// `UNUserNotificationCenter`, which raises when the process has no app bundle, so it
-  /// cannot be built from a test. Taking the check as a dependency lets a `Store` be built
-  /// with a canned answer instead.
+  /// `UpdateChecker` reaches the network and installs a repeating timer, neither of which a
+  /// test should be doing. Taking the check as a dependency lets a `Store` be built with a
+  /// canned answer instead.
   @MainActor
   public protocol UpdateCheckerProtocol {
-    var updateAvailable: Bool { get }
+    /// Where to download the newer version, `nil` while the client is up to date.
+    var downloadURL: URL? { get }
   }
 
   @MainActor
   class UpdateChecker: UpdateCheckerProtocol {
-    enum UpdateError: Error {
+    enum UpdateError: LocalizedError {
       case invalidVersion(String)
 
-      var localizedDescription: String {
+      var errorDescription: String? {
         switch self {
         case .invalidVersion(let version):
           return "Invalid version: \(version)"
@@ -35,7 +33,7 @@
     }
 
     private var timerCancellable: AnyCancellable?
-    private let notificationAdapter: NotificationAdapter
+    private let sessionNotification: SessionNotificationProtocol
     private let versionCheckUrl: URL
     private let marketingVersion: SemanticVersion
     private let configuration: Configuration
@@ -43,15 +41,20 @@
 
     private var cancellables: Set<AnyCancellable> = []
 
-    @Published private(set) var updateAvailable: Bool = false
+    @Published private(set) var downloadURL: URL?
 
-    init(configuration: Configuration? = nil, userDefaults: UserDefaults) {
+    init(
+      configuration: Configuration? = nil,
+      userDefaults: UserDefaults,
+      sessionNotification: SessionNotificationProtocol
+    ) {
       self.configuration = configuration ?? Configuration.shared
       self.userDefaults = userDefaults
-      self.notificationAdapter = NotificationAdapter(userDefaults: userDefaults)
+      self.sessionNotification = sessionNotification
 
       guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
-        let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+        let versionString = UpdateNotification.isDebugUpdateCheck
+          ? "1.0.0" : Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
         let marketingVersion = try? SemanticVersion(versionString)
       else {
         fatalError("Should be able to initialize the UpdateChecker")
@@ -117,16 +120,19 @@
         if latestVersion > marketingVersion {
           Task {
             await MainActor.run {
-              self.updateAvailable = true
+              self.downloadURL = Self.latestReleaseURL()
 
-              if let lastDismissedVersion = getLastDismissedVersion(
+              if let lastDismissedVersion = UpdateNotification.getLastDismissedVersion(
                 userDefaults: self.userDefaults),
                 lastDismissedVersion >= latestVersion
               {
                 return
               }
 
-              self.notificationAdapter.showUpdateNotification(version: latestVersion)
+              UpdateNotification.setLastNotifiedVersion(
+                version: latestVersion, userDefaults: self.userDefaults)
+              self.sessionNotification.showUpdateNotification(
+                downloadURL: Self.latestReleaseURL())
             }
           }
         }
@@ -135,140 +141,46 @@
       task.resume()
     }
 
-    static func downloadURL() -> URL {
+    private static func latestReleaseURL() -> URL {
       // Static URL literal is guaranteed valid
       // swiftlint:disable:next force_unwrapping
       return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
     }
   }
 
-  private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
-    static let notificationIdentifier = "UPDATE_CATEGORY"
-    static let dismissIdentifier = "DISMISS_ACTION"
+  /// The update notification's identifiers, and the versions it and the update check keep in
+  /// `UserDefaults`.
+  enum UpdateNotification {
+    static let categoryIdentifier = "UPDATE_CATEGORY"
+    static let dismissActionIdentifier = "DISMISS_ACTION"
+    static let downloadURLKey = "downloadURL"
 
-    let userDefaults: UserDefaults
+    /// Set by the `--debug-update-check` launch argument, for testing the notification by hand:
+    /// the running version counts as 1.0.0 and a dismissed version is neither read nor saved.
+    static let isDebugUpdateCheck = CommandLine.arguments.contains("--debug-update-check")
 
-    init(userDefaults: UserDefaults) {
-      self.userDefaults = userDefaults
-      super.init()
+    private static let lastDismissedVersionKey = "lastDismissedVersion"
+    private static let lastNotifiedVersionKey = "lastNotifiedVersion"
 
-      let notificationCenter = UNUserNotificationCenter.current()
+    static func setLastDismissedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
+      guard !isDebugUpdateCheck else { return }
 
-      let dismissAction = UNNotificationAction(
-        identifier: NotificationAdapter.dismissIdentifier,
-        title: "Ignore Version",
-        options: [])
-
-      let notificationCategory = UNNotificationCategory(
-        identifier: NotificationAdapter.notificationIdentifier,
-        actions: [dismissAction],
-        intentIdentifiers: [],
-        options: [])
-
-      notificationCenter.setNotificationCategories([notificationCategory])
-
-      notificationCenter.delegate = self
-      notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
-        guard let error = error else { return }
-
-        // If the user hasn't enabled notifications for Firezone, we may receive
-        // a notificationsNotAllowed error here. Don't log it.
-        if let unError = error as? UNError,
-          unError.code == .notificationsNotAllowed
-        {
-          return
-        }
-
-        // Log all other errors
-        Log.error(error)
-      }
-
+      version.save(to: userDefaults, forKey: lastDismissedVersionKey)
     }
 
-    @MainActor func showUpdateNotification(version: SemanticVersion) {
-      let content = UNMutableNotificationContent()
-      setLastNotifiedVersion(version: version, userDefaults: userDefaults)
-      content.title = "Update Firezone"
-      content.body = "New version available"
-      content.sound = .default
-      content.categoryIdentifier = NotificationAdapter.notificationIdentifier
-
-      let request = UNNotificationRequest(
-        identifier: UUID().uuidString,
-        content: content,
-        trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-      )
-
-      UNUserNotificationCenter.current().add(request) { error in
-        if let error = error {
-          Log.error(error)
-        }
-      }
+    static func setLastNotifiedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
+      version.save(to: userDefaults, forKey: lastNotifiedVersionKey)
     }
 
-    func userNotificationCenter(
-      _ center: UNUserNotificationCenter,
-      didReceive response: UNNotificationResponse,
-      withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
-      if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
-        // User dismissed this notification
-        if let lastNotifiedVersion = getLastNotifiedVersion(userDefaults: userDefaults) {
-          // Don't notify them again for this version
-          setLastDismissedVersion(version: lastNotifiedVersion, userDefaults: userDefaults)
-        }
+    static func getLastDismissedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
+      guard !isDebugUpdateCheck else { return nil }
 
-        completionHandler()
-        return
-      }
-
-      // Must be explicitly run from a MainActor context
-      Task {
-        await MainActor.run {
-          Task {
-            await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL())
-          }
-        }
-      }
-
-      completionHandler()
+      return SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
     }
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-      UNUserNotificationCenter.current().delegate = self
+    static func getLastNotifiedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
+      SemanticVersion(from: userDefaults, forKey: lastNotifiedVersionKey)
     }
-
-    func userNotificationCenter(
-      _ center: UNUserNotificationCenter,
-      willPresent notification: UNNotification,
-      withCompletionHandler completionHandler:
-        @escaping (
-          UNNotificationPresentationOptions
-        ) -> Void
-    ) {
-      // Show the notification even when the app is in the foreground
-      completionHandler([.badge, .banner, .sound])
-    }
-
-  }
-
-  private let lastDismissedVersionKey = "lastDismissedVersion"
-  private let lastNotifiedVersionKey = "lastNotifiedVersion"
-
-  private func setLastDismissedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
-    version.save(to: userDefaults, forKey: lastDismissedVersionKey)
-  }
-
-  private func setLastNotifiedVersion(version: SemanticVersion, userDefaults: UserDefaults) {
-    version.save(to: userDefaults, forKey: lastNotifiedVersionKey)
-  }
-
-  private func getLastDismissedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
-    SemanticVersion(from: userDefaults, forKey: lastDismissedVersionKey)
-  }
-
-  private func getLastNotifiedVersion(userDefaults: UserDefaults) -> SemanticVersion? {
-    SemanticVersion(from: userDefaults, forKey: lastNotifiedVersionKey)
   }
 
 #endif

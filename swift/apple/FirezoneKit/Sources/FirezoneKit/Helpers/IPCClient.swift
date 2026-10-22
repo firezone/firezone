@@ -11,17 +11,17 @@ import SystemPackage
 // TODO: Use a more abstract IPC protocol to make this less terse
 
 public enum IPCClient {
-  enum Error: Swift.Error {
+  enum Error: LocalizedError {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
       case .decodeIPCDataFailed:
-        return "Decoding IPC data failed."
+        return "The tunnel's answer could not be read."
       case .noIPCData:
-        return "No IPC data returned from the XPC connection!"
+        return "The tunnel did not answer."
       case .invalidStatus(let status):
         return "The IPC operation couldn't complete because the VPN status is \(status)."
       }
@@ -36,6 +36,8 @@ public enum IPCClient {
   private static let settlingStatuses: [NEVPNStatus] = runningStatuses + [.disconnecting]
   private static let stopTimeout: Duration = .seconds(5)
   private static let stopPollInterval: Duration = .milliseconds(100)
+  private static let statusAttempts = 5
+  private static let statusRetryInterval: Duration = .milliseconds(200)
 
   // The GUI must save providerConfiguration before calling this so any MDM forced
   // overrides are available to the provider.
@@ -72,7 +74,7 @@ public enum IPCClient {
   /// that need it gone rather than going have to wait for the status to follow. Reports
   /// whether there was a running tunnel, so the caller can put back what it took down.
   @MainActor
-  static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
+  public static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
     let wasRunning = runningStatuses.contains(session.status)
 
     if wasRunning {
@@ -97,7 +99,7 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func pollUpdates(
+  public static func pollUpdates(
     session: any TunnelSessionProtocol, currentHash: Data
   ) async throws -> StatePollResponse {
     let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
@@ -119,8 +121,42 @@ public enum IPCClient {
     return response
   }
 
+  /// Asks the extension what it knows about the session.
+  ///
+  /// By default a stopped tunnel is woken for the answer and stopped again, so the
+  /// caller gets a statement from the extension either way rather than guessing from
+  /// its silence. A caller that only wants to hear from a running tunnel opts out.
   @MainActor
-  static func setInternetResourceEnabled(
+  public static func status(
+    session: any TunnelSessionProtocol, wakeIfStopped: Bool = true
+  ) async throws -> TunnelStatus {
+    let isCycleStart = wakeIfStopped ? try await maybeCycleStart(session) : false
+
+    defer {
+      if isCycleStart { session.stopTunnel() }
+    }
+
+    var answer = try await send(.getStatus, to: session)
+
+    // The extension answers empty for a moment after it has started or been replaced.
+    for _ in 1..<statusAttempts where answer == nil {
+      try await Task.sleep(for: statusRetryInterval)
+      answer = try await send(.getStatus, to: session)
+    }
+
+    guard let data = answer else {
+      throw Error.noIPCData
+    }
+
+    guard let status = try? decoder.decode(TunnelStatus.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return status
+  }
+
+  @MainActor
+  public static func setInternetResourceEnabled(
     session: any TunnelSessionProtocol,
     _ enabled: Bool
   ) async throws {
@@ -216,7 +252,14 @@ public enum IPCClient {
       if isCycleStart { session.stopTunnel() }
     }
 
-    return try await withCheckedThrowingContinuation { continuation in
+    return try await send(message, to: session)
+  }
+
+  @MainActor
+  private static func send(
+    _ message: ProviderMessage, to session: any TunnelSessionProtocol
+  ) async throws -> Data? {
+    try await withCheckedThrowingContinuation { continuation in
       do {
         try session.sendProviderMessage(encoder.encode(message)) { data in
           continuation.resume(returning: data)

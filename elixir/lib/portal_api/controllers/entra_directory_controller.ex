@@ -17,7 +17,7 @@ defmodule PortalAPI.EntraDirectoryController do
       limit: [
         in: :query,
         description: "Limit Entra Directories returned",
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 10
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],

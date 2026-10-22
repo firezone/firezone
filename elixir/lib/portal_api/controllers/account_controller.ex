@@ -31,7 +31,7 @@ defmodule PortalAPI.AccountController do
   defp build_limits(account) do
     # Get current usage counts
     users_count = Database.count_users_for_account(account)
-    monthly_active_users_count = Database.count_1m_active_users_for_account(account)
+    monthly_active_usage = Portal.Billing.monthly_active_usage(account)
     service_accounts_count = Database.count_service_accounts_for_account(account)
     admin_users_count = Database.count_account_admin_users_for_account(account)
     sites_count = Database.count_groups_for_account(account)
@@ -41,7 +41,11 @@ defmodule PortalAPI.AccountController do
     |> put_limit(
       :monthly_active_users,
       account.limits.monthly_active_users_count,
-      monthly_active_users_count
+      monthly_active_usage.seats
+    )
+    |> put_adhoc_service_accounts_limit(
+      account.limits.adhoc_service_accounts_count,
+      monthly_active_usage.adhoc_service_accounts
     )
     |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)
     |> put_limit(
@@ -51,6 +55,11 @@ defmodule PortalAPI.AccountController do
     )
     |> put_limit(:sites, account.limits.sites_count, sites_count)
   end
+
+  defp put_adhoc_service_accounts_limit(limits, total, used) when is_integer(total) and total > 0,
+    do: put_limit(limits, :adhoc_service_accounts, total, used)
+
+  defp put_adhoc_service_accounts_limit(limits, _total, _used), do: limits
 
   defp put_limit(limits, _key, nil, _used), do: limits
 
@@ -67,7 +76,6 @@ defmodule PortalAPI.AccountController do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Device
 
     def fetch_account(id, subject) do
       result =
@@ -107,23 +115,6 @@ defmodule PortalAPI.AccountController do
         where: a.is_disabled == false,
         where: a.type == :account_admin_user
       )
-      |> Safe.unscoped()
-      |> Safe.aggregate(:count)
-    end
-
-    def count_1m_active_users_for_account(account) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id == ^account.id)
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
-        as: :actor
-      )
-      |> where([actor: a], a.is_disabled == false)
-      |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([devices: d], d.actor_id)
-      |> distinct(true)
       |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end

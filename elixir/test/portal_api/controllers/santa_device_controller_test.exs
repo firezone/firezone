@@ -6,13 +6,12 @@ defmodule PortalAPI.SantaDeviceControllerTest do
   import Portal.SantaFixtures
 
   setup do
-    enable_device_posture()
     account = device_posture_account_fixture()
     actor = api_client_fixture(account: account)
     provider = santa_posture_provider_fixture(account: account)
     device = santa_device_fixture(provider: provider, hostname: "managed-mac", sip_status: 1)
 
-    %{actor: actor, device: device}
+    %{account: account, actor: actor, device: device}
   end
 
   test "index is paginated and account scoped", %{conn: conn, actor: actor, device: device} do
@@ -43,8 +42,8 @@ defmodule PortalAPI.SantaDeviceControllerTest do
     assert data["last_seen_client_mode"] == "LOCKDOWN"
   end
 
-  test "is forbidden when device posture is off", %{conn: conn, actor: actor} do
-    enable_device_posture(false)
+  test "is forbidden when device posture is off", %{conn: conn, actor: actor, account: account} do
+    disable_device_posture(account)
     assert conn |> authorize_conn(actor) |> get("/santa_devices") |> json_response(403)
   end
 

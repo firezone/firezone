@@ -23,7 +23,7 @@
 
 const DEFAULT_OFFSET = 5;
 const DEFAULT_VIEWPORT_MARGIN = 8;
-const DEFAULT_HOVER_HIDE_DELAY = 150;
+const DEFAULT_HOVER_HIDE_DELAY = 0;
 const ARROW_SIZE = 8;
 const VALID_PLACEMENTS = ["top", "bottom", "left", "right"];
 const DEFAULT_PLACEMENT = "top";

@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+#MISE description="Check that AFL++ observes identical coverage when replaying identical inputs"
+#MISE raw=true
+#USAGE arg "<target>"
+set -euo pipefail
+cd "$(dirname "$0")/.."
+target="${usage_target:?}"
+# shellcheck source=../helpers.sh
+source ./helpers.sh
+export LC_ALL=C AFL_FUZZER_LOOPCOUNT=1
+unset AFL_CMIN_ALLOW_ANY AFL_CMIN_CRASHES_ONLY
+ulimit -c 0
+shopt -s nullglob
+inputs=("corpus/$target"/*)
+if [ "${#inputs[@]}" -eq 0 ]; then
+    echo "The $target corpus is empty" >&2
+    exit 1
+fi
+build_afl
+
+ijon_offset=""
+if [ "$target" = tunnel-proto ]; then
+    map_size="$(AFL_DUMP_MAP_SIZE=1 "$afl_binary" "$target")" || true
+    [[ "$map_size" =~ ^[0-9]+$ ]] || {
+        echo "Could not determine AFL++ coverage map size" >&2
+        exit 1
+    }
+    # AFL++ appends a 64 KiB IJON set map and a 4 KiB IJON max map to edge coverage.
+    ijon_offset="$((map_size - 65536 - 4096))"
+    [ "$ijon_offset" -gt 0 ] || {
+        echo "AFL++ did not reserve space for IJON feedback" >&2
+        exit 1
+    }
+fi
+
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
+# The replay task already runs every input; every eighth is enough to compare servers.
+mkdir "$temporary/inputs"
+for index in "${!inputs[@]}"; do
+    if [ ! -f "${inputs[index]}" ] || [ ! -s "${inputs[index]}" ]; then
+        echo "AFL++ directory replay requires a nonempty file: ${inputs[index]}" >&2
+        exit 1
+    fi
+    if ((index % 8 == 0)); then
+        cp "${inputs[index]}" "$temporary/inputs/$index-0"
+    fi
+done
+samples=8
+[ "${#inputs[@]}" -ge "$samples" ] || samples="${#inputs[@]}"
+for ((sample = 0; sample < samples; sample++)); do
+    index=$((sample * ${#inputs[@]} / samples))
+    for copy in 0 1 2 3 4; do
+        cp "${inputs[index]}" "$temporary/inputs/$index-$copy"
+    done
+done
+# One showmap per core; each forks its own server from the same binary.
+shards="$(nproc)"
+shard=0
+for input in "$temporary/inputs"/*; do
+    mkdir -p "$temporary/shards/$((shard % shards))"
+    ln "$input" "$temporary/shards/$((shard % shards))/"
+    shard=$((shard + 1))
+done
+
+for run in 1 2; do
+    pids=()
+    for shard in "$temporary"/shards/*; do
+        # -Z leaves an empty map for any crash or timeout, including an earlier
+        # failure that showmap's final-input exit status would otherwise miss.
+        AFL_QUIET=1 cargo afl showmap -Z -i "$shard" -o "$temporary/maps-$run-${shard##*/}" \
+            -t 10000 -m none -- "$afl_binary" "$target" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid"
+    done
+    mkdir "$temporary/maps-$run"
+    mv "$temporary/maps-$run-"*/* "$temporary/maps-$run/"
+    if [ "$run" -eq 1 ] && [ -n "$ijon_offset" ] &&
+        ! awk -F: -v offset="$ijon_offset" '$1 >= offset { found = 1 } END { exit !found }' \
+            "$temporary/maps-$run"/*; then
+        echo "The tunnel-proto corpus produced no IJON feedback" >&2
+        exit 1
+    fi
+    for input in "$temporary/inputs"/*; do
+        name="${input##*/}"
+        index="${name%-*}"
+        map="$temporary/maps-$run/$name"
+        if [ ! -s "$map" ]; then
+            echo "Missing coverage for ${inputs[index]}: input crashed, timed out, or was skipped" >&2
+            exit 1
+        fi
+        # Compare AFL's classified hit counts as well as the actual edge IDs.
+        if ! cmp -s "$map" "$temporary/maps-$run/$index-0" ||
+            { [ "$run" -eq 2 ] && ! cmp -s "$map" "$temporary/maps-1/$name"; }; then
+            echo "$target produced different AFL++ coverage for ${inputs[index]} (run $run, copy ${name##*-})" >&2
+            exit 1
+        fi
+    done
+done
+replayed=("$temporary/inputs"/*-0)
+echo "$target: ${#replayed[@]} of ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each."

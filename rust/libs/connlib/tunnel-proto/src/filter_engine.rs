@@ -56,6 +56,22 @@ impl FilterEngine {
             },
         }
     }
+
+    /// Returns the number of supported protocol and port combinations permitted by this filter.
+    pub(crate) fn breadth(&self) -> u32 {
+        match self {
+            Self::PermitAll => u32::MAX,
+            Self::PermitSome(rules) => {
+                let port_count = |set: &RangeInclusiveSet<u16>| {
+                    set.iter()
+                        .map(|range| u32::from(*range.end()) - u32::from(*range.start()) + 1)
+                        .sum::<u32>()
+                };
+                port_count(&rules.tcp) + port_count(&rules.udp) + u32::from(rules.icmp)
+            }
+            Self::DenyAll => 0,
+        }
+    }
 }
 
 impl AllowRules {
@@ -108,6 +124,21 @@ mod tests {
     use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 
     use super::*;
+    use crate::messages::PortRange;
+
+    #[test]
+    fn breadth_counts_overlapping_port_ranges_once() {
+        let filter = FilterEngine::new(&[
+            Filter::Tcp(PortRange::new(80, 90).unwrap()),
+            Filter::Tcp(PortRange::new(85, 95).unwrap()),
+            Filter::Icmp,
+        ]);
+
+        assert_eq!(filter.breadth(), 17);
+        assert_eq!(FilterEngine::DenyAll.breadth(), 0);
+        assert_eq!(FilterEngine::PermitAll.breadth(), u32::MAX);
+    }
+
     #[test]
     fn allows_icmpv4_destination_unreachable() {
         let filter = FilterEngine::PermitSome(AllowRules {

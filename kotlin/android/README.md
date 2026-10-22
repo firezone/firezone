@@ -85,19 +85,54 @@ directly. For example:
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
+## Running against a mock
+
+Debug builds can stand in for connlib, the portal, or both, so the UI can be
+driven without a gateway, a portal or a granted VPN permission. They are two
+boolean extras on the normal launch, read by `MainActivity` before anything
+that depends on them:
+
+| Extra            | What it stands in for                                                         |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `mockTunnel`     | connlib: the session reports the fixtures the end-to-end tests assert against |
+| `skipPortalAuth` | the portal: signing in answers its own request instead of opening a browser   |
+
+In Android Studio, put them in **Run → Edit Configurations → Launch Flags** on
+the app configuration:
+
+```
+--ez mockTunnel true --ez skipPortalAuth true
+```
+
+Or by hand:
+
+```bash
+adb shell am start -n dev.firezone.android/.core.presentation.MainActivity \
+  --ez mockTunnel true --ez skipPortalAuth true
+```
+
+Either extra can be set to `false` to exercise the real half: `mockTunnel true
+skipPortalAuth false` runs the mocked tunnel against a real sign-in.
+
 ## Managed test device
 
 The `managed-device:*` tasks drive the test Device Policy Controller in `dpc/`
 by broadcast, which puts an attached emulator into every state an X.509-managed
 device can be in without a human at the screen: a certificate the app may use,
-one installed without a grant, an alias with nothing behind it, or nothing
-configured. The ungranted state is what a personally-owned device carrying a
-work profile looks like, and it is what sends the app to the certificate screen.
+one installed without a grant, several to tell apart, or nothing installed at
+all. A corporate-owned device whose policy names the certificate for the app is
+`policy-alias`: the DPC answers the KeyChain itself, and nothing is asked of the
+user or configured in the app. The ungranted certificate under a required
+`managed-config` is what a personally-owned device carrying a work profile looks
+like, and it is what sends the app to the certificate screen. To see the user
+tell certificates apart, install a second one under another alias, from any
+PKCS#12 with `--file`.
 
 ```bash
 mise run //kotlin/android:managed-device:provision
 mise run //kotlin/android:managed-device:install-certificate --no-grant
-mise run //kotlin/android:managed-device:managed-config --alias firezone-client
+mise run //kotlin/android:managed-device:managed-config --certificate true
+mise run //kotlin/android:managed-device:policy-alias --alias firezone-client
 ```
 
 `provision` makes the DPC the owner of the device, or of a work profile with

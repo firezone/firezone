@@ -5,33 +5,33 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.tunnel.ACCOUNT_SLUG
-import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
+import dev.firezone.android.tunnel.MOCK_ACCOUNT_SLUG
+import dev.firezone.android.tunnel.MOCK_ACTOR_NAME
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
-import dev.firezone.android.tunnel.benchController
+import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
+import dev.firezone.android.tunnel.awaitTextOnScreen
+import dev.firezone.android.tunnel.clickTextOnScreen
 import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.internetResource
+import dev.firezone.android.tunnel.labHardware
 import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
+import dev.firezone.android.tunnel.tunInterface
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -53,9 +53,6 @@ import javax.inject.Inject
 class TunnelE2eTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
-
-    @get:Rule(order = 1)
-    val composeRule = createEmptyComposeRule()
 
     @Inject
     lateinit var repo: Repository
@@ -88,44 +85,47 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
             ),
         )
         launchApp()
 
         awaitText("Engineering wiki")
-        composeRule.onNodeWithText("wiki.example.com").assertIsDisplayed()
+        awaitTextOnScreen("wiki.example.com")
     }
 
     @Test
-    fun connectedDevicesReachTheScreen() {
+    fun devicePoolDevicesReachTheScreen() {
         val session = signInAndConnect()
 
         session.emit(
             Event.ResourcesUpdated(
-                resources = listOf(engineeringWiki),
-                connectedDevices = listOf(benchController),
+                resources = listOf(labHardware),
             ),
         )
         launchApp()
 
-        awaitText("bench-controller-01")
-        composeRule.onNodeWithText("Connected Devices").assertIsDisplayed()
+        awaitText("Lab hardware")
+        clickTextOnScreen("Lab hardware")
+        awaitText("bench-controller-01.firezone.network")
+        clickTextOnScreen("bench-controller-01.firezone.network")
+        awaitText("100.64.3.18")
     }
 
     @Test
-    fun signingInReachesTheProfileMenuAndTheStoredAccount() {
+    fun signingInReachesTheProfileMenuAndLeavesTheConfiguredAccount() {
+        runBlocking { repo.saveSettings(repo.getConfigSync().copy(accountSlug = CONFIGURED_SLUG)).first() }
         val session = signInAndConnect()
 
-        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
+        session.emit(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
         launchApp()
 
         // The top bar shows the initial; the name itself is behind the menu.
         awaitText("J")
-        composeRule.onNodeWithText("J").performClick()
-        awaitText(ACTOR_NAME)
+        clickTextOnScreen("J")
+        awaitText(MOCK_ACTOR_NAME)
 
-        await("the account slug to be stored") { repo.getConfigSync().accountSlug == ACCOUNT_SLUG }
+        // The name on screen comes from the same event, so a slug it saved would be here too.
+        assertEquals(CONFIGURED_SLUG, repo.getConfigSync().accountSlug)
     }
 
     @Test
@@ -137,7 +137,6 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
             ),
         )
 
@@ -151,15 +150,14 @@ class TunnelE2eTest {
         session.emit(
             Event.ResourcesUpdated(
                 resources = listOf(internetResource),
-                connectedDevices = emptyList(),
             ),
         )
         launchApp()
 
         awaitText("Internet Resource", substring = true)
-        composeRule.onNodeWithText("Internet Resource", substring = true).performClick()
+        clickTextOnScreen("Internet Resource", substring = true)
         awaitText("Enable this resource")
-        composeRule.onNodeWithText("Enable this resource").performClick()
+        clickTextOnScreen("Enable this resource")
 
         runBlocking { withTimeout(TIMEOUT_MS) { session.awaitCommand("setInternetResourceState=true") } }
     }
@@ -194,13 +192,13 @@ class TunnelE2eTest {
     @Test
     fun signingOutDiscardsToken() {
         val session = signInAndConnect()
-        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
+        session.emit(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
         launchApp()
 
         awaitText("J")
-        composeRule.onNodeWithText("J").performClick()
+        clickTextOnScreen("J")
         awaitText("Sign Out")
-        composeRule.onNodeWithText("Sign Out").performClick()
+        clickTextOnScreen("Sign Out")
 
         await("the token to be cleared") { tokenStore.get() == null }
         assertNull(tokenStore.get())
@@ -230,6 +228,40 @@ class TunnelE2eTest {
         assertEquals("Managed Pixel", session.config.deviceName)
     }
 
+    @Test
+    fun theTunnelInterfaceReachesConnlib() {
+        val session = signInAndConnect()
+
+        session.emit(tunInterface())
+
+        awaitCommand(session, "setTun")
+    }
+
+    @Test
+    fun anAddressTheDeviceRefusesLeavesTheFamilyItAccepts() {
+        val session = signInAndConnect()
+
+        session.emit(tunInterface(ipv6 = UNASSIGNABLE_IPV6))
+
+        awaitCommand(session, "setTun")
+        assertNull(errorNotification())
+    }
+
+    @Test
+    fun anInterfaceTheDeviceRefusesEntirelyIsReportedAndEndsTheSession() {
+        val session = signInAndConnect()
+
+        // `VpnService.Builder` rejects loopback outright, so no address family is left to fall
+        // back to.
+        session.emit(tunInterface(ipv4 = "127.0.0.1", ipv6 = "::1"))
+
+        assertEquals(
+            "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
+            awaitErrorNotification(),
+        )
+        awaitCommand(session, "disconnect")
+    }
+
     private fun signInAndConnect(): FakeSession {
         signIn()
         startTunnelService()
@@ -248,19 +280,24 @@ class TunnelE2eTest {
     private fun awaitText(
         text: String,
         substring: Boolean = false,
-    ) = await("\"$text\" on screen") {
-        // The splash screen is a View, so there are moments with no Compose content at all, which
-        // `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-        runCatching {
-            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
-        }.getOrDefault(false)
-    }
+    ) = awaitTextOnScreen(text, substring)
 
     private fun awaitDisconnectedNotification(): String? {
         await("the disconnected notification") { disconnectedNotification() != null }
 
         return disconnectedNotification()
     }
+
+    private fun awaitErrorNotification(): String? {
+        await("the error notification") { errorNotification() != null }
+
+        return errorNotification()
+    }
+
+    private fun awaitCommand(
+        session: FakeSession,
+        command: String,
+    ) = runBlocking { withTimeout(TIMEOUT_MS) { session.awaitCommand(command) } }
 
     private fun await(
         what: String,
@@ -277,10 +314,14 @@ class TunnelE2eTest {
         }
     }
 
-    private fun disconnectedNotification(): String? =
+    private fun disconnectedNotification(): String? = notificationText(TunnelNotification.DISCONNECTED_NOTIFICATION_ID)
+
+    private fun errorNotification(): String? = notificationText(TunnelNotification.ERROR_NOTIFICATION_ID)
+
+    private fun notificationText(id: Int): String? =
         notificationManager()
             .activeNotifications
-            .firstOrNull { it.id == TunnelNotification.DISCONNECTED_NOTIFICATION_ID }
+            .firstOrNull { it.id == id }
             ?.notification
             ?.extras
             ?.getString(Notification.EXTRA_TEXT)
@@ -292,6 +333,7 @@ class TunnelE2eTest {
 
     private companion object {
         const val TOKEN = "stored-token"
+        const val CONFIGURED_SLUG = "configured-account"
         const val TIMEOUT_MS = 20_000L
     }
 }

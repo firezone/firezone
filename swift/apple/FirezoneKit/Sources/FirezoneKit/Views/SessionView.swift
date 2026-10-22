@@ -50,8 +50,6 @@ import SwiftUI
                 } else {
                   ResourceSection(resources: resources)
                 }
-
-                ConnectedDevicesSection()
               }
               .listStyle(GroupedListStyle())
             }

@@ -16,8 +16,9 @@ import java.security.cert.Certificate
  * Puts a device into the states an X.509-managed device can be in, driven entirely by
  * `am broadcast` so that a test can provision without a human at the screen.
  *
- * Installing a key pair and setting managed configuration are owner-only APIs that no `adb`
- * command exposes, which is the only reason a Device Policy Controller has to exist here at all.
+ * Installing a key pair, setting managed configuration and naming an always-on VPN are owner-only
+ * APIs that no `adb` command exposes, which is the only reason a Device Policy Controller has to
+ * exist here at all.
  * The result is reported back through the broadcast's result data, so the caller reads it from
  * `am broadcast` rather than from logcat.
  */
@@ -33,7 +34,10 @@ class ProvisionReceiver : BroadcastReceiver() {
             runCatching {
                 when (intent.action) {
                     INSTALL_KEY_PAIR -> installKeyPair(policy, admin, intent)
+                    REMOVE_KEY_PAIR -> removeKeyPair(policy, admin, intent)
                     SET_RESTRICTIONS -> setRestrictions(policy, admin, intent)
+                    SET_POLICY_ALIAS -> setPolicyAlias(context, intent)
+                    SET_ALWAYS_ON_VPN -> setAlwaysOnVpn(policy, admin, intent)
                     else -> "unknown action: ${intent.action}"
                 }
             }
@@ -81,7 +85,23 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "installed '$alias' (certificates=${chain.size}, granted=${grantTo ?: "nobody"})"
     }
 
-    /** Sets one managed-configuration entry on a package, or clears its configuration entirely. */
+    /** Removes the key pair under an alias, and with it every grant the alias carried. */
+    private fun removeKeyPair(
+        policy: DevicePolicyManager,
+        admin: android.content.ComponentName,
+        intent: Intent,
+    ): String {
+        val alias = intent.requireString(ALIAS)
+
+        return if (policy.removeKeyPair(admin, alias)) "removed '$alias'" else "nothing under '$alias'"
+    }
+
+    /**
+     * Sets one managed-configuration entry on a package, or clears its configuration entirely.
+     *
+     * The entry is a string under `value`, or a boolean under `flag`, the way `am broadcast --ez`
+     * sends one.
+     */
     private fun setRestrictions(
         policy: DevicePolicyManager,
         admin: android.content.ComponentName,
@@ -91,7 +111,11 @@ class ProvisionReceiver : BroadcastReceiver() {
         val key = intent.getStringExtra(KEY)
         val restrictions =
             Bundle().apply {
-                if (key != null) putString(key, intent.requireString(VALUE))
+                when {
+                    key == null -> Unit
+                    intent.hasExtra(FLAG) -> putBoolean(key, intent.getBooleanExtra(FLAG, false))
+                    else -> putString(key, intent.requireString(VALUE))
+                }
             }
 
         policy.setApplicationRestrictions(admin, target, restrictions)
@@ -99,11 +123,50 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "set ${restrictions.keySet().joinToString().ifEmpty { "nothing" }} on $target"
     }
 
+    /**
+     * Sets the alias the DPC answers the KeyChain chooser with, or clears it.
+     *
+     * Answering is how an administrator hands an app a certificate silently, which is the state a
+     * corporate-owned device with a certificate selection rule is in.
+     */
+    private fun setPolicyAlias(
+        context: Context,
+        intent: Intent,
+    ): String {
+        val alias = intent.getStringExtra(ALIAS)
+
+        AdminReceiver.setPolicyAlias(context, alias)
+
+        return "the chooser is answered with ${alias?.let { "'$it'" } ?: "nothing"}"
+    }
+
+    /**
+     * Makes a package the always-on VPN, or clears the always-on VPN when none is named.
+     *
+     * The system starts and revokes an always-on VPN by itself, which is the one way a tunnel comes
+     * up and goes down without the app being asked.
+     */
+    private fun setAlwaysOnVpn(
+        policy: DevicePolicyManager,
+        admin: android.content.ComponentName,
+        intent: Intent,
+    ): String {
+        val target = intent.getStringExtra(PACKAGE)
+        val lockdown = intent.getBooleanExtra(LOCKDOWN, false)
+
+        policy.setAlwaysOnVpnPackage(admin, target, lockdown)
+
+        return if (target == null) "cleared the always-on VPN" else "made $target the always-on VPN (lockdown=$lockdown)"
+    }
+
     private fun Intent.requireString(name: String) = getStringExtra(name) ?: error("missing extra '$name'")
 
     private companion object {
         const val INSTALL_KEY_PAIR = "dev.firezone.dpc.INSTALL_KEY_PAIR"
+        const val REMOVE_KEY_PAIR = "dev.firezone.dpc.REMOVE_KEY_PAIR"
         const val SET_RESTRICTIONS = "dev.firezone.dpc.SET_RESTRICTIONS"
+        const val SET_POLICY_ALIAS = "dev.firezone.dpc.SET_POLICY_ALIAS"
+        const val SET_ALWAYS_ON_VPN = "dev.firezone.dpc.SET_ALWAYS_ON_VPN"
 
         const val ALIAS = "alias"
         const val P12 = "p12"
@@ -112,5 +175,7 @@ class ProvisionReceiver : BroadcastReceiver() {
         const val PACKAGE = "package"
         const val KEY = "key"
         const val VALUE = "value"
+        const val FLAG = "flag"
+        const val LOCKDOWN = "lockdown"
     }
 }

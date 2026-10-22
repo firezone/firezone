@@ -6,6 +6,7 @@ import android.net.Uri
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Stands in for the system KeyChain, holding whatever a test installs.
@@ -23,6 +24,11 @@ object FakeKeyChain : KeyChain {
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
+    private val userChoices = ConcurrentLinkedQueue<String>()
+
+    @Volatile
+    private var policyAnswer: String? = null
+
     /** Files [identity] under [alias], granted to the app or merely installed. */
     fun install(
         alias: String,
@@ -32,8 +38,20 @@ object FakeKeyChain : KeyChain {
         entries[alias] = Entry(identity.chain, identity.privateKey, granted)
     }
 
+    /** Has the user pick [aliases] in the chooser, one per opening, instead of the one offered to them. */
+    fun userChooses(vararg aliases: String) {
+        userChoices.addAll(aliases)
+    }
+
+    /** Has the device policy answer [alias] when asked, granting it the way the real one does. */
+    fun policyAnswers(alias: String) {
+        policyAnswer = alias
+    }
+
     fun reset() {
         entries.clear()
+        userChoices.clear()
+        policyAnswer = null
     }
 
     override fun certificateChain(alias: String): List<X509Certificate>? = entries[alias]?.takeIf { it.granted }?.chain
@@ -46,14 +64,28 @@ object FakeKeyChain : KeyChain {
         preselectedAlias: String?,
         onChosen: (String?) -> Unit,
     ) {
-        // The user takes the offered certificate when the KeyChain holds it, and choosing is
-        // what grants it.
-        val entry = preselectedAlias?.let { alias -> entries[alias] }
+        // The user takes the offered certificate unless the test scripted another pick, either
+        // way only when the KeyChain holds it, and choosing is what grants it.
+        val alias = (userChoices.poll() ?: preselectedAlias)?.takeIf(entries::containsKey)
 
-        if (entry != null) {
-            entries[preselectedAlias] = entry.copy(granted = true)
+        if (alias != null) {
+            entries.computeIfPresent(alias) { _, entry -> entry.copy(granted = true) }
         }
 
-        onChosen(preselectedAlias.takeIf { entry != null })
+        onChosen(alias)
+    }
+
+    override fun policyAlias(
+        activity: Activity,
+        requestUri: Uri?,
+        onAnswer: (String?) -> Unit,
+    ) {
+        val alias = policyAnswer?.takeIf(entries::containsKey)
+
+        if (alias != null) {
+            entries.computeIfPresent(alias) { _, entry -> entry.copy(granted = true) }
+        }
+
+        onAnswer(alias)
     }
 }

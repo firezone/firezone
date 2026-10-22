@@ -2,6 +2,7 @@ import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.variant.ScopedArtifacts
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.process.ExecOperations
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
@@ -12,9 +13,9 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("io.sentry.android.gradle")
     id("com.diffplug.spotless")
     id("kotlin-parcelize")
-    id("androidx.navigation.safeargs")
     id("com.google.devtools.ksp")
 
     id("org.jetbrains.kotlin.plugin.compose")
@@ -55,7 +56,7 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 37
-    ndkVersion = "28.2.13676358" // Must be a version preinstalled on the CI runner (see setup-android)
+    ndkVersion = "29.0.14206865" // Must be a version preinstalled on the CI runner (see setup-android)
 
     defaultConfig {
         applicationId = "dev.firezone.android"
@@ -64,12 +65,12 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.14"
+        versionName = "1.5.18"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
         val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
-        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
+        resValue("string", "git_sha", gitSha)
 
         // CI sets this for every build that is not a release, so nothing it builds reports.
         val noTelemetry = System.getenv("FIREZONE_NO_TELEMETRY") == "true"
@@ -151,13 +152,21 @@ android {
     }
 
     buildFeatures {
-        viewBinding = true
         compose = true
     }
 
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Robolectric loads the app's classes through a sandbox loader that gives them no code
+            // location, and the JaCoCo agent skips those by default, so nothing a Robolectric test
+            // executes was counted. The JDK's own location-less classes cannot be instrumented.
+            all { test ->
+                test.extensions.configure<JacocoTaskExtension> {
+                    isIncludeNoLocationClasses = true
+                    excludes = listOf("jdk.internal.*")
+                }
+            }
         }
     }
 
@@ -251,6 +260,8 @@ abstract class CollectClasses
                     "**/*Args\$*.class",
                     "**/*Directions*.class",
                     "**/BuildConfig.class",
+                    // Preview scaffolding from the debug source set, which no build ships.
+                    "**/*Sample*.class",
                 )
             }
         }
@@ -260,15 +271,13 @@ dependencies {
     // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
     // report step to pick the wrong one from.
     "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps") { isTransitive = false }
-    implementation("androidx.core:core-ktx:1.19.0")
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // AndroidX
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
-    implementation("androidx.preference:preference-ktx:1.2.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.2")
 
     // Material
     implementation("com.google.android.material:material:1.14.0")
@@ -276,31 +285,28 @@ dependencies {
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.11.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.9.7")
-    implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
+    implementation("androidx.navigation:navigation-compose:2.10.2")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
     implementation("androidx.browser:browser:1.10.0")
     implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.1")
+    implementation("androidx.hilt:hilt-lifecycle-viewmodel-compose:1.4.0")
     ksp("androidx.hilt:hilt-compiler:1.4.0")
     ksp("com.google.dagger:hilt-android-compiler:2.60.1")
     // Instrumented Tests
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
     kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
-    androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
-    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
@@ -325,10 +331,9 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.fragment:fragment-testing:1.9.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -339,16 +344,11 @@ dependencies {
     // UniFFI
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
-    // Kotlin side of rustls-platform-verifier, called from libconnlib.so via JNI
-    // (see FirezoneApp.initRustlsPlatformVerifier). Resolved from the Maven repo
-    // bundled in the crate source (see settings.gradle.kts).
-    implementation(cargo.rustls.platform.verifier)
-
     // Sentry
-    implementation("io.sentry:sentry-android:8.53.0")
+    implementation("io.sentry:sentry-android:8.60.0")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
@@ -359,14 +359,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 
     // Slack's Compose lint checks. Lint check JARs are built against a lint API major
     // version (`lint = AGP + 23`): AGP 9.3 is lint 32.x, and 1.5.2 is built against lint
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.5")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.6.0")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
@@ -375,13 +375,29 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.72.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.72.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 
 roborazzi {
     outputDir.set(layout.projectDirectory.dir("../screenshots"))
+}
+
+// Only here for the R8 mapping, which the release job uploads. Everything else the plugin does is off.
+sentry {
+    org = "firezone-inc"
+    projectName = "android-client"
+    autoUploadProguardMapping =
+        providers
+            .environmentVariable("SENTRY_UPLOAD_MAPPING")
+            .map { it == "true" }
+            .orElse(false)
+    autoInstallation { enabled = false }
+    tracingInstrumentation { enabled = false }
+    runtimeOptimizations { enabled = false }
+    includeDependenciesReport = false
+    telemetry = false
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")

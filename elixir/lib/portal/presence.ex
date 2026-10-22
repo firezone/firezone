@@ -84,6 +84,22 @@ defmodule Portal.Presence do
       |> Enum.map(&elem(&1, 0))
     end
 
+    @doc """
+    The ids of the clients one actor has connected right now, leaving out
+    `except_device_id` so a client that reconnects is not counted against itself.
+    """
+    def online_client_ids_for_actor(account_id, actor_id, except_device_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.flat_map(fn
+        {id, %{metas: [%{type: :client, actor_id: ^actor_id} | _]}} when id != except_device_id ->
+          [id]
+
+        _ ->
+          []
+      end)
+    end
+
     @doc "How many gateways are connected to each site, keyed by site id."
     def online_gateway_counts(account_id) do
       account_id
@@ -91,6 +107,20 @@ defmodule Portal.Presence do
       |> Enum.reduce(%{}, fn
         {_id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
           Map.update(acc, site_id, 1, &(&1 + 1))
+
+        _client, acc ->
+          acc
+      end)
+    end
+
+    @doc "The ids of the gateways connected to each site, keyed by site id."
+    @spec online_gateway_ids_by_site(Ecto.UUID.t()) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
+    def online_gateway_ids_by_site(account_id) do
+      account_id
+      |> __MODULE__.Account.list()
+      |> Enum.reduce(%{}, fn
+        {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
+          Map.update(acc, site_id, MapSet.new([id]), &MapSet.put(&1, id))
 
         _client, acc ->
           acc

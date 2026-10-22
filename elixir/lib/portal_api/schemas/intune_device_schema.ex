@@ -64,16 +64,14 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :config_manager_device_configuration,
       :config_manager_compliance_policy,
       :config_manager_windows_update_for_business,
-      :attestation_last_update_date_time,
-      :attestation_content_namespace_url,
       :attestation_status,
       :attestation_content_version,
       :attestation_issued_at,
       :attestation_identity_key,
       :attestation_reset_count,
       :attestation_restart_count,
-      :attestation_data_execution_policy,
-      :attestation_bit_locker_status,
+      :attestation_data_execution_policy_enabled,
+      :attestation_bit_locker_enabled,
       :attestation_boot_manager_version,
       :attestation_code_integrity_check_version,
       :attestation_secure_boot,
@@ -95,8 +93,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :attestation_boot_revision_list_info,
       :attestation_operating_system_rev_list_info,
       :attestation_health_status_mismatch_info,
-      :attestation_supported_status,
-      :device_action_results,
+      :attestation_supported,
       :enrolled_at,
       :last_sync_at,
       :compliance_grace_period_expiration_at,
@@ -115,6 +112,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                       :string -> %Schema{type: :string, nullable: nullable}
                       :boolean -> %Schema{type: :boolean, nullable: nullable}
                       :integer -> %Schema{type: :integer, nullable: nullable}
+                      :date -> %Schema{type: :string, format: :date, nullable: nullable}
                       :utc_datetime_usec -> %Schema{type: :string, format: :"date-time", nullable: nullable}
                       :map -> %Schema{type: :object, additionalProperties: true, nullable: nullable}
                       {:array, :map} -> %Schema{type: :array, items: %Schema{type: :object}, nullable: nullable}
@@ -123,7 +121,14 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                   {field, schema}
                 end)
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Intune.Device}
+    # Left off the API and out of the posture grammar:
+    # - device_action_results: outcomes of remote actions Intune ran, not device state
+    # - attestation_content_namespace_url: the report schema namespace, a constant
+    # - attestation_last_update_date_time: Graph sends it as an opaque string;
+    #   attestation_issued_at is the parsed evaluation time freshness checks use
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Intune.Device,
+             internal: ~w[device_action_results attestation_content_namespace_url attestation_last_update_date_time]a}
     OpenApiSpex.schema(%{
       title: "IntuneDevice",
       description: "Device synced from Microsoft Intune",

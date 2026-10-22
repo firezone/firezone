@@ -1,17 +1,17 @@
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
+use ip_packet::Protocol;
+use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
 use crate::reference::ReferenceState;
-use crate::resource::StaticDevicePoolResource;
+use crate::stub_portal::StubPortal;
 use crate::transition::{Destination, Transition};
 
 /// Represents a semantic destination selected by the state-aware grammar.
@@ -50,6 +50,12 @@ pub(super) enum PacketTarget {
         dst: IpAddr,
         filters: Vec<Filter>,
     },
+    RevokedPeer {
+        client_id: ClientId,
+        src: IpAddr,
+        dst: IpAddr,
+        protocol: Protocol,
+    },
 }
 
 #[derive(Clone)]
@@ -58,7 +64,7 @@ enum DstSpec {
     Ip(IpAddr),
 }
 
-pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget> {
+pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<PacketTarget> {
     state
         .ipv4_cidr_resource_dsts()
         .into_iter()
@@ -86,7 +92,7 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                 .map(|(client_id, domain, filters)| PacketTarget::Dns {
                     client_id,
                     src: IpAddr::V4(state.clients[&client_id].inner().tunnel_ip4),
-                    tcp_service_ports: tcp_service_ports(state, &domain, true),
+                    tcp_service_ports: tcp_service_ports(state, &domain),
                     domain,
                     filters,
                 }),
@@ -98,14 +104,14 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                 .map(|(client_id, domain, filters)| PacketTarget::Dns {
                     client_id,
                     src: IpAddr::V6(state.clients[&client_id].inner().tunnel_ip6),
-                    tcp_service_ports: tcp_service_ports(state, &domain, false),
+                    tcp_service_ports: tcp_service_ports(state, &domain),
                     domain,
                     filters,
                 }),
         )
         .chain(
             state
-                .resolved_ip4_for_non_resources(&state.global_dns_records, now)
+                .resolved_ip4_for_non_resources(&state.global_dns_records)
                 .into_iter()
                 .map(|(client_id, dst)| PacketTarget::NonResource {
                     client_id,
@@ -115,7 +121,7 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
         )
         .chain(
             state
-                .resolved_ip6_for_non_resources(&state.global_dns_records, now)
+                .resolved_ip6_for_non_resources(&state.global_dns_records)
                 .into_iter()
                 .map(|(client_id, dst)| PacketTarget::NonResource {
                     client_id,
@@ -163,22 +169,92 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<PacketTarget>
                     network: network.into(),
                 }),
         )
-        .chain(state.pool_routed_other_client_tun_ips().into_iter().map(
-            |(client_id, dst, filters)| {
-                let client = state.clients[&client_id].inner();
-                let src = match dst {
-                    IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
-                    IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
-                };
-                PacketTarget::Peer {
-                    client_id,
-                    src,
-                    dst,
-                    filters,
-                }
-            },
-        ))
+        .chain(
+            state
+                .pool_routed_other_client_tun_ips(portal)
+                .into_iter()
+                .map(|(client_id, dst, filters)| {
+                    let client = state.clients[&client_id].inner();
+                    let src = match dst {
+                        IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
+                        IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
+                    };
+                    PacketTarget::Peer {
+                        client_id,
+                        src,
+                        dst,
+                        filters,
+                    }
+                }),
+        )
         .collect::<Vec<_>>()
+}
+
+pub(super) fn revoked_peer_targets(state: &ReferenceState) -> Vec<PacketTarget> {
+    state
+        .clients
+        .iter()
+        .flat_map(|(peer_id, receiver)| {
+            let receiver = receiver.inner();
+
+            receiver
+                .rejected_inbound_peer_pools()
+                .filter_map(move |(client_id, pool, filters)| {
+                    let sender = state.clients.get(&client_id)?.inner();
+                    if !receiver.has_inbound_peer_authorization(client_id)
+                        || !sender
+                            .authorized_pools_towards(*peer_id)
+                            .any(|id| id == pool)
+                    {
+                        return None;
+                    }
+
+                    let protocol = revoked_protocols(filters).into_iter().find(|protocol| {
+                        sender.candidate_pools(*protocol).contains(&pool)
+                            && !receiver.inbound_peer_filter_allows(client_id, *protocol)
+                    })?;
+
+                    Some([
+                        PacketTarget::RevokedPeer {
+                            client_id,
+                            src: sender.tunnel_ip4.into(),
+                            dst: receiver.tunnel_ip4.into(),
+                            protocol,
+                        },
+                        PacketTarget::RevokedPeer {
+                            client_id,
+                            src: sender.tunnel_ip6.into(),
+                            dst: receiver.tunnel_ip6.into(),
+                            protocol,
+                        },
+                    ])
+                })
+                .flatten()
+        })
+        .collect()
+}
+
+fn revoked_protocols(filters: &[Filter]) -> Vec<Protocol> {
+    if filters.is_empty() {
+        return vec![Protocol::IcmpEcho(0), Protocol::Udp(12345)];
+    }
+
+    filters
+        .iter()
+        .flat_map(|filter| match filter {
+            Filter::Icmp => vec![Protocol::IcmpEcho(0)],
+            Filter::Udp(range) => {
+                let start = *range.as_range().start();
+                let end = *range.as_range().end();
+                [start, start + (end - start) / 2, end]
+                    .into_iter()
+                    .filter(|port| *port != 53)
+                    .map(Protocol::Udp)
+                    .collect()
+            }
+            Filter::Tcp(_) => Vec::new(),
+        })
+        .collect()
 }
 
 pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
@@ -235,6 +311,16 @@ pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
             dst,
             filters,
         } => arb_filtered_packet(g, client_id, src, DstSpec::Ip(dst), &filters),
+        PacketTarget::RevokedPeer {
+            client_id,
+            src,
+            dst,
+            protocol,
+        } => match protocol {
+            Protocol::IcmpEcho(_) => arb_icmp_packet(g, client_id, src, DstSpec::Ip(dst)),
+            Protocol::Udp(port) => arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), port),
+            Protocol::Tcp(_) => unreachable!("TCP peer probes are not generated"),
+        },
     }
 }
 
@@ -301,35 +387,9 @@ pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
     Ipv6Addr::from(base.wrapping_add(off))
 }
 
-/// Selects online clients as `/32` and `/128` device members.
-pub(super) fn arb_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-    pool: &StaticDevicePoolResource,
-) -> Vec<DevicePoolMember> {
-    arb_online_static_pool_members(g, state)
-        .into_iter()
-        .chain(offline_static_pool_members(state, pool))
-        .collect()
-}
-
-pub(super) fn arb_online_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-) -> Vec<DevicePoolMember> {
-    state
-        .clients
-        .iter()
-        .filter(|_| g.bool())
-        .map(|(id, client)| {
-            let client = client.inner();
-            DevicePoolMember {
-                id: *id,
-                ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
-                ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
-            }
-        })
-        .collect()
+/// Selects a subset of the online clients as a pool's members.
+pub(super) fn arb_pool_members(g: &mut Generator, state: &ReferenceState) -> BTreeSet<ClientId> {
+    state.clients.keys().filter(|_| g.bool()).copied().collect()
 }
 
 fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
@@ -339,17 +399,14 @@ fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
     }
 }
 
-fn tcp_service_ports(state: &ReferenceState, domain: &DomainName, ipv4: bool) -> Vec<u16> {
+fn tcp_service_ports(state: &ReferenceState, domain: &DomainName) -> Vec<u16> {
     state
-        .tcp_resources
+        .tcp_services
         .get(domain)
         .into_iter()
         .flatten()
-        .filter(|address| address.is_ipv4() == ipv4)
-        .map(SocketAddr::port)
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>()
+        .copied()
+        .collect()
 }
 
 fn arb_filtered_packet(
@@ -438,11 +495,13 @@ fn arb_tcp_connection(
     let (sport, dport) = g.fresh_tcp_connection(dport);
     let dst = arb_destination(g, DstSpec::Domain(domain));
     Transition::ConnectTcp {
+        flow_id: g.fresh_flow_id(),
         client_id,
         src,
         dst,
         sport,
         dport,
+        probe_id: g.fresh_probe_id(),
     }
 }
 
@@ -464,18 +523,6 @@ fn arb_unfiltered_packet(
         arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), dport)
     }
 }
-fn offline_static_pool_members(
-    state: &ReferenceState,
-    pool: &StaticDevicePoolResource,
-) -> impl Iterator<Item = DevicePoolMember> {
-    let online_ids = state.clients.keys().copied().collect::<BTreeSet<_>>();
-
-    pool.devices
-        .iter()
-        .filter(move |d| !online_ids.contains(&d.id))
-        .cloned()
-}
-
 fn arb_icmp_packet(
     g: &mut Generator,
     client_id: ClientId,
@@ -485,8 +532,10 @@ fn arb_icmp_packet(
     let (seq, identifier) = g.fresh_icmp_packet();
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
+    let flow_id = g.fresh_flow_id();
     let dst = into_destination(dst, resolved_ip);
-    Transition::SendIcmpPacket {
+    Transition::SendIcmpPacketOnNewFlow {
+        flow_id,
         client_id,
         src,
         dst,
@@ -506,8 +555,10 @@ fn arb_udp_packet(
     let (sport, dport) = g.fresh_udp_packet(dport);
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
+    let flow_id = g.fresh_flow_id();
     let dst = into_destination(dst, resolved_ip);
-    Transition::SendUdpPacket {
+    Transition::SendUdpPacketOnNewFlow {
+        flow_id,
         client_id,
         src,
         dst,
@@ -537,21 +588,4 @@ fn non_dns_port(index: u32) -> u16 {
     let after_do53 = index + u32::from(index >= 53);
 
     (after_do53 + u32::from(after_do53 >= 53535)) as u16
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use super::non_dns_port;
-
-    /// The mapping is a bijection onto `[0, 65535] \ {53, 53535}`.
-    #[test]
-    fn non_dns_port_is_a_bijection() {
-        let seen = (0..=65533).map(non_dns_port).collect::<BTreeSet<_>>();
-
-        assert_eq!(seen.len(), 65534);
-        assert!(!seen.contains(&53));
-        assert!(!seen.contains(&53535));
-    }
 }

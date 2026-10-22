@@ -2,6 +2,12 @@ defmodule PortalAPI.Pagination do
   alias Portal.Repo.Paginator
   alias Portal.Repo.Paginator.Metadata
 
+  @max_limit Paginator.max_limit()
+
+  def limit_schema do
+    %OpenApiSpex.Schema{type: :integer, minimum: 1, maximum: @max_limit}
+  end
+
   @spec params_to_list_opts(map()) :: {:ok, keyword()} | {:error, :bad_request, reason: String.t()}
   def params_to_list_opts(params) do
     with {:ok, page} <- params_to_page(params) do
@@ -43,7 +49,8 @@ defmodule PortalAPI.Pagination do
 
   defp parse_limit(limit) when is_binary(limit) do
     case Integer.parse(limit) do
-      {int, ""} -> {:ok, int}
+      {int, ""} when int >= 1 and int <= @max_limit -> {:ok, int}
+      {_int, ""} -> {:error, :bad_request, reason: "limit must be between 1 and #{@max_limit}"}
       _ -> {:error, :bad_request, reason: "limit must be an integer"}
     end
   end
