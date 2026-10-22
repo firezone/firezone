@@ -82,7 +82,7 @@ async fn receives_after_many_icmp_errors() {
             .send(DatagramOut {
                 src: None,
                 dst: closed_addr,
-                packet: PACKETS.pull_initialised(&[0; 1200]),
+                packet: bufferpool::Bytes::copied_from(&[0; 1200]),
                 segment_size: 1200,
                 ecn: Ecn::NonEct,
             })
