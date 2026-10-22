@@ -11,7 +11,8 @@ mod device;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::task::{Context, Poll};
@@ -19,19 +20,20 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::ErrorExt as _;
-use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::{Ecn, IpPacket};
-use snownet::{RelaySocket, Transmit};
+use rand::{SeedableRng as _, rngs::StdRng};
+use relay_proto::auth::AccountId;
+use relay_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
+use snownet::RelaySocket;
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
-use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
-use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
 use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
+use uuid::Uuid;
 
 use crate::measure::Stage;
 use crate::thread_cpu::thread_cpu_times;
@@ -664,7 +666,11 @@ fn local_ip() -> IpAddr {
 
     Ipv4Addr::LOCALHOST.into()
 }
-const RELAY_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 3), 3478);
+static RELAY_SOCKET: LazyLock<SocketAddr> = LazyLock::new(|| SocketAddr::new(local_ip(), 3478));
+
+/// The ports the relay allocates from, clear of the Clients' and the Gateway's sockets and of
+/// the ephemeral ports.
+const ALLOCATION_PORTS: RangeInclusive<u16> = 10_000..=19_999;
 
 const CLIENT_TUN_V4: Ipv4Addr = Ipv4Addr::new(100, 64, 0, 1);
 const CLIENT_TUN_V6: Ipv6Addr = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
@@ -723,6 +729,7 @@ impl Resource {
 struct Tunnel {
     client: ClientState,
     gateway: GatewayState,
+    relay: Relay,
     now: Instant,
     /// Where the Client sends packets for the resource: its address or the DNS proxy IP.
     dst: IpAddr,
@@ -734,6 +741,7 @@ impl Tunnel {
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap();
+        let relay = Relay::new(now);
 
         let mut client = ClientState::new([1; 32], BTreeSet::new(), false, now, unix_ts);
         client.set_flow_logs_enabled(flow_logs);
@@ -759,12 +767,12 @@ impl Tunnel {
             vec![serde_json::from_value(resource.description()).unwrap()],
             now,
         );
-        client.update_relays(BTreeSet::new(), relays(), now);
+        client.update_relays(BTreeSet::new(), relay.description("client"), now);
 
         let mut gateway = GatewayState::new([2; 32], now, unix_ts);
         gateway.set_flow_logs_enabled(flow_logs);
         gateway.update_tun_device(GATEWAY_TUN);
-        gateway.update_relays(BTreeSet::new(), relays(), now);
+        gateway.update_relays(BTreeSet::new(), relay.description("gateway"), now);
 
         let dst = match resource {
             Resource::Cidr => CIDR_RESOURCE_IP.into(),
@@ -774,6 +782,7 @@ impl Tunnel {
         let mut tunnel = Self {
             client,
             gateway,
+            relay,
             now,
             dst,
         };
@@ -783,7 +792,8 @@ impl Tunnel {
             .handle_tun_input(&mut tunnel.request(), now)
             .unwrap();
 
-        for _ in 0..200 {
+        // Long enough for the TURN allocations' retransmits to be done.
+        for _ in 0..600 {
             tunnel.step(resource);
         }
 
@@ -864,10 +874,10 @@ impl Tunnel {
         }
 
         while let Some(transmit) = self.client.poll_transmit() {
-            self.route(*CLIENT_SOCKET, transmit);
+            self.deliver(*CLIENT_SOCKET, transmit.dst, &transmit.payload);
         }
         while let Some(transmit) = self.gateway.poll_transmit() {
-            self.route(*GATEWAY_SOCKET, transmit);
+            self.deliver(*GATEWAY_SOCKET, transmit.dst, &transmit.payload);
         }
         for _ in std::iter::from_fn(|| self.client.poll_packets()) {}
     }
@@ -916,24 +926,14 @@ impl Tunnel {
             .unwrap();
     }
 
-    /// Delivers a datagram, standing in for a relay that only answers STUN binding requests.
-    ///
-    /// That is enough for both sides to learn their host candidates and connect directly.
-    fn route(&mut self, from: SocketAddr, transmit: Transmit) {
-        let relay = SocketAddr::V4(RELAY_SOCKET);
+    fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
+        if self.relay.serves(to) {
+            for (from, to, payload) in self.relay.handle(from, to, payload, self.now) {
+                self.deliver(from, to, &payload);
+            }
 
-        if transmit.dst != relay {
-            self.deliver(from, transmit.dst, &transmit.payload);
             return;
         }
-
-        let Some(response) = binding_response(&transmit.payload, from) else {
-            return;
-        };
-        self.deliver(relay, from, &response);
-    }
-
-    fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
         if to == *CLIENT_SOCKET
             && let Ok(Some(decapsulation)) = self
                 .client
@@ -975,33 +975,114 @@ fn packet(src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
     ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
 }
 
-fn binding_response(request: &[u8], from: SocketAddr) -> Option<Vec<u8>> {
-    let request = MessageDecoder::<Attribute>::new()
-        .decode_from_bytes(request)
-        .ok()?
-        .ok()?;
-    if request.method() != BINDING {
-        return None;
-    }
-
-    let mut response = Message::<Attribute>::new(
-        MessageClass::SuccessResponse,
-        BINDING,
-        request.transaction_id(),
-    );
-    response.add_attribute(XorMappedAddress::new(from));
-
-    MessageEncoder::new().encode_into_bytes(response).ok()
+/// A TURN relay on [`RELAY_SOCKET`], run by the relay's own sans-IO state.
+struct Relay {
+    server: relay_proto::Server<StdRng>,
+    /// The ports of its allocations.
+    allocations: BTreeSet<u16>,
+    /// When it started, by the simulated and the system clock.
+    started: (Instant, SystemTime),
 }
 
-fn relays() -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
-    BTreeSet::from([(
-        RelayId::from_u128(6),
-        RelaySocket::V4(RELAY_SOCKET),
-        "username".to_owned(),
-        "password".to_owned(),
-        "firezone".to_owned(),
-    )])
+impl Relay {
+    fn new(now: Instant) -> Self {
+        let mut server = relay_proto::Server::new(
+            RELAY_SOCKET.ip(),
+            StdRng::seed_from_u64(0),
+            RELAY_SOCKET.port(),
+            ALLOCATION_PORTS,
+        );
+        server.set_accounts([AccountId::from(Uuid::nil())]);
+
+        Self {
+            server,
+            allocations: BTreeSet::new(),
+            started: (now, SystemTime::now()),
+        }
+    }
+
+    /// Returns the relay as the portal describes it to a Client or Gateway, with credentials for
+    /// `user`: the relay keeps one allocation per username.
+    fn description(&self, user: &str) -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
+        let expiry = self.started.1 + Duration::from_secs(24 * 60 * 60);
+        let username = format!(
+            "{}:{}:{user}",
+            expiry
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            relay_proto::auth::hash_account_id(&AccountId::from(Uuid::nil()))
+        );
+        let password = relay_proto::auth::generate_password(self.server.auth_secret(), &username);
+        let socket = match *RELAY_SOCKET {
+            SocketAddr::V4(socket) => RelaySocket::V4(socket),
+            SocketAddr::V6(socket) => RelaySocket::V6(socket),
+        };
+
+        BTreeSet::from([(
+            RelayId::from_u128(6),
+            socket,
+            username,
+            password,
+            "firezone".to_owned(),
+        )])
+    }
+
+    /// Whether `socket` is the relay's own or one of its allocations.
+    fn serves(&self, socket: SocketAddr) -> bool {
+        socket == *RELAY_SOCKET
+            || socket.ip() == RELAY_SOCKET.ip() && self.allocations.contains(&socket.port())
+    }
+
+    /// Handles a datagram to one of its sockets and returns the datagrams it sends in turn, as
+    /// source, destination and payload.
+    fn handle(
+        &mut self,
+        from: SocketAddr,
+        to: SocketAddr,
+        payload: &[u8],
+        now: Instant,
+    ) -> Vec<(SocketAddr, SocketAddr, Vec<u8>)> {
+        let now_utc = self.started.1 + now.duration_since(self.started.0);
+        let mut datagrams = Vec::new();
+
+        if to == *RELAY_SOCKET {
+            if let Some((port, peer)) =
+                self.server
+                    .handle_client_input(payload, ClientSocket::new(from), now, now_utc)
+            {
+                let from = SocketAddr::new(to.ip(), port.value());
+                datagrams.push((from, peer.into_socket(), payload[4..].to_vec()));
+            }
+        } else if let Some((client, channel)) = self.server.handle_peer_traffic(
+            payload,
+            PeerSocket::new(from),
+            AllocationPort::new(to.port()),
+        ) {
+            let mut message = vec![0; 4];
+            let len = u16::try_from(payload.len()).unwrap();
+            ChannelData::encode_header_to_slice(channel, len, &mut message);
+            message.extend_from_slice(payload);
+            datagrams.push((*RELAY_SOCKET, client.into_socket(), message));
+        }
+
+        while let Some(command) = self.server.next_command() {
+            match command {
+                Command::SendMessage { payload, recipient } => {
+                    datagrams.push((*RELAY_SOCKET, recipient.into_socket(), payload));
+                }
+                Command::CreateAllocation { port, .. } => {
+                    self.allocations.insert(port.value());
+                }
+                Command::FreeAllocation { port, .. } => {
+                    self.allocations.remove(&port.value());
+                }
+                _ => {}
+            }
+        }
+
+        datagrams
+    }
 }
 
 fn ingest_token() -> IngestToken {
