@@ -54,6 +54,7 @@ members = [
     "libs/otel-attributes",
     "libs/prefetch",
     "libs/telemetry",
+    "libs/tundra",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
     "libs/x509-claims",
@@ -273,6 +274,7 @@ tun-ioctl = { path = "libs/connlib/tun-ioctl" }
 tun-linux = { path = "libs/connlib/tun-linux" }
 tun-offload = { path = "libs/connlib/tun-offload" }
 tun-windows = { path = "libs/connlib/tun-windows" }
+tundra = { path = "libs/tundra" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }

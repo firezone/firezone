@@ -797,6 +797,7 @@ dependencies = [
  "tun-ioctl",
  "tun-linux",
  "tun-windows",
+ "tundra",
  "uuid",
  "windows",
  "windows-core",
@@ -8957,6 +8958,7 @@ name = "tun-windows"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "futures",
  "ip-packet",
  "opentelemetry",
  "otel-instruments",
@@ -8964,7 +8966,15 @@ dependencies = [
  "tracing",
  "tun",
  "tun-offload",
+ "tundra",
  "wintun",
+]
+
+[[package]]
+name = "tundra"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
