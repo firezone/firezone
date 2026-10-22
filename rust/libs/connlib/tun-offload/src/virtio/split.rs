@@ -1,7 +1,7 @@
 //! Splits virtio network frames into individual IP packets and completes partial checksums.
 
 use anyhow::{Context as _, Result, bail, ensure};
-use ip_packet::{IpNumber, IpPacket, IpPacketBuf, IpVersion};
+use ip_packet::{IpNumber, IpPacket, IpVersion};
 use smallvec::SmallVec;
 use std::net::IpAddr;
 
@@ -46,8 +46,8 @@ pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
 fn copy_single(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<IpPacket> {
     let len = packet.len();
 
-    let mut ip_packet_buf = IpPacketBuf::new();
-    let dst = ip_packet_buf.buf();
+    let mut ip_packet_buf = ip_packet::packet_buffer();
+    let dst = &mut ip_packet_buf[..];
     ensure!(len <= dst.len(), "Packet too large (len: {len})");
     dst[..len].copy_from_slice(packet);
 
@@ -130,8 +130,8 @@ fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; IN
     for (index, segment) in payload.chunks(gso_size).enumerate() {
         let len = headers_len + segment.len();
 
-        let mut ip_packet_buf = IpPacketBuf::new();
-        let buf = ip_packet_buf.buf();
+        let mut ip_packet_buf = ip_packet::packet_buffer();
+        let buf = &mut ip_packet_buf[..];
         ensure!(len <= buf.len(), "Segment too large (len: {len})");
 
         buf[..headers_len].copy_from_slice(headers);

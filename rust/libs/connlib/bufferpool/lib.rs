@@ -181,6 +181,18 @@ impl DerefMut for Bytes {
     }
 }
 
+impl AsRef<[u8]> for Bytes {
+    fn as_ref(&self) -> &[u8] {
+        self
+    }
+}
+
+impl AsMut<[u8]> for Bytes {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self
+    }
+}
+
 impl Drop for Bytes {
     fn drop(&mut self) {
         let mut buffer = std::mem::take(&mut self.0);

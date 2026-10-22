@@ -127,39 +127,9 @@ pub enum Layer4Protocol {
     Icmp { seq: u16, id: u16 },
 }
 
-/// A buffer for reading a new [`IpPacket`] from the network.
-pub struct IpPacketBuf {
-    inner: Bytes,
-}
-
-impl Default for IpPacketBuf {
-    fn default() -> Self {
-        Self {
-            inner: Bytes::fitting(MAX_FZ_PAYLOAD),
-        }
-    }
-}
-
-impl IpPacketBuf {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn buf(&mut self) -> &mut [u8] {
-        &mut self.inner
-    }
-}
-
-impl AsRef<[u8]> for IpPacketBuf {
-    fn as_ref(&self) -> &[u8] {
-        &self.inner
-    }
-}
-
-impl AsMut<[u8]> for IpPacketBuf {
-    fn as_mut(&mut self) -> &mut [u8] {
-        &mut self.inner
-    }
+/// Pulls a buffer for reading a new [`IpPacket`] from the network.
+pub fn packet_buffer() -> Bytes {
+    Bytes::fitting(MAX_FZ_PAYLOAD)
 }
 
 #[derive(PartialEq, Clone)]
@@ -282,11 +252,11 @@ impl IpPacket {
     /// invariants are checked here, once: header lengths and length fields must
     /// be consistent with that length all the way through the transport layer. Accessors on the returned packet rely on these invariants and
     /// don't re-validate.
-    pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+    pub fn new(buf: Bytes, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
-        anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
+        anyhow::ensure!(len <= buf.len(), "Length exceeds buffer size");
 
-        let packet = &buf.inner[..len];
+        let packet = &buf[..len];
 
         let (version, ip_header_length, protocol, len) = match packet.first().map(|b| b >> 4) {
             Some(4) => {
@@ -338,7 +308,7 @@ impl IpPacket {
             ip_header_length <= len,
             "IP header length ({ip_header_length}) exceeds packet length ({len})"
         );
-        let l4 = &buf.inner[ip_header_length..len];
+        let l4 = &buf[ip_header_length..len];
 
         let transport = match (version, protocol) {
             (_, IpProtocol::UDP) => {
@@ -380,7 +350,7 @@ impl IpPacket {
         };
 
         Ok(Self {
-            buf: buf.inner,
+            buf,
             len: u16::try_from(len)?,
             ip_header_length: u16::try_from(ip_header_length)?,
             transport,
@@ -1370,10 +1340,10 @@ mod tests {
             crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, b"foobar"),
         ] {
             let packet = packet.unwrap();
-            let mut buf = IpPacketBuf::new();
+            let mut buf = packet_buffer();
             let len = packet.packet().len();
-            buf.buf()[..len].copy_from_slice(packet.packet());
-            buf.buf()[len..len + 13].fill(0);
+            buf[..len].copy_from_slice(packet.packet());
+            buf[len..len + 13].fill(0);
 
             let padded = IpPacket::new(buf, len + 13).unwrap();
 

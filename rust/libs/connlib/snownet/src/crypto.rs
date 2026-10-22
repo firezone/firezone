@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use bufferpool::Bytes;
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 
 use crate::node::Transmit;
 
@@ -128,7 +128,7 @@ impl PendingDecapsulate {
             dst: self.dst,
             decrypted: self
                 .pending
-                .decrypt(message, IpPacketBuf::new())
+                .decrypt(message, ip_packet::packet_buffer())
                 .map(IpPacket::new),
         }
     }

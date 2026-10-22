@@ -676,7 +676,6 @@ mod tests {
     use ingot::tcp::{Tcp, TcpFlags};
     use ingot::types::{Emit, HeaderLen as _};
     use ingot::udp::Udp;
-    use ip_packet::IpPacketBuf;
 
     use super::*;
 
@@ -975,8 +974,8 @@ mod tests {
         let mut bytes = (ipv4, l4_header).to_vec();
         bytes.extend_from_slice(payload);
 
-        let mut buf = IpPacketBuf::new();
-        buf.buf()[..bytes.len()].copy_from_slice(&bytes);
+        let mut buf = ip_packet::packet_buffer();
+        buf[..bytes.len()].copy_from_slice(&bytes);
         let mut packet =
             IpPacket::new(buf, bytes.len()).expect("constructed test packet must be valid");
         packet.compute_checksums();

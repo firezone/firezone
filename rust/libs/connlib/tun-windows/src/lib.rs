@@ -2,7 +2,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use ip_packet::{IpPacket, IpPacketBuf};
+use bufferpool::Bytes;
+use ip_packet::IpPacket;
 use opentelemetry::{KeyValue, metrics::Histogram};
 use std::{env::VarError, io, sync::Arc, time::Duration};
 use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
@@ -405,11 +406,11 @@ where
     D: Device,
 {
     let mut batch = tun::PacketBatch::default();
-    let mut buf = IpPacketBuf::new();
+    let mut buf = ip_packet::packet_buffer();
 
     'recv: loop {
         // Block for the first packet of a batch.
-        let len = match device.receive_blocking(buf.buf()) {
+        let len = match device.receive_blocking(&mut buf) {
             Ok(0) => {
                 tracing::debug!("Stopping TUN recv worker thread because Wintun is shutting down");
                 break;
@@ -430,7 +431,7 @@ where
         // Drain whatever else is already in the ring buffer, so one channel item
         // carries the whole burst.
         loop {
-            match device.try_receive(buf.buf()) {
+            match device.try_receive(&mut buf) {
                 Ok(0) => break, // Ring buffer is drained; hand off what we have.
                 Ok(len) => {
                     if let Some(packet) = parse_packet(&mut buf, len)
@@ -484,8 +485,8 @@ fn push_or_start_new_batch(
 }
 
 /// Parses the first `len` bytes of `buf` as an IP packet, leaving a fresh buffer in its place.
-fn parse_packet(buf: &mut IpPacketBuf, len: usize) -> Option<IpPacket> {
-    let pkt = match IpPacket::new(std::mem::take(buf), len) {
+fn parse_packet(buf: &mut Bytes, len: usize) -> Option<IpPacket> {
+    let pkt = match IpPacket::new(std::mem::replace(buf, ip_packet::packet_buffer()), len) {
         Ok(pkt) => pkt,
         Err(e) => {
             tracing::debug!("Failed to parse IP packet: {e:#}");
