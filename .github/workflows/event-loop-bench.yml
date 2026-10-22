@@ -88,25 +88,39 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Plots refer to everything by UUID.
+          uuid() {
+            bencher "$1" view "$BENCHER_PROJECT" "$2" | jq -r .uuid
+          }
+          benchmark() {
+            bencher benchmark list --name "$1" "$BENCHER_PROJECT" | jq -r '.[0].uuid // empty'
+          }
           # Creates the plot unless one with the title exists; plots have no key of their own.
           plot() {
             local title=$1
             shift
             if [ "$(bencher plot list --title "$title" "$BENCHER_PROJECT" | jq length)" = 0 ]; then
               bencher plot create --title "$title" --x-axis version --window 7776000 \
-                --branches main --testbeds "bare-metal-$BENCHER_SPEC" "$@" "$BENCHER_PROJECT" >/dev/null
+                --branches "$(uuid branch main)" --testbeds "$(uuid testbed "bare-metal-$BENCHER_SPEC")" \
+                "$@" "$BENCHER_PROJECT" >/dev/null
             fi
           }
 
+          cpu=()
+          for measure in event-loop udp crypto tun; do
+            cpu+=(--measures "$(uuid measure "$measure")")
+          done
           configurations=(client_outbound/cidr client_outbound/dns gateway_inbound/cidr gateway_inbound/dns
             gateway_outbound/cidr gateway_outbound/dns client_inbound/cidr client_inbound/dns)
           throughput=()
           for configuration in "${configurations[@]}"; do
-            plot "$configuration CPU per packet" --benchmarks "event_loop/$configuration" \
-              --measures event-loop --measures udp --measures crypto --measures tun
-            throughput+=(--benchmarks "event_loop/$configuration")
+            # A benchmark exists once its first results are in.
+            id=$(benchmark "event_loop/$configuration")
+            [ -n "$id" ] || continue
+            plot "$configuration CPU per packet" --benchmarks "$id" "${cpu[@]}"
+            throughput+=(--benchmarks "$id")
           done
-          plot "Throughput" "${throughput[@]}" --measures throughput
+          [ "${#throughput[@]}" = 0 ] || plot "Throughput" "${throughput[@]}" --measures "$(uuid measure throughput)"
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
