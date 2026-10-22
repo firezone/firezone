@@ -1,7 +1,6 @@
 use crate::otel;
 use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
-use bufferpool::{Buffer, VecBuf};
 use futures::{FutureExt as _, future::BoxFuture, ready};
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
@@ -14,7 +13,7 @@ use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    sync::Arc,
+    sync::{Arc, Mutex, PoisonError},
     task::{Context, Poll},
 };
 use tokio::sync::mpsc::{
@@ -55,33 +54,37 @@ const UDP_RECV_BATCH_LIMIT: usize = cfg_select! {
     _ => { 8 }
 };
 
-bufferpool::buffer_pool!(
-    /// Pool for the `Vec`s that collect one poll's worth of received datagram batches.
-    ///
-    /// Sized to hold a full drain of both sockets, so collecting into it never reallocates.
-    /// Dropping the collection after processing returns it to the pool, keeping the
-    /// receive path free of allocations.
-    static DATAGRAM_BATCHES: VecBuf<DatagramBatch> = (2 * UDP_RECV_BATCH_LIMIT, "udp-recv-batches"),
-    batch: 4
-);
-
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
     SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
 
 /// Datagrams received from the UDP sockets, in the batches their threads read them in.
-pub(crate) struct ReceivedDatagrams(Buffer<VecBuf<DatagramBatch>>);
+///
+/// Dropping it hands the emptied vector back to [`Sockets`] for the next receive.
+pub(crate) struct ReceivedDatagrams {
+    batches: Vec<DatagramBatch>,
+    spare: Arc<Mutex<Vec<DatagramBatch>>>,
+}
 
 impl ReceivedDatagrams {
     /// How many datagrams were received, counting every segment of a coalesced one.
     pub fn len(&self) -> usize {
-        self.0.iter().map(DatagramBatch::len).sum()
+        self.batches.iter().map(DatagramBatch::len).sum()
     }
 
     /// Moves out every received datagram, in the order the sockets received them.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
-        self.0.iter_mut().flat_map(|batch| batch.drain())
+        self.batches.iter_mut().flat_map(|batch| batch.drain())
+    }
+}
+
+impl Drop for ReceivedDatagrams {
+    fn drop(&mut self) {
+        self.batches.clear();
+
+        *self.spare.lock().unwrap_or_else(PoisonError::into_inner) =
+            std::mem::take(&mut self.batches);
     }
 }
 
@@ -116,6 +119,11 @@ pub(crate) struct Sockets {
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
     packet_counter: Counter<u64>,
+
+    /// The vector to receive the next batches into, unless it is lent out to a [`ReceivedDatagrams`].
+    recv_batches: Option<Vec<DatagramBatch>>,
+    /// Where a dropped [`ReceivedDatagrams`] returns the vector.
+    returned_recv_batches: Arc<Mutex<Vec<DatagramBatch>>>,
 }
 
 impl Default for Sockets {
@@ -127,6 +135,8 @@ impl Default for Sockets {
             overflow_v6: VecDeque::new(),
             bind_errors: VecDeque::new(),
             packet_counter: otel_instruments::network_packets(),
+            recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
+            returned_recv_batches: Arc::default(),
         }
     }
 }
@@ -221,7 +231,14 @@ impl Sockets {
 
     /// Polls for batches of received UDP datagrams, at most [`UDP_RECV_BATCH_LIMIT`] per socket.
     pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<ReceivedDatagrams> {
-        let mut batches = DATAGRAM_BATCHES.pull();
+        let mut batches = self.recv_batches.take().unwrap_or_else(|| {
+            std::mem::take(
+                &mut self
+                    .returned_recv_batches
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner),
+            )
+        });
 
         if let Some(socket) = self.socket_v4.as_mut() {
             socket.poll_recv_from(cx, &mut batches);
@@ -232,10 +249,15 @@ impl Sockets {
         }
 
         if batches.is_empty() {
+            self.recv_batches = Some(batches);
+
             return Poll::Pending;
         }
 
-        Poll::Ready(ReceivedDatagrams(batches))
+        Poll::Ready(ReceivedDatagrams {
+            batches,
+            spare: self.returned_recv_batches.clone(),
+        })
     }
 
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
