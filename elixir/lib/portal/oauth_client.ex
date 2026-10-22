@@ -21,6 +21,8 @@ defmodule Portal.OAuthClient do
     field :id, :binary_id, primary_key: true, autogenerate: true
 
     field :client_id, :string
+    field :token_endpoint_auth_method, :string, default: "none"
+    field :jwks_uri, :string
     field :client_name, :string
     field :client_uri, :string
     field :logo_uri, :string

@@ -29,7 +29,8 @@ defmodule PortalWeb.OAuthControllerTest do
       assert metadata["revocation_endpoint"] =~ "/oauth/revoke"
       assert metadata["code_challenge_methods_supported"] == ["S256"]
       assert metadata["grant_types_supported"] == ["authorization_code", "refresh_token"]
-      assert metadata["token_endpoint_auth_methods_supported"] == ["none"]
+      assert metadata["token_endpoint_auth_methods_supported"] == ["none", "private_key_jwt"]
+      assert metadata["token_endpoint_auth_signing_alg_values_supported"] == ["RS256"]
       assert metadata["client_id_metadata_document_supported"] == true
       assert metadata["authorization_response_iss_parameter_supported"] == true
       assert metadata["scopes_supported"] == Portal.Scope.all()

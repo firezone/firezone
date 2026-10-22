@@ -24,9 +24,8 @@ defmodule PortalWeb.OAuthMetadataController do
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
-      # Public clients only. There are no secrets to issue because a client is
-      # identified by the metadata document it hosts.
-      token_endpoint_auth_methods_supported: ["none"],
+      token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      token_endpoint_auth_signing_alg_values_supported: ["RS256"],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true
     })

@@ -68,7 +68,29 @@ defmodule Portal.OAuthTest do
       end
     end
 
-    test "accepts public-client authentication advertised alongside a private-key preference" do
+    test "selects public or signed authentication without weakening a signed preference" do
+      assert {:ok, "none"} = ClientMetadata.authentication_method(%{})
+
+      assert {:ok, "none"} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt", "none"]
+               })
+
+      assert {:ok, "private_key_jwt"} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt"],
+                 "jwks_uri" => "https://client.example.com/keys"
+               })
+
+      assert {:error, :invalid_document} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_method" => "private_key_jwt",
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt", "none"],
+                 "jwks_uri" => "http://client.example.com/keys"
+               })
+    end
+
+    test "selects signed authentication when the client prefers it" do
       client_id = "https://localhost/chatgpt.json"
 
       Req.Test.stub(ClientMetadata, fn conn ->
@@ -77,7 +99,8 @@ defmodule Portal.OAuthTest do
           "client_name" => "ChatGPT",
           "redirect_uris" => [redirect_uri()],
           "token_endpoint_auth_method" => "private_key_jwt",
-          "token_endpoint_auth_methods_supported" => ["none", "private_key_jwt"]
+          "token_endpoint_auth_methods_supported" => ["none", "private_key_jwt"],
+          "jwks_uri" => "https://localhost/jwks.json"
         })
       end)
 
@@ -88,6 +111,7 @@ defmodule Portal.OAuthTest do
                })
 
       assert client.client_id == client_id
+      assert client.token_endpoint_auth_method == "private_key_jwt"
       assert uri == redirect_uri()
     end
 
@@ -404,6 +428,34 @@ defmodule Portal.OAuthTest do
     end
   end
 
+  describe "signed client token exchanges" do
+    test "requires a valid assertion for both code exchange and refresh", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      code = consent(context)
+      params = exchange_params(context, code)
+
+      assert {:error, "invalid_client", _} = OAuth.exchange(params, @resource)
+
+      assert {:ok, tokens} =
+               OAuth.exchange(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      refresh = refresh_params(context, tokens.refresh_token)
+      assert {:error, "invalid_client", _} = OAuth.refresh(refresh, @resource)
+
+      assert {:ok, _} =
+               OAuth.refresh(Map.merge(refresh, signed_assertion(client, keys)), @resource)
+    end
+  end
+
   describe "consent/2 and exchange/2" do
     test "issues tokens for a code redeemed with the right verifier", context do
       code = consent(context)
@@ -696,6 +748,30 @@ defmodule Portal.OAuthTest do
       assert OAuth.list_grants(context.subject) == []
       assert Portal.Repo.all(Portal.OAuthToken) == []
     end
+  end
+
+  defp signed_assertion(client, keys) do
+    now = System.system_time(:second)
+
+    claims = %{
+      "iss" => client.client_id,
+      "sub" => client.client_id,
+      "aud" => PortalWeb.Endpoint.url() <> "/oauth/token",
+      "iat" => now,
+      "exp" => now + 60,
+      "jti" => Ecto.UUID.generate()
+    }
+
+    {_, token} =
+      keys.jwk
+      |> JOSE.JWK.from_map()
+      |> JOSE.JWT.sign(%{"alg" => "RS256", "kid" => keys.kid}, claims)
+      |> JOSE.JWS.compact()
+
+    %{
+      "client_assertion_type" => "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      "client_assertion" => token
+    }
   end
 
   defp consent(context, scope \\ "policies:read", resource \\ @resource) do

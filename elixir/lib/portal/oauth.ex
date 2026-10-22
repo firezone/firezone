@@ -3,8 +3,8 @@ defmodule Portal.OAuth do
   The OAuth 2.1 authorization server behind the MCP endpoint.
 
   Only the authorization code grant is supported, only with PKCE, and only for
-  public clients: there are no client secrets to leak because clients are
-  identified by a metadata document they host themselves. See
+  clients identified by a metadata document they host themselves. Clients use
+  either public-client authentication or signed private_key_jwt assertions. See
   `Portal.OAuth.ClientMetadata`.
 
   Validation of an authorization request happens in two steps on purpose. Until
@@ -162,6 +162,7 @@ defmodule Portal.OAuth do
          {:ok, encoded} <- fetch_param(params, "code"),
          {:ok, verifier} <- fetch_verifier(params),
          {:ok, client_id} <- fetch_param(params, "client_id"),
+         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, {nonce, account_id, id, fragment}} <-
            decode(encoded, "mcp_code"),
          {:ok, code} <- Database.take_authorization_code(account_id, id),
@@ -189,6 +190,7 @@ defmodule Portal.OAuth do
     with :ok <- validate_resource(params, expected_resource),
          {:ok, encoded} <- fetch_param(params, "refresh_token"),
          {:ok, client_id} <- fetch_param(params, "client_id"),
+         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
          :ok <- verify_refresh_secret(token, nonce, fragment),
