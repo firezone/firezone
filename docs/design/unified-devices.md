@@ -160,10 +160,10 @@ is a bin of the Tauri package, so building it compiles Tauri.
 
 Target:
 
-| Binary                | Package                                                         | Contents                                                         |
-| --------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `firezone`            | `firezone` (deb, rpm, apt and rpm repos, docker image, tarball) | daemon plus CLI in one executable                                |
-| `firezone-gui-client` | `firezone-gui-client` (deb, rpm), depends on `firezone`         | Tauri GUI only, talks to the daemon over the existing IPC socket |
+| Binary                | Package                                                                     | Contents                                                                                           |
+| --------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `firezone`            | `firezone` (deb, rpm, apt and rpm repos, docker image, tarball)             | daemon plus CLI in one executable                                                                  |
+| `firezone-gui-client` | `firezone-gui-client` (deb, rpm), self-contained, conflicts with `firezone` | the same daemon and CLI plus the Tauri GUI, which talks to the daemon over the existing IPC socket |
 
 `firezone` subcommands:
 
@@ -193,7 +193,8 @@ lists served sites, so packaging can collapse ahead of the state merge.
 In-place upgrade from the gateway deb:
 
 - `Replaces`, `Provides`, `Conflicts` on `firezone-gateway` so `apt upgrade`
-  swaps packages. Same for the GUI deb's bundled tunnel service.
+  swaps packages. The GUI deb keeps bundling the daemon and conflicts with
+  the `firezone` package.
 - `firezone.service` with `Alias=firezone-gateway.service` so existing
   `systemctl` habits and monitoring keep working. Drop-ins under
   `firezone-gateway.service.d` do not carry over; the postinst copies them.
@@ -315,13 +316,13 @@ reaches customers (2.12).
 
 ### Phase 0: prep, no behaviour change
 
-- **0.1 Audit: duplicate `firezone_id`.** Read-only query listing devices that
+- **0.1 Audit: duplicate `firezone_id`.** Done 2026-10-22; figures kept privately. Read-only query listing devices that
   share `(account_id, firezone_id)` across actors or sites, and attested rows
   sharing `(issuer, serial)`. Output drives 2.15.
-- **0.2 Audit: multi-owner tokens in use.** Devices whose `gateway_token_id`
+- **0.2 Audit: multi-owner tokens in use.** Done 2026-10-22; figures kept privately. Devices whose `gateway_token_id`
   points at a token with `site_id` set, per account. Drives the auto-join
   support in 1.11 and the comms plan.
-- **0.3 Audit: version spread.** `last_seen_version` histogram for gateways
+- **0.3 Audit: version spread.** Done 2026-10-22; figures kept privately. `last_seen_version` histogram for gateways
   and clients against the `[minor-1, minor+1]` compat window.
 - **0.4 Rust: classification order.** `ClientOnGateway::classify_resource`
   consults the routing table before the Internet catch-all. Unit test; the
@@ -338,11 +339,8 @@ reaches customers (2.12).
   refactor; existing tests.
 - **0.8 Docs: forwarding and masquerade per platform.** The content of
   `firezone-gateway-init.sh` as a docs page, linked from the deploy UI later.
-- **0.9 Migration: purge dead device rows.** Dry run first. Rows unseen for
-  180 days, or never seen and created more than 180 days ago, with their
-  tokens and authorizations. Most device rows qualify, so every phase 2 step
-  then runs on a small fraction of today's table.
-- **0.10 Comms: upgrade asks for the clusters on old protocols.** A
+
+- **0.9 Comms: upgrade asks for the clusters on old protocols.** A
   meaningful share of active clients and gateways still speak the pre-July
   socket protocols, concentrated in a few large accounts. No adapter can be
   retired until they move, so start the conversation early; it is not a
@@ -451,7 +449,8 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
 - **2.14 REST: `/sites/:id/gateways` reads `site_devices`; new `POST` and
   `DELETE /sites/:id/devices`.** Depends 2.8.
 - **2.15 Migration: merge duplicate device rows.** Dry-run mode first. For
-  each identity group from 0.1 keep the most recently seen row; move
+  each identity group from 0.1 keep the most recently seen row, falling back to `inserted_at` where
+  `last_seen_at` is null; move
   `device_actors`, both sides of `policy_authorizations`, `site_devices`, listed
   pool ids (jsonb), posture rows; delete the rest. Announce slug changes.
   Depends 0.1, 2.2, 2.8.
@@ -502,6 +501,11 @@ client` becomes an alias bin of the same crate. CI builds both.
   `firezone-client-tunnel` bin leave the Tauri package; `firezone run` serves
   the IPC socket; `linux-group.sh` no longer builds Tauri. Alias bin kept.
   Depends 3.1.
+- **3.2b Rust: version check on the IPC pipes.** `Hello` carries the daemon
+  version and the GUI sends its own; a mismatch surfaces a "restart or
+  upgrade" message instead of a deserialization error. Same check between
+  the CLI and the GUI. No compatibility window: GUI and daemon ship in one
+  package (3.6), so skew only exists during an upgrade. Depends 3.2.
 - **3.3 Rust: CLI moves in.** `src-cli` subcommands become `firezone`
   subcommands; IPC peer-check allowlist learns the new exe name;
   `firezone-cli` alias kept. Depends 3.2.
@@ -516,11 +520,14 @@ client` becomes an alias bin of the same crate. CI builds both.
   init script as optional `ExecStartPre` enabled by the upgrade postinst,
   `Replaces`/`Provides`/`Conflicts` on `firezone-gateway`, drop-ins and
   preset env copied. Depends 3.4.
-- **3.6 Packaging: GUI depends on `firezone`.** GUI deb and rpm stop shipping
-  the tunnel bin and the CLI; `firezone-client-tunnel.service` aliases to
-  `firezone.service`; state directory kept and re-owned to the `firezone`
-  user; desktops that used `resolv.conf` DNS control get a release note.
-  Depends 3.3, 3.5.
+- **3.6 Packaging: GUI package stays self-contained.** GUI deb and rpm ship
+  the same `firezone` binary and `firezone.service` as the `firezone`
+  package, plus the GUI, with `Provides: firezone` and `Conflicts: firezone`
+  so a machine has one daemon. One download and one install command on
+  desktops, as today; lockstep between GUI and daemon is automatic.
+  `firezone-client-tunnel.service` aliases to `firezone.service`; state
+  directory kept and re-owned to the `firezone` user; desktops that used
+  `resolv.conf` DNS control get a release note. Depends 3.3, 3.5.
 - **3.7 CI and release.** `firezone` artifacts (deb, rpm, tarball, docker
   `firezone/firezone` plus alias tags), release name `firezone-x.y.z` in
   `cd.yml` and `publish-release.yml`, apt and rpm sync. Depends 3.5.
@@ -621,21 +628,21 @@ firezone` and `firezone authenticate`. Depends 3.7.
 
 The portal deploys on every merge. These are the points where order matters.
 
-| Point | Must be live                                | Release                                                                       |
-| ----- | ------------------------------------------- | ----------------------------------------------------------------------------- |
-| D1    | 0.6, 0.7, 0.9                               | R1: gateway 1.6.5 with 0.4 and 0.5                                            |
-| D2    | 1.1 to 1.17                                 | none                                                                          |
-| D3    | 1.18, one release after D2 settled          | none                                                                          |
-| D4    | 2.1 to 2.21                                 | none                                                                          |
-| D5    | 3.0, 3.8                                    | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch |
-| D6    | 4.1 to 4.13                                 | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                       |
-| D7    | 5.11 after R3 is in the fleet               | none                                                                          |
-| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled       | R4: `firezone` minor dropping alias bins (3.10)                               |
-| D9    | 6.8 once 0.10 has cleared the old protocols | none                                                                          |
+| Point | Must be live                               | Release                                                                       |
+| ----- | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| D1    | 0.6, 0.7                                   | R1: gateway 1.6.5 with 0.4 and 0.5                                            |
+| D2    | 1.1 to 1.17                                | none                                                                          |
+| D3    | 1.18, one release after D2 settled         | none                                                                          |
+| D4    | 2.1 to 2.21                                | none                                                                          |
+| D5    | 3.0, 3.8                                   | R2: `firezone` 1.7.0 and Linux GUI 1.7.0, legacy sockets, interim role switch |
+| D6    | 4.1 to 4.13                                | R3: `firezone` 1.8.0 on `DeviceState` over `/device/v1`                       |
+| D7    | 5.11 after R3 is in the fleet              | none                                                                          |
+| D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                               |
+| D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                          |
 
 Apple, Android and the Windows GUI need no release. PR count is about 87
-code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 5,
-phase 1 has 19, phase 2 has 21, phase 3 has 10, phase 4 has 13,
+code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
+phase 1 has 19, phase 2 has 21, phase 3 has 11, phase 4 has 13,
 phase 5 has 11, phase 6 has 8.
 
 ## 4. Decisions taken
@@ -668,11 +675,11 @@ phase 5 has 11, phase 6 has 8.
 
 | Phase | Steps | Size      |
 | ----- | ----- | --------- |
-| 0     | 10    | small     |
+| 0     | 9     | small     |
 | 1     | 19    | medium    |
 | 2     | 22    | medium    |
 | 2b    | 1     | docs only |
-| 3     | 11    | medium    |
+| 3     | 12    | medium    |
 | 4     | 13    | large     |
 | 5     | 11    | large     |
 | 6     | 8     | medium    |
