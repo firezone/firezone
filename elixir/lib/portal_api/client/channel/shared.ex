@@ -914,9 +914,9 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Database.all_compatible_gateways_for_client_and_resource(
-             socket.assigns.client_version,
+           Portal.Routing.candidates(
              resource,
+             socket.assigns.client_version,
              socket.assigns.subject.account.id
            ) do
       location = {
@@ -924,7 +924,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         socket.assigns.subject.context.remote_ip_location_lon
       }
 
-      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
 
       reply =
         {:ok,
@@ -1445,9 +1445,9 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket,
          address
        ) do
-    case Database.all_compatible_gateways_for_client_and_resource(
-           socket.assigns.client_version,
+    case Portal.Routing.candidates(
            resource,
+           socket.assigns.client_version,
            socket.assigns.subject.account.id
          ) do
       {:ok, [_ | _] = gateways} ->
@@ -1456,7 +1456,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.subject.context.remote_ip_location_lon
         }
 
-        gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+        gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
         gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
@@ -3215,32 +3215,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> Portal.Safe.delete_all()
     end
 
-    def all_compatible_gateways_for_client_and_resource(
-          client_version,
-          resource,
-          account_id
-        ) do
-      resource_site_id = site_id_from_resource(resource)
-
-      site_gateways =
-        Portal.Presence.Devices.all_connected_gateways(account_id)
-        |> Enum.filter(&(&1.site_id == resource_site_id))
-
-      compatible_gateways =
-        filter_compatible_gateways(site_gateways, resource, client_version)
-
-      cond do
-        compatible_gateways != [] ->
-          {:ok, compatible_gateways}
-
-        site_gateways != [] ->
-          {:error, :version_mismatch}
-
-        true ->
-          {:ok, []}
-      end
-    end
-
     @doc """
       Fetches the client device in the subject's account that answers at `slug`.
       Returns `{:error, :not_found}` for a miss or unauthorized read.
@@ -3348,35 +3322,5 @@ defmodule PortalAPI.Client.Channel.Shared do
       end
     end
 
-    # Filters gateways by the resource type, gateway version, and client version.
-    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
-
-    defp filter_compatible_gateways(gateways, resource, client_version) do
-      case Version.parse(client_version) do
-        {:ok, version} ->
-          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
-
-        :error ->
-          []
-      end
-    end
-
-    defp compatible_gateway?(gateway, resource, version) do
-      gateway_version_str = gateway.last_seen_version
-
-      case gateway_version_str && Version.parse(gateway_version_str) do
-        {:ok, gateway_version} ->
-          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
-
-        _ ->
-          false
-      end
-    end
-
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
-      Ecto.UUID.load!(site.id)
-    end
   end
 end
