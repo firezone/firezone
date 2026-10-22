@@ -523,7 +523,6 @@ fn measure<M: Measurement + Copy, T>(
             measures.parks_per_1k()
         );
     }
-    println!("{measures}");
 
     Some((format!("{GROUP}/{id}"), measures))
 }
@@ -595,32 +594,6 @@ impl Measures {
         self.cpu
             .iter()
             .filter(move |(name, _)| name.starts_with(prefix))
-    }
-}
-
-impl std::fmt::Display for Measures {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let indent = " ".repeat(24);
-        writeln!(
-            f,
-            "{indent}thrpt:  {:.2} Gbit/s ({:.0} pkt/s)",
-            self.bitrate() / 1e9,
-            self.throughput()
-        )?;
-        let stages = self
-            .active_stages()
-            .map(|(slug, prefix)| {
-                let threads = self.stage_threads(prefix).count();
-                let per_packet = self.cpu_ns_per_packet(prefix);
-                if threads > 1 {
-                    format!("{slug} {per_packet:.0} ({threads} threads)")
-                } else {
-                    format!("{slug} {per_packet:.0}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-        write!(f, "{indent}cpu:    {stages} ns/pkt")
     }
 }
 
