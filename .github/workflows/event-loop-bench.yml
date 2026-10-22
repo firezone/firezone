@@ -69,8 +69,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # A project key may set units but not rename, so the name only goes into a create.
           describe() {
-            bencher measure update --name "$2" --units "$3" "$BENCHER_PROJECT" "$1" >/dev/null ||
+            bencher measure update --units "$3" "$BENCHER_PROJECT" "$1" >/dev/null ||
               bencher measure create --slug "$1" --name "$2" --units "$3" "$BENCHER_PROJECT" >/dev/null
           }
           describe throughput "Throughput" "bits/s"
@@ -78,6 +79,34 @@ jobs:
           describe udp "UDP thread CPU" "ns/packet"
           describe crypto "Crypto workers CPU" "ns/packet"
           describe tun "TUN threads CPU" "ns/packet"
+      - name: Create the plots
+        if: env.BENCHER == 'true'
+        # A plot needs its benchmarks to exist, which a new benchmark only does after its first results.
+        continue-on-error: true
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Creates the plot unless one with the title exists; plots have no key of their own.
+          plot() {
+            local title=$1
+            shift
+            if [ "$(bencher plot list --title "$title" "$BENCHER_PROJECT" | jq length)" = 0 ]; then
+              bencher plot create --title "$title" --x-axis version --window 7776000 \
+                --branches main --testbeds "bare-metal-$BENCHER_SPEC" "$@" "$BENCHER_PROJECT" >/dev/null
+            fi
+          }
+
+          configurations=(client_outbound/cidr client_outbound/dns gateway_inbound/cidr gateway_inbound/dns
+            gateway_outbound/cidr gateway_outbound/dns client_inbound/cidr client_inbound/dns)
+          throughput=()
+          for configuration in "${configurations[@]}"; do
+            plot "$configuration CPU per packet" --benchmarks "event_loop/$configuration" \
+              --measures event-loop --measures udp --measures crypto --measures tun
+            throughput+=(--benchmarks "event_loop/$configuration")
+          done
+          plot "Throughput" "${throughput[@]}" --measures throughput
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
