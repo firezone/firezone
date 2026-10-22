@@ -45,6 +45,11 @@ defmodule Portal.TokenFixtures do
     account = Map.get(attrs, :account) || account_fixture()
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
+    attrs =
+      attrs
+      |> maybe_put_id(:device_id, Map.get(attrs, :device))
+      |> maybe_put_id(:site_id, Map.get(attrs, :site))
+
     changeset =
       %Portal.ClientToken{}
       |> Ecto.Changeset.cast(attrs, [
@@ -52,10 +57,14 @@ defmodule Portal.TokenFixtures do
         :secret_fragment,
         :secret_salt,
         :secret_hash,
-        :expires_at
+        :expires_at,
+        :device_id,
+        :site_id,
+        :rotated_at
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
+      |> Portal.ClientToken.changeset()
 
     # Optionally associate with auth_provider
     changeset =
@@ -67,6 +76,9 @@ defmodule Portal.TokenFixtures do
 
     Portal.Repo.insert!(changeset)
   end
+
+  defp maybe_put_id(attrs, _key, nil), do: attrs
+  defp maybe_put_id(attrs, key, %{id: id}), do: Map.put(attrs, key, id)
 
   @doc """
   Generate a relay token using Portal.RelayToken schema.

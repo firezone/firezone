@@ -12,8 +12,12 @@ defmodule PortalAPI.Schemas.ClientToken do
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
+               :device_id,
                :last_used_device,
-               :online?
+               :online?,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
              ]}
     OpenApiSpex.schema(%{
       title: "ClientToken",
@@ -87,8 +91,12 @@ defmodule PortalAPI.Schemas.ClientToken do
                :auth_provider_id,
                :auth_provider_name,
                :auth_provider_type,
+               :device_id,
                :last_used_device,
-               :online?
+               :online?,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
              ]}
     OpenApiSpex.schema(%{
       title: "ClientTokenWithSecret",
