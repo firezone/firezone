@@ -16,20 +16,17 @@ permissions:
   contents: read
 
 jobs:
-  backfill:
-    name: backfill-${{ matrix.commit }}
+  build:
+    name: build-${{ matrix.commit }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    # One at a time so that Bencher receives the commits in their order on main.
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         commit: ${{ fromJSON(inputs.commits) }}
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
-      BENCHER_SPEC: intel-v1
       COMMIT: ${{ matrix.commit }}
       BACKFILL: backfill/rust/tests/tunnel-bench/backfill
     steps:
@@ -47,7 +44,6 @@ jobs:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build the commit's tunnel-bench
         run: cargo build --release -p tunnel-bench
-      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
       - name: Push image to the Bencher registry
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
@@ -59,22 +55,42 @@ jobs:
           docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
           docker build --platform linux/amd64 -t "$image" "$GITHUB_WORKSPACE/$BACKFILL"
           docker push "$image"
-          echo "IMAGE=$image" >>"$GITHUB_ENV"
-      - name: Run on Bencher Bare Metal
+
+  submit:
+    name: submit
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+      BENCHER_SPEC: intel-v1
+      COMMITS: ${{ inputs.commits }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - name: Submit to Bencher Bare Metal in order
+        working-directory: .
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
         run: |
           set -euo pipefail
 
-          # Only submits the job; its results show up on Bencher once it has run.
-          bencher run \
-            --project "$BENCHER_PROJECT" \
-            --branch main \
-            --hash "$COMMIT" \
-            --testbed "bare-metal-$BENCHER_SPEC" \
-            --spec "$BENCHER_SPEC" \
-            --image "$IMAGE" \
-            --job-timeout 300 \
-            --adapter json \
-            --file /tmp/tunnel-bench.json \
-            --detach
+          # In their order on main, so that Bencher numbers the versions that way; the
+          # backdate puts each report at its commit's time on the date axis.
+          for commit in $(jq -r '.[]' <<<"$COMMITS"); do
+            bencher run \
+              --project "$BENCHER_PROJECT" \
+              --branch main \
+              --hash "$commit" \
+              --backdate "$(git show -s --format=%ct "$commit")" \
+              --testbed "bare-metal-$BENCHER_SPEC" \
+              --spec "$BENCHER_SPEC" \
+              --image "registry.bencher.dev/$BENCHER_PROJECT:$commit-backfill" \
+              --job-timeout 300 \
+              --adapter json \
+              --file /tmp/tunnel-bench.json \
+              --detach
+          done
