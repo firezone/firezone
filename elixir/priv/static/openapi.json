@@ -6705,6 +6705,16 @@
         "title": "EntraAuthProviderListResponse",
         "type": "object"
       },
+      "GatewayTokenCreateRequest": {
+        "description": "Request body for creating a single-owner Gateway Token",
+        "properties": {
+          "gateway_token": {
+            "$ref": "#/components/schemas/GatewayTokenCreate"
+          }
+        },
+        "title": "GatewayTokenCreateRequest",
+        "type": "object"
+      },
       "Membership": {
         "description": "Membership",
         "properties": {
@@ -7244,6 +7254,12 @@
       "GatewayCreate": {
         "description": "Create schema for a single Gateway",
         "properties": {
+          "actor_id": {
+            "description": "Service account the Gateway connects as. Defaults to the account's Infrastructure service account.",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "format": "uuid",
+            "type": "string"
+          },
           "name": {
             "description": "Gateway Name. Randomly generated when omitted.",
             "example": "vpc-us-east",
@@ -9747,6 +9763,19 @@
           }
         },
         "title": "LogsResponse",
+        "type": "object"
+      },
+      "GatewayTokenCreate": {
+        "description": "Attributes of a new single-owner Gateway Token",
+        "properties": {
+          "actor_id": {
+            "description": "Service account the Gateway connects as. Defaults to the account's Infrastructure service account.",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "title": "GatewayTokenCreate",
         "type": "object"
       },
       "enum_string no_value provider comparison": {
@@ -29906,6 +29935,17 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayTokenCreateRequest"
+              }
+            }
+          },
+          "description": "Token attributes",
+          "required": false
+        },
         "responses": {
           "201": {
             "content": {
@@ -29996,6 +30036,27 @@
               }
             },
             "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           },
           "429": {
             "content": {

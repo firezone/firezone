@@ -133,9 +133,12 @@ defmodule PortalAPI.GatewayController do
   def create(conn, %{"site_id" => site_id} = params) do
     subject = conn.assigns.subject
     name = get_in(params, ["gateway", "name"])
+    actor_id = get_in(params, ["gateway", "actor_id"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+         {:ok, owner} <- PortalAPI.DeviceTokenOwner.fetch(actor_id, subject),
+         {:ok, gateway, _token, encoded_token} <-
+           Database.provision_device(site, owner, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
@@ -260,8 +263,8 @@ defmodule PortalAPI.GatewayController do
       end
     end
 
-    def provision_gateway(site, name, subject) do
-      Devices.provision_gateway(site, name, subject)
+    def provision_device(site, owner, name, subject) do
+      Devices.provision_device(site, owner, name, subject)
     end
 
     def list_gateways(subject, opts \\ []) do

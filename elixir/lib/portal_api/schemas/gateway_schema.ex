@@ -205,6 +205,14 @@ defmodule PortalAPI.Schemas.Gateway do
           example: "vpc-us-east",
           type: :string,
           description: "Gateway Name. Randomly generated when omitted."
+        },
+        actor_id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description:
+            "Service account the Gateway connects as. Defaults to the account's " <>
+              "Infrastructure service account."
         }
       }
     })

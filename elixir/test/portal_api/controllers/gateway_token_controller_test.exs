@@ -95,6 +95,43 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert is_nil(token.site_id)
     end
 
+    test "creates a token owned by a service account of the account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+      owner = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways/#{gateway.id}/token", gateway_token: %{actor_id: owner.id})
+
+      assert %{"data" => %{"id" => id}} = json_response(conn, 201)
+      assert Repo.get_by!(GatewayToken, account_id: account.id, id: id).actor_id == owner.id
+    end
+
+    test "rejects an owner that is not a service account of the account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+      user = actor_fixture(account: account, type: :account_user)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways/#{gateway.id}/token", gateway_token: %{actor_id: user.id})
+
+      assert %{"validation_errors" => %{"actor_id" => [_]}} = json_response(conn, 422)
+    end
+
     test "returns conflict when an active token already exists", %{
       conn: conn,
       account: account,

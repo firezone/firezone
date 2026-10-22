@@ -29,6 +29,45 @@ defmodule PortalAPI.GatewayControllerTest do
                json_response(conn, 401)
     end
 
+    test "provisions a gateway owned by a service account of the account", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      account: account
+    } do
+      owner = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "owned", actor_id: owner.id})
+
+      assert %{"data" => %{"token" => token}} = json_response(conn, 201)
+      assert {:ok, gateway_token} = Portal.Authentication.verify_gateway_token(token)
+      assert gateway_token.actor_id == owner.id
+    end
+
+    test "rejects an owner that is not a service account of the account", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      account: account
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+      other = service_account_fixture()
+
+      for actor_id <- [user.id, other.id, "not-a-uuid"] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/sites/#{site.id}/gateways", gateway: %{actor_id: actor_id})
+
+        assert %{"validation_errors" => %{"actor_id" => [_]}} = json_response(conn, 422)
+      end
+    end
+
     test "provisions a gateway with an explicit name", %{
       conn: conn,
       actor: actor,

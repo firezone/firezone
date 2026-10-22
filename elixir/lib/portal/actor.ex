@@ -112,6 +112,11 @@ defmodule Portal.Actor do
     end
   end
 
+  @doc "The service account `id` in the subject's account, or nil."
+  @spec fetch_service_account(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+          t() | nil | {:error, :unauthorized}
+  def fetch_service_account(id, subject), do: Database.fetch_service_account(id, subject)
+
   @doc "Whether the system owns `actor`, so admins cannot change or delete it."
   @spec system_managed?(t()) :: boolean()
   def system_managed?(%__MODULE__{managed_by: managed_by}), do: managed_by == :system
@@ -211,6 +216,12 @@ defmodule Portal.Actor do
       )
       |> Safe.unscoped()
       |> Safe.insert()
+    end
+
+    def fetch_service_account(id, subject) do
+      from(a in Portal.Actor, where: a.id == ^id, where: a.type == :service_account)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def fetch_infrastructure_actor(account_id) do
