@@ -38,6 +38,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        monorepo: false
 
     - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
       if: ${{ steps.mise-1.outcome == 'failure' }}
@@ -49,6 +50,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        monorepo: false
 
     - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
       if: ${{ steps.mise-2.outcome == 'failure' }}
@@ -58,6 +60,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        monorepo: false
 
     # Some tools (currently: firebase-tools) ship as a single self-extracting
     # binary and only materialize their bundled deps on first invocation, into
