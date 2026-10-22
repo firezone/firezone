@@ -315,9 +315,15 @@ defmodule PortalAPI.FlowLogController do
     # so collapse multiple reports of the same flow within a batch (e.g. an open
     # and its close) into one row, preferring the close (it carries flow_end and
     # the counters).
+    #
+    # Rows are sorted by identity because Postgres takes row locks in VALUES
+    # order. Map iteration order depends on map size (sorted up to 32 keys, hash
+    # order beyond), so unsorted overlapping batches lock shared flows in
+    # different orders and deadlock.
     defp dedup_by_identity(entries) do
       entries
       |> Enum.group_by(&identity/1)
+      |> Enum.sort_by(fn {identity, _group} -> identity end)
       |> Enum.map(fn {_identity, group} ->
         Enum.find(group, hd(group), fn e -> not is_nil(e.flow_end) end)
       end)
