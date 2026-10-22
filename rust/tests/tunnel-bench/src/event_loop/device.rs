@@ -222,12 +222,12 @@ mod linux {
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 mod apple {
     use super::*;
-    use ip_packet::IpPacketBuf;
+    use bufferpool::Bytes;
     use std::io;
     use tun_offload::CoalescedPacket;
 
     impl tun_apple::Device for Device {
-        async fn recv(&self, bufs: &mut [IpPacketBuf], lens: &mut [usize]) -> io::Result<usize> {
+        async fn recv(&self, bufs: &mut [Bytes], lens: &mut [usize]) -> io::Result<usize> {
             self.0.grants.wait().await;
 
             if self.0.grants.stopped() {
@@ -238,7 +238,7 @@ mod apple {
             let packet = self.0.packet.packet();
 
             for (buf, len) in bufs.iter_mut().zip(lens).take(packets) {
-                buf.buf()[..packet.len()].copy_from_slice(packet);
+                buf[..packet.len()].copy_from_slice(packet);
                 *len = packet.len();
             }
 

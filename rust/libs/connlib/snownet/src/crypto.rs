@@ -1,7 +1,8 @@
 use std::net::SocketAddr;
 
 use anyhow::Result;
-use ip_packet::{IpPacket, IpPacketBuf};
+use bufferpool::Bytes;
+use ip_packet::IpPacket;
 
 use crate::node::Transmit;
 
@@ -72,9 +73,9 @@ impl PendingEncapsulate {
         let src = self.src;
         let dst = self.dst;
 
-        let mut payload = crate::DATAGRAMS.pull();
-        payload.resize(self.datagram_len(packet), 0);
-        self.encrypt_into(packet, &mut payload)?;
+        let len = self.datagram_len(packet);
+        let mut payload = Bytes::fitting(len);
+        self.encrypt_into(packet, payload.expose(len))?;
 
         Ok(Transmit {
             src,
@@ -126,7 +127,7 @@ impl PendingDecapsulate {
             dst: self.dst,
             decrypted: self
                 .pending
-                .decrypt(message, IpPacketBuf::new())
+                .decrypt(message, ip_packet::packet_buffer())
                 .map(IpPacket::new),
         }
     }

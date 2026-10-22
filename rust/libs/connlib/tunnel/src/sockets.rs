@@ -353,8 +353,8 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// [`QUEUE_SIZE`] in the channel, one waiting for room in it, since the TUN device is only read
 /// while nothing waits, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
 /// An item carries at most one TUN batch of packets, so at most as many trains, each with a
-/// [`DatagramOut`]. A train's GSO buffer is at most 2 KiB or twice its length, so at most twice
-/// [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
+/// [`DatagramOut`]. A train's GSO buffer is at most one packet buffer or twice its length, so at
+/// most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
 ///
 /// Every size class pools its buffers separately, so backlogs of differently sized trains can
 /// leave more than this pooled.

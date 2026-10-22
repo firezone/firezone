@@ -5,14 +5,12 @@
 //! address-family header; these plug into [`crate::per_packet_io::tun_send`] /
 //! [`crate::per_packet_io::tun_recv`] as the per-packet `read` / `write` closures.
 
-use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
+use ip_packet::{IpPacket, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec, msghdr, recvmsg, sendmsg};
 use std::io;
 use std::os::fd::RawFd;
 
-pub fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
+pub fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     let mut hdr = [0u8; 4];
 
     let mut iov = [

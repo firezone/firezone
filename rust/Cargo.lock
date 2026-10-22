@@ -962,7 +962,6 @@ dependencies = [
 name = "bufferpool"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "divan",
  "opentelemetry",
  "opentelemetry_sdk",
@@ -8874,7 +8873,6 @@ name = "tun"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "bufferpool",
  "ip-packet",
  "logging",
  "otel-attributes",
@@ -8905,6 +8903,7 @@ name = "tun-apple"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bufferpool",
  "futures",
  "ip-packet",
  "libc",
@@ -8957,6 +8956,7 @@ name = "tun-windows"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "bufferpool",
  "ip-packet",
  "opentelemetry",
  "otel-instruments",

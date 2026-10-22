@@ -85,8 +85,6 @@ const FLOW_SOCKET_PACKETS: usize = 16;
 /// if a TUN or stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
-bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
-
 /// Runs every benchmark under `measurement`, in a criterion group named after it.
 pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_name: &str) {
     prioritize_stand_in();
@@ -315,8 +313,7 @@ impl State {
         segments
             .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
             .map(|segments| {
-                let mut packet = DATAGRAMS.pull();
-                packet.clear();
+                let mut packet = bufferpool::Bytes::fitting(64 * 1024);
                 for segment in segments {
                     packet.extend_from_slice(segment);
                 }

@@ -19,7 +19,7 @@ use crate::node::inflight_stun_requests::InflightStunRequests;
 use crate::node::timeout_cache::TimeoutCache;
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
-use bufferpool::Buffer;
+use bufferpool::Bytes;
 use core::fmt;
 use fast_random_state::FastRandomState;
 use ip_packet::{Ecn, IpPacket};
@@ -1111,7 +1111,7 @@ where
             self.buffered_transmits.push_back(Transmit {
                 src: Some(local),
                 dst: remote,
-                payload: crate::DATAGRAMS.pull_initialised(message),
+                payload: Bytes::copied_from(message),
                 ecn: Ecn::NonEct,
             });
             return;
@@ -1126,7 +1126,7 @@ where
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst: encode_ok.socket,
-            payload: crate::DATAGRAMS.pull_initialised(&channel_data),
+            payload: Bytes::copied_from(&channel_data),
             ecn: Ecn::NonEct,
         });
     }
@@ -1342,7 +1342,7 @@ pub struct Transmit {
     /// The remote the packet should be sent to.
     pub dst: SocketAddr,
     /// The data that should be sent.
-    pub payload: Buffer<Vec<u8>>,
+    pub payload: Bytes,
     /// The ECN bits to set for the UDP packet.
     pub ecn: Ecn,
 }
@@ -1708,7 +1708,7 @@ where
                 transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
-                    payload: crate::DATAGRAMS.pull_initialised(&stun_packet_bytes),
+                    payload: Bytes::copied_from(&stun_packet_bytes),
                     ecn: Ecn::NonEct,
                 });
                 continue;
@@ -1728,7 +1728,7 @@ where
             transmits.push_back(Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: crate::DATAGRAMS.pull_initialised(&data_channel_packet),
+                payload: Bytes::copied_from(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
         }
@@ -2223,7 +2223,7 @@ where
         } => Transmit {
             src: Some(source),
             dst: remote,
-            payload: crate::DATAGRAMS.pull_initialised(message),
+            payload: Bytes::copied_from(message),
             ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
@@ -2235,7 +2235,7 @@ where
             Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: crate::DATAGRAMS.pull_initialised(&channel_data),
+                payload: Bytes::copied_from(&channel_data),
                 ecn: Ecn::NonEct,
             }
         }

@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 anyhow = { workspace = true }
+bufferpool = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
