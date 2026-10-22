@@ -452,7 +452,7 @@ impl PerfUdpSocket {
             batch
                 .buffers
                 .iter()
-                .map(|b| b.as_slice())
+                .map(|b| &b[..])
                 .zip(batch.metas.iter_mut())
                 .take(len),
         ) {
@@ -478,7 +478,7 @@ impl PerfUdpSocket {
         let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.as_slice(),
+            &datagram.packet,
             datagram.segment_size,
             datagram.ecn,
         )?;

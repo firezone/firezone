@@ -80,17 +80,17 @@ impl UdpGsoTrain {
         packets: impl Iterator<Item = (PendingEncapsulate, IpPacket)>,
     ) -> Option<DatagramOut> {
         let mut buffer = Bytes::fitting(self.len);
-        buffer.clear();
+        let mut len = 0;
 
         for (encapsulation, packet) in packets {
-            let offset = buffer.len();
-            buffer.resize(offset + encapsulation.datagram_len(&packet), 0);
+            let end = len + encapsulation.datagram_len(&packet);
 
-            if let Err(e) = encapsulation.encrypt_into(&packet, &mut buffer[offset..]) {
-                tracing::debug!("Failed to encrypt packet: {e}");
-                buffer.truncate(offset);
+            match encapsulation.encrypt_into(&packet, &mut buffer[len..end]) {
+                Ok(()) => len = end,
+                Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
             }
         }
+        buffer.truncate(len);
 
         if buffer.is_empty() {
             return None;

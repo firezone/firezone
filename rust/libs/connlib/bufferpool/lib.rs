@@ -35,9 +35,9 @@ enum Class {
     Gro,
 }
 
-const CLASSES: usize = Class::ALL.len();
+const NUM_CLASSES: usize = Class::ALL.len();
 
-static DEPOTS: [Mutex<Depot>; CLASSES] = [const { Mutex::new(Depot::new()) }; CLASSES];
+static DEPOTS: [Mutex<Depot>; NUM_CLASSES] = [const { Mutex::new(Depot::new()) }; NUM_CLASSES];
 
 thread_local!(static MAGAZINES: RefCell<Magazines> = const { RefCell::new(Magazines::new()) });
 
@@ -127,6 +127,24 @@ impl Bytes {
         buffer
     }
 
+    /// Shortens the buffer to `len` bytes.
+    pub fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
+
+    /// Appends `data`, which must fit in the buffer's capacity so that the buffer never reallocates.
+    pub fn extend_from_slice(&mut self, data: &[u8]) {
+        assert!(
+            self.0.len() + data.len() <= self.0.capacity(),
+            "{} bytes do not fit in a buffer of {} bytes holding {}",
+            data.len(),
+            self.0.capacity(),
+            self.0.len()
+        );
+
+        self.0.extend_from_slice(data);
+    }
+
     /// Shifts the start of the buffer to the right by N bytes, dropping the bytes at the front.
     pub fn shift_start_right(&mut self, num: usize) {
         self.0.drain(..num);
@@ -134,12 +152,12 @@ impl Bytes {
 
     /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
     pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
-        let current_len = self.len();
+        let current_len = self.0.len();
 
-        self.resize(current_len + num, 0);
-        self.copy_within(..current_len, num);
+        self.0.resize(current_len + num, 0);
+        self.0.copy_within(..current_len, num);
 
-        &mut self[..num]
+        &mut self.0[..num]
     }
 }
 
@@ -150,15 +168,15 @@ impl Clone for Bytes {
 }
 
 impl Deref for Bytes {
-    type Target = Vec<u8>;
+    type Target = [u8];
 
-    fn deref(&self) -> &Vec<u8> {
+    fn deref(&self) -> &[u8] {
         &self.0
     }
 }
 
 impl DerefMut for Bytes {
-    fn deref_mut(&mut self) -> &mut Vec<u8> {
+    fn deref_mut(&mut self) -> &mut [u8] {
         &mut self.0
     }
 }
@@ -238,11 +256,11 @@ fn trade_full(class: Class, full: Batch) -> Batch {
 /// A thread's magazines, one per class.
 ///
 /// Buffers still in them when the thread exits are handed back to the depots.
-struct Magazines([Magazine; CLASSES]);
+struct Magazines([Magazine; NUM_CLASSES]);
 
 impl Magazines {
     const fn new() -> Self {
-        Self([const { Magazine::new() }; CLASSES])
+        Self([const { Magazine::new() }; NUM_CLASSES])
     }
 
     fn pop(&mut self, class: Class) -> Option<Vec<u8>> {
@@ -449,7 +467,7 @@ mod tests {
             (64 * 1024 + 1, Class::Gro.size()),
             (Class::Gro.size() + 1, Class::Gro.size() + 1),
         ] {
-            assert_eq!(Bytes::fitting(len).capacity(), capacity);
+            assert_eq!(Bytes::fitting(len).0.capacity(), capacity);
         }
     }
 
@@ -469,10 +487,10 @@ mod tests {
         let _exclusive = exclusive(CLASS);
 
         let mut buffer = Bytes::pull(CLASS);
-        buffer.resize(2 * CLASS.size() + 1, 0); // Force a reallocation to a capacity that is no class.
+        buffer.0.resize(2 * CLASS.size() + 1, 0); // Force a reallocation to a capacity that is no class.
         drop(buffer);
 
-        assert_eq!(Bytes::pull(CLASS).capacity(), CLASS.size());
+        assert_eq!(Bytes::pull(CLASS).0.capacity(), CLASS.size());
     }
 
     #[test]
@@ -482,7 +500,7 @@ mod tests {
         let before = num_buffers(&[CLASS.size(), grown]);
 
         let mut buffer = Bytes::pull(CLASS);
-        buffer.resize(grown, 0);
+        buffer.0.resize(grown, 0);
         drop(buffer);
 
         assert_eq!(num_buffers(&[CLASS.size(), grown]), before);

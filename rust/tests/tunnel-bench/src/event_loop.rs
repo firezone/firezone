@@ -314,7 +314,7 @@ impl State {
             .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
             .map(|segments| {
                 let mut packet = bufferpool::Bytes::fitting(64 * 1024);
-                packet.clear();
+                packet.truncate(0);
                 for segment in segments {
                     packet.extend_from_slice(segment);
                 }
