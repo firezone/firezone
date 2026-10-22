@@ -23,9 +23,10 @@ use crate::{
 const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
-    established: HashMap<TId, Connection<RId>, FastRandomState>,
+    /// Boxed so that probing the table on every packet touches only the small entries.
+    established: HashMap<TId, Box<Connection<RId>>, FastRandomState>,
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
-    closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
+    closing: HashMap<TId, (Box<Connection<RId>>, Goodbye), FastRandomState>,
 
     established_by_tunnel_id: HashMap<sanstun::TunnelId, TId, FastRandomState>,
     established_by_local_ufrag: HashMap<String, TId, FastRandomState>,
@@ -58,7 +59,11 @@ where
 {
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-    pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
+    pub(crate) fn remove_established(
+        &mut self,
+        id: &TId,
+        now: Instant,
+    ) -> Option<Box<Connection<RId>>> {
         let connection = self
             .established
             .remove(id)
@@ -218,10 +223,10 @@ where
         &mut self,
         id: TId,
         connection: Connection<RId>,
-    ) -> Option<Connection<RId>> {
+    ) -> Option<Box<Connection<RId>>> {
         let tunnel_id = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
-        let existing = self.established.insert(id, connection);
+        let existing = self.established.insert(id, Box::new(connection));
 
         // Remove previous mappings for connection.
         self.established_by_tunnel_id.retain(|_, c| c != &id);
@@ -239,11 +244,11 @@ where
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
         self.established
             .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay == Some(id)).then_some((*cid, c)))
+            .filter_map(move |(cid, c)| (c.relay == Some(id)).then_some((*cid, c.as_mut())))
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, c)| (*id, c))
+        self.established.iter_mut().map(|(id, c)| (*id, c.as_mut()))
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
@@ -256,7 +261,7 @@ where
     }
 
     pub(crate) fn get_established(&self, id: &TId) -> Option<&Connection<RId>> {
-        self.established.get(id)
+        self.established.get(id).map(Box::as_ref)
     }
 
     pub(crate) fn get_established_mut_by_tunnel_id(
@@ -352,7 +357,9 @@ where
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established.iter().map(|(id, conn)| (*id, conn))
+        self.established
+            .iter()
+            .map(|(id, conn)| (*id, conn.as_ref()))
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -360,9 +367,7 @@ where
     }
 
     pub(crate) fn is_connected(&self, id: &TId) -> bool {
-        self.established
-            .get(id)
-            .is_some_and(Connection::is_connected)
+        self.established.get(id).is_some_and(|c| c.is_connected())
     }
 
     pub(crate) fn clear(&mut self) {
