@@ -5,6 +5,7 @@ use std::{
 };
 
 use ::sentry::transports::{RateLimiter, TokioTransportThread};
+use anyhow::Result;
 use bytes::Bytes;
 use http::{Method, Request, Response, StatusCode, header};
 
@@ -142,7 +143,7 @@ impl Transport for SentryTransport {
     }
 }
 
-fn build_request(url: &str, auth: &str, envelope: &Envelope) -> anyhow::Result<Request<Bytes>> {
+fn build_request(url: &str, auth: &str, envelope: &Envelope) -> Result<Request<Bytes>> {
     let mut body = Vec::new();
     envelope.to_writer(&mut body)?;
 

@@ -229,6 +229,20 @@ defmodule PortalWeb.Router do
     post "/sign_out", SignOutController, :sign_out
   end
 
+  # Reached from the link in a notification email, so it works without signing in.
+  scope "/:account_id_or_slug", PortalWeb do
+    pipe_through :public
+
+    live_session :unsubscribe,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount
+      ] do
+      live "/unsubscribe/:token", Unsubscribe
+    end
+  end
+
   # Approving an app runs on a session of its own, but it is still a portal
   # session, so the same actors reach it: account admins. The token it leads to
   # can only ever do what the person approving it can already do.
@@ -329,10 +343,6 @@ defmodule PortalWeb.Router do
       scope "/settings", Settings do
         live "/profile", Profile
         live "/account", Account
-
-        scope "/notifications" do
-          live "/", Notifications
-        end
 
         scope "/api_clients", ApiClients do
           live "/", Index

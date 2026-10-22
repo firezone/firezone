@@ -186,7 +186,7 @@ pub async fn run_with_args(args: Args, base: Option<TestConfig>, seed: u64) -> R
 }
 
 /// Run TCP test from resolved config.
-pub async fn run_with_config(config: TestConfig, seed: u64) -> anyhow::Result<()> {
+pub async fn run_with_config(config: TestConfig, seed: u64) -> Result<()> {
     let summary = run(config, seed).await?;
 
     println!(
@@ -458,7 +458,7 @@ pub struct TcpServerConfig {
 ///
 /// Listens for connections and echoes back any received data.
 /// Runs indefinitely until interrupted.
-async fn run_server(config: TcpServerConfig) -> anyhow::Result<()> {
+async fn run_server(config: TcpServerConfig) -> Result<()> {
     use std::net::Ipv4Addr;
     use tokio::net::TcpListener;
 
@@ -479,7 +479,7 @@ async fn run_server(config: TcpServerConfig) -> anyhow::Result<()> {
 }
 
 /// Handle a single TCP connection by echoing all received data.
-async fn handle_echo_connection(mut stream: TcpStream) -> anyhow::Result<()> {
+async fn handle_echo_connection(mut stream: TcpStream) -> Result<()> {
     let mut buf = [0u8; 8192];
 
     loop {

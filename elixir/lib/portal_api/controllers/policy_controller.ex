@@ -99,6 +99,7 @@ defmodule PortalAPI.PolicyController do
     without the entitlement return 403. Invalid expressions return 422 with
     details in `validation_errors.postures`. See `PolicyPostureNode` for the
     complete field catalog, operator types, platform behavior, and limits.
+    `GET /posture_fields` lists the same fields as structured data.
     """,
     parameters: [],
     request_body:
@@ -156,7 +157,8 @@ defmodule PortalAPI.PolicyController do
     or return 403. Invalid expressions return 422 with a path in
     `validation_errors.postures`. See `PolicyPostureNode` for the expression
     grammar, complete field catalog, operator types, platform behavior, and
-    limits. Changing postures revokes this policy's active authorizations,
+    limits. `GET /posture_fields` lists the same fields as structured data.
+    Changing postures revokes this policy's active authorizations,
     interrupting affected connections until they are reauthorized.
     """,
     parameters: [

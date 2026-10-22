@@ -1,5 +1,4 @@
 use base64::{Engine, display::Base64Display, engine::general_purpose::STANDARD};
-use boringtun::x25519::PublicKey;
 use secrecy::{CloneableSecret, SecretBox, SerializableSecret, zeroize::Zeroize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
@@ -47,13 +46,13 @@ impl Zeroize for Key {
     }
 }
 
-impl From<PublicKey> for Key {
-    fn from(value: PublicKey) -> Self {
+impl From<sanstun::PublicKey> for Key {
+    fn from(value: sanstun::PublicKey) -> Self {
         Self(value.to_bytes())
     }
 }
 
-impl From<Key> for PublicKey {
+impl From<Key> for sanstun::PublicKey {
     fn from(value: Key) -> Self {
         value.0.into()
     }
@@ -92,7 +91,7 @@ pub type SecretKey = SecretBox<Key>;
 #[cfg(test)]
 mod test {
     use super::Key;
-    use boringtun::x25519::{PublicKey, StaticSecret};
+    use zeroize::Zeroizing;
 
     #[test]
     fn can_deserialize_public_key() {
@@ -103,12 +102,12 @@ mod test {
 
     #[test]
     fn can_serialize_from_private_key_and_back() {
-        let private_key = StaticSecret::random_from_rng(&mut rand::rng());
-        let expected_public_key = PublicKey::from(private_key.to_bytes());
+        let private_key = sanstun::StaticSecret::from(Zeroizing::new(rand::random()));
+        let expected_public_key = sanstun::PublicKey::from(&private_key);
         let public_key = Key(expected_public_key.to_bytes());
         let public_key_string = serde_json::to_string(&public_key).unwrap();
         let actual_key: Key = serde_json::from_str(&public_key_string).unwrap();
-        let actual_public_key = PublicKey::from(actual_key.0);
+        let actual_public_key = sanstun::PublicKey::from(actual_key.0);
         assert_eq!(actual_public_key, expected_public_key);
     }
 }

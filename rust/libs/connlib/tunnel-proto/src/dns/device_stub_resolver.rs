@@ -4,9 +4,10 @@ use crate::{
     messages::client::FailReason,
 };
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use smallvec::{SmallVec, smallvec};
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     iter,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -27,14 +28,14 @@ const DNS_TTL: u32 = 1;
 /// device is decided on the first packet, see `RequestDeviceAccess`.
 #[derive(Default)]
 pub struct DeviceStubResolver {
-    resolved: BTreeMap<DomainName, (Ipv4Addr, Ipv6Addr)>,
+    resolved: HashMap<DomainName, (Ipv4Addr, Ipv6Addr), FastRandomState>,
     pending: ExpiringMap<PortalQuery, SmallVec<[PendingQuery; 2]>>,
 
     events: VecDeque<Event>,
 }
 
 /// A question for the portal, shared by every DNS query waiting on its answer.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum PortalQuery {
     Resolve(DomainName),
     Browse(DomainName),

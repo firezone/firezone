@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use logging::err_with_src;
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt as _;
@@ -124,7 +124,7 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
@@ -140,7 +140,10 @@ pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn export_logs(
+    app: tauri::AppHandle,
+    managed: tauri::State<'_, Managed>,
+) -> Result<(), Error> {
     show_export_dialog(&app, managed.inner().clone())?;
 
     Ok(())
@@ -151,7 +154,7 @@ pub async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Manage
 pub async fn apply_general_settings(
     managed: tauri::State<'_, Managed>,
     settings: GeneralSettingsForm,
-) -> Result<()> {
+) -> Result<(), Error> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -168,7 +171,7 @@ pub async fn apply_general_settings(
 pub async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
-) -> Result<()> {
+) -> Result<(), Error> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -182,7 +185,7 @@ pub async fn apply_advanced_settings(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     apply_advanced_settings(managed, AdvancedSettings::default()).await?;
 
     Ok(())
@@ -190,7 +193,7 @@ pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Resu
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed
         .send_request(ControllerRequest::ResetGeneralSettings)
         .await?;
@@ -199,7 +202,7 @@ pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Resul
 }
 
 /// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
+fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<(), Error> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
@@ -236,7 +239,7 @@ fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::SignIn).await?;
 
     Ok(())
@@ -244,7 +247,7 @@ pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::SignOut).await?;
 
     Ok(())
@@ -252,13 +255,11 @@ pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::UpdateState).await?;
 
     Ok(())
 }
-
-type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
@@ -315,13 +316,13 @@ pub fn bindings_path() -> std::path::PathBuf {
 ///
 /// The debug build runs this on startup; `cargo run -p firezone-gui-client --example
 /// export-bindings` runs it without a display server.
-pub fn export_bindings() -> anyhow::Result<()> {
+pub fn export_bindings() -> Result<()> {
     export_bindings_to(&bindings_path())
 }
 
 /// Exports the bindings to `path`, normalized so the committed file satisfies the repo's
 /// hooks: no trailing whitespace, one trailing newline, no formatter involved.
-fn export_bindings_to(path: &std::path::Path) -> anyhow::Result<()> {
+fn export_bindings_to(path: &std::path::Path) -> Result<()> {
     specta_builder()
         .export(typescript_exporter(), path)
         .context("Failed to export TypeScript bindings")?;

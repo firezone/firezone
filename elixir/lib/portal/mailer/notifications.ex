@@ -2,6 +2,7 @@ defmodule Portal.Mailer.Notifications do
   import Swoosh.Email
   import Portal.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
+  alias Portal.{Actor, UnsubscribeToken}
 
   use Phoenix.VerifiedRoutes,
     endpoint: PortalWeb.Endpoint,
@@ -11,20 +12,26 @@ defmodule Portal.Mailer.Notifications do
   embed_templates "notifications/*.html", suffix: "_html"
   embed_templates "notifications/*.text", suffix: "_text"
 
-  def outdated_gateway_email(account, gateways, incompatible_client_count, recipients) do
+  def outdated_gateway_email(
+        account,
+        gateways,
+        incompatible_client_count,
+        %Actor{type: :account_admin_user} = admin
+      ) do
     params = %{devices_order_by: "devices:asc:last_seen_version"}
     outdated_clients_url = url(~p"/#{account}/devices?#{params}")
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")
-    |> put_recipients(recipients)
+    |> to(admin.email)
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :outdated_gateway,
       account: account,
       gateways: gateways,
       outdated_clients_url: outdated_clients_url,
       incompatible_client_count: incompatible_client_count,
-      latest_version: Portal.ComponentVersions.gateway_version()
+      latest_version: Portal.ComponentVersions.gateway_version(),
+      unsubscribe_url: unsubscribe_url(admin, :outdated_gateways)
     )
   end
 
@@ -44,7 +51,12 @@ defmodule Portal.Mailer.Notifications do
     )
   end
 
-  def seats_warning_email(account, level, active_users_count, recipients) do
+  def seats_warning_email(
+        account,
+        level,
+        active_users_count,
+        %Actor{type: :account_admin_user} = admin
+      ) do
     billing_url = url(~p"/#{account}/settings/account")
     limit = account.limits.monthly_active_users_count
 
@@ -57,7 +69,7 @@ defmodule Portal.Mailer.Notifications do
     default_email()
     |> subject(heading)
     |> reply_to("support@firezone.dev")
-    |> put_recipients(recipients)
+    |> to(admin.email)
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :seats_warning,
       account: account,
@@ -66,7 +78,32 @@ defmodule Portal.Mailer.Notifications do
       active_users_count: active_users_count,
       seats_limit: limit,
       seats_remaining: max(limit - active_users_count, 0),
-      billing_url: billing_url
+      billing_url: billing_url,
+      unsubscribe_url: unsubscribe_url(admin, :seat_limit_warnings)
+    )
+  end
+
+  @doc """
+  The monthly product announcement. The HTML and text bodies are written by
+  Firezone staff through `Portal.Ops` and placed inside the usual email layout
+  as they are, so the HTML is not escaped.
+  """
+  def product_announcement_email(
+        subject,
+        html_body,
+        text_body,
+        %Actor{type: :account_admin_user} = admin
+      ) do
+    default_email()
+    |> subject(subject)
+    |> reply_to("support@firezone.dev")
+    |> to(admin.email)
+    |> with_account_id(admin.account_id)
+    |> render_body(__MODULE__, :product_announcement,
+      subject: subject,
+      announcement_html: announcement_html(html_body),
+      announcement_text: text_body,
+      unsubscribe_url: unsubscribe_url(admin, :product_announcements)
     )
   end
 
@@ -123,6 +160,14 @@ defmodule Portal.Mailer.Notifications do
     |> put_recipients(recipients)
     |> with_account_id(account.id)
     |> render_body(__MODULE__, :account_deletion_completed, account: account)
+  end
+
+  # Staff-authored HTML only, see Portal.Ops.queue_product_announcement/3.
+  # sobelow_skip ["XSS.Raw"]
+  defp announcement_html(html_body), do: Phoenix.HTML.raw(html_body)
+
+  defp unsubscribe_url(actor, notification) do
+    url(~p"/#{actor.account_id}/unsubscribe/#{UnsubscribeToken.sign(actor, notification)}")
   end
 
   defp put_recipients(email, recipients) when is_list(recipients),

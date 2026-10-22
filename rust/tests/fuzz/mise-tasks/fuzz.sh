@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Discover coverage with AFL++; extra args are passed to each worker"
-#MISE depends=["unpack-corpus {{usage.target}}"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>" default="1"

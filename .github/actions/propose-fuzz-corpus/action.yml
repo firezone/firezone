@@ -1,0 +1,79 @@
+name: "Propose fuzz corpus"
+description: "Commits a target's corpus and proposes it as a bot PR, or pushes it back to the dispatching branch"
+inputs:
+  target:
+    description: "The fuzz target whose corpus changed"
+    required: true
+  branch-prefix:
+    description: "The per-target branch is this prefix followed by the target"
+    required: true
+  title:
+    description: "The commit and pull request title"
+    required: true
+  body:
+    description: "The pull request body"
+    required: true
+  gpg-key:
+    description: "The GPG key that signs the commit"
+    required: true
+  token:
+    description: "The token that pushes and opens the pull request"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Set up GnuPG for the corpus commit
+      uses: ./.github/actions/setup-gpg
+      id: setup-gpg
+      with:
+        key: ${{ inputs.gpg-key }}
+        email: github-bot@firezone.dev
+    - name: Push corpus update
+      shell: bash
+      working-directory: rust
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REF: ${{ github.ref_name }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        TARGET: ${{ inputs.target }}
+        BRANCH: ${{ inputs.branch-prefix }}${{ inputs.target }}
+        TITLE: ${{ inputs.title }}
+        BODY: ${{ inputs.body }}
+        KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}
+      run: |
+        set -euo pipefail
+
+        git config --local user.email "github-bot@firezone.dev"
+        git config --local user.name "Firezone Bot"
+        git config --local user.signingkey "$KEY_ID"
+        git config --local commit.gpgsign true
+
+        git add -A "tests/fuzz/corpus/$TARGET"
+        if git diff --cached --quiet; then
+          echo "The $TARGET corpus is unchanged; nothing to push."
+          exit 0
+        fi
+        git commit -m "$TITLE"
+
+        # Do not use checkout's GITHUB_TOKEN for the push: pushes made with
+        # it do not trigger the pull request's workflows.
+        git config --local http.https://github.com/.extraheader ""
+        git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+        if [ "$REF" != "$DEFAULT_BRANCH" ]; then
+          # The dispatching branch may have moved while the fuzz jobs ran, so
+          # replay the update onto its tip rather than overwriting it.
+          git fetch origin "$REF"
+          git rebase "origin/$REF"
+          git push origin "HEAD:$REF"
+          exit 0
+        fi
+
+        # A branch per target, so a corpus that carries a crashing input only
+        # holds up its own review.
+        git checkout -B "$BRANCH"
+        git push -u origin HEAD --force
+
+        if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+          gh pr create --title "$TITLE" --body "$BODY" --reviewer firezone/engineering
+        fi

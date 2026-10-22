@@ -515,11 +515,21 @@ defmodule Portal.BillingTest do
       assert seats_warning_level(business_with_seats(nil), 5) == nil
     end
 
-    test "is nil for non-Business plans" do
+    test "is nil for plans other than Business and Enterprise" do
       account =
         update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 10}})
 
       assert seats_warning_level(account, 10) == nil
+    end
+
+    test "warns Enterprise accounts too" do
+      account =
+        update_account(account_fixture(), %{
+          metadata: %{stripe: %{product_name: "Enterprise"}},
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert seats_warning_level(account, 10) == :at_limit
     end
   end
 

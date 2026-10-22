@@ -1,6 +1,6 @@
 //! Log cleanup utilities for enforcing size caps on log directories.
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::fs;
@@ -39,7 +39,7 @@ pub fn start_log_cleanup_thread(
     log_dirs: Vec<PathBuf>,
     max_size_mb: u32,
     interval: Duration,
-) -> anyhow::Result<CleanupHandle> {
+) -> Result<CleanupHandle> {
     // Prevent excessively frequent cleanup that could cause performance issues
     let interval = if interval < MIN_CLEANUP_INTERVAL {
         tracing::info!(

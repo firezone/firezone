@@ -41,7 +41,6 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
-use boringtun::x25519;
 use connlib_model::{
     ClientId, ClientOrGatewayId, ConnectedDeviceView, DevicePoolResourceView, GatewayId,
     IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
@@ -62,6 +61,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
+use zeroize::Zeroizing;
 
 pub const IPV4_RESOURCES: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
     Ok(n) => n,
@@ -139,14 +139,14 @@ pub struct ClientState {
     ///
     /// These packets are replayed through normal routing when the connection is established so
     /// their route is validated again and the successful send is included in flow tracking.
-    pending_routed_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_routed_packets: HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 
     /// IP packets whose destination peer was selected by protocol context rather than routing.
     ///
     /// These include peer-to-peer control packets and replies to filtered direct-client traffic.
     /// They retain their selected peer and bypass normal routing when the connection is
     /// established.
-    pending_peer_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    pending_peer_packets: HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 
     dns_resource_nat: DnsResourceNat,
     /// Outbound authorizations received from the portal.
@@ -161,7 +161,7 @@ pub struct ClientState {
     /// An entry in this data structure does _not_ mean that we are connected to the Gateway / site.
     gateways_by_site: HashMap<SiteId, HashSet<GatewayId>>,
     /// The online/offline status of a site, together with the timestamp when we set it.
-    sites_status: BTreeMap<SiteId, (ResourceStatus, Instant)>,
+    sites_status: HashMap<SiteId, (ResourceStatus, Instant), FastRandomState>,
 
     routing_tables: RoutingTables,
     is_internet_resource_active: bool,
@@ -191,7 +191,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: snownet::TransmitBuffer,
+    buffered_transmits: VecDeque<snownet::Transmit>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -369,7 +369,7 @@ impl ClientState {
             let (packets, _) = pending.into_buffers();
 
             for packet in packets {
-                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                reply_with_icmp_prohibited(&mut self.buffered_packets, &packet);
             }
         }
     }
@@ -477,7 +477,7 @@ impl ClientState {
                     .ok()
             })
             .fold(
-                BTreeMap::<_, VecDeque<IpPacket>>::new(),
+                HashMap::<_, VecDeque<IpPacket>, FastRandomState>::default(),
                 |mut map, (gid, resource, domain, packet)| {
                     map.entry((gid, domain, resource))
                         .or_default()
@@ -544,19 +544,18 @@ impl ClientState {
     ///
     /// Most packets originate from the TUN device, but internally-produced and previously-buffered
     /// packets also re-enter through this path. Sentinel DNS queries may be consumed locally; all
-    /// other packets are routed and either sent or buffered here.
+    /// other packets are routed and either returned as a [`snownet::PendingEncapsulate`] or buffered here.
     pub fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        packet: &mut IpPacket,
         now: Instant,
-        provider: &mut impl snownet::BufferProvider,
-    ) -> Result<()> {
+    ) -> Result<Option<snownet::PendingEncapsulate>> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
         if packet.destination().is_multicast() {
-            return Ok(());
+            return Ok(None);
         }
 
         let tun_config = self
@@ -566,27 +565,26 @@ impl ClientState {
 
         anyhow::ensure!(
             tun_config.ip.is_ip(packet.source()),
-            UnroutablePacket::not_tunnel_source_ip(&packet)
+            UnroutablePacket::not_tunnel_source_ip(packet)
         );
         anyhow::ensure!(
             !tun_config.ip.is_ip(packet.destination()),
-            UnroutablePacket::packet_to_self(&packet)
+            UnroutablePacket::packet_to_self(packet)
         );
 
         // DNS packets to our sentinel resolvers never become flows.
-        let packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return Ok(()),
-            ControlFlow::Continue(non_dns_packet) => non_dns_packet,
-        };
+        match self.try_handle_dns(packet, now) {
+            ControlFlow::Continue(()) => {}
+            ControlFlow::Break(()) => return Ok(None),
+        }
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
+        let _guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         // Recursive DNS queries we tunnel to upstream resolvers are internal
         // traffic and never become flows either; dropping the guard before any
         // fact is recorded discards the packet's flow data.
-        if self.udp_dns_client.owns_outbound(&packet) || self.tcp_dns_client.owns_outbound(&packet)
-        {
+        if self.udp_dns_client.owns_outbound(packet) || self.tcp_dns_client.owns_outbound(packet) {
             drop(_guard);
         }
 
@@ -597,62 +595,59 @@ impl ClientState {
             // classify. It belongs to the flow of the packet that failed, and that
             // flow decides where it goes.
             Err(e) => {
-                let Some(cid) = client_for_icmp_error(&self.clients, &packet) else {
+                let Some(cid) = client_for_icmp_error(&self.clients, packet) else {
                     return Err(e.into());
                 };
 
                 // The peer opened the flow the error refers to, so we are its responder.
                 flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-                encapsulate_or_buffer(
+                return encapsulate_or_buffer(
                     packet,
                     cid.into(),
                     now,
                     &mut self.node,
-                    provider,
                     &mut self.pending_routed_packets,
-                )?;
-
-                return Ok(());
+                );
             }
         };
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
-            (peer.outbound_flow_originator(&packet) == Some(Originator::Peer)).then_some(cid)
+            (peer.outbound_flow_originator(packet) == Some(Originator::Peer)).then_some(cid)
         });
         let routes = self
             .routing_tables
             .resolve(dst, dst_proto, internet_resource);
 
-        let (packet, peer) = match (direct_gateway, peer_originated_client_flow, routes) {
+        let peer = match (direct_gateway, peer_originated_client_flow, routes) {
             (None, None, Err(routing::Denied)) => {
                 reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                return Ok(());
+                return Ok(None);
             }
             (None, None, Ok(routes)) if routes.is_empty() => {
-                return Err(UnroutablePacket::unknown_resource(&packet).into());
+                return Err(UnroutablePacket::unknown_resource(packet).into());
             }
             (Some(gid), _, _) => {
                 // A Gateway's TUN IP takes precedence over resource matches.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
 
-                (packet, gid.into())
+                gid.into()
             }
             (None, Some(cid), _) => {
                 // A reply follows its peer-originated flow even if we have no outbound route to
                 // that peer.
                 flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-                (packet, cid.into())
+                cid.into()
             }
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
                 let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
                     self.pending_authorizations.on_not_authorized(
                         AuthorizationRequest::device(dst, pools.iter().copied()),
-                        packet,
+                        packet.clone(),
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 let Some(token) = pools.iter().find_map(|&resource_id| {
@@ -660,10 +655,10 @@ impl ClientState {
                 }) else {
                     self.pending_authorizations.on_not_authorized(
                         AuthorizationRequest::device(dst, pools.iter().copied()),
-                        packet,
+                        packet.clone(),
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
@@ -671,48 +666,45 @@ impl ClientState {
 
                 self.clients
                     .peer_by_id_mut(&cid)
-                    .with_context(|| UnroutablePacket::no_peer_state(&packet))?
-                    .record_outbound_as_originator(&packet, now);
+                    .with_context(|| UnroutablePacket::no_peer_state(packet))?
+                    .record_outbound_as_originator(packet, now);
 
-                (packet, cid.into())
+                cid.into()
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
                 // Traffic only takes the most-preferred route, even if a less-preferred one is authorized.
                 let Some(route) = routes.first() else {
-                    return Err(UnroutablePacket::unknown_resource(&packet).into());
+                    return Err(UnroutablePacket::unknown_resource(packet).into());
                 };
                 let Some(authorization) = self.outbound_authorizations.gateway(route.resource_id)
                 else {
                     self.pending_authorizations.on_not_authorized(
                         AuthorizationRequest::resources([route.resource_id]),
-                        packet,
+                        packet.clone(),
                         now,
                     );
-                    return Ok(());
+                    return Ok(None);
                 };
 
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
-                let packet = if let Some(domain) = &route.domain {
+                if let Some(domain) = &route.domain {
                     flow_tracker::record_domain(domain.name().clone());
 
-                    let Some(packet) = self.dns_resource_nat.handle_outgoing(
+                    match self.dns_resource_nat.handle_outgoing(
                         authorization.gateway_id,
                         domain,
                         route.resource_id,
                         packet,
                         now,
-                    ) else {
-                        return Ok(());
-                    };
+                    ) {
+                        ControlFlow::Continue(()) => {}
+                        ControlFlow::Break(()) => return Ok(None),
+                    }
+                }
 
-                    packet
-                } else {
-                    packet
-                };
-
-                (packet, authorization.gateway_id.into())
+                authorization.gateway_id.into()
             }
         };
 
@@ -721,28 +713,25 @@ impl ClientState {
             peer,
             now,
             &mut self.node,
-            provider,
             &mut self.pending_routed_packets,
-        )?;
-
-        Ok(())
+        )
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
-    /// and flow tracking, queueing any resulting network transmit.
-    fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
-        let mut buffered_transmits = std::mem::take(&mut self.buffered_transmits);
-        let result = self.handle_tun_input(packet, now, &mut buffered_transmits);
-        self.buffered_transmits = buffered_transmits;
-
-        result?;
+    /// and flow tracking, queueing the resulting datagram.
+    fn handle_out_of_band_ip_packet(&mut self, mut packet: IpPacket, now: Instant) -> Result<()> {
+        if let Some(encapsulation) = self.handle_tun_input(&mut packet, now)? {
+            self.buffered_transmits
+                .push_back(encapsulation.encrypt(&packet)?);
+        }
 
         Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
+    /// Decrypt it from `packet` and pass the result to [`ClientState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
@@ -752,14 +741,32 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
+    ) -> Result<Option<snownet::PendingDecapsulate>> {
+        match self.node.begin_decapsulate(local, from, packet, now) {
+            Ok(decapsulation) => Ok(decapsulation),
+            Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
+        }
+    }
+
+    /// Handles a WireGuard data message decrypted from a [`snownet::PendingDecapsulate`].
+    ///
+    /// `local` and `from` are the addresses the message was received on and from.
+    ///
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub fn handle_peer_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: snownet::DecryptedIpPacket,
+        now: Instant,
     ) -> Result<Option<IpPacket>> {
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
-        let Some((pid, packet)) = self
-            .node
-            .decapsulate(local, from, packet.as_ref(), now)
-            .with_context(|| FailedToDecapsulate(packet_kind::classify(packet)))?
-        else {
+        let decrypted = match self.node.commit_decrypted(packet, now) {
+            Ok(decrypted) => decrypted,
+            Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
+        };
+        let Some((pid, packet)) = decrypted else {
             return Ok(None);
         };
 
@@ -1031,7 +1038,7 @@ impl ClientState {
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
@@ -1052,7 +1059,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
             gateway_key,
-            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             client_ice.into(),
             gateway_ice.into(),
             snownet::IceRole::Controlling,
@@ -1173,7 +1180,7 @@ impl ClientState {
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
-            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            sanstun::StaticSecret::from(Zeroizing::new(preshared_key.expose_secret().0)),
             local_client_ice.into(),
             remote_client_ice.into(),
             ice_role.into(),
@@ -1336,7 +1343,7 @@ impl ClientState {
     }
 
     /// Handles UDP & TCP packets targeted at our stub resolver.
-    fn try_handle_dns(&mut self, packet: IpPacket, now: Instant) -> ControlFlow<(), IpPacket> {
+    fn try_handle_dns(&mut self, packet: &IpPacket, now: Instant) -> ControlFlow<()> {
         let dst = packet.destination();
 
         if is_llmnr(dst) {
@@ -1345,15 +1352,15 @@ impl ClientState {
         }
 
         if !is_dns_sentinel(dst) {
-            return ControlFlow::Continue(packet);
+            return ControlFlow::Continue(());
         }
 
         let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
             return ControlFlow::Break(());
         };
 
-        if self.tcp_dns_server.accepts(&packet) {
-            self.tcp_dns_server.handle_inbound(packet);
+        if self.tcp_dns_server.accepts(packet) {
+            self.tcp_dns_server.handle_inbound(packet.clone());
             return ControlFlow::Break(());
         }
 
@@ -1454,7 +1461,6 @@ impl ClientState {
     }
 
     fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
-        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
         self.gateways_by_site
             .values()
             .flatten()
@@ -1930,7 +1936,7 @@ impl ClientState {
         }
     }
 
-    fn handle_udp_dns_query(&mut self, upstream: dns::Upstream, packet: IpPacket, now: Instant) {
+    fn handle_udp_dns_query(&mut self, upstream: dns::Upstream, packet: &IpPacket, now: Instant) {
         let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
 
@@ -1964,7 +1970,7 @@ impl ClientState {
         };
     }
 
-    fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
+    fn handle_llmnr_dns_query(&mut self, packet: &IpPacket, now: Instant) {
         let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
 
@@ -2207,9 +2213,9 @@ impl ClientState {
 
     fn drain_node_events(&mut self, now: Instant) {
         let mut added_ice_candidates =
-            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+            HashMap::<ClientOrGatewayId, BTreeSet<IceCandidate>, FastRandomState>::default();
         let mut removed_ice_candidates =
-            BTreeMap::<ClientOrGatewayId, BTreeSet<IceCandidate>>::default();
+            HashMap::<ClientOrGatewayId, BTreeSet<IceCandidate>, FastRandomState>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -2355,7 +2361,6 @@ impl ClientState {
         status: ResourceStatus,
         now: Instant,
     ) {
-        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
         let Some((sid, _)) = self
             .gateways_by_site
             .iter()
@@ -2454,9 +2459,15 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
+    /// How many transmits the state itself has queued for [`Self::poll_transmit`].
+    #[cfg(debug_assertions)]
+    pub fn num_buffered_transmits(&self) -> usize {
+        self.buffered_transmits.len()
+    }
+
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
-            .poll_transmit()
+            .pop_front()
             .or_else(|| self.node.poll_transmit())
     }
 
@@ -2483,7 +2494,7 @@ impl ClientState {
             .resources_by_id
             .keys()
             .copied()
-            .collect::<BTreeSet<_>>();
+            .collect::<HashSet<_, FastRandomState>>();
         let new_resource_ids = new_resources.iter().map(|r| r.id()).collect();
 
         tracing::debug!(?current_resource_ids, ?new_resource_ids);
@@ -2708,8 +2719,8 @@ fn internet_resource(
 
 /// Generate an ICMP "administratively prohibited" error for `packet` and
 /// buffer it for delivery back to the TUN device.
-fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet: IpPacket) {
-    match ip_packet::make::icmp_dest_unreachable_prohibited(&packet) {
+fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet: &IpPacket) {
+    match ip_packet::make::icmp_dest_unreachable_prohibited(packet) {
         Ok(reply) => buffered_packets.push_back(reply),
         Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
     }
@@ -2718,7 +2729,8 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 #[derive(Default)]
 struct OutboundAuthorizations {
     gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
-    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>, FastRandomState>,
+    device_pools:
+        HashMap<ResourceId, HashMap<ClientId, IngestToken, FastRandomState>, FastRandomState>,
 }
 
 struct GatewayAuthorization {
@@ -2836,48 +2848,54 @@ fn client_for_icmp_error(
     None
 }
 
-/// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
-/// log) any error instead of returning it.
+/// Like [`encapsulate_or_buffer`], but encrypts the packet into `buffered_transmits` and drops
+/// (with a log) any error instead of returning it.
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    buffered_transmits: &mut snownet::TransmitBuffer,
-    pending_peer_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
+    buffered_transmits: &mut VecDeque<snownet::Transmit>,
+    pending_peer_packets: &mut HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
 ) {
-    if let Err(e) = encapsulate_or_buffer(
-        packet,
-        pid,
-        now,
-        node,
-        buffered_transmits,
-        pending_peer_packets,
-    ) {
-        tracing::debug!(%pid, "Failed to encapsulate: {e:#}");
+    let encrypted = encapsulate_or_buffer(&packet, pid, now, node, pending_peer_packets).and_then(
+        |encapsulation| {
+            let Some(encapsulation) = encapsulation else {
+                return Ok(None);
+            };
+
+            Ok(Some(encapsulation.encrypt(&packet)?))
+        },
+    );
+
+    match encrypted {
+        Ok(Some(transmit)) => buffered_transmits.push_back(transmit),
+        Ok(None) => {}
+        Err(e) => tracing::debug!(%pid, "Failed to encapsulate: {e:#}"),
     }
 }
 
-/// Encapsulate `packet` for `pid` directly into `provider`, or buffer it if the connection is
-/// still being established.
+/// Encapsulate `packet` for `pid`, or buffer a copy of it if the connection is still being
+/// established.
 fn encapsulate_or_buffer(
-    packet: IpPacket,
+    packet: &IpPacket,
     pid: ClientOrGatewayId,
     now: Instant,
     node: &mut Node<ClientOrGatewayId, RelayId>,
-    provider: &mut impl snownet::BufferProvider,
-    pending_packets: &mut BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
-) -> Result<()> {
+    pending_packets: &mut HashMap<ClientOrGatewayId, UniquePacketBuffer, FastRandomState>,
+) -> Result<Option<snownet::PendingEncapsulate>> {
     const CONNECTION_BUFFER_CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     if let Some(buffer) = pending_packets.get_mut(&pid) {
-        buffer.push(packet);
-        return Ok(());
+        buffer.push(packet.clone());
+        return Ok(None);
     }
 
-    match node.encapsulate(pid, &packet, now, provider) {
-        Ok(Some(info)) => {
-            flow_tracker::record_transmit(info.src, info.dst);
+    match node.encapsulate(pid, packet, now) {
+        Ok(Some(encapsulation)) => {
+            flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
+
+            return Ok(Some(encapsulation));
         }
         Ok(None) => {}
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
@@ -2889,15 +2907,15 @@ fn encapsulate_or_buffer(
                         "pending-connection",
                     )
                 })
-                .push(packet);
+                .push(packet.clone());
         }
         Err(e) if e.any_is::<snownet::UnknownConnection>() => {
-            return Err(e.context(UnroutablePacket::not_connected(&packet)));
+            return Err(e.context(UnroutablePacket::not_connected(packet)));
         }
         Err(e) => return Err(e),
     };
 
-    Ok(())
+    Ok(None)
 }
 
 fn gateway_by_resource_mut<'p>(
@@ -3002,11 +3020,11 @@ mod tests {
         let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
         state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
 
-        let packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
+        let mut packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
+                .handle_tun_input(&mut packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3020,11 +3038,11 @@ mod tests {
         let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
         state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
 
-        let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
+        let mut packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now(), &mut snownet::TransmitBuffer::new())
+                .handle_tun_input(&mut packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3045,11 +3063,9 @@ mod tests {
         );
         while state.poll_event().is_some() {}
 
-        let packet =
+        let mut packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(&mut packet, now).unwrap();
 
         let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
             if let ClientEvent::RequestAccess {
@@ -3080,11 +3096,9 @@ mod tests {
         while state.poll_event().is_some() {}
         while state.poll_packets().is_some() {}
 
-        let packet =
+        let mut packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(&mut packet, now).unwrap();
 
         assert_no_device_connection_intent(&mut state);
         assert!(
@@ -3106,9 +3120,7 @@ mod tests {
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap()
         };
 
-        state
-            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(&mut packet(), now).unwrap();
         while state.poll_event().is_some() {}
 
         state.handle_client_device_access_denied(
@@ -3121,9 +3133,7 @@ mod tests {
             "expected an ICMP error for the buffered packet"
         );
 
-        state
-            .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
+        state.handle_tun_input(&mut packet(), now).unwrap();
         assert!(
             state.poll_packets().is_none(),
             "expected the packet to be buffered for a new request"

@@ -148,7 +148,7 @@ impl SimRelay {
             .sut
             .handle_client_input(&payload, client, now, now_utc)?;
 
-        payload.shift_start_right(4);
+        payload.drain(..4);
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -229,7 +229,8 @@ impl SimRelay {
         let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
 
         let data_len = payload.len() as u16;
-        let header = payload.shift_start_left(4);
+        payload.splice(..0, [0; 4]);
+        let header = &mut payload[..4];
 
         relay_proto::ChannelData::encode_header_to_slice(channel, data_len, header);
 

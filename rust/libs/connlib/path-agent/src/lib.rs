@@ -7,7 +7,7 @@
 //! ## Bootstrap
 //!
 //! Probes ride the WireGuard session, so a session must exist before any path
-//! can be probed. To get one, the agent fans a boringtun `init` out over every
+//! can be probed. To get one, the agent fans a WireGuard `init` out over every
 //! pair that involves a relay candidate — relays are always reachable, even
 //! behind double symmetric NAT. A session is *established* the moment we see a
 //! handshake (an init or a response), and the establishing handshake seeds a
@@ -18,7 +18,8 @@
 //! probe reply. A mid-session re-key never moves the primary; probing decides.
 //!
 //! Handshakes are always answered on the path they arrived on, never on the
-//! primary — routine re-keys included.
+//! primary: routine re-keys included, as is the keepalive confirming a
+//! response.
 //!
 //! ## Probing and selection
 //!

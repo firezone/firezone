@@ -1,7 +1,6 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
-    icmp_error_hosts::IcmpErrorHosts,
     probe::Remote,
     reference::PrivateKey,
     resource::{
@@ -10,6 +9,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
+    site_network::{RouteType, Routes},
     transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
@@ -785,8 +785,8 @@ impl RefClient {
         query: &DnsQuery,
         gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
-        global_dns_records: &DnsRecords,
-        icmp_error_hosts: &IcmpErrorHosts,
+        resolve: impl Fn(Option<GatewayId>, &DomainName) -> BTreeSet<RecordType>,
+        routes: Option<&Routes>,
     ) {
         if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
@@ -794,7 +794,7 @@ impl RefClient {
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.prepare_dns_resource_connection(resource, global_dns_records);
+            self.prepare_dns_resource_connection(resource, |domain| resolve(gateway, domain));
             self.connected_dns_resources.insert(resource);
             self.connected_through(resource, gateway);
             self.expect_dns_response(query);
@@ -806,14 +806,14 @@ impl RefClient {
             && matches!(query.r_type, RecordType::A | RecordType::AAAA)
         {
             // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
-            let record_types = global_dns_records.domain_rtypes(&query.domain);
             for resource in self.dns_resources_by_domain(
                 &query.domain,
                 |r| self.connected_dns_resources.contains(&r.id),
                 |_| true,
             ) {
+                let record_types = resolve(self.gateway_for_resource(resource.id), &query.domain);
                 self.dns_resource_resolutions
-                    .insert((resource.id, query.domain.clone()), record_types.clone());
+                    .insert((resource.id, query.domain.clone()), record_types);
             }
         }
 
@@ -842,7 +842,7 @@ impl RefClient {
                 return;
             }
 
-            if self.resolver_is_unreachable(query, icmp_error_hosts) {
+            if self.resolver_is_unreachable(query, routes) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
                 self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
@@ -904,11 +904,11 @@ impl RefClient {
     }
 
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
-    fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
+    fn resolver_is_unreachable(&self, query: &DnsQuery, routes: Option<&Routes>) -> bool {
         match &query.dns_server {
-            dns::Upstream::Do53 { server } => {
-                icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some()
-            }
+            dns::Upstream::Do53 { server } => routes.is_some_and(|routes| {
+                matches!(routes.route(server.ip()), RouteType::Unreachable(_))
+            }),
             dns::Upstream::DoH { .. } => false,
         }
     }
@@ -1082,7 +1082,7 @@ impl RefClient {
             .next()
     }
 
-    fn dns_resources_by_domain(
+    pub(crate) fn dns_resources_by_domain(
         &self,
         domain: &DomainName,
         eligible: impl Fn(&DnsResource) -> bool,
@@ -1371,7 +1371,7 @@ impl RefClient {
     pub(crate) fn prepare_dns_resource_connection(
         &mut self,
         resource: ResourceId,
-        global_dns_records: &DnsRecords,
+        resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
     ) {
         if self.connected_dns_resources.contains(&resource) {
             return;
@@ -1391,7 +1391,7 @@ impl RefClient {
             .collect_vec();
 
         for domain in domains {
-            let record_types = global_dns_records.domain_rtypes(&domain);
+            let record_types = resolve(&domain);
             self.dns_resource_resolutions
                 .insert((resource, domain), record_types);
         }

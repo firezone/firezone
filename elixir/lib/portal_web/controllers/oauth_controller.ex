@@ -13,6 +13,8 @@ defmodule PortalWeb.OAuthController do
   alias Portal.OAuth
   alias __MODULE__.Database
 
+  plug :reject_authorization_header when action in [:token, :revoke]
+
   @authorize_params ~w[client_id redirect_uri response_type scope resource code_challenge
                        code_challenge_method state]
 
@@ -55,11 +57,23 @@ defmodule PortalWeb.OAuthController do
 
   @spec revoke(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def revoke(conn, params) do
-    :ok = OAuth.revoke(params["token"] || "")
+    :ok = OAuth.revoke(params["token"] || "", params)
 
     conn
     |> put_resp_header("cache-control", "no-store")
     |> send_resp(200, "")
+  end
+
+  # The supported methods carry client identity in the request body. A second
+  # authentication method must not be silently ignored.
+  defp reject_authorization_header(conn, _opts) do
+    if get_req_header(conn, "authorization") == [] do
+      conn
+    else
+      conn
+      |> send_oauth_error(400, "invalid_request", "Authorization headers are not supported.")
+      |> halt()
+    end
   end
 
   defp choose_account(conn, %{"account_id_or_slug" => slug} = params, client) when slug != "" do

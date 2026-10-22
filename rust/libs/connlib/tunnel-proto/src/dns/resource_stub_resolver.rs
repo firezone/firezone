@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque},
     hash::{Hash, Hasher},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -11,6 +11,7 @@ use dns_types::{
     DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
     ResponseCode,
 };
+use fast_random_state::FastRandomState;
 use itertools::Itertools as _;
 use logging::err_with_src;
 use smallvec::SmallVec;
@@ -38,9 +39,10 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 pub struct ResourceStubResolver {
-    fqdn_to_ips: BTreeMap<
+    fqdn_to_ips: HashMap<
         dns_types::DomainName,
         (DnsResourceDomain, ProxyIps, BTreeSet<(Pattern, ResourceId)>),
+        FastRandomState,
     >,
     /// Only ever advanced so that an id is never reused for a different domain.
     next_domain_id: DnsResourceDomainId,
@@ -192,7 +194,7 @@ impl Default for ResourceStubResolver {
 impl ResourceStubResolver {
     pub(crate) fn new(records: BTreeSet<DnsResourceRecord>) -> Self {
         let mut ips_to_fqdn = HashMap::default();
-        let mut fqdn_to_ips = BTreeMap::default();
+        let mut fqdn_to_ips = HashMap::default();
         let mut next_domain_id = DnsResourceDomainId::default();
         let mut ip_provider = IpProvider::for_resources();
 
@@ -693,6 +695,9 @@ mod tests {
     #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
     #[test_case("*?*.example.com", "app.example.com"; "mix of * and ?")]
     #[test_case("app.**.web.**.example.com", "app.web.example.com"; "multiple double star within domain")]
+    #[test_case("*.Example.com", "example.com"; "single star matches root domain case-insensitively")]
+    #[test_case("*.example.com", "EXAMPLE.com"; "single star matches uppercase root domain")]
+    #[test_case("**.Example.com", "foo.EXAMPLE.com"; "double star matches case-insensitively")]
 
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();

@@ -6,6 +6,7 @@ defmodule PortalAPI.ResourceControllerTest do
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
+  import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
@@ -933,6 +934,26 @@ defmodule PortalAPI.ResourceControllerTest do
              }
 
       refute Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
+    end
+
+    test "deletes the policies that use the resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = dns_resource_fixture(account: account)
+      policy = policy_fixture(account: account, resource: resource)
+      other_policy = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/resources/#{resource.id}")
+
+      assert json_response(conn, 200)
+      refute Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
+      assert Repo.get_by(Portal.Policy, id: other_policy.id, account_id: account.id)
     end
 
     test "returns error when deleting internet resource", %{

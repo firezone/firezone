@@ -126,4 +126,34 @@ defmodule Portal.ActorFixtures do
     |> Portal.Repo.update!()
     |> Portal.Repo.preload(:account)
   end
+
+  @doc """
+  Update an actor's preferences, such as the channels a notification uses.
+
+      actor_preferences_fixture(actor, notifications: %{outdated_gateways: []})
+
+  """
+  def actor_preferences_fixture(actor, attrs \\ %{}) do
+    preferences_fields = Portal.Actor.Preferences.__schema__(:fields) -- [:notifications]
+    notifications_fields = Portal.Actor.Preferences.Notifications.__schema__(:fields)
+
+    actor
+    |> Ecto.Changeset.cast(%{preferences: Enum.into(attrs, %{})}, [])
+    |> Ecto.Changeset.cast_embed(:preferences,
+      with: fn preferences, attrs ->
+        (preferences || %Portal.Actor.Preferences{})
+        |> Ecto.Changeset.cast(attrs, preferences_fields)
+        |> Ecto.Changeset.cast_embed(:notifications,
+          with: fn notifications, attrs ->
+            Ecto.Changeset.cast(
+              notifications || %Portal.Actor.Preferences.Notifications{},
+              attrs,
+              notifications_fields
+            )
+          end
+        )
+      end
+    )
+    |> Portal.Repo.update!()
+  end
 end
