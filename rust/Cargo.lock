@@ -8997,8 +8997,13 @@ dependencies = [
  "stun_codec",
  "tokio",
  "tun",
+ "tun-apple",
+ "tun-linux",
+ "tun-offload",
+ "tun-windows",
  "tunnel",
  "tunnel-proto",
+ "windows",
 ]
 
 [[package]]

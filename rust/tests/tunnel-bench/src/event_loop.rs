@@ -1,12 +1,15 @@
-//! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets.
+//! Per-packet work of a [`ClientTunnel`] / [`GatewayTunnel`] event loop, with real UDP sockets
+//! and the real TUN worker threads over an in-memory device.
 //!
-//! The event loop runs on its own thread, kept busy by threads that stand in for the TUN device
-//! and the peer. A busy event loop never parks, so the wall time per packet is the cost of the
+//! The event loop runs on its own thread, kept busy by the TUN threads and a thread that stands in
+//! for the peer. A busy event loop never parks, so the wall time per packet is the cost of the
 //! event loop. One iteration is one packet.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::BTreeSet;
+mod device;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::poll_fn;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -18,22 +21,31 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::ErrorExt as _;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
-use criterion::measurement::WallTime;
+use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
-use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
 use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use stun_codec::rfc5389::{Attribute, attributes::XorMappedAddress, methods::BINDING};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
-use tun::{MAX_BATCH_SIZE, PacketBatch};
 use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 
+use crate::measure::Stage;
+use crate::thread_cpu::thread_cpu_times;
+use device::Device;
+
 /// The size of the IP packets sent through the tunnel.
 const SIZE: usize = 1280;
+
+const GROUP: &str = "event_loop";
+
+/// The file to write the measures of all benchmarks to in Bencher Metric Format, if set.
+///
+/// An environment variable because criterion parses the whole command line itself.
+const BENCHER_JSON_ENV: &str = "TUNNEL_BENCH_JSON";
 
 #[derive(Debug, Clone, Copy)]
 enum Resource {
@@ -42,14 +54,6 @@ enum Resource {
 }
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
-
-#[derive(Debug, Clone, Copy)]
-enum Protocol {
-    Udp,
-    Tcp,
-}
-
-const PROTOCOLS: [Protocol; 2] = [Protocol::Udp, Protocol::Tcp];
 
 /// The most packets sent through the tunnel in one go, bounding the memory their inputs take.
 const BURST: usize = 10_000;
@@ -75,64 +79,86 @@ const IN_FLIGHT: usize = cfg_select! {
 #[cfg(target_os = "macos")]
 const FLOW_SOCKET_PACKETS: usize = 16;
 
-/// How often the event loop may park per 1000 packets before a benchmark reports it.
+/// How often the event loop may park per 1000 packets before a benchmark's measures are discarded.
 ///
 /// The event loop idles between bursts. Within one, it would park about once per batch of packets
-/// if a stand-in thread could not keep up.
+/// if a TUN or stand-in thread could not keep up.
 const MAX_PARKS_PER_1K_PACKETS: f64 = 1.0;
 
 bufferpool::buffer_pool!(static DATAGRAMS: Vec<u8> = (u16::MAX as usize, "bench-datagrams"), batch: 2);
 
-criterion::criterion_group! {
-    name = benches;
-    config = Criterion::default()
-        .warm_up_time(Duration::from_millis(500))
-        .measurement_time(Duration::from_millis(1500))
-        .without_plots();
-    targets = bench
-}
-
-fn bench(c: &mut Criterion) {
+/// Runs every benchmark under `measurement`, in a criterion group named after it.
+pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_name: &str) {
     prioritize_stand_in();
-    let mut group = c.benchmark_group("event_loop");
+    let mut group = c.benchmark_group(group_name);
     group.throughput(Throughput::Bits(SIZE as u64 * 8));
+    let mut report = BTreeMap::new();
 
     for resource in RESOURCES {
-        for protocol in PROTOCOLS {
-            for flow_logs in [false, true] {
-                let flow_logs_id = if flow_logs {
-                    "flow_logs"
-                } else {
-                    "no_flow_logs"
-                };
-                let id = |name| format!("{name}/{resource}/{protocol}/{flow_logs_id}");
-                let connect = || connect(resource, protocol, flow_logs);
+        let id = |name| format!("{name}/{resource}");
+        let connect = || connect(resource, true);
 
-                let (client, gateway, now) = connect();
-                outbound(&mut group, id("client_outbound"), client, gateway, now);
+        let (client, gateway, now) = connect();
+        report.extend(outbound(
+            &mut group,
+            measurement,
+            id("client_outbound"),
+            client,
+            gateway,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                inbound(&mut group, id("gateway_inbound"), gateway, client, now);
+        let (client, gateway, now) = connect();
+        report.extend(inbound(
+            &mut group,
+            measurement,
+            id("gateway_inbound"),
+            gateway,
+            client,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                outbound(&mut group, id("gateway_outbound"), gateway, client, now);
+        let (client, gateway, now) = connect();
+        report.extend(outbound(
+            &mut group,
+            measurement,
+            id("gateway_outbound"),
+            gateway,
+            client,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                inbound(&mut group, id("client_inbound"), client, gateway, now);
-            }
-        }
+        let (client, gateway, now) = connect();
+        report.extend(inbound(
+            &mut group,
+            measurement,
+            id("client_inbound"),
+            client,
+            gateway,
+            now,
+        ));
+    }
+
+    if let Some(path) = std::env::var_os(BENCHER_JSON_ENV) {
+        let json = report
+            .iter()
+            .map(|(name, measures)| (name.clone(), measures.bmf()))
+            .collect::<serde_json::Map<_, _>>();
+        std::fs::write(path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
     }
 }
 
-/// Feeds packets into the tunnel's TUN channel and counts the datagrams arriving at the peer.
-fn outbound(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+/// Lets the tunnel read packets from its TUN device and counts the datagrams arriving at the peer.
+fn outbound<M: Measurement + Copy>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     local: Side,
     peer: Side,
     now: Instant,
-) {
-    let (event_loop, _tun_writes) = EventLoop::spawn(local.state, local.socket, now);
+) -> Option<(String, Measures)> {
+    let device = Device::new(&local.reads);
+    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
     let arrivals = Arc::new(Arrivals::default());
     let (runtime, socket) = bind_peer(peer.socket);
 
@@ -159,46 +185,42 @@ fn outbound(
         }
     });
 
-    let inputs = |packets| batches(&local.reads, packets);
-    measure(group, id, &event_loop, &arrivals, inputs, |batch| {
-        let packets = batch.len();
-        event_loop.tun_reads.blocking_send(batch).unwrap();
+    let inputs = |packets| device.grants(packets);
+    let measures = measure(
+        group,
+        measurement,
+        id,
+        &event_loop,
+        &arrivals,
+        inputs,
+        |packets| {
+            device.grant(packets);
 
-        packets
-    });
+            packets
+        },
+    );
 
     event_loop.stop();
+
+    measures
 }
 
 /// Sends encrypted datagrams to the tunnel's UDP socket and counts the packets it writes to TUN.
-fn inbound(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+fn inbound<M: Measurement + Copy>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     local: Side,
     mut peer: Side,
     now: Instant,
-) {
-    let (event_loop, mut tun_writes) = EventLoop::spawn(local.state, local.socket, now);
-    let arrivals = Arc::new(Arrivals::default());
-    let tun_write = std::thread::Builder::new()
-        .name("tun-write".to_owned())
-        .spawn({
-            let arrivals = arrivals.clone();
-
-            move || {
-                prioritize_stand_in();
-                while let Some(batch) = tun_writes.blocking_recv() {
-                    arrivals.add(batch.len());
-                }
-            }
-        })
-        .unwrap();
+) -> Option<(String, Measures)> {
+    let device = Device::new(&local.reads);
+    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
     let (runtime, socket) = bind_peer(peer.socket);
 
     #[cfg(target_os = "macos")]
     {
-        let batch = batches(&local.reads, FLOW_SOCKET_PACKETS).remove(0);
-        event_loop.tun_reads.blocking_send(batch).unwrap();
+        device.grant(FLOW_SOCKET_PACKETS);
 
         let mut received = 0;
         while received < FLOW_SOCKET_PACKETS {
@@ -210,15 +232,24 @@ fn inbound(
         peer.state
             .encapsulate(&peer.reads, packets, now, local.socket)
     };
-    measure(group, id, &event_loop, &arrivals, inputs, |datagram| {
-        let packets = datagram.packet.len() / datagram.segment_size;
-        runtime.block_on(socket.send(datagram)).unwrap();
+    let measures = measure(
+        group,
+        measurement,
+        id,
+        &event_loop,
+        device.writes(),
+        inputs,
+        |datagram| {
+            let packets = datagram.packet.len() / datagram.segment_size;
+            runtime.block_on(socket.send(datagram)).unwrap();
 
-        packets
-    });
+            packets
+        },
+    );
 
     event_loop.stop();
-    tun_write.join().unwrap();
+
+    measures
 }
 
 /// One side of an established connection.
@@ -234,10 +265,10 @@ enum State {
     Gateway(GatewayState),
 }
 
-fn connect(resource: Resource, protocol: Protocol, flow_logs: bool) -> (Side, Side, Instant) {
+fn connect(resource: Resource, flow_logs: bool) -> (Side, Side, Instant) {
     let mut tunnel = Tunnel::established(resource, flow_logs);
-    let request = tunnel.request(protocol);
-    let reply = tunnel.reply(protocol);
+    let request = tunnel.request();
+    let reply = tunnel.reply();
 
     let client = Side {
         state: State::Client(tunnel.client),
@@ -307,18 +338,12 @@ struct EventLoop {
     thread: JoinHandle<()>,
     /// How often its thread has parked.
     parks: Arc<AtomicU64>,
-    /// The packets its TUN device reads.
-    tun_reads: tun::InboundTx,
+    device: Device,
 }
 
 impl EventLoop {
-    /// Spawns the event loop of a tunnel bound to `socket`.
-    ///
-    /// Returns the packets written to its TUN device alongside.
-    fn spawn(state: State, socket: SocketAddr, now: Instant) -> (Self, tun::OutboundRx) {
-        let (tun_reads, reads) = tun::inbound_channel();
-        let (writes, tun_writes) = tun::outbound_channel();
-        let tun = Box::new(FakeTun { reads, writes });
+    /// Spawns the event loop of a tunnel bound to `socket`, with its TUN workers on `device`.
+    fn spawn(state: State, socket: SocketAddr, now: Instant, device: &Device) -> Self {
         let tcp: Arc<dyn SocketFactory<TcpSocket>> = Arc::new(socket_factory::tcp);
         let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(move |addr| match addr {
             SocketAddr::V4(_) => socket_factory::udp(socket),
@@ -339,6 +364,7 @@ impl EventLoop {
             .unwrap();
         let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
             let _guard = runtime.enter();
+            let tun = device.io(runtime.handle());
 
             match state {
                 State::Client(client) => {
@@ -379,14 +405,11 @@ impl EventLoop {
             })
             .unwrap();
 
-        (
-            Self {
-                thread,
-                parks,
-                tun_reads,
-            },
-            tun_writes,
-        )
+        Self {
+            thread,
+            parks,
+            device: device.clone(),
+        }
     }
 
     /// Returns how often the event loop's thread has parked.
@@ -394,28 +417,10 @@ impl EventLoop {
         self.parks.load(Ordering::Relaxed)
     }
 
+    /// Closes the TUN device, which stops its workers and thereby the event loop.
     fn stop(self) {
-        drop(self.tun_reads);
+        self.device.stop();
         self.thread.join().unwrap();
-    }
-}
-
-struct FakeTun {
-    reads: tun::InboundRx,
-    writes: tun::OutboundTx,
-}
-
-impl tun::Tun for FakeTun {
-    fn sender(&mut self) -> &mut tun::OutboundTx {
-        &mut self.writes
-    }
-
-    fn receiver(&mut self) -> &mut tun::InboundRx {
-        &mut self.reads
-    }
-
-    fn name(&self) -> &str {
-        "fake"
     }
 }
 
@@ -452,22 +457,26 @@ impl Arrivals {
 }
 
 /// Measures sending packets through the tunnel in bursts, at most [`IN_FLIGHT`] packets ahead of
-/// those that arrived, and reports if the event loop parked while packets were in flight.
+/// those that arrived.
 ///
 /// `inputs` returns the inputs holding the given number of packets, `send` how many packets an
-/// input holds.
-fn measure<T>(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+/// input holds. Returns the measures under the benchmark's name as criterion reports it, or
+/// nothing for skipped or test runs, which send too few packets to tell.
+#[allow(clippy::print_stdout, clippy::print_stderr)]
+fn measure<M: Measurement + Copy, T>(
+    group: &mut BenchmarkGroup<'_, M>,
+    measurement: M,
     id: String,
     event_loop: &EventLoop,
     arrivals: &Arrivals,
     mut inputs: impl FnMut(usize) -> Vec<T>,
     mut send: impl FnMut(T) -> usize,
-) {
-    let before = (event_loop.parks(), arrivals.count());
-    group.bench_function(id, |b| {
+) -> Option<(String, Measures)> {
+    let before = (event_loop.parks(), arrivals.count(), cpu_by_thread());
+    let mut elapsed = Duration::ZERO;
+    group.bench_function(&id, |b| {
         b.iter_custom(|iters| {
-            let mut elapsed = Duration::ZERO;
+            let mut measured = measurement.zero();
             let mut remaining = usize::try_from(iters).unwrap();
             while remaining > 0 {
                 let packets = remaining.min(BURST);
@@ -475,6 +484,7 @@ fn measure<T>(
                 let inputs = inputs(packets);
 
                 let start = Instant::now();
+                let measuring = measurement.start();
                 let arrived = arrivals.count();
                 let mut sent = 0_usize;
                 for input in inputs {
@@ -482,51 +492,132 @@ fn measure<T>(
                     sent += send(input);
                 }
                 arrivals.wait_for(arrived + packets);
+                measured = measurement.add(&measured, &measurement.end(measuring));
                 elapsed += start.elapsed();
             }
 
-            elapsed
+            measured
         })
     });
     let packets = arrivals.count() - before.1;
-    let parks = (event_loop.parks() - before.0) as f64 * 1000.0 / packets as f64;
+    if packets < BURST {
+        return None;
+    }
 
-    // Skipped or test runs send too few packets to tell.
-    #[allow(clippy::print_stderr)]
-    if packets >= BURST && parks > MAX_PARKS_PER_1K_PACKETS {
+    let measures = Measures {
+        packets,
+        elapsed,
+        parks: event_loop.parks() - before.0,
+        cpu: cpu_by_thread()
+            .into_iter()
+            .map(|(name, after)| {
+                let before = before.2.get(&name).copied().unwrap_or_default();
+
+                (name, after.saturating_sub(before))
+            })
+            .collect(),
+    };
+    if measures.starved() {
         eprintln!(
-            "Event loop thread parked {parks:.2} times per 1000 packets and may not be the bottleneck"
+            "Event loop thread parked {:.2} times per 1000 packets and may not have been the bottleneck",
+            measures.parks_per_1k()
         );
     }
+
+    Some((format!("{GROUP}/{id}"), measures))
+}
+
+/// What a benchmark measured besides criterion's wall time.
+struct Measures {
+    packets: usize,
+    /// The wall time the packets took, over all of criterion's iterations.
+    elapsed: Duration,
+    parks: u64,
+    /// The CPU time each thread spent during the benchmark.
+    cpu: BTreeMap<String, Duration>,
+}
+
+impl Measures {
+    /// Returns the throughput in bits per second and each stage's CPU time per packet in Bencher
+    /// Metric Format.
+    fn bmf(&self) -> serde_json::Value {
+        let value = |value: f64| serde_json::json!({ "value": value });
+        let mut bmf =
+            serde_json::Map::from_iter([("throughput".to_owned(), value(self.bitrate()))]);
+        for (slug, prefix) in self.active_stages() {
+            bmf.insert(slug.to_owned(), value(self.cpu_ns_per_packet(prefix)));
+        }
+
+        bmf.into()
+    }
+
+    /// Whether a stand-in thread fell behind, leaving the event loop idle while packets were in
+    /// flight.
+    fn starved(&self) -> bool {
+        self.parks_per_1k() > MAX_PARKS_PER_1K_PACKETS
+    }
+
+    fn parks_per_1k(&self) -> f64 {
+        self.parks as f64 * 1000.0 / self.packets as f64
+    }
+
+    /// Returns the packets per second.
+    fn throughput(&self) -> f64 {
+        self.packets as f64 / self.elapsed.as_secs_f64()
+    }
+
+    /// Returns the bits per second.
+    fn bitrate(&self) -> f64 {
+        self.throughput() * (SIZE * 8) as f64
+    }
+
+    /// Returns the CPU nanoseconds per packet of all threads of the given stage together.
+    fn cpu_ns_per_packet(&self, prefix: &str) -> f64 {
+        let cpu = self
+            .stage_threads(prefix)
+            .map(|(_, cpu)| cpu)
+            .sum::<Duration>();
+
+        cpu.as_nanos() as f64 / self.packets as f64
+    }
+
+    /// The stages that had a thread during the benchmark; a benchmark without a TUN device has
+    /// no TUN threads.
+    fn active_stages(&self) -> impl Iterator<Item = (&'static str, &'static str)> {
+        Stage::ALL
+            .into_iter()
+            .map(|stage| (stage.name(), stage.thread_prefix()))
+            .filter(|(_, prefix)| self.stage_threads(prefix).next().is_some())
+    }
+
+    fn stage_threads(&self, prefix: &str) -> impl Iterator<Item = (&String, &Duration)> {
+        self.cpu
+            .iter()
+            .filter(move |(name, _)| name.starts_with(prefix))
+    }
+}
+
+/// Returns the CPU time of every thread of this process so far, by name.
+fn cpu_by_thread() -> BTreeMap<String, Duration> {
+    thread_cpu_times()
+        .into_iter()
+        .fold(BTreeMap::new(), |mut threads, (name, cpu)| {
+            *threads.entry(name).or_default() += cpu;
+
+            threads
+        })
 }
 
 /// Raises the scheduling priority of the calling thread on macOS.
 ///
-/// The stand-in threads take the place of a kernel TUN device and a remote peer, neither of which
-/// is subject to macOS' quality-of-service scheduling. At the default QoS class, their wake-ups
-/// are delayed enough to starve the event loop between hand-offs.
+/// The stand-in thread takes the place of a remote peer, which is not subject to macOS'
+/// quality-of-service scheduling. At the default QoS class, its wake-ups are delayed enough to
+/// starve the event loop between hand-offs.
 fn prioritize_stand_in() {
     #[cfg(target_os = "macos")]
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
     }
-}
-
-/// Returns `count` copies of `packet` in batches.
-fn batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
-    let mut batches = Vec::<PacketBatch>::new();
-    for i in 0..count {
-        if i % MAX_BATCH_SIZE == 0 {
-            batches.push(PacketBatch::default());
-        }
-        batches
-            .last_mut()
-            .unwrap()
-            .try_push(packet.clone())
-            .unwrap();
-    }
-
-    batches
 }
 
 /// Binds the peer's socket, on a runtime with a single worker thread.
@@ -597,15 +688,6 @@ impl std::fmt::Display for Resource {
         match self {
             Resource::Cidr => f.write_str("cidr"),
             Resource::Dns => f.write_str("dns"),
-        }
-    }
-}
-
-impl std::fmt::Display for Protocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Protocol::Udp => f.write_str("udp"),
-            Protocol::Tcp => f.write_str("tcp"),
         }
     }
 }
@@ -698,7 +780,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(&mut tunnel.request(Protocol::Udp), now)
+            .handle_tun_input(&mut tunnel.request(), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -708,13 +790,13 @@ impl Tunnel {
         tunnel
     }
 
-    fn request(&self, protocol: Protocol) -> IpPacket {
-        packet(protocol, CLIENT_TUN_V4.into(), self.dst, 50000, 443)
+    fn request(&self) -> IpPacket {
+        packet(CLIENT_TUN_V4.into(), self.dst, 50000, 443)
     }
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
-    fn reply(&mut self, protocol: Protocol) -> IpPacket {
-        let mut request = self.request(protocol);
+    fn reply(&mut self) -> IpPacket {
+        let mut request = self.request();
         let datagram = self
             .client
             .handle_tun_input(&mut request, self.now)
@@ -737,24 +819,10 @@ impl Tunnel {
             )
             .unwrap()
             .unwrap();
-        let (sport, dport) = match protocol {
-            Protocol::Udp => {
-                let udp = request.as_udp().unwrap();
-                (udp.source_port(), udp.destination_port())
-            }
-            Protocol::Tcp => {
-                let tcp = request.as_tcp().unwrap();
-                (tcp.source_port(), tcp.destination_port())
-            }
-        };
+        let udp = request.as_udp().unwrap();
+        let (sport, dport) = (udp.source_port(), udp.destination_port());
 
-        packet(
-            protocol,
-            request.destination(),
-            request.source(),
-            dport,
-            sport,
-        )
+        packet(request.destination(), request.source(), dport, sport)
     }
 
     fn step(&mut self, resource: Resource) {
@@ -902,22 +970,9 @@ fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
         .unwrap()
 }
 
-/// Returns a packet of [`SIZE`] bytes, a data segment of an established connection for TCP.
-fn packet(protocol: Protocol, src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
-    match protocol {
-        Protocol::Udp => {
-            ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
-        }
-        Protocol::Tcp => {
-            let ack = TcpFlags {
-                syn: false,
-                ack: true,
-                rst: false,
-            };
-
-            ip_packet::make::tcp_packet(src, dst, sport, dport, ack, &[0; SIZE - 40]).unwrap()
-        }
-    }
+/// Returns a UDP packet of [`SIZE`] bytes.
+fn packet(src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
+    ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
 }
 
 fn binding_response(request: &[u8], from: SocketAddr) -> Option<Vec<u8>> {
