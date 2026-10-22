@@ -140,12 +140,6 @@ where
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
-            if now >= goodbye.deadline {
-                tracing::debug!(id = %cid, state = %connection.state, index = %connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
-                connection.state = ConnectionState::Failed;
-                continue;
-            }
-
             connection.handle_timeout(
                 cid,
                 now,
@@ -155,36 +149,41 @@ where
                 inflight_stun_requests,
             );
 
-            let Ok(socket) = connection.ready_socket(cid) else {
-                continue;
-            };
+            // The goodbye may have to wait for a channel binding or a handshake, e.g. when
+            // the peer's handshake response arrived but it has not confirmed the session yet.
+            if let Ok(socket) = connection.ready_socket(cid) {
+                let encrypted = connection
+                    .encapsulate(cid, socket, &goodbye.packet, now, allocations)
+                    .and_then(|encapsulation| {
+                        let Some(encapsulation) = encapsulation else {
+                            return Ok(None);
+                        };
 
-            let encrypted = connection
-                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
-                .and_then(|encapsulation| {
-                    let Some(encapsulation) = encapsulation else {
-                        return Ok(None);
-                    };
+                        let transmit = encapsulation.encrypt(&goodbye.packet)?;
 
-                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+                        Ok(Some(transmit))
+                    });
 
-                    Ok(Some(transmit))
-                });
-
-            match encrypted {
-                Ok(Some(transmit)) => {
-                    transmits.push_back(transmit);
-                    tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
-                }
-                Ok(None) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye)");
-                }
-                Err(e) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
+                match encrypted {
+                    Ok(Some(transmit)) => {
+                        transmits.push_back(transmit);
+                        tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
+                        connection.state = ConnectionState::Failed;
+                        continue;
+                    }
+                    Ok(None) => {
+                        tracing::debug!(%cid, "Cannot send goodbye yet");
+                    }
+                    Err(e) => {
+                        tracing::debug!(%cid, "Cannot send goodbye yet: {e:#}");
+                    }
                 }
             }
 
-            connection.state = ConnectionState::Failed;
+            if now >= goodbye.deadline {
+                tracing::debug!(id = %cid, state = %connection.state, index = %connection.tunnel.id(), "Connection closed proactively (failed to send goodbye in time)");
+                connection.state = ConnectionState::Failed;
+            }
         }
 
         self.remove_failed(events, now);
