@@ -16,7 +16,6 @@ telemetry = ["dep:telemetry", "logging/telemetry"]
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
-bimap = { workspace = true }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug", "from", "display"] }

@@ -1,6 +1,5 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
-use bimap::BiHashMap;
 use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{HashMap, HashSet};
@@ -17,8 +16,8 @@ use std::time::{Duration, Instant};
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
-    table: BiHashMap<Inside, Outside, FastRandomState, FastRandomState>,
     state_by_inside: HashMap<Inside, EntryState, FastRandomState>,
+    inside_by_outside: HashMap<Outside, Inside, FastRandomState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
     expired: HashSet<Outside, FastRandomState>,
@@ -60,10 +59,9 @@ impl NatTable {
         });
 
         for (inside, state) in expired {
-            let Some((_, outside)) = self.table.remove_by_left(&inside) else {
-                continue;
-            };
+            let outside = state.outside;
 
+            self.inside_by_outside.remove(&outside);
             self.expired.insert(outside);
 
             let last_outgoing = now.duration_since(state.last_outgoing);
@@ -103,11 +101,12 @@ impl NatTable {
         let outside = (src.value()..=u16::MAX)
             .chain(1..src.value())
             .map(|p| Outside(src.with_value(p), outside_dst))
-            .find(|outside| !self.table.contains_right(outside))
+            .find(|outside| !self.inside_by_outside.contains_key(outside))
             .context("Exhausted NAT")?;
 
-        self.table.insert(inside, outside);
-        self.state_by_inside.insert(inside, EntryState::new(now));
+        self.inside_by_outside.insert(outside, inside);
+        self.state_by_inside
+            .insert(inside, EntryState::new(outside, now));
         self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
@@ -121,12 +120,10 @@ impl NatTable {
         now: Instant,
     ) -> Result<Option<(Protocol, IpAddr)>> {
         let inside = Inside(packet.source_protocol()?, packet.destination());
-        let Some(outside) = self.table.get_by_left(&inside).copied() else {
-            return Ok(None);
-        };
         let Some(state) = self.state_by_inside.get_mut(&inside) else {
             return Ok(None);
         };
+        let outside = state.outside;
 
         tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
 
@@ -191,7 +188,7 @@ impl NatTable {
         outside: &Outside,
         now: Instant,
     ) -> Option<(Inside, &mut EntryState)> {
-        let inside = *self.table.get_by_right(outside)?;
+        let inside = *self.inside_by_outside.get(outside)?;
         let state = self.state_by_inside.get_mut(&inside)?;
 
         tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
@@ -207,6 +204,7 @@ impl NatTable {
 
 #[derive(Debug)]
 struct EntryState {
+    outside: Outside,
     last_outgoing: Instant,
     last_incoming: Option<Instant>,
 
@@ -217,8 +215,9 @@ struct EntryState {
 }
 
 impl EntryState {
-    fn new(last_outgoing: Instant) -> Self {
+    fn new(outside: Outside, last_outgoing: Instant) -> Self {
         Self {
+            outside,
             last_outgoing,
             last_incoming: None,
             outgoing_rst: false,
