@@ -22,7 +22,6 @@ defmodule Portal.Changes.Consumer do
     "devices" => Hooks.Devices,
     "external_identities" => Hooks.ExternalIdentities,
     "policy_authorizations" => Hooks.PolicyAuthorizations,
-    "gateway_tokens" => Hooks.GatewayTokens,
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
