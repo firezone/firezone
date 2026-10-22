@@ -410,7 +410,7 @@ defmodule Portal.Safe do
 
   @spec insert_all(
           Unscoped.t(),
-          atom() | Ecto.Schema.t(),
+          atom() | Ecto.Schema.t() | String.t(),
           [map() | Keyword.t()] | Ecto.Query.t(),
           Keyword.t()
         ) ::

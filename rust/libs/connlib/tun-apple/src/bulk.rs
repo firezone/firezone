@@ -54,7 +54,8 @@ impl Fd {
         interest: Interest,
         syscalls: &'static sys::BatchSyscalls,
     ) -> io::Result<Self> {
-        let fd = AsyncFd::with_interest(fd, interest)?;
+        // Safety: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+        let fd = unsafe { AsyncFd::register_with_interest(fd, interest)? };
 
         Ok(Self { fd, syscalls })
     }
