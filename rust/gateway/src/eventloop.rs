@@ -392,6 +392,7 @@ impl Eventloop {
                     msg.expires_at,
                     msg.resource,
                     msg.use_iceless,
+                    msg.ice_role,
                     now,
                     msg.flow_logs_ingest_token,
                 );
