@@ -430,25 +430,6 @@ pub struct Buffer<B: Buf + 'static> {
     pool: &'static BufferPool<B>,
 }
 
-impl Buffer<Vec<u8>> {
-    /// Shifts the start of the buffer to the right by N bytes, returning the bytes removed from the front of the buffer.
-    pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
-        let num_to_end = self.split_off(num);
-
-        std::mem::replace(self.storage_mut(), num_to_end)
-    }
-
-    /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
-    pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
-        let current_len = self.len();
-
-        self.resize(current_len + num, 0);
-        self.copy_within(..current_len, num);
-
-        &mut self[..num]
-    }
-}
-
 impl<B> Buffer<B>
 where
     B: Buf,
@@ -948,30 +929,6 @@ mod tests {
         // The dropped buffer's storage is recycled; it must come back empty.
         let buf = POOL.pull();
         assert!(buf.is_empty());
-    }
-
-    #[test]
-    fn shift_start_right() {
-        let pool = test_pool!(1024);
-
-        let mut buffer = pool.pull_initialised(b"hello world");
-
-        let front = buffer.shift_start_right(5);
-
-        assert_eq!(front, b"hello");
-        assert_eq!(&*buffer, b" world");
-    }
-
-    #[test]
-    fn shift_start_left() {
-        let pool = test_pool!(1024);
-
-        let mut buffer = pool.pull_initialised(b"hello world");
-
-        let front = buffer.shift_start_left(5);
-        front.copy_from_slice(b"12345");
-
-        assert_eq!(&*buffer, b"12345hello world");
     }
 
     /// Declares a new pool, so tests don't share buffers.
