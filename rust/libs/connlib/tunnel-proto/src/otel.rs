@@ -1,8 +1,6 @@
 pub mod attr {
     pub use otel_attributes::*;
 
-    use opentelemetry::KeyValue;
-
     pub fn network_protocol_name(kind: crate::packet_kind::Kind) -> KeyValue {
         const KEY: &str = "network.protocol.name";
 

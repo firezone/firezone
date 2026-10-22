@@ -31,11 +31,12 @@ defmodule PortalWeb.AnalyticsTest do
 
       assert properties["distinct_id"] == actor.id
       assert properties["$groups"] == %{"account" => account.id}
-      assert properties["$process_person_profile"] == false
+      refute Map.has_key?(properties, "$process_person_profile")
+      assert properties["account_name"] == account.name
+      assert properties["account_slug"] == account.slug
       assert properties["$pathname"] == "/:account_id_or_slug/sites"
       assert properties["$current_url"] == PortalWeb.Endpoint.url() <> "/:account_id_or_slug/sites"
       assert properties["view"] == "PortalWeb.Sites"
-      refute JSON.encode!(body) =~ account.slug
       refute JSON.encode!(body) =~ actor.email
     end
 
@@ -82,6 +83,8 @@ defmodule PortalWeb.AnalyticsTest do
       assert properties["view"] == "PortalWeb.Sites"
       assert properties["$pathname"] == "/:account_id_or_slug/sites"
       assert properties["$groups"] == %{"account" => account.id}
+      assert properties["account_name"] == account.name
+      assert properties["account_slug"] == account.slug
       assert properties["distinct_id"] == actor.id
       refute JSON.encode!(body) =~ "do-not-send"
     end

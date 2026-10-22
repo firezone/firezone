@@ -42,9 +42,7 @@ defmodule Portal.Analytics.PostHog do
         "account_id" => account.id,
         "account_name" => account.name,
         "account_slug" => account.slug,
-        "actor_type" => actor.type,
-        "email" => actor.email,
-        "name" => actor.name
+        "actor_type" => actor.type
       }
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
@@ -66,11 +64,11 @@ defmodule Portal.Analytics.PostHog do
   @doc false
   @spec capture(String.t(), String.t(), map()) :: :ok | {:error, term()}
   def capture(event, distinct_id, properties) do
-    if enabled?() do
-      post(@single_event_path, %{
-        "event" => event,
-        "properties" => Map.put(properties, "distinct_id", distinct_id)
-      })
+    config = fetch_config()
+
+    if Keyword.fetch!(config, :enabled) do
+      event = %{"event" => event, "properties" => Map.put(properties, "distinct_id", distinct_id)}
+      post(config, @single_event_path, put_web_external_url(event, config[:web_external_url]))
     else
       :ok
     end
@@ -85,8 +83,11 @@ defmodule Portal.Analytics.PostHog do
   def batch([]), do: :ok
 
   def batch(events) do
-    if enabled?() do
-      post(@batch_path, %{"batch" => events})
+    config = fetch_config()
+
+    if Keyword.fetch!(config, :enabled) do
+      url = config[:web_external_url]
+      post(config, @batch_path, %{"batch" => Enum.map(events, &put_web_external_url(&1, url))})
     else
       :ok
     end
@@ -104,15 +105,27 @@ defmodule Portal.Analytics.PostHog do
     Ecto.UUID.load!(<<a::48, 8::4, b::12, 2::2, c::62>>)
   end
 
-  @spec enabled?() :: boolean()
-  def enabled? do
-    :portal
-    |> Portal.Config.fetch_env!(__MODULE__)
-    |> Keyword.fetch!(:enabled)
+  @doc """
+  The account properties every product analytics event carries.
+  """
+  @spec account_properties(%{
+          :name => String.t() | nil,
+          :slug => String.t() | nil,
+          optional(atom()) => any()
+        }) :: map()
+  def account_properties(account) do
+    %{"account_name" => account.name, "account_slug" => account.slug}
   end
 
-  defp post(path, body) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+  @spec enabled?() :: boolean()
+  def enabled?, do: Keyword.fetch!(fetch_config(), :enabled)
+
+  defp fetch_config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
+
+  # Environments share one PostHog project, so every event says which portal sent it.
+  defp put_web_external_url(event, url), do: put_in(event, ["properties", "web_external_url"], url)
+
+  defp post(config, path, body) do
     body = Map.put(body, "api_key", Keyword.fetch!(config, :project_api_key))
 
     req_opts =

@@ -12,6 +12,12 @@ defmodule PortalAPI.Endpoint do
   plug :put_hsts_header
   plug Plug.Head
 
+  plug Plug.Static,
+    at: "/.well-known",
+    from: {:portal, "priv/static/.well-known"},
+    only: ["openai-apps-challenge"],
+    content_types: %{"openai-apps-challenge" => "text/plain"}
+
   if code_reloading? do
     plug Phoenix.CodeReloader
   end

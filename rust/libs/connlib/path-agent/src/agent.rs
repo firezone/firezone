@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use crate::candidate::Candidate;
+use crate::candidate::{Candidate, CandidateKind};
 use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
@@ -44,7 +44,6 @@ pub struct PathAgent {
     last_now: Option<Instant>,
     events: VecDeque<Event>,
 
-    peer_reflexive_addrs: BTreeSet<SocketAddr>,
     next_pair_id: u16,
 }
 
@@ -258,19 +257,17 @@ impl PathAgent {
         self.last_now = Some(now);
 
         // Promote a previously-registered peer-reflexive in place so the
-        // existing `PairState` (RTT, inflight, schedule) survives. Only consume
-        // the marker once we actually promote: at registration time the srflx
-        // candidate is not in `remotes` yet, so `find` is `None` and we must
-        // leave the marker for the later signaled candidate.
-        if self.peer_reflexive_addrs.contains(&c.addr())
-            && let Some(existing) = self.remotes.iter_mut().find(|x| x.addr() == c.addr())
+        // existing `PairState` (RTT, inflight, schedule) survives.
+        if let Some(existing) = self
+            .remotes
+            .iter_mut()
+            .find(|x| x.kind() == CandidateKind::PeerReflexive && x.addr() == c.addr())
         {
             tracing::debug!(
                 remote = %c.addr(),
                 kind = ?c.kind(),
                 "Promoting peer-reflexive remote to signaled candidate",
             );
-            self.peer_reflexive_addrs.remove(&c.addr());
             *existing = c;
             for ((_, remote_addr), state) in self.pairs.iter_mut() {
                 if *remote_addr == c.addr() {
@@ -361,7 +358,6 @@ impl PathAgent {
 
         let removed = self.remotes.remove(i).addr();
         self.pairs.retain(|(_, remote), _| *remote != removed);
-        self.peer_reflexive_addrs.remove(&removed);
 
         if self.primary.is_some_and(|(_, remote)| remote == removed) {
             self.clear_and_reprobe(now);
@@ -909,16 +905,19 @@ impl PathAgent {
     fn register_peer_reflexive(&mut self, pair: (SocketAddr, SocketAddr), now: Instant) {
         // The peer reached us from a mapping they didn't advertise (symmetric
         // NAT). Registering it is a new candidate, which re-probes.
-        if self.peer_reflexive_addrs.len() < MAX_PEER_REFLEXIVE
-            && !self.remotes.iter().any(|c| c.addr() == pair.1)
-        {
+        let peer_reflexive = self
+            .remotes
+            .iter()
+            .filter(|c| c.kind() == CandidateKind::PeerReflexive)
+            .count();
+
+        if peer_reflexive < MAX_PEER_REFLEXIVE && !self.remotes.iter().any(|c| c.addr() == pair.1) {
             tracing::debug!(
                 local = %pair.0,
                 remote = %pair.1,
                 "Discovered peer-reflexive remote candidate",
             );
-            self.peer_reflexive_addrs.insert(pair.1);
-            self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1), now);
+            self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
         }
     }
 

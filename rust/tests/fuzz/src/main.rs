@@ -3,7 +3,7 @@
 
 use std::{path::PathBuf, sync::LazyLock, time::Instant};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
@@ -13,7 +13,7 @@ mod targets;
 
 static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     seeded_rng::reset(0);
     // Forked inputs inherit the same clock anchor, including its subsecond offset.
@@ -96,7 +96,7 @@ enum Target {
     X509Claims,
 }
 
-fn load_inputs(paths: Vec<PathBuf>) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
+fn load_inputs(paths: Vec<PathBuf>) -> Result<Vec<(PathBuf, Vec<u8>)>> {
     let mut files = Vec::new();
     for path in paths {
         if path.is_dir() {
@@ -124,7 +124,7 @@ fn load_inputs(paths: Vec<PathBuf>) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
 
             Ok((path, data))
         })
-        .collect::<anyhow::Result<Vec<_>>>()?;
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(inputs)
 }

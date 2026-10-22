@@ -1,24 +1,28 @@
 defmodule Portal.Analytics.ConfigurationChangesTest do
-  use ExUnit.Case, async: true
+  use Portal.DataCase, async: true
+
+  import Portal.AccountFixtures
 
   alias Portal.Analytics.ConfigurationChanges
   alias Portal.Analytics.PostHog
 
   @account_id "a649f7b5-ef17-45a9-8983-48e02d441e0e"
   @actor_id "c69036ab-96d0-4534-86b6-f1af9092015c"
+  @accounts %{@account_id => %{name: "Analytical Engines", slug: "analytical-engines"}}
   @browser "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"
 
   describe "events/1" do
     test "builds an event with the object, operation and source" do
-      assert [event] = ConfigurationChanges.events([entry()])
+      assert [event] = ConfigurationChanges.events([entry()], @accounts)
 
       assert event["event"] == "Configuration Changed"
       assert event["timestamp"] == "2026-10-19T12:00:00.000000Z"
 
       assert event["properties"] == %{
                "distinct_id" => @actor_id,
-               "$process_person_profile" => false,
                "$groups" => %{"account" => @account_id},
+               "account_name" => "Analytical Engines",
+               "account_slug" => "analytical-engines",
                "object" => "resource",
                "operation" => "insert",
                "source" => "portal"
@@ -37,7 +41,7 @@ defmodule Portal.Analytics.ConfigurationChangesTest do
           [event] =
             ConfigurationChanges.events([
               entry(subject: %{"actor_id" => @actor_id, "actor_type" => actor_type, "user_agent" => user_agent})
-            ])
+            ], @accounts)
 
           event["properties"]["source"]
         end
@@ -48,7 +52,7 @@ defmodule Portal.Analytics.ConfigurationChangesTest do
     test "names provider tables by kind and type" do
       objects =
         for table <- ~w[okta_directories google_auth_providers datadog_log_sinks intune_posture_providers] do
-          [%{"properties" => properties}] = ConfigurationChanges.events([entry(object: table)])
+          [%{"properties" => properties}] = ConfigurationChanges.events([entry(object: table)], @accounts)
           {properties["object"], properties["object_type"]}
         end
 
@@ -66,13 +70,13 @@ defmodule Portal.Analytics.ConfigurationChangesTest do
                entry(object: "memberships"),
                entry(object: "devices"),
                entry(object: "one_time_passcodes")
-             ]) == []
+             ], @accounts) == []
     end
 
     test "never sends object data" do
       payload =
         [entry(after: %{"name" => "Secret Resource", "address" => "secret.example.com"})]
-        |> ConfigurationChanges.events()
+        |> ConfigurationChanges.events(@accounts)
         |> JSON.encode!()
 
       refute payload =~ "Secret Resource"
@@ -81,9 +85,9 @@ defmodule Portal.Analytics.ConfigurationChangesTest do
     end
 
     test "maps the same write to the same event UUID" do
-      [first] = ConfigurationChanges.events([entry(lsn: 100)])
-      [replayed] = ConfigurationChanges.events([entry(lsn: 100)])
-      [other] = ConfigurationChanges.events([entry(lsn: 101)])
+      [first] = ConfigurationChanges.events([entry(lsn: 100)], @accounts)
+      [replayed] = ConfigurationChanges.events([entry(lsn: 100)], @accounts)
+      [other] = ConfigurationChanges.events([entry(lsn: 101)], @accounts)
 
       assert first["uuid"] == replayed["uuid"]
       assert first["uuid"] != other["uuid"]
@@ -103,12 +107,29 @@ defmodule Portal.Analytics.ConfigurationChangesTest do
       :ok
     end
 
-    test "sends the events to the batch endpoint" do
+    test "sends the events to the batch endpoint with the account's name and slug" do
+      account = account_fixture()
       put_posthog_config(enabled: true)
 
-      assert :ok = ConfigurationChanges.capture([entry(), entry(subject: nil)])
+      assert :ok =
+               ConfigurationChanges.capture([
+                 entry(account_id: account.id),
+                 entry(account_id: account.id, subject: nil)
+               ])
 
-      assert_receive {:posthog, "/batch/", %{"batch" => [%{"event" => "Configuration Changed"}]}}
+      assert_receive {:posthog, "/batch/", %{"batch" => [%{"properties" => properties}]}}
+      assert properties["account_name"] == account.name
+      assert properties["account_slug"] == account.slug
+    end
+
+    test "sends changes of a deleted account without its name and slug" do
+      put_posthog_config(enabled: true)
+
+      assert :ok = ConfigurationChanges.capture([entry(account_id: Ecto.UUID.generate())])
+
+      assert_receive {:posthog, "/batch/", %{"batch" => [%{"properties" => properties}]}}
+      assert properties["account_name"] == nil
+      assert properties["account_slug"] == nil
     end
 
     test "sends nothing when PostHog is disabled" do

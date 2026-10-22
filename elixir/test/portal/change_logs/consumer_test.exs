@@ -934,6 +934,8 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert properties["object"] == "policy"
       assert properties["operation"] == "delete"
       assert properties["source"] == "terraform"
+      assert properties["account_name"] == account.name
+      assert properties["account_slug"] == account.slug
     end
 
     test "flushes entries regardless of buffer key order", %{account: account} do

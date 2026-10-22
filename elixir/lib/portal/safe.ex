@@ -410,7 +410,7 @@ defmodule Portal.Safe do
 
   @spec insert_all(
           Unscoped.t(),
-          atom() | Ecto.Schema.t(),
+          atom() | Ecto.Schema.t() | String.t(),
           [map() | Keyword.t()] | Ecto.Query.t(),
           Keyword.t()
         ) ::
@@ -898,29 +898,29 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
   def permit(_action, Portal.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.PostureProvider, :api_client) when action in [:read, :update, :delete], do: :ok
   def permit(_action, Portal.Intune.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.Intune.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.Intune.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Intune.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Intune.Device, :api_client), do: :ok
   def permit(_action, Portal.Iru.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.Iru.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.Iru.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Iru.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Iru.Device, :api_client), do: :ok
   def permit(_action, Portal.Defender.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.Defender.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.Defender.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Defender.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Defender.Device, :api_client), do: :ok
   def permit(_action, Portal.Santa.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.Santa.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.Santa.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Santa.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Santa.Device, :api_client), do: :ok
   def permit(_action, Portal.SentinelOne.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.SentinelOne.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.SentinelOne.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.SentinelOne.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.SentinelOne.Device, :api_client), do: :ok
   def permit(_action, Portal.Sophos.PostureProvider, :account_admin_user), do: :ok
-  def permit(:read, Portal.Sophos.PostureProvider, :api_client), do: :ok
+  def permit(action, Portal.Sophos.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Sophos.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Sophos.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok

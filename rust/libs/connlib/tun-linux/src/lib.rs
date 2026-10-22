@@ -17,10 +17,12 @@ use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use futures::future::{self, Either};
 use opentelemetry::KeyValue;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::io;
 use std::mem;
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::pin::pin;
+use std::sync::Arc;
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tun_offload::virtio::{self, VNET_HDR_LEN};
@@ -40,14 +42,71 @@ pub struct Io {
 impl Io {
     pub fn new(
         name: impl Into<String>,
-        fd: TunFd<std::sync::Arc<std::os::fd::OwnedFd>>,
+        fd: TunFd<Arc<OwnedFd>>,
         runtime: &tokio::runtime::Handle,
     ) -> Result<Self> {
+        let TunFd { fd, offloads } = fd;
         let send_fd = fd.clone();
+
+        Self::spawn(
+            name,
+            offloads,
+            runtime,
+            // SAFETY: Each `AsyncFd` holds a clone of the `OwnedFd`, keeping it open.
+            move || {
+                unsafe { AsyncFd::register_with_interest(send_fd, Interest::WRITABLE) }
+                    .map(Fd)
+                    .map_err(io::Error::from)
+            },
+            // SAFETY: Each `AsyncFd` holds a clone of the `OwnedFd`, keeping it open.
+            move || {
+                unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }
+                    .map(Fd)
+                    .map_err(io::Error::from)
+            },
+        )
+    }
+
+    /// Starts the worker threads on a device other than a TUN file descriptor, such as an
+    /// in-memory one for benchmarks.
+    pub fn with_device<D>(
+        name: impl Into<String>,
+        device: D,
+        offloads: bool,
+        runtime: &tokio::runtime::Handle,
+    ) -> Result<Self>
+    where
+        D: Device + Clone + Send + 'static,
+    {
+        let send_device = device.clone();
+
+        Self::spawn(
+            name,
+            offloads,
+            runtime,
+            move || Ok(send_device),
+            move || Ok(device),
+        )
+    }
+
+    /// Spawns the workers, each opening its device on its own thread.
+    ///
+    /// An [`AsyncFd`] must be created on the runtime that polls it, which is the worker's own.
+    fn spawn<S, R>(
+        name: impl Into<String>,
+        offloads: bool,
+        runtime: &tokio::runtime::Handle,
+        open_send: impl FnOnce() -> io::Result<S> + Send + 'static,
+        open_recv: impl FnOnce() -> io::Result<R> + Send + 'static,
+    ) -> Result<Self>
+    where
+        S: Device,
+        R: Device,
+    {
         let workers = tun::Workers::spawn(
             runtime,
-            move |outbound_rx| tun_send(send_fd, outbound_rx),
-            move |inbound_tx| tun_recv(fd, inbound_tx),
+            move |outbound_rx| tun_send(open_send, offloads, outbound_rx),
+            move |inbound_tx| tun_recv(open_recv, inbound_tx),
         )?;
 
         Ok(Self {
@@ -86,10 +145,70 @@ impl<T> TunFd<T> {
     }
 }
 
-/// Sends packets from `outbound_rx` to the TUN device, coalescing where possible.
-fn tun_send<T>(tun_fd: TunFd<T>, mut outbound_rx: OutboundRx) -> Result<()>
+/// What the worker threads read super packets from and write them to.
+///
+/// Reads and writes carry a `virtio_net_hdr`, as on a TUN file descriptor with `IFF_VNET_HDR`.
+pub trait Device {
+    /// Waits until [`Device::try_read`] may succeed.
+    fn readable(&self) -> impl Future<Output = io::Result<()>>;
+
+    /// Reads one super packet into `buf`, returning `WouldBlock` once the device is drained.
+    fn try_read(&self, buf: &mut [u8]) -> io::Result<usize>;
+
+    /// Writes one super packet with its `virtio_net_hdr`.
+    fn write(&self, header: &[u8], packet: &[u8]) -> impl Future<Output = io::Result<usize>>;
+}
+
+struct Fd<T: AsRawFd>(AsyncFd<T>);
+
+impl<T> Device for Fd<T>
 where
     T: AsRawFd,
+{
+    async fn readable(&self) -> io::Result<()> {
+        // `try_read` clears the readiness once the file descriptor is drained.
+        self.0.readable().await?.retain_ready();
+
+        Ok(())
+    }
+
+    fn try_read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.0
+            .try_io(Interest::READABLE, |fd| read(fd.as_raw_fd(), buf))
+    }
+
+    async fn write(&self, header: &[u8], packet: &[u8]) -> io::Result<usize> {
+        let iov = [
+            libc::iovec {
+                iov_base: header.as_ptr() as *mut _,
+                iov_len: header.len(),
+            },
+            libc::iovec {
+                iov_base: packet.as_ptr() as *mut _,
+                iov_len: packet.len(),
+            },
+        ];
+
+        self.0
+            .async_io(Interest::WRITABLE, |fd| {
+                // Safety: Both iovecs point at valid memory of the given lengths.
+                match unsafe { libc::writev(fd.as_raw_fd(), iov.as_ptr(), iov.len() as _) } {
+                    -1 => Err(io::Error::last_os_error()),
+                    n => Ok(n as usize),
+                }
+            })
+            .await
+    }
+}
+
+/// Sends packets from `outbound_rx` to the TUN device, coalescing where possible.
+fn tun_send<D>(
+    open: impl FnOnce() -> io::Result<D>,
+    offloads: bool,
+    mut outbound_rx: OutboundRx,
+) -> Result<()>
+where
+    D: Device,
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
@@ -99,9 +218,9 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::WRITABLE)?;
+            let device = open()?;
 
-            let mut coalescer = if tun_fd.offloads {
+            let mut coalescer = if offloads {
                 PacketCoalescer::new([Protocol::Tcp, Protocol::Udp], ChecksumMode::Offloaded)
             } else {
                 PacketCoalescer::passthrough()
@@ -116,7 +235,7 @@ where
                 }
 
                 let gso_failed = write_all(
-                    &fd,
+                    &device,
                     &coalescer.take(),
                     &batch_size_histogram,
                     &dropped_packets_counter,
@@ -142,21 +261,22 @@ where
 }
 
 /// Writes out all ready packets; returns `true` if the kernel rejected a GSO write.
-async fn write_all<T>(
-    fd: &AsyncFd<T>,
+async fn write_all<D>(
+    device: &D,
     ready: &[CoalescedPacket],
     batch_size_histogram: &opentelemetry::metrics::Histogram<u64>,
     dropped_packets_counter: &opentelemetry::metrics::Counter<u64>,
 ) -> bool
 where
-    T: AsRawFd,
+    D: Device,
 {
     let mut gso_failed = false;
 
     for outgoing in ready {
         let num_segments = outgoing.num_segments();
+        let header = virtio::header_for(outgoing);
 
-        match write(fd, outgoing).await {
+        match device.write(&header, outgoing.packet()).await {
             Ok(_) => {
                 if num_segments > 1 {
                     batch_size_histogram.record(num_segments as u64, &send_metric_attributes());
@@ -177,39 +297,10 @@ where
     gso_failed
 }
 
-/// Writes a single packet and its `virtio_net_hdr` to the TUN device.
-async fn write<T>(fd: &AsyncFd<T>, outgoing: &CoalescedPacket) -> io::Result<usize>
-where
-    T: AsRawFd,
-{
-    let hdr = virtio::header_for(outgoing);
-    let packet = outgoing.packet();
-
-    let iov = [
-        libc::iovec {
-            iov_base: hdr.as_ptr() as *mut _,
-            iov_len: hdr.len(),
-        },
-        libc::iovec {
-            iov_base: packet.as_ptr() as *mut _,
-            iov_len: packet.len(),
-        },
-    ];
-
-    fd.async_io(Interest::WRITABLE, |fd| {
-        // Safety: Both iovecs point at valid memory of the given lengths.
-        match unsafe { libc::writev(fd.as_raw_fd(), iov.as_ptr(), iov.len() as _) } {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
-        }
-    })
-    .await
-}
-
 /// Receives packets from the TUN device, splitting super packets into individual [`IpPacket`](ip_packet::IpPacket)s.
-fn tun_recv<T>(tun_fd: TunFd<T>, inbound_tx: InboundTx) -> Result<()>
+fn tun_recv<D>(open: impl FnOnce() -> io::Result<D>, inbound_tx: InboundTx) -> Result<()>
 where
-    T: AsRawFd,
+    D: Device,
 {
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
 
@@ -218,7 +309,7 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(tun_fd.fd, Interest::READABLE)?;
+            let device = open()?;
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
             let mut batch = PacketBatch::default();
             let mut overflow = VecDeque::new();
@@ -227,11 +318,11 @@ where
                 // Without the explicit wake-up on `closed`, this task would idle in
                 // `readable` until the next packet arrives, keeping the TUN fd (and
                 // thereby the device) alive long after the receiver is gone.
-                let readable = pin!(fd.readable());
+                let readable = pin!(device.readable());
                 let closed = pin!(inbound_tx.closed());
 
-                let mut guard = match future::select(readable, closed).await {
-                    Either::Left((guard, _)) => guard?,
+                match future::select(readable, closed).await {
+                    Either::Left((readable, _)) => readable?,
                     Either::Right(((), _)) => {
                         tracing::debug!("Inbound packet receiver gone, shutting down task");
 
@@ -257,14 +348,14 @@ where
                         }
                     }
 
-                    let len = match guard.try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut buf)) {
-                        Ok(Ok(0)) => bail!("TUN file descriptor is closed"),
-                        Ok(Ok(len)) => len,
-                        Ok(Err(e)) => {
+                    let len = match device.try_read(&mut buf) {
+                        Ok(0) => bail!("TUN file descriptor is closed"),
+                        Ok(len) => len,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => break, // Drained; hand off what we have.
+                        Err(e) => {
                             return Err(anyhow::Error::new(e))
                                 .context("Failed to read from TUN FD");
                         }
-                        Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
                     match virtio::split(&buf[..len]) {

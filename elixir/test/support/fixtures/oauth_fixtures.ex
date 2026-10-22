@@ -22,6 +22,8 @@ defmodule Portal.OAuthFixtures do
     |> Ecto.Changeset.change(%{
       client_id: Map.get(attrs, :client_id, "https://client.example.com/#{unique}.json"),
       client_name: Map.get(attrs, :client_name, "Example MCP Client"),
+      token_endpoint_auth_method: Map.get(attrs, :token_endpoint_auth_method, "none"),
+      jwks_uri: Map.get(attrs, :jwks_uri),
       client_uri: Map.get(attrs, :client_uri),
       logo_uri: Map.get(attrs, :logo_uri),
       logo_data: Map.get(attrs, :logo_data),

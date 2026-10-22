@@ -6,7 +6,8 @@ defmodule Portal.Analytics.ConfigurationChanges do
 
   Only configuration objects are tracked, and only changes made by an actor: writes
   without a subject, such as directory sync and background jobs, are skipped. Object
-  data is never sent, only the object kind, the operation and the source.
+  data is never sent, only the object kind, the operation, the source and the
+  account's name and slug.
 
   The source is inferred from the subject's actor type and user agent, since the
   subject recorded in the change log doesn't carry the authentication context:
@@ -20,6 +21,7 @@ defmodule Portal.Analytics.ConfigurationChanges do
   require Logger
 
   alias Portal.Analytics.PostHog
+  alias __MODULE__.Database
 
   @event "Configuration Changed"
   @batch_size 500
@@ -51,36 +53,45 @@ defmodule Portal.Analytics.ConfigurationChanges do
   @spec capture([map()]) :: :ok
   def capture(entries) do
     with true <- PostHog.enabled?(),
-         [_ | _] = events <- events(entries) do
-      Task.Supervisor.start_child(Portal.Analytics.TaskSupervisor, fn -> send_events(events) end)
+         [_ | _] = entries <- Enum.filter(entries, &tracked?/1) do
+      Task.Supervisor.start_child(Portal.Analytics.TaskSupervisor, fn ->
+        entries
+        |> events(Database.fetch_accounts_by_id(entries))
+        |> send_events()
+      end)
     end
 
     :ok
   end
 
   @doc false
-  @spec events([map()]) :: [map()]
-  def events(entries) do
-    Enum.flat_map(entries, fn entry ->
-      with %{"actor_id" => actor_id} = subject when is_binary(actor_id) <- entry.subject,
-           {:ok, object, object_type} <- object(entry.object) do
-        [event(entry, actor_id, subject, object, object_type)]
-      else
-        _ -> []
-      end
-    end)
+  @spec events([map()], %{Ecto.UUID.t() => map()}) :: [map()]
+  def events(entries, accounts_by_id) do
+    for entry <- entries, tracked?(entry) do
+      {:ok, object, object_type} = object(entry.object)
+      account = Map.get(accounts_by_id, entry.account_id, %{name: nil, slug: nil})
+      event(entry, account, object, object_type)
+    end
   end
 
-  defp event(entry, actor_id, subject, object, object_type) do
+  defp tracked?(entry) do
+    match?(%{"actor_id" => actor_id} when is_binary(actor_id), entry.subject) and
+      match?({:ok, _object, _object_type}, object(entry.object))
+  end
+
+  defp event(entry, account, object, object_type) do
+    %{"actor_id" => actor_id} = subject = entry.subject
+
     properties =
-      %{
+      account
+      |> PostHog.account_properties()
+      |> Map.merge(%{
         "distinct_id" => actor_id,
-        "$process_person_profile" => false,
         "$groups" => %{"account" => entry.account_id},
         "object" => object,
         "operation" => Atom.to_string(entry.operation),
         "source" => source(subject)
-      }
+      })
       |> maybe_put("object_type", object_type)
 
     %{
@@ -125,5 +136,24 @@ defmodule Portal.Analytics.ConfigurationChanges do
         {:error, reason} -> Logger.warning("PostHog configuration changes failed", reason: inspect(reason))
       end
     end)
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    # Includes disabled accounts, and leaves out deleted ones, whose changes are
+    # then sent without a name and slug.
+    def fetch_accounts_by_id(entries) do
+      account_ids = entries |> Enum.map(& &1.account_id) |> Enum.uniq()
+
+      from(a in Portal.Account,
+        where: a.id in ^account_ids,
+        select: {a.id, %{name: a.name, slug: a.slug}}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Map.new()
+    end
   end
 end

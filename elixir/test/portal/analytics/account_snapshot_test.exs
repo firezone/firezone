@@ -175,13 +175,18 @@ defmodule Portal.Analytics.AccountSnapshotTest do
              ] = AccountSnapshot.build_events([account], counts, @now)
 
       assert %{
-               "distinct_id" => ^account_id,
+               "distinct_id" => "firezone-portal",
                "$group_type" => "account",
                "$group_key" => ^account_id,
-               "$process_person_profile" => false,
                "$group_set" => group_set
              } = identify
 
+      # PostHog only links events to groups when it processes a person for them
+      refute Map.has_key?(identify, "$process_person_profile")
+
+      assert group_set["name"] == account.name
+      assert group_set["account_name"] == account.name
+      assert group_set["account_slug"] == account.slug
       assert group_set["plan_type"] == "team"
       assert group_set["subscription_status"] == nil
       assert group_set["trial_ends_at"] == nil
@@ -193,8 +198,9 @@ defmodule Portal.Analytics.AccountSnapshotTest do
       assert group_set["log_sink_types"] == []
 
       assert snapshot["$groups"] == %{"account" => account_id}
-      assert snapshot["distinct_id"] == account_id
-      assert Map.take(snapshot, Map.keys(group_set)) == group_set
+      assert snapshot["distinct_id"] == "firezone-portal"
+      refute Map.has_key?(snapshot, "$process_person_profile")
+      assert Map.take(snapshot, Map.keys(group_set)) == Map.delete(group_set, "name")
     end
 
     test "includes the Stripe subscription details" do
@@ -242,7 +248,7 @@ defmodule Portal.Analytics.AccountSnapshotTest do
       assert next_snapshot["uuid"] != snapshot["uuid"]
     end
 
-    test "does not include customer-entered data" do
+    test "does not include customer-entered data other than the account's name and slug" do
       account = account_fixture(name: "Secret Account Name")
       actor = actor_fixture(account: account, email: "secret@example.com", name: "Secret Person")
       site = site_fixture(account: account, name: "Secret Site")
@@ -261,9 +267,10 @@ defmodule Portal.Analytics.AccountSnapshotTest do
       counts = AccountSnapshot.Database.fetch_counts_for_accounts([account], @now)
       payload = JSON.encode!(AccountSnapshot.build_events([account], counts, @now))
 
+      assert payload =~ account.name
+      assert payload =~ account.slug
+
       for value <- [
-            account.name,
-            account.slug,
             actor.email,
             actor.name,
             site.name,

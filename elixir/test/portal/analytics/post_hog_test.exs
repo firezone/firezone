@@ -92,7 +92,10 @@ defmodule Portal.Analytics.PostHogTest do
     assert_receive {:posthog_request, conn, body}
     assert conn.host == "posthog.test"
     assert conn.request_path == "/batch/"
-    assert body == %{"api_key" => "phc_test", "batch" => [event]}
+    assert body == %{
+             "api_key" => "phc_test",
+             "batch" => [put_in(event, ["properties", "web_external_url"], nil)]
+           }
   end
 
   test "does not send empty batches" do
@@ -106,6 +109,57 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert {:error, {:http_status, 400}} =
              PostHog.batch([%{"event" => "Account Snapshot", "properties" => %{}}])
+  end
+
+  describe "web_external_url" do
+    setup do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:posthog_body, JSON.decode!(body)})
+        Req.Test.json(conn, %{"status" => "Ok"})
+      end)
+
+      :ok
+    end
+
+    test "is added to single events when configured" do
+      put_web_external_url("https://app.example.com")
+
+      assert :ok = PostHog.capture("Portal Attribution Received", "anonymous-id", %{})
+
+      assert_receive {:posthog_body, %{"properties" => %{"web_external_url" => "https://app.example.com"}}}
+    end
+
+    test "is added to every batched event" do
+      put_web_external_url("https://app.example.com")
+
+      assert :ok =
+               PostHog.batch([
+                 %{"event" => "Account Snapshot", "properties" => %{"distinct_id" => "a"}},
+                 %{
+                   "event" => "$groupidentify",
+                   "properties" => %{"distinct_id" => "a", "$group_set" => %{"name" => "Acme"}}
+                 }
+               ])
+
+      assert_receive {:posthog_body, %{"batch" => [snapshot, identify]}}
+      assert snapshot["properties"]["web_external_url"] == "https://app.example.com"
+      assert identify["properties"]["web_external_url"] == "https://app.example.com"
+
+      assert identify["properties"]["$group_set"] == %{"name" => "Acme"}
+    end
+  end
+
+  defp put_web_external_url(url) do
+    Portal.Config.put_env_override(:portal, PostHog,
+      enabled: true,
+      host: "https://posthog.test",
+      project_api_key: "phc_test",
+      web_external_url: url,
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
   end
 
   test "builds an identify event that aliases the website visitor to the actor" do
@@ -135,8 +189,9 @@ defmodule Portal.Analytics.PostHogTest do
 
     assert properties["$anon_distinct_id"] == attribution["distinct_id"]
     assert properties["$process_person_profile"] == true
-    assert properties["$set"]["email"] == actor.email
     assert properties["$set"]["account_id"] == account.id
+    refute Map.has_key?(properties["$set"], "email")
+    refute Map.has_key?(properties["$set"], "name")
     assert properties["$set_once"]["initial_website_path"] == "/pricing"
   end
 end

@@ -34,7 +34,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(fd, tokio::io::Interest::WRITABLE)
+                    .map_err(io::Error::from)?
+            };
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
@@ -159,7 +163,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(fd, tokio::io::Interest::READABLE)
+                    .map_err(io::Error::from)?
+            };
             let mut batch = PacketBatch::default();
 
             loop {

@@ -51,7 +51,10 @@ defmodule PortalAPI.Schemas.Actor do
           example: "2024-01-15T10:30:00Z",
           type: :string,
           format: :"date-time",
-          description: "Last time the actor was seen",
+          description:
+            "Latest time the Actor was active: a Client of theirs connected, they signed " <>
+              "in to the admin portal, or one of their API or OAuth tokens was used. Null " <>
+              "when none of these was recorded, and always null in a delete response.",
           nullable: true
         },
         created_by_directory_id: %Schema{

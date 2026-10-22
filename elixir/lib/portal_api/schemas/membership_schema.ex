@@ -12,7 +12,6 @@ defmodule PortalAPI.Schemas.Membership do
                :allow_email_otp_sign_in,
                :created_by_directory_id,
                :disabled_by_directory_id,
-               :email,
                :identity_count,
                :inserted_at,
                :is_disabled,
@@ -32,6 +31,12 @@ defmodule PortalAPI.Schemas.Membership do
           description: "Actor ID"
         },
         name: %Schema{example: "John Doe", type: :string, description: "Actor Name"},
+        email: %Schema{
+          example: "john.doe@example.com",
+          type: :string,
+          nullable: true,
+          description: "Actor Email"
+        },
         type: %Schema{
           example: "account_user",
           type: :string,
@@ -39,7 +44,7 @@ defmodule PortalAPI.Schemas.Membership do
           enum: ["account_admin_user", "account_user", "api_client", "service_account"]
         }
       },
-      required: [:id, :name, :type]
+      required: [:email, :id, :name, :type]
     })
   end
 

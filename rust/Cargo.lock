@@ -30,7 +30,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "roxmltree",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -621,7 +621,7 @@ source = "git+https://github.com/aya-rs/aya#03bee7dca209651c2f8a951d362665294c01
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -662,7 +662,7 @@ dependencies = [
  "aya-log-parser",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -785,7 +785,7 @@ dependencies = [
  "rtnetlink",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smbios-lib",
  "socket-factory",
  "telemetry",
@@ -1272,7 +1272,7 @@ checksum = "e8cf2a2c93cd704877c0858356ed03480ff301ee950b43f1cbe4573b088bfa6c"
 dependencies = [
  "block-buffer 0.12.0",
  "crypto-common 0.2.2",
- "inout 0.2.3",
+ "inout 0.2.5",
 ]
 
 [[package]]
@@ -1316,7 +1316,7 @@ dependencies = [
  "heck 0.5.0",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -1745,7 +1745,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -2001,7 +2001,7 @@ checksum = "1b034bd7d5f032402a2479444dcc6f74e36a03f31854d41680fb240ef682a1ac"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -2547,7 +2547,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "anyhow-ext",
  "clap",
@@ -2564,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.6.3"
+version = "1.6.4"
 dependencies = [
  "anyhow-ext",
  "atomicfs",
@@ -2598,7 +2598,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "socket-factory",
  "telemetry",
  "tempfile",
@@ -2612,7 +2612,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
@@ -2696,7 +2696,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.5.14"
+version = "1.5.15"
 dependencies = [
  "anyhow-ext",
  "backoff",
@@ -2786,6 +2786,8 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "otel-attributes",
+ "otel-instruments",
  "phoenix-channel",
  "rand 0.10.3",
  "relay-proto",
@@ -2829,6 +2831,7 @@ name = "flow-log-upload"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "atomicfs",
  "backoff",
  "base64 0.23.1",
  "bytes",
@@ -3059,7 +3062,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -3119,7 +3122,7 @@ dependencies = [
  "relay-proto",
  "secrecy",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "snownet",
  "stun_codec",
@@ -3835,9 +3838,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.11.1"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27b501faa50e7a26c3d3560ca625132f4078a17771f4810baf70475ae48cbe43"
+checksum = "2c3e324da4c95177d6291d4c8730197c0d1822f8a9766814a4a44fa5ab797c9c"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -4161,9 +4164,9 @@ dependencies = [
 
 [[package]]
 name = "inout"
-version = "0.2.3"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8c0d789294fb457b791f7797a04478704788f30b407e5d0b01deaa846572d9f"
+checksum = "3b5cf4372d022092674a83b8febf5865f7a573cc0c5baec5e49c879b6a20978f"
 dependencies = [
  "hybrid-array",
 ]
@@ -4188,6 +4191,7 @@ dependencies = [
  "divan",
  "incremental-inet-checksum",
  "ingot",
+ "prefetch",
  "proptest",
  "test-case",
  "test-strategy",
@@ -4497,9 +4501,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a806f80c1f5560431009ce5ec29b59d38f950e0cd7db5f1b8925e6d8104e21"
+checksum = "f622c574a29fb3034a0a90645afee194dfedc75fc124228801b6e77041075bd1"
 dependencies = [
  "ahash",
  "bytecount",
@@ -4525,18 +4529,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb862addfa7782108933abcf842fe25334523a9df5b89ea4d9620e3dd7b42181"
+checksum = "a968fffd387b2ab005bf00c1851f5d26e90df05b6f7ad609ed0d620033cca5e7"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a05cd404c5ff6e2731dbbf7e290a27417750acfb59e329560a1d0af384c93fb0"
+checksum = "39b7670345e5ce87371339d13705dbb9276b7e3e934bbe1efa2c6734a1f65a96"
 dependencies = [
  "ahash",
  "bytecount",
@@ -5895,7 +5899,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "socket-factory",
  "test-case",
  "thiserror 2.0.21",
@@ -6054,6 +6058,10 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "prefetch"
+version = "0.1.0"
 
 [[package]]
 name = "prefix-trie"
@@ -6226,8 +6234,8 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.6.1"
-source = "git+https://github.com/firezone/quinn?branch=main#ab5793bd0d7c34f09da06bfe75295425e5f1195d"
+version = "0.6.3"
+source = "git+https://github.com/firezone/quinn?branch=main#ef279010009563889f7f91aa728e7f4dcee4d61b"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -6379,9 +6387,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3b4a92fac7e28c27de3ad26df2ecb9e652f227b258e845af034052e5b22c96c"
+checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -6441,12 +6449,13 @@ dependencies = [
  "hex",
  "logging",
  "once_cell",
- "opentelemetry",
+ "otel-attributes",
+ "otel-instruments",
  "proptest",
  "rand 0.10.3",
  "secrecy",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "stun_codec",
  "test-strategy",
@@ -6756,7 +6765,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=main#11573c9a64e21a0322b39d2effd5a40672278b18"
+source = "git+https://github.com/firezone/sanstun?branch=main#a9550b80d063fc65ead9246766d8f3984b4a9143"
 dependencies = [
  "blake2",
  "chacha20",
@@ -7075,7 +7084,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -7250,9 +7259,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.11.0"
+version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
+checksum = "47d7069beb7d6ac7b9acd1039986e73443f24234f41074da099d6f994ac9ad19"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
@@ -7384,6 +7393,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "path-agent",
+ "prefetch",
  "rand 0.10.3",
  "ringbuffer",
  "sanstun",
@@ -7701,9 +7711,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.6"
+version = "3.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
+checksum = "d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8176,7 +8186,7 @@ dependencies = [
  "sentry",
  "serde",
  "serde_json",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "smallvec",
  "socket-factory",
  "thiserror 2.0.21",
@@ -8238,7 +8248,7 @@ dependencies = [
  "cfg-if",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -8249,7 +8259,7 @@ checksum = "f4ce35ece947bccac166e1ded639133827a953f69a48ba134d17f91108333082"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
  "test-case-core",
 ]
 
@@ -8312,7 +8322,7 @@ checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -8397,9 +8407,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -8990,12 +9000,12 @@ dependencies = [
  "logging",
  "opentelemetry",
  "otel-instruments",
+ "prefetch",
  "rand 0.10.3",
  "snownet",
  "socket-factory",
  "thiserror 2.0.21",
  "tokio",
- "tokio-util",
  "tracing",
  "tun",
  "tunnel-proto",
@@ -9014,14 +9024,20 @@ dependencies = [
  "flow-tracker",
  "ip-packet",
  "libc",
+ "mimalloc",
  "serde_json",
  "snownet",
  "socket-factory",
  "stun_codec",
  "tokio",
  "tun",
+ "tun-apple",
+ "tun-linux",
+ "tun-offload",
+ "tun-windows",
  "tunnel",
  "tunnel-proto",
+ "windows",
 ]
 
 [[package]]
@@ -9462,9 +9478,9 @@ dependencies = [
 
 [[package]]
 name = "want"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
+checksum = "ec4cdd0dd910afe868b7ef477227d8d538b46b3075031afee8a9f2acb0a2ed0b"
 dependencies = [
  "try-lock",
 ]
@@ -9929,7 +9945,7 @@ dependencies = [
 name = "windows-package-identity"
 version = "0.1.0"
 dependencies = [
- "sha2 0.11.0",
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -10471,7 +10487,7 @@ dependencies = [
  "base64 0.23.1",
  "rcgen",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "uuid",
  "x509-parser",
 ]
@@ -10503,7 +10519,7 @@ dependencies = [
  "rustls",
  "secrecy",
  "serde",
- "sha2 0.11.0",
+ "sha2 0.11.1",
  "tracing",
  "windows",
  "windows-core",
@@ -10614,7 +10630,7 @@ dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
  "zbus_names",
  "zvariant",
  "zvariant_utils",
@@ -10797,7 +10813,7 @@ dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",
  "quote",
- "syn 3.0.6",
+ "syn 3.0.9",
  "zvariant_utils",
 ]
 
@@ -10810,6 +10826,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde",
- "syn 3.0.6",
+ "syn 3.0.9",
  "winnow 1.0.2",
 ]

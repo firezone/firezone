@@ -3,10 +3,10 @@ defmodule PortalWeb.Analytics do
   Sends portal page views and actions to PostHog from LiveView telemetry, so no
   LiveView needs instrumenting and no analytics code runs in the browser.
 
-  Only the LiveView or LiveComponent module, the event name and the route pattern
-  (e.g. `/:account_id_or_slug/resources/:id`) are sent. Params, form input and raw
-  URLs are never sent: they hold account slugs, resource addresses and other
-  customer-entered data.
+  Only the LiveView or LiveComponent module, the event name, the route pattern
+  (e.g. `/:account_id_or_slug/resources/:id`) and the account's name and slug are
+  sent. Params, form input and raw URLs are never sent: they hold resource
+  addresses and other customer-entered data.
 
   Events are only sent for signed-in actors. Their account and actor are recorded
   when the page is viewed, because LiveComponent sockets don't carry the subject.
@@ -59,7 +59,7 @@ defmodule PortalWeb.Analytics do
 
       context = %{
         distinct_id: subject.actor.id,
-        account_id: subject.account.id,
+        account: subject.account,
         view: inspect(socket.view),
         route: route
       }
@@ -100,12 +100,13 @@ defmodule PortalWeb.Analytics do
   end
 
   defp base_properties(context) do
-    %{
-      "$process_person_profile" => false,
-      "$groups" => %{"account" => context.account_id},
+    context.account
+    |> PostHog.account_properties()
+    |> Map.merge(%{
+      "$groups" => %{"account" => context.account.id},
       "$pathname" => context.route,
       "view" => context.view
-    }
+    })
   end
 
   defp maybe_put_component(properties, %{component: component}),

@@ -35,28 +35,48 @@ fi
 
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
+# The replay task already runs every input; every eighth is enough to compare servers.
 mkdir "$temporary/inputs"
 for index in "${!inputs[@]}"; do
     if [ ! -f "${inputs[index]}" ] || [ ! -s "${inputs[index]}" ]; then
         echo "AFL++ directory replay requires a nonempty file: ${inputs[index]}" >&2
         exit 1
     fi
-    cp "${inputs[index]}" "$temporary/inputs/$index-0"
+    if ((index % 8 == 0)); then
+        cp "${inputs[index]}" "$temporary/inputs/$index-0"
+    fi
 done
 samples=8
 [ "${#inputs[@]}" -ge "$samples" ] || samples="${#inputs[@]}"
 for ((sample = 0; sample < samples; sample++)); do
     index=$((sample * ${#inputs[@]} / samples))
-    for copy in 1 2 3 4; do
+    for copy in 0 1 2 3 4; do
         cp "${inputs[index]}" "$temporary/inputs/$index-$copy"
     done
 done
+# One showmap per core; each forks its own server from the same binary.
+shards="$(nproc)"
+shard=0
+for input in "$temporary/inputs"/*; do
+    mkdir -p "$temporary/shards/$((shard % shards))"
+    ln "$input" "$temporary/shards/$((shard % shards))/"
+    shard=$((shard + 1))
+done
 
 for run in 1 2; do
-    # -Z leaves an empty map for any crash or timeout, including an earlier
-    # failure that showmap's final-input exit status would otherwise miss.
-    AFL_QUIET=1 cargo afl showmap -Z -i "$temporary/inputs" \
-        -o "$temporary/maps-$run" -t 10000 -m none -- "$afl_binary" "$target"
+    pids=()
+    for shard in "$temporary"/shards/*; do
+        # -Z leaves an empty map for any crash or timeout, including an earlier
+        # failure that showmap's final-input exit status would otherwise miss.
+        AFL_QUIET=1 cargo afl showmap -Z -i "$shard" -o "$temporary/maps-$run-${shard##*/}" \
+            -t 10000 -m none -- "$afl_binary" "$target" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid"
+    done
+    mkdir "$temporary/maps-$run"
+    mv "$temporary/maps-$run-"*/* "$temporary/maps-$run/"
     if [ "$run" -eq 1 ] && [ -n "$ijon_offset" ] &&
         ! awk -F: -v offset="$ijon_offset" '$1 >= offset { found = 1 } END { exit !found }' \
             "$temporary/maps-$run"/*; then
@@ -79,4 +99,5 @@ for run in 1 2; do
         fi
     done
 done
-echo "$target: ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each."
+replayed=("$temporary/inputs"/*-0)
+echo "$target: ${#replayed[@]} of ${#inputs[@]} inputs match across two forkservers; $samples inputs also match across five children each."

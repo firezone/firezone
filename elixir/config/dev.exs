@@ -106,6 +106,7 @@ if posthog_dev_sink? do
     enabled: true,
     host: "https://posthog.invalid",
     project_api_key: "phc_dev",
+    web_external_url: "https://localhost:#{web_port}",
     req_opts: [plug: Portal.Dev.PostHogSink, retry: false]
 end
 
