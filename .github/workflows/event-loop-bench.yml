@@ -70,8 +70,8 @@ jobs:
           set -euo pipefail
 
           describe() {
-            bencher measure update --project "$BENCHER_PROJECT" --name "$2" --units "$3" "$1" >/dev/null ||
-              bencher measure create --project "$BENCHER_PROJECT" --slug "$1" --name "$2" --units "$3" >/dev/null
+            bencher measure update --name "$2" --units "$3" "$BENCHER_PROJECT" "$1" >/dev/null ||
+              bencher measure create --slug "$1" --name "$2" --units "$3" "$BENCHER_PROJECT" >/dev/null
           }
           describe throughput "Throughput" "bits/s"
           describe event-loop "Event loop CPU" "ns/packet"
