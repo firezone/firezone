@@ -38,6 +38,7 @@ config :portal, Portal.Billing,
 
 secret_keys = [
   "password",
+  "assertion",
   "secret",
   "nonce",
   "fragment",

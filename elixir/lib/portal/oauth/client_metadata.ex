@@ -127,16 +127,18 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
-  defp get(client_id) do
+  defp get(client_id, max_bytes \\ @max_body_bytes) do
+    deadline = System.monotonic_time(:millisecond) + @receive_timeout
+
     protected_get(
       client_id,
-      [
-        headers: [{"accept", "application/json"}],
-        receive_timeout: @receive_timeout,
-        max_retries: 0,
-        redirect: false,
-        into: &collect(&1, &2, @max_body_bytes)
-      ]
+      headers: [{"accept", "application/json"}],
+      receive_timeout: @receive_timeout,
+      request_timeout: @receive_timeout,
+      max_retries: 0,
+      raw: true,
+      redirect: false,
+      into: &collect(&1, &2, max_bytes, deadline)
     )
     |> case do
       {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
@@ -147,6 +149,14 @@ defmodule Portal.OAuth.ClientMetadata do
 
   # Halting mid-body keeps an oversized or endless document from being read into
   # memory, which a plain byte check after the fact would not.
+  defp collect(event, {request, response} = state, max_bytes, deadline) do
+    if System.monotonic_time(:millisecond) < deadline do
+      collect(event, state, max_bytes)
+    else
+      {:halt, {request, %{response | body: :timed_out}}}
+    end
+  end
+
   defp collect({:data, data}, {request, response}, max_bytes) do
     body = (response.body || "") <> data
 
@@ -157,10 +167,12 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
+  defp decode(:timed_out), do: {:error, :request_timeout}
+
   defp decode(:too_large), do: {:error, :document_too_large}
 
-  # Req decodes a JSON body itself, even when the response was streamed into a
-  # collector, so the document usually arrives already parsed.
+  # Configured test adapters can return decoded maps directly. Real responses
+  # are fetched raw and parsed only after the streaming byte limit is applied.
   defp decode(document) when is_map(document), do: {:ok, document}
 
   defp decode(body) when is_binary(body) do
@@ -179,13 +191,70 @@ defmodule Portal.OAuth.ClientMetadata do
          when is_binary(name) and is_list(uris) <- document,
          true <- String.trim(name) != "",
          true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1),
-         true <- document["token_endpoint_auth_method"] in [nil, "none"],
+         {:ok, _method} <- authentication_method(document),
          false <- Map.has_key?(document, "client_secret"),
          false <- Map.has_key?(document, "client_secret_expires_at"),
          true <- Enum.all?(~w[client_uri logo_uri], &optional_string?(document[&1])) do
       :ok
     else
       _other -> {:error, :invalid_document}
+    end
+  end
+
+  @doc "Selects a supported authentication method from a client's metadata."
+  def authentication_method(document) do
+    methods =
+      Map.get(document, "token_endpoint_auth_methods_supported", [
+        document["token_endpoint_auth_method"] || "none"
+      ])
+
+    with true <- is_list(methods) and methods != [],
+         true <- Enum.all?(methods, &(is_binary(&1) and String.trim(&1) != "")),
+         supported when supported != [] <-
+           Enum.filter(methods, &(&1 in ["none", "private_key_jwt"])) do
+      preference = document["token_endpoint_auth_method"] || "none"
+
+      method = preferred_method(preference, supported)
+
+      if method == "none" or
+           (valid_jwks_uri?(document["jwks_uri"]) and
+              document["token_endpoint_auth_signing_alg"] in [nil, "RS256"]) do
+        {:ok, method}
+      else
+        {:error, :invalid_document}
+      end
+    else
+      _ -> {:error, :invalid_document}
+    end
+  end
+
+  defp preferred_method(preference, supported) do
+    cond do
+      preference in supported -> preference
+      "private_key_jwt" in supported -> "private_key_jwt"
+      true -> "none"
+    end
+  end
+
+  defp valid_jwks_uri?(value) when is_binary(value) do
+    case URI.new(value) do
+      {:ok, %URI{scheme: "https", host: host, port: port, userinfo: nil, fragment: nil}}
+      when is_binary(host) and host != "" and port in 1..65_535 -> true
+      _ -> false
+    end
+  end
+
+  defp valid_jwks_uri?(_), do: false
+
+  @doc "Fetches a bounded JWKS using the same mandatory SSRF protection as client metadata."
+  def fetch_jwks(uri) do
+    with true <- valid_jwks_uri?(uri),
+         {:ok, response} <- get(uri, 32 * 1024),
+         {:ok, %{"keys" => keys}} <- decode(response.body),
+         true <- is_list(keys) and length(keys) in 1..16 do
+      {:ok, keys}
+    else
+      _ -> {:error, :invalid_jwks}
     end
   end
 
@@ -265,12 +334,15 @@ defmodule Portal.OAuth.ClientMetadata do
 
   defp upsert(document, client_id, metadata_expires_at, icon, origin) do
     {ips, region, city} = origin
+    {:ok, method} = authentication_method(document)
 
     %OAuthClient{}
     |> Ecto.Changeset.cast(
       %{
         client_id: client_id,
         client_name: document["client_name"],
+        token_endpoint_auth_method: method,
+        jwks_uri: document["jwks_uri"],
         client_uri: document["client_uri"],
         logo_uri: document["logo_uri"],
         logo_data: icon && elem(icon, 0),
@@ -281,7 +353,8 @@ defmodule Portal.OAuth.ClientMetadata do
         resolved_ip_location_city: city,
         metadata_expires_at: metadata_expires_at
       },
-      ~w[client_id client_name client_uri logo_uri logo_data logo_content_type
+      ~w[client_id client_name token_endpoint_auth_method jwks_uri client_uri logo_uri
+         logo_data logo_content_type
          redirect_uris resolved_ips resolved_ip_location_region
          resolved_ip_location_city metadata_expires_at]a
     )
@@ -387,7 +460,8 @@ defmodule Portal.OAuth.ClientMetadata do
       Safe.insert(Portal.Repo, changeset,
         on_conflict:
           {:replace,
-           ~w[client_name client_uri logo_uri logo_data logo_content_type redirect_uris
+           ~w[client_name token_endpoint_auth_method jwks_uri client_uri logo_uri logo_data
+              logo_content_type redirect_uris
               resolved_ips resolved_ip_location_region resolved_ip_location_city
               metadata_expires_at updated_at]a},
         conflict_target: [:client_id],

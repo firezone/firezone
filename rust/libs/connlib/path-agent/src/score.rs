@@ -5,6 +5,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::CandidateKind;
 use crate::agent::PairState;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -49,7 +50,7 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
     PairScore {
         bucket: Bucket {
             tier: {
-                let (local, remote) = state.kinds;
+                let (local, remote) = (tier(state.kinds.0), tier(state.kinds.1));
 
                 (local.max(remote), local.min(remote))
             },
@@ -70,5 +71,15 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
             },
         },
         rtt: state.rtt.map(|rtt| rtt.smoothed).unwrap_or(Duration::MAX),
+    }
+}
+
+/// Ranks a peer-reflexive candidate like a server-reflexive one: both are NAT mappings.
+fn tier(kind: CandidateKind) -> CandidateKind {
+    match kind {
+        CandidateKind::Host => CandidateKind::Host,
+        CandidateKind::ServerReflexive => CandidateKind::ServerReflexive,
+        CandidateKind::PeerReflexive => CandidateKind::ServerReflexive,
+        CandidateKind::Relayed => CandidateKind::Relayed,
     }
 }

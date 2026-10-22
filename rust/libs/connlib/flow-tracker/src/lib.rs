@@ -967,13 +967,13 @@ struct InnerFlow {
 }
 
 impl From<&IpPacket> for InnerFlow {
+    #[inline(always)]
     fn from(packet: &IpPacket) -> Self {
-        let (src_ip, dst_ip) = packet.source_and_destination();
         let tcp_flags = packet.tcp_flags().unwrap_or_default();
 
         InnerFlow {
-            src_ip,
-            dst_ip,
+            src_ip: packet.source(),
+            dst_ip: packet.destination(),
             src_proto: packet.source_protocol(),
             dst_proto: packet.destination_protocol(),
             tcp_syn: tcp_flags.contains(TcpFlags::SYN),

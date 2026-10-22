@@ -156,8 +156,10 @@ Both supported clients cope with that:
 
 - Claude Code supports Client ID Metadata Documents and discovers them
   automatically when dynamic registration is unavailable.
-- ChatGPT recommends CIMD with public-client token exchange (`none`), which is
-  the only method this server advertises.
+- Public clients continue to use `none` with PKCE.
+- ChatGPT also supports `private_key_jwt`. The server honors the client's
+  preference when supported. Signed clients must publish an HTTPS `jwks_uri`
+  and provide RS256 assertions for token exchange, refresh, and revocation.
 
 So neither needs anything hosted or registered on your side.
 

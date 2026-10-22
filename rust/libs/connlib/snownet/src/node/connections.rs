@@ -13,9 +13,8 @@ use is::stun::{StunMessage, TransId};
 
 use crate::{
     Event,
-    buffer::TransmitBuffer,
     node::{
-        Connection, ConnectionState, allocations::Allocations,
+        Connection, ConnectionState, Transmit, allocations::Allocations,
         inflight_stun_requests::InflightStunRequests,
     },
 };
@@ -120,7 +119,7 @@ where
     pub(crate) fn handle_timeout(
         &mut self,
         allocations: &mut Allocations<RId>,
-        transmits: &mut TransmitBuffer,
+        transmits: &mut VecDeque<Transmit>,
         events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
@@ -156,23 +155,38 @@ where
                 inflight_stun_requests,
             );
 
+            // The goodbye may have to wait for a channel binding or a handshake, e.g. when
+            // the peer's handshake response arrived but it has not confirmed the session yet.
             let Ok(socket) = connection.ready_socket(cid) else {
                 continue;
             };
 
-            match connection.encapsulate(cid, socket, &goodbye.packet, now, allocations, transmits)
-            {
-                Ok(Some(_)) => {
-                    tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
-                }
+            let encrypted = connection
+                .encapsulate(cid, socket, &goodbye.packet, now, allocations)
+                .and_then(|encapsulation| {
+                    let Some(encapsulation) = encapsulation else {
+                        return Ok(None);
+                    };
+
+                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+
+                    Ok(Some(transmit))
+                });
+
+            let transmit = match encrypted {
+                Ok(Some(transmit)) => transmit,
                 Ok(None) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye)");
+                    tracing::debug!(%cid, "Cannot send goodbye yet");
+                    continue;
                 }
                 Err(e) => {
-                    tracing::debug!(%cid, "Connection closed proactively (failed to send goodbye: {e:#})");
+                    tracing::debug!(%cid, "Cannot send goodbye yet: {e:#}");
+                    continue;
                 }
-            }
+            };
 
+            transmits.push_back(transmit);
+            tracing::info!(%cid, "Connection closed proactively (sent goodbye)");
             connection.state = ConnectionState::Failed;
         }
 
@@ -693,7 +707,7 @@ mod tests {
     ) {
         connections.handle_timeout(
             allocations,
-            &mut TransmitBuffer::new(),
+            &mut VecDeque::new(),
             &mut VecDeque::default(),
             &mut InflightStunRequests::default(),
             now,

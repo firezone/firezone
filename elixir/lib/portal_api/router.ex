@@ -135,6 +135,7 @@ defmodule PortalAPI.Router do
       patch "/pool_members", PoolMemberController, :update_patch
     end
     resources "/policies", PolicyController, except: [:new, :edit]
+    get "/posture_fields", PostureFieldController, :index
 
     resources "/sites", SiteController, except: [:new, :edit] do
       post "/gateway_tokens", GatewayTokenController, :create
@@ -172,32 +173,33 @@ defmodule PortalAPI.Router do
     resources "/entra_directories", EntraDirectoryController, only: [:index, :show]
     resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
     resources "/intune_posture_providers", IntunePostureProviderController,
-      only: [:index, :show]
+      only: [:index, :show, :update, :delete]
 
     resources "/intune_devices", IntuneDeviceController, only: [:index, :show]
 
     resources "/iru_posture_providers", IruPostureProviderController,
-      only: [:index, :show]
+      only: [:index, :show, :update, :delete]
 
     resources "/iru_devices", IruDeviceController, only: [:index, :show]
 
     resources "/defender_posture_providers", DefenderPostureProviderController,
-      only: [:index, :show]
+      only: [:index, :show, :update, :delete]
 
     resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
 
     resources "/santa_posture_providers", SantaPostureProviderController,
-      only: [:index, :show]
+      only: [:index, :show, :update, :delete]
 
     resources "/santa_devices", SantaDeviceController, only: [:index, :show]
 
     resources "/sentinelone_posture_providers", SentinelOnePostureProviderController,
-      only: [:index, :show]
+      only: [:index, :show, :update, :delete]
 
     resources "/sentinelone_devices", SentinelOneDeviceController, only: [:index]
     get "/sentinelone_devices/:sentinelone_agent", SentinelOneDeviceController, :show
 
-    resources "/sophos_posture_providers", SophosPostureProviderController, only: [:index, :show]
+    resources "/sophos_posture_providers", SophosPostureProviderController,
+      only: [:index, :show, :update, :delete]
 
     resources "/sophos_devices", SophosDeviceController, only: [:index, :show]
   end
