@@ -52,8 +52,18 @@ impl Io {
             name,
             offloads,
             runtime,
-            move || AsyncFd::with_interest(send_fd, Interest::WRITABLE).map(Fd),
-            move || AsyncFd::with_interest(fd, Interest::READABLE).map(Fd),
+            // SAFETY: Each `AsyncFd` holds a clone of the `OwnedFd`, keeping it open.
+            move || {
+                unsafe { AsyncFd::register_with_interest(send_fd, Interest::WRITABLE) }
+                    .map(Fd)
+                    .map_err(io::Error::from)
+            },
+            // SAFETY: Each `AsyncFd` holds a clone of the `OwnedFd`, keeping it open.
+            move || {
+                unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }
+                    .map(Fd)
+                    .map_err(io::Error::from)
+            },
         )
     }
 
