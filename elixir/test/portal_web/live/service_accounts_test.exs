@@ -602,6 +602,63 @@ defmodule PortalWeb.ServiceAccountsTest do
     end
   end
 
+  describe "device-bound tokens" do
+    test "shows what a token belongs to and rotates it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      service_account = service_account_fixture(account: account)
+      site = Portal.SiteFixtures.site_fixture(account: account)
+      gateway = Portal.DeviceFixtures.gateway_fixture(account: account, site: site)
+      token =
+        Portal.TokenFixtures.gateway_token_fixture(gateway: gateway)
+        |> Ecto.Changeset.change(actor_id: service_account.id)
+        |> Repo.update!()
+
+      # In use: a rotation stamps it rather than replacing it outright.
+      Portal.GatewaySessionFixtures.gateway_session_fixture(
+        account: account,
+        gateway: gateway,
+        token: token
+      )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      assert html =~ "Bound to #{gateway.name}"
+      assert html =~ "Rotate token"
+
+      html = render_click(lv, "rotate_token", %{"id" => token.id})
+      assert html =~ "Token Created"
+      assert Repo.get!(Portal.ClientToken, token.id).rotated_at
+
+      # The new token is shown once; the list behind it marks the old one.
+      html = render_click(lv, "dismiss_created_token")
+      assert html =~ "Rotated out"
+    end
+
+    test "the Infrastructure service account is read-only", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      infrastructure = Portal.Actor.fetch_or_create_infrastructure_actor(account.id)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{infrastructure}")
+
+      assert html =~ "Managed by Firezone"
+      refute html =~ "Delete actor"
+      refute html =~ "Add Token"
+      refute html =~ ~s(phx-click="open_actor_edit_form")
+    end
+  end
+
   describe "disable / enable / delete" do
     test "confirm and cancel disable service account", %{
       conn: conn,

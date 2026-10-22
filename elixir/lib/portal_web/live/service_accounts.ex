@@ -498,6 +498,28 @@ defmodule PortalWeb.ServiceAccounts do
     end
   end
 
+  # Rotating a device-bound token mints the replacement and shows it once,
+  # exactly like a freshly created token; the old one keeps working for the
+  # grace period or until the device connects with the new one.
+  def handle_event("rotate_token", %{"id" => token_id}, socket) do
+    subject = socket.assigns.subject
+
+    with %ClientToken{device_id: device_id} when not is_nil(device_id) <-
+           Database.get_client_token_by_id(token_id, subject),
+         %Portal.Device{} = gateway <- Database.get_gateway_by_id(device_id, subject),
+         {:ok, token} <- Portal.Authentication.rotate_gateway_token(gateway, subject) do
+      tokens = Database.get_client_tokens_for_actor(socket.assigns.selected_actor.id, subject)
+      encoded_token = Portal.Authentication.encode_fragment!(token)
+
+      {:noreply,
+       socket
+       |> merge_state(:actor_related, created_token: encoded_token, tokens: tokens)
+       |> merge_state(:actor_token, adding_token: false)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Failed to rotate token")}
+    end
+  end
+
   def handle_event("confirm_delete_token", %{"id" => token_id}, socket) do
     {:noreply, merge_state(socket, :actor_panel, confirm_delete_token_id: token_id)}
   end
@@ -988,6 +1010,7 @@ defmodule PortalWeb.ServiceAccounts do
         from(c in ClientToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
+        |> preload([:device, :site])
         |> Safe.scoped(subject)
         |> Safe.all()
 
@@ -1001,17 +1024,24 @@ defmodule PortalWeb.ServiceAccounts do
 
       devices_by_token_id =
         from(d in Device,
-          where: d.client_token_id in ^token_ids,
-          distinct: d.client_token_id,
-          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
+          where: d.token_id in ^token_ids,
+          distinct: d.token_id,
+          order_by: [asc: d.token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Map.new(&{&1.client_token_id, &1})
+        |> Map.new(&{&1.token_id, &1})
 
       Enum.map(tokens, fn token ->
         %{token | last_used_device: Map.get(devices_by_token_id, token.id)}
       end)
+    end
+
+    def get_gateway_by_id(id, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.id == ^id and d.type == :gateway)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     def get_client_token_by_id(token_id, subject) do
