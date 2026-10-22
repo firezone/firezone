@@ -9,14 +9,16 @@ use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
-    id_by_ip: HashMap<IpAddr, TId, FastRandomState>,
+    id_by_ipv4: HashMap<Ipv4Addr, TId, FastRandomState>,
+    id_by_ipv6: HashMap<Ipv6Addr, TId, FastRandomState>,
     peer_by_id: HashMap<TId, P, FastRandomState>,
 }
 
 impl<TId, P> Default for PeerStore<TId, P> {
     fn default() -> Self {
         Self {
-            id_by_ip: HashMap::default(),
+            id_by_ipv4: HashMap::default(),
+            id_by_ipv6: HashMap::default(),
             peer_by_id: Default::default(),
         }
     }
@@ -33,7 +35,9 @@ where
             .extract_if(|id, peer| f(id, peer))
             .collect::<Vec<_>>();
 
-        self.id_by_ip
+        self.id_by_ipv4
+            .retain(|_, id| self.peer_by_id.contains_key(id));
+        self.id_by_ipv6
             .retain(|_, id| self.peer_by_id.contains_key(id));
 
         removed_peers
@@ -54,21 +58,22 @@ where
                 "Peer's TUN IP has changed, replacing",
             );
 
-            self.id_by_ip.remove(&existing.tun_ipv4().into());
-            self.id_by_ip.remove(&existing.tun_ipv6().into());
+            self.id_by_ipv4.remove(&existing.tun_ipv4());
+            self.id_by_ipv6.remove(&existing.tun_ipv6());
             self.peer_by_id.remove(&pid);
         }
 
         let peer = self.peer_by_id.entry(pid).or_insert(peer);
 
-        self.id_by_ip.insert(peer.tun_ipv4().into(), pid);
-        self.id_by_ip.insert(peer.tun_ipv6().into(), pid);
+        self.id_by_ipv4.insert(peer.tun_ipv4(), pid);
+        self.id_by_ipv6.insert(peer.tun_ipv6(), pid);
 
         peer
     }
 
     pub(crate) fn remove(&mut self, id: &TId) -> Option<P> {
-        self.id_by_ip.retain(|_, r_id| r_id != id);
+        self.id_by_ipv4.retain(|_, r_id| r_id != id);
+        self.id_by_ipv6.retain(|_, r_id| r_id != id);
         self.peer_by_id.remove(id)
     }
 
@@ -81,21 +86,24 @@ where
     }
 
     pub(crate) fn peer_by_ip(&self, ip: impl Into<IpAddr>) -> Option<(TId, &P)> {
-        let ip = ip.into();
+        let id = self.id_by_ip(ip.into())?;
+        let peer = self.peer_by_id.get(&id)?;
 
-        let id = self.id_by_ip.get(&ip)?;
-        let peer = self.peer_by_id.get(id)?;
-
-        Some((*id, peer))
+        Some((id, peer))
     }
 
     pub(crate) fn peer_by_ip_mut(&mut self, ip: impl Into<IpAddr>) -> Option<(TId, &mut P)> {
-        let ip = ip.into();
+        let id = self.id_by_ip(ip.into())?;
+        let peer = self.peer_by_id.get_mut(&id)?;
 
-        let id = self.id_by_ip.get(&ip)?;
-        let peer = self.peer_by_id.get_mut(id)?;
+        Some((id, peer))
+    }
 
-        Some((*id, peer))
+    fn id_by_ip(&self, ip: IpAddr) -> Option<TId> {
+        match ip {
+            IpAddr::V4(ip) => self.id_by_ipv4.get(&ip).copied(),
+            IpAddr::V6(ip) => self.id_by_ipv6.get(&ip).copied(),
+        }
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
@@ -107,7 +115,8 @@ where
     }
 
     pub(crate) fn clear(&mut self) {
-        self.id_by_ip.clear();
+        self.id_by_ipv4.clear();
+        self.id_by_ipv6.clear();
         self.peer_by_id.clear();
     }
 }
