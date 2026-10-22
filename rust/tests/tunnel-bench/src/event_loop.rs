@@ -5,8 +5,8 @@
 //! for the peer. A busy event loop never parks, so the wall time per packet is the cost of the
 //! event loop. One iteration is one packet.
 //!
-//! The `gateway_many_clients` benchmarks connect many Clients to one Gateway instead, and either
-//! spread the packets over all of them or leave the Gateway to maintain the idle connections.
+//! The `gateway_many_clients` benchmarks connect many Clients to one Gateway instead and leave it
+//! to maintain the idle connections.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
@@ -147,7 +147,7 @@ pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_
             measurement,
             id("gateway_inbound"),
             gateway,
-            vec![client],
+            client,
             now,
         ));
 
@@ -167,22 +167,11 @@ pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_
             measurement,
             id("client_inbound"),
             client,
-            vec![gateway],
+            gateway,
             now,
         ));
     }
 
-    for connectivity in CONNECTIVITIES {
-        let sides = connect_many(connectivity);
-        report.extend(inbound(
-            &mut group,
-            measurement,
-            format!("gateway_many_clients/{connectivity}/traffic"),
-            sides.gateway,
-            sides.clients,
-            sides.now,
-        ));
-    }
     group.finish();
 
     // A group of their own, as the idle benchmarks have no throughput.
@@ -267,25 +256,20 @@ fn outbound<M: Measurement + Copy>(
     measures
 }
 
-/// Sends encrypted datagrams from the peers to the tunnel's UDP socket and counts the packets it
+/// Sends encrypted datagrams from the peer to the tunnel's UDP socket and counts the packets it
 /// writes to TUN.
-///
-/// Several peers take turns packet by packet, so only a lone peer batches segments into a datagram.
 fn inbound<M: Measurement + Copy>(
     group: &mut BenchmarkGroup<'_, M>,
     measurement: M,
     id: String,
     local: Side,
-    mut peers: Vec<Side>,
+    mut peer: Side,
     now: Instant,
 ) -> Option<(String, Measures)> {
     let device = Device::new(&local.reads);
     let event_loop = EventLoop::spawn(local.state, local.socket, Clock::Frozen(now), &device);
     let runtime = peer_runtime();
-    let sockets = peers
-        .iter()
-        .map(|peer| bind_peer(&runtime, peer.socket))
-        .collect::<Vec<_>>();
+    let socket = bind_peer(&runtime, peer.socket);
 
     #[cfg(target_os = "macos")]
     {
@@ -293,24 +277,13 @@ fn inbound<M: Measurement + Copy>(
 
         let mut received = 0;
         while received < FLOW_SOCKET_PACKETS {
-            received += runtime.block_on(sockets[0].recv_from()).unwrap().len();
+            received += runtime.block_on(socket.recv_from()).unwrap().len();
         }
     }
 
-    let turn = if peers.len() == 1 { BURST } else { 1 };
-    let inputs = |packets: usize| {
-        (0..packets)
-            .step_by(turn)
-            .flat_map(|first| {
-                let index = (first / turn) % peers.len();
-                let peer = &mut peers[index];
-
-                peer.state
-                    .encapsulate(&peer.reads, turn.min(packets - first), now, local.socket)
-                    .into_iter()
-                    .map(move |datagram| (index, datagram))
-            })
-            .collect()
+    let inputs = |packets| {
+        peer.state
+            .encapsulate(&peer.reads, packets, now, local.socket)
     };
     let measures = measure(
         group,
@@ -319,9 +292,9 @@ fn inbound<M: Measurement + Copy>(
         &event_loop,
         device.writes(),
         inputs,
-        |(index, datagram)| {
+        |datagram| {
             let packets = datagram.packet.len() / datagram.segment_size;
-            runtime.block_on(sockets[index].send(datagram)).unwrap();
+            runtime.block_on(socket.send(datagram)).unwrap();
 
             packets
         },
