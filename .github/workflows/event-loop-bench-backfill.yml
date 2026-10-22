@@ -71,6 +71,8 @@ jobs:
   submit:
     name: submit
     needs: [commits, build]
+    # A commit whose build failed is skipped below; the rest are still submitted.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -90,9 +92,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          # In their order on main, so that Bencher numbers the versions that way; the
-          # backdate puts each report at its commit's time on the date axis.
+          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
+
+          # In their order on main: Bencher numbers a branch's versions as the reports are
+          # created, which happens at submission. The backdate puts each report at its
+          # commit's time on the date axis.
           for commit in $(jq -r '.[]' <<<"$COMMITS"); do
+            image="registry.bencher.dev/$BENCHER_PROJECT:$commit-backfill"
+            if ! docker manifest inspect "$image" >/dev/null 2>&1; then
+              echo "No image for $commit, its build failed"
+              continue
+            fi
             bencher run \
               --project "$BENCHER_PROJECT" \
               --branch main \
@@ -100,7 +110,7 @@ jobs:
               --backdate "$(git show -s --format=%ct "$commit")" \
               --testbed "bare-metal-$BENCHER_SPEC" \
               --spec "$BENCHER_SPEC" \
-              --image "registry.bencher.dev/$BENCHER_PROJECT:$commit-backfill" \
+              --image "$image" \
               --job-timeout 300 \
               --adapter json \
               --file /tmp/tunnel-bench.json \
