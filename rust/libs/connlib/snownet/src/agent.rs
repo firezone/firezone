@@ -179,6 +179,7 @@ impl Agent {
         }
     }
 
+    #[inline]
     pub(crate) fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,

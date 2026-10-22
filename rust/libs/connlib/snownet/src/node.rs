@@ -547,14 +547,16 @@ where
     ) -> Result<Option<PendingDecapsulate>> {
         self.last_now = now;
 
-        let (from, offset, relayed) = match self.allocations_try_handle(from, local, datagram, now)
-        {
-            ControlFlow::Continue(c) => c,
+        let relayed = match self.allocations_try_handle(from, local, datagram, now) {
+            ControlFlow::Continue(relayed) => relayed,
             ControlFlow::Break(()) => return Ok(None),
         };
 
         // For our agents, it is important what the initial "destination" of the packet was.
-        let destination = relayed.map(|s| s.address()).unwrap_or(local);
+        let (from, offset, destination) = match relayed {
+            Some((peer, socket)) => (peer, crate::channel_data::HEADER_LEN, socket.address()),
+            None => (from, 0, local),
+        };
 
         match self.agents_try_handle(from, destination, &datagram[offset..], now) {
             ControlFlow::Continue(()) => {}
@@ -891,13 +893,15 @@ where
     /// This heuristic might fail because we are also handling wireguard packets.
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
+    ///
+    /// Continues with the peer and the relayed socket for a channel-data message, or with `None` for a packet that did not arrive through a relay.
     fn allocations_try_handle(
         &mut self,
         from: SocketAddr,
         local: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<(), (SocketAddr, usize, Option<Socket>)> {
+    ) -> ControlFlow<(), Option<(SocketAddr, Socket)>> {
         if from.port() != 3478 {
             // Relays always send & receive from port 3478.
             //
@@ -914,7 +918,7 @@ where
             // previously had an allocation on a certain relay:
             // 1. If we previously had an allocation, we need to stop processing the packet.
             // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
-            return ControlFlow::Continue((from, 0, None));
+            return ControlFlow::Continue(None);
         }
 
         match packet.first().copied() {
@@ -922,7 +926,7 @@ where
             Some(0..=3) => {
                 let Ok(Ok(message)) = allocation::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, 0, None));
+                    return ControlFlow::Continue(None);
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -937,7 +941,7 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, 0, None));
+                        return ControlFlow::Continue(None);
                     }
                 };
 
@@ -954,7 +958,7 @@ where
             Some(64..=79) => {
                 let Ok(cd) = crate::channel_data::decode(packet) else {
                     // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, 0, None));
+                    return ControlFlow::Continue(None);
                 };
 
                 let allocation = match self.allocations.get_mut_by_server(from) {
@@ -968,7 +972,7 @@ where
                         return ControlFlow::Break(()); // Stop processing the packet.
                     }
                     allocations::MutAllocationRef::Unknown => {
-                        return ControlFlow::Continue((from, 0, None));
+                        return ControlFlow::Continue(None);
                     }
                 };
 
@@ -980,10 +984,10 @@ where
 
                 // Successfully handled the packet and decapsulated the channel data message.
                 // Continue processing with the _unwrapped_ packet.
-                ControlFlow::Continue((from, crate::channel_data::HEADER_LEN, Some(socket)))
+                ControlFlow::Continue(Some((from, socket)))
             }
             // Byte is in a different range? Move on with processing the packet.
-            Some(_) | None => ControlFlow::Continue((from, 0, None)),
+            Some(_) | None => ControlFlow::Continue(None),
         }
     }
 

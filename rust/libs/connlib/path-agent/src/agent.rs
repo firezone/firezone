@@ -622,6 +622,7 @@ impl PathAgent {
         self.events.pop_front()
     }
 
+    #[inline]
     pub fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
@@ -636,6 +637,17 @@ impl PathAgent {
             return ControlFlow::Continue(packet);
         };
 
+        self.handle_probe(probe, pair, now);
+
+        ControlFlow::Break(())
+    }
+
+    fn handle_probe(
+        &mut self,
+        probe: crate::icmpv6::Probe,
+        pair: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) {
         match probe.kind {
             crate::icmpv6::Echo::Request => {
                 tracing::trace!(local = %pair.0, remote = %pair.1, seq = probe.seq, "Probe request received");
@@ -663,15 +675,15 @@ impl PathAgent {
             }
             crate::icmpv6::Echo::Reply => {
                 let Some(state) = self.pairs.get_mut(&pair) else {
-                    return ControlFlow::Break(());
+                    return;
                 };
                 // The id is scoped to the pair: a reply carrying a stale id
                 // (a pair recreated at the same address) is not ours.
                 if probe.id != state.id {
-                    return ControlFlow::Break(());
+                    return;
                 }
                 let Some(i) = state.inflight.iter().position(|p| p.seq == probe.seq) else {
-                    return ControlFlow::Break(());
+                    return;
                 };
 
                 let inflight = state.inflight.remove(i);
@@ -690,7 +702,6 @@ impl PathAgent {
                 self.select_primary();
             }
         }
-        ControlFlow::Break(())
     }
 
     /// Records that the session is confirmed, which starts probing and ends the
