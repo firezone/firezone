@@ -274,6 +274,7 @@ skip = [
     "jni", # hickory 0.26 uses jni 0.22 for Android DNS; tauri/tao/wry/rustls-platform-verifier/ndk still on 0.21. not a problem as they land in different binaries (Android client vs gateway)
     "jni-sys",
     "libloading",
+    "mach2", # smbios-lib 0.9.4 uses mach2 0.6; its own io-kit-sys 0.5 dependency is still on 0.5.
     "nix",
     "nom",
     "object",
