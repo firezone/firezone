@@ -1,12 +1,10 @@
 name: Event-loop benchmark backfill
 run-name: Backfill triggered by ${{ github.actor }}
 "on":
-  workflow_dispatch:
-    inputs:
-      commits:
-        description: JSON array of full hashes of commits on main, oldest first
-        required: true
-        type: string
+  pull_request:
+    paths:
+      - .github/workflows/event-loop-bench-backfill.yml
+      - rust/tests/tunnel-bench/backfill/**
 
 defaults:
   run:
@@ -16,15 +14,29 @@ permissions:
   contents: read
 
 jobs:
+  commits:
+    name: commits
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: list
+        working-directory: .
+        run: echo "list=$(jq -R -s -c 'split("\n") | map(select(length > 0))' rust/tests/tunnel-bench/backfill/commits.txt)" >>"$GITHUB_OUTPUT"
+
   build:
     name: build-${{ matrix.commit }}
     runs-on: ubuntu-24.04
+    needs: commits
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        commit: ${{ fromJSON(inputs.commits) }}
+        commit: ${{ fromJSON(needs.commits.outputs.list) }}
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       COMMIT: ${{ matrix.commit }}
@@ -58,14 +70,14 @@ jobs:
 
   submit:
     name: submit
-    needs: build
+    needs: [commits, build]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       BENCHER_SPEC: intel-v1
-      COMMITS: ${{ inputs.commits }}
+      COMMITS: ${{ needs.commits.outputs.list }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
