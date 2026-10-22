@@ -11,7 +11,8 @@ debug_exit() {
     echo "Bailing out. Waiting a couple seconds for things to settle..."
     sleep 5
     docker compose ps -a
-    resolvectl dns tun-firezone || true
+    resolvectl status || true
+    cat /etc/resolv.conf || true
     systemctl status "$SERVICE_NAME" || true
     journalctl -eu "$SERVICE_NAME" || true
     exit 1
@@ -53,6 +54,8 @@ resolvectl query "$HTTPBIN" || debug_exit
 # Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
+# glibc stops searching at the first domain whose lookup errors, so drop the runner's own search domain.
+sudo resolvectl domain "$(ip -o route show default | awk '{print $5; exit}')" ""
 curl -v $HTTPBIN/get || debug_exit
 
 # Make sure it's going through the tunnel
