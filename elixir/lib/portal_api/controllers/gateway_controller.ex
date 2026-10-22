@@ -279,8 +279,8 @@ defmodule PortalAPI.GatewayController do
     # rather than the device.
     defp with_token_rotation(queryable) do
       queryable
-      |> join(:left, [gateways: d], t in Portal.GatewayToken,
-        on: t.id == d.gateway_token_id and t.account_id == d.account_id,
+      |> join(:left, [gateways: d], t in Portal.ClientToken,
+        on: t.id == d.token_id and t.account_id == d.account_id,
         as: :gateway_token
       )
       |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})

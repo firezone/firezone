@@ -855,9 +855,9 @@ defmodule PortalWeb.Sites.Components do
   end
 
   # Whether the gateway's active single-owner token is actually in use.
-  # gateway_token_id is a proxy for the server-side "referenced by a device"
-  # check that decides between grace-period rotation and outright
-  # replacement - it matches exactly for never-connected gateways.
+  # token_id is a proxy for the server-side "referenced by a device" check
+  # that decides between grace-period rotation and outright replacement - it
+  # matches exactly for never-connected gateways.
   defp active_token_state(device_tokens, gateway) do
     active =
       device_tokens
@@ -866,14 +866,13 @@ defmodule PortalWeb.Sites.Components do
 
     cond do
       is_nil(active) -> :none
-      gateway.gateway_token_id == active.id -> :in_use
+      gateway.token_id == active.id -> :in_use
       true -> :never_used
     end
   end
 
   defp legacy_connected?(gateway, legacy_token_ids) do
-    gateway.gateway_token_id != nil and
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id)
+    gateway.token_id != nil and MapSet.member?(legacy_token_ids, gateway.token_id)
   end
 
   # A gateway still connected with a legacy token is mid-upgrade even if a
@@ -938,13 +937,13 @@ defmodule PortalWeb.Sites.Components do
       is_nil(gateway.last_seen_at) ->
         "Never connected - No token provisioned"
 
-      active && gateway.gateway_token_id == active.id ->
+      active && gateway.token_id == active.id ->
         "#{verb} gateway token"
 
-      rotated && gateway.gateway_token_id == rotated.id ->
+      rotated && gateway.token_id == rotated.id ->
         expiring_status(verb, active)
 
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id) ->
+      MapSet.member?(legacy_token_ids, gateway.token_id) ->
         with_unused_token_note("#{verb} legacy site token", active)
 
       true ->

@@ -167,8 +167,14 @@ defmodule PortalAPI.Schemas.Gateway do
       ]
     })
 
+    # The documented `gateway_token_id` is the token of the latest session,
+    # which now lives in the column every token kind shares.
     def map(%Portal.Device{provisioned_token: nil} = device, _map) do
-      %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+      %{
+        online: device.online?,
+        rotated_at: device.gateway_token_rotated_at,
+        gateway_token_id: device.token_id
+      }
     end
 
     def map(%Portal.Device{provisioned_token: token} = device, map) when is_binary(token) do

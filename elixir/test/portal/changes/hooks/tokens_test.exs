@@ -94,7 +94,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
   describe "GatewayTokens.on_delete/2" do
     test "sends :disconnect to registered token process" do
       account = account_fixture()
-      token = gateway_token_fixture(account: account)
+      token = legacy_gateway_token_fixture(account: account)
 
       PG.register(token.id)
 
@@ -110,7 +110,7 @@ defmodule Portal.Changes.Hooks.TokensTest do
 
     test "returns :ok when no process is registered for token" do
       account = account_fixture()
-      token = gateway_token_fixture(account: account)
+      token = legacy_gateway_token_fixture(account: account)
 
       old_data = %{
         "id" => token.id,
