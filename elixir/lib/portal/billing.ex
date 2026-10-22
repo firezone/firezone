@@ -173,12 +173,12 @@ defmodule Portal.Billing do
     end)
   end
 
-  defp seats_used(%{limits: %{adhoc_service_accounts_count: nil}}, counts), do: counts.users
-
-  defp seats_used(%{limits: %{adhoc_service_accounts_count: adhoc}}, counts),
-    do: counts.users + max(counts.service_accounts - adhoc, 0)
-
-  defp seats_used(_account, counts), do: counts.users + counts.service_accounts
+  defp seats_used(%{limits: limits}, counts) do
+    case Portal.Accounts.Limits.adhoc_service_accounts_allowance(limits) do
+      nil -> counts.users
+      allowance -> counts.users + max(counts.service_accounts - allowance, 0)
+    end
+  end
 
   def seats_limit_exceeded?(%Portal.Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and

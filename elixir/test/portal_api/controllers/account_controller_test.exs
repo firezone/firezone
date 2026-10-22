@@ -84,11 +84,12 @@ defmodule PortalAPI.AccountControllerTest do
 
       assert %{"data" => %{"limits" => limits}} = json_response(conn, 200)
 
-      assert limits["adhoc_service_accounts"] == %{"used" => 1, "available" => 4, "total" => 5}
+      # Five bought plus the one every plan includes.
+      assert limits["adhoc_service_accounts"] == %{"used" => 1, "available" => 5, "total" => 6}
       assert limits["monthly_active_users"] == %{"used" => 0, "available" => 10, "total" => 10}
     end
 
-    test "omits ad hoc service accounts without the add-on", %{conn: conn} do
+    test "reports the one included ad hoc service account without the add-on", %{conn: conn} do
       account = account_fixture()
       actor = actor_fixture(type: :api_client, account: account)
 
@@ -98,7 +99,7 @@ defmodule PortalAPI.AccountControllerTest do
         |> get(~p"/account")
 
       assert %{"data" => %{"limits" => limits}} = json_response(conn, 200)
-      refute Map.has_key?(limits, "adhoc_service_accounts")
+      assert limits["adhoc_service_accounts"] == %{"used" => 0, "available" => 1, "total" => 1}
     end
 
     test "returns 401 when not authenticated", %{conn: conn} do
