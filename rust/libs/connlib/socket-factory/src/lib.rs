@@ -6,7 +6,7 @@ use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
 use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
-use std::ops::{Deref, Index};
+use std::ops::Index;
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
@@ -361,8 +361,8 @@ impl std::os::fd::AsFd for UdpSocket {
 
 /// An inbound UDP datagram of a [`DatagramBatch`], possibly GRO / URO-coalesced from several segments
 /// that all come from the same remote address.
-pub struct DatagramIn<B = Bytes> {
-    buffer: B,
+pub struct DatagramIn {
+    buffer: Bytes,
     local: SocketAddr,
     from: SocketAddr,
     ecn: Ecn,
@@ -964,11 +964,10 @@ impl RecvBuffers {
 /// which yields each buffer as a [`DatagramIn`] that segments GRO / URO-coalesced
 /// datagrams apart again.
 ///
-/// The batch is generic over its buffer type to allow easier testing without a buffer pool.
 #[derive(Clone, derive_more::Debug)]
-pub struct DatagramBatch<B = Bytes> {
+pub struct DatagramBatch {
     #[debug(skip)]
-    buffers: Vec<B>,
+    buffers: Vec<Bytes>,
     #[debug(skip)]
     metas: Vec<quinn_udp::RecvMeta>,
 
@@ -976,9 +975,9 @@ pub struct DatagramBatch<B = Bytes> {
     num_packets: usize,
 }
 
-impl<B> DatagramBatch<B> {
+impl DatagramBatch {
     pub(crate) fn new(
-        mut buffers: Vec<B>,
+        mut buffers: Vec<Bytes>,
         mut metas: Vec<quinn_udp::RecvMeta>,
         port: u16,
         len: usize,
@@ -1013,10 +1012,7 @@ impl<B> DatagramBatch<B> {
     /// Removes all datagrams from the batch, in order; draining again yields nothing.
     ///
     /// Datagrams with nonsensical metadata are dropped.
-    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn<B>> + '_
-    where
-        B: Deref<Target = Vec<u8>>,
-    {
+    pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         let port = self.port;
         self.num_packets = 0;
 
@@ -1036,12 +1032,9 @@ fn num_segments(meta: &quinn_udp::RecvMeta) -> usize {
     meta.len.div_ceil(meta.stride.max(1))
 }
 
-impl<B> DatagramIn<B>
-where
-    B: Deref<Target = Vec<u8>>,
-{
+impl DatagramIn {
     /// Validates what [`quinn_udp`] reported about the buffer.
-    fn new(buffer: B, meta: quinn_udp::RecvMeta, port: u16) -> Option<Self> {
+    fn new(buffer: Bytes, meta: quinn_udp::RecvMeta, port: u16) -> Option<Self> {
         if meta.len == 0 {
             return None;
         }
@@ -1111,7 +1104,7 @@ where
     }
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
-    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<B> {
+    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<> {
         let Self { len, stride, .. } = *self;
         #[cfg(debug_assertions)]
         let (from, local, ecn) = (self.from, self.local, self.ecn);
@@ -1127,10 +1120,7 @@ where
     }
 }
 
-impl<B> Index<Segment> for DatagramIn<B>
-where
-    B: Deref<Target = Vec<u8>>,
-{
+impl Index<Segment> for DatagramIn {
     type Output = [u8];
 
     fn index(&self, segment: Segment) -> &[u8] {
@@ -1162,15 +1152,6 @@ mod tests {
 
     use super::*;
 
-    #[derive(derive_more::Deref)]
-    struct DummyBuffer(Vec<u8>);
-
-    impl Clone for DummyBuffer {
-        fn clone(&self) -> Self {
-            Self(self.0.clone())
-        }
-    }
-
     /// The batch is the item of the channel to the main thread; keeping it small is
     /// the whole point of storing its buffers in heap-allocated `Vec`s rather than inline.
     /// tokio allocates channel slots in blocks, so a large item would cross musl's mmap
@@ -1184,9 +1165,9 @@ mod tests {
     #[test]
     fn drain_segments_buffers_correctly() {
         let buffers = vec![
-            DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
-            DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
-            DummyBuffer(b"".to_vec()),
+            Bytes::copied_from(b"foobar1foobar2foobar3foobar4foobar5foo                 "),
+            Bytes::copied_from(b"baz1baz2baz3baz4baz5foo       "),
+            Bytes::copied_from(b""),
         ];
 
         let metas = vec![
@@ -1228,7 +1209,7 @@ mod tests {
 
     #[test]
     fn drained_batch_yields_nothing() {
-        let buffers = vec![DummyBuffer(b"foo".to_vec())];
+        let buffers = vec![Bytes::copied_from(b"foo")];
 
         let metas = vec![recv_meta(
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
@@ -1252,10 +1233,10 @@ mod tests {
         let local = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
         let buffers = vec![
-            DummyBuffer(b"foo1foo2".to_vec()),
-            DummyBuffer(b"foo3".to_vec()),
-            DummyBuffer(b"bar1".to_vec()),
-            DummyBuffer(b"foo4".to_vec()),
+            Bytes::copied_from(b"foo1foo2"),
+            Bytes::copied_from(b"foo3"),
+            Bytes::copied_from(b"bar1"),
+            Bytes::copied_from(b"foo4"),
         ];
 
         let metas = vec![
@@ -1294,8 +1275,8 @@ mod tests {
     #[test]
     fn zero_stride_buffer_is_skipped() {
         let buffers = vec![
-            DummyBuffer(b"garbage    ".to_vec()),
-            DummyBuffer(b"foo        ".to_vec()),
+            Bytes::copied_from(b"garbage    "),
+            Bytes::copied_from(b"foo        "),
         ];
 
         let metas = vec![
@@ -1338,8 +1319,8 @@ mod tests {
         let oversized = 2 * ip_packet::MAX_FZ_PAYLOAD;
 
         let buffers = vec![
-            DummyBuffer(vec![0; oversized]),
-            DummyBuffer(b"foobar1".to_vec()),
+            Bytes::copied_from(&vec![0; oversized]),
+            Bytes::copied_from(b"foobar1"),
         ];
 
         let metas = vec![
@@ -1443,7 +1424,7 @@ mod tests {
         );
     }
 
-    fn packets(batch: &mut DatagramBatch<DummyBuffer>) -> Vec<Vec<u8>> {
+    fn packets(batch: &mut DatagramBatch) -> Vec<Vec<u8>> {
         batch
             .drain()
             .flat_map(|datagram| {
