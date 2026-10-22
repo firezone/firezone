@@ -593,6 +593,23 @@ defmodule PortalAPI.FlowLogControllerTest do
       ports = Repo.all(FlowLog) |> Enum.map(& &1.inner_dst_port) |> Enum.sort()
       assert ports == [443, 8443]
     end
+
+    # Postgres locks rows in VALUES order, and seq is assigned in that order.
+    # Concurrent batches that overlap deadlock unless they all lock in the same
+    # order, regardless of batch size.
+    test "rows are written in a deterministic order regardless of batch size", %{
+      conn: conn,
+      account: account
+    } do
+      ports = Enum.to_list(1000..1039)
+
+      records = Enum.map(Enum.shuffle(ports), &build_record(%{"inner_dst_port" => &1}))
+
+      assert conn |> authorize(account) |> post_logs(records) |> json_response(200)
+
+      written = Repo.all(FlowLog) |> Enum.sort_by(& &1.seq) |> Enum.map(& &1.inner_dst_port)
+      assert written == ports
+    end
   end
 
   describe "create/2 validation" do
