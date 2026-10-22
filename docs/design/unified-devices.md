@@ -125,9 +125,13 @@ One channel core, `PortalAPI.Device.Channel.Core`, with thin protocol
 adapters: `/gateway` v1 and v2 and `/client` v1 to v3 for deployed binaries,
 and `/device/v1`, the union of both message sets on one socket. An adapter may
 only rename messages, pick the view that renders payloads for its version, and
-choose the ack mode; everything else lives in the core. Init carries the outbound view
-(resources I may reach) and the inbound view (sites I serve, authorizations
-where I am the receiver). `create_authorization` gains `ice_role` and a
+choose the ack mode; everything else lives in the core. Init carries the
+outbound view, `resources` the device may reach, and the inbound view:
+`sites_served`, `local_resources` (every resource served by those sites, the
+list a gateway never had), and `authorizations` where the device is the
+receiver. `local_resource_created_or_updated` and `local_resource_deleted`
+keep the list current. Every device gets it, whether or not it serves
+anything today. `create_authorization` gains `ice_role` and a
 `target` of `self {pool_id, filters}` or a resource. The gateway-style ack
 (device echoes the signed `ref` after installing the authorization) is the only
 receiver protocol; the c2c auto-ack survives only in the `/client/v3` adapter.
@@ -601,8 +605,9 @@ firezone` and `firezone authenticate`. Depends 3.7.
 - **4.10 Elixir: `/client` v1, v2 and v3 as adapters** over Core, including
   the c2c auto-ack. A meaningful share of active clients are still on v1 or v2.
   Existing client channel tests unchanged. Depends 4.9.
-- **4.11 Protocol: `/device/v1` message set.** Init with outbound and inbound
-  views and `sites_served`; `create_authorization` with `ice_role` and
+- **4.11 Protocol: `/device/v1` message set.** Init with `resources`,
+  `sites_served`, `local_resources` and inbound `authorizations`, plus the
+  `local_resource_*` pushes; `create_authorization` with `ice_role` and
   `target`; ICE messages keyed by `device_id`; `set_capabilities`. Written
   down in `tunnel-proto` docs and the Elixir views. Depends 4.10.
 - **4.12 Elixir: `/device/v1` socket and channel.** Adapter over Core; auth
