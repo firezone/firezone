@@ -25,30 +25,31 @@ struct WelcomeView: View {
           .padding(.vertical, 10)
         Text(
           """
-            Welcome to Firezone.
-            Sign in to access Resources.
+          Welcome to Firezone.
+          Sign in to access Resources.
           """
-        ).multilineTextAlignment(.center)
-          .padding(.bottom, 10)
+        )
+        .multilineTextAlignment(.center)
+        .padding(.bottom, 10)
         Button("Sign in") {
-          Task {
-            do {
-              try await WebAuthSession.signIn(store: store)
-            } catch {
-              Log.error(error)
-
-              self.errorHandler.handle(
-                ErrorAlert(
-                  title: "Error signing in",
-                  error: error
-                ))
-            }
-          }
+          signIn()
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()
       }
     )
+  }
+
+  private func signIn() {
+    Task {
+      do {
+        try await WebAuthSession.signIn(store: store)
+      } catch {
+        Log.error(error)
+
+        self.errorHandler.handle(ErrorAlert(title: "Error signing in", error: error))
+      }
+    }
   }
 }

@@ -99,16 +99,6 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
     {ast, issues}
   end
 
-  # Allow Portal.Repo.Replica.put_dynamic_repo
-  defp traverse(
-         {{:., _meta, [{:__aliases__, _, [:Portal, :Repo, :Replica]}, :put_dynamic_repo]}, _, _} =
-           ast,
-         issues,
-         _issue_meta
-       ) do
-    {ast, issues}
-  end
-
   # Check for direct Portal.Repo calls
   defp traverse(
          {{:., meta, [{:__aliases__, _, [:Portal, :Repo]}, _]}, _, _} = ast,
@@ -137,8 +127,7 @@ defmodule Credo.Check.Warning.UnsafeRepoUsage do
         "lib/portal/repo.ex",
         "lib/portal/repo/list.ex",
         "lib/portal/repo/offset_list.ex",
-        "lib/portal/repo/preloader.ex",
-        "lib/portal/repo/replica.ex"
+        "lib/portal/repo/preloader.ex"
       ],
       &String.ends_with?(file_path, &1)
     )

@@ -11,6 +11,11 @@ defmodule PortalAPI.Gateway.Socket do
   import Ecto.Changeset
   import Portal.Changeset
 
+  @reported_metadata_fields ~w[
+    device_serial
+    device_uuid
+  ]a
+
   ## Channels
 
   channel "gateway", PortalAPI.Gateway.Channel
@@ -32,7 +37,6 @@ defmodule PortalAPI.Gateway.Socket do
   def connect(attrs, socket, connect_info) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
     end
 
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
@@ -55,7 +59,9 @@ defmodule PortalAPI.Gateway.Socket do
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
-         :ok <- ensure_gateway_not_connected(gateway) do
+         :ok <- ensure_gateway_not_connected(gateway),
+         {:ok, gateway} <- put_reported_metadata(gateway, attrs),
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
@@ -120,11 +126,26 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Single-owner token: the token identifies the gateway directly; the
   # reported firezone_id is kept in sync as a telemetry hint
-  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, attrs) do
+  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
-           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id),
-         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
+           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
       {:ok, gateway.site, gateway}
+    end
+  end
+
+  # Hardware metadata is self-reported on every connection. Only fields present
+  # in the socket params are cast, so an older gateway that omits a field keeps
+  # the value already stored on its device row.
+  defp put_reported_metadata(%Device{} = gateway, attrs) do
+    changeset =
+      gateway
+      |> cast(attrs, @reported_metadata_fields)
+      |> Device.changeset()
+
+    if changeset.changes == %{} do
+      {:ok, gateway}
+    else
+      Database.update_gateway(changeset)
     end
   end
 
@@ -162,7 +183,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
-    insert_fields = ~w[firezone_id name]a
+    insert_fields = [:firezone_id, :name | @reported_metadata_fields]
     required_fields = ~w[firezone_id name]a
 
     %Device{}
@@ -173,6 +194,7 @@ defmodule PortalAPI.Gateway.Socket do
     |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
+    |> Portal.Devices.put_free_slug(site.account_id, nil)
     |> validate_required(required_fields)
     |> Device.changeset()
     |> public_socket_changeset()
@@ -261,7 +283,7 @@ defmodule PortalAPI.Gateway.Socket do
       Batch.insert_all(SessionLog, log_entries,
         label: "gateway session log",
         fk_partitions: %{
-          "session_logs_account_id_fkey" => {:simple, :account_id, Portal.Account}
+          "session_logs_partitioned_account_id_fkey" => {:simple, :account_id, Portal.Account}
         }
       )
 
@@ -368,10 +390,11 @@ defmodule PortalAPI.Gateway.Socket do
           where: d.id == ^id,
           where: d.type == :gateway,
           join: s in assoc(d, :site),
+          on: s.account_id == d.account_id,
           preload: [site: s]
         )
-        |> Safe.unscoped(:replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.unscoped()
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -391,7 +414,7 @@ defmodule PortalAPI.Gateway.Socket do
           where: s.account_id == ^account_id,
           where: s.id == ^id
         )
-        |> Safe.unscoped(:replica)
+        |> Safe.unscoped()
         |> Safe.one()
 
       case result do
@@ -414,8 +437,8 @@ defmodule PortalAPI.Gateway.Socket do
             where: d.firezone_id == ^firezone_id,
             where: d.type == :gateway
           )
-          |> Safe.unscoped(:replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.unscoped()
+          |> Safe.one()
         end
 
       if existing do

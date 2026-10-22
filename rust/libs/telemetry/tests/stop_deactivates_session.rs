@@ -2,9 +2,8 @@ use telemetry::{Env, TESTING};
 
 #[tokio::test]
 async fn stop_deactivates_but_remembers_env() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+    // No socket factory is configured, so the ingest client can never connect and
+    // the tests report nothing to Sentry.
     telemetry::start("wss://api.firez.one", "1.0.0", TESTING);
     assert!(telemetry::is_active());
 

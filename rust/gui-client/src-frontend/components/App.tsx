@@ -1,27 +1,15 @@
-import {
-  Bars3Icon,
-  CogIcon,
-  DocumentMagnifyingGlassIcon,
-  HomeIcon,
-  InformationCircleIcon,
-  SwatchIcon,
-  WrenchScrewdriverIcon,
-} from "@heroicons/react/24/solid";
-import {
-  Sidebar,
-  SidebarCollapse,
-  SidebarItemGroup,
-  SidebarItems,
-} from "flowbite-react";
 import React, { useEffect, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
-import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import ColorPalette from "./ColorPalettePage";
+import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
+import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
+import RemixIcon from "./RemixIcon";
+import Titlebar from "./Titlebar";
 import {
   AdvancedSettingsViewModel,
   commands,
@@ -29,8 +17,8 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
+  X509Certificate,
 } from "../generated/bindings";
-import Titlebar from "./Titlebar";
 
 export default function App() {
   const [session, setSession] = useState<SessionViewModel | null>(null);
@@ -39,119 +27,158 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
+  const [deviceTrustCertificate, setDeviceTrustCertificate] =
+    useState<X509Certificate | null>();
+  const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
-    const sessionChangedUnlisten = events.sessionChanged.listen((e) => {
-      const session = e.payload;
-
-      console.log("session_changed", { session });
-      setSession(session);
+    const sessionChangedUnlisten = events.sessionChanged.listen((event) => {
+      console.log("session_changed", { session: event.payload });
+      setSession(event.payload);
     });
     const generalSettingsChangedUnlisten = events.generalSettingsChanged.listen(
-      (e) => {
-        const generalSettings = e.payload;
-
-        console.log("general_settings_changed", { settings: generalSettings });
-        setGeneralSettings(generalSettings);
+      (event) => {
+        console.log("general_settings_changed", { settings: event.payload });
+        setGeneralSettings(event.payload);
       }
     );
     const advancedSettingsChangedUnlisten =
-      events.advancedSettingsChanged.listen((e) => {
-        const advancedSettings = e.payload;
-
+      events.advancedSettingsChanged.listen((event) => {
         console.log("advanced_settings_changed", {
-          settings: advancedSettings,
+          settings: event.payload,
         });
-        setAdvancedSettings(advancedSettings);
+        setAdvancedSettings(event.payload);
       });
-    const logsRecountedUnlisten = events.logsRecounted.listen((e) => {
-      const file_count = e.payload;
-
-      console.log("logs_recounted", { file_count });
-      setLogCount(file_count);
+    const logsRecountedUnlisten = events.logsRecounted.listen((event) => {
+      console.log("logs_recounted", { file_count: event.payload });
+      setLogCount(event.payload);
     });
+    const deviceTrustCertificateChangedUnlisten =
+      events.x509CertificateChanged.listen((event) => {
+        console.log("x509_certificate_changed", { certificate: event.payload });
+        setDeviceTrustCertificate(event.payload);
+      });
 
-    commands.updateState(); // Let the backend know that we (re)-initialised
+    commands.updateState();
 
     return () => {
-      sessionChangedUnlisten.then((unlistenFn) => unlistenFn());
-      generalSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
-      advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
-      logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
+      sessionChangedUnlisten.then((unlisten) => unlisten());
+      generalSettingsChangedUnlisten.then((unlisten) => unlisten());
+      advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
+      logsRecountedUnlisten.then((unlisten) => unlisten());
+      deviceTrustCertificateChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
   const isDev = import.meta.env.DEV;
 
   return (
-    <div className="h-screen flex flex-col rounded-lg border border-neutral-300 overflow-hidden">
+    <div className="app-shell">
       <Routes>
-        <Route path="/overview" element={<Titlebar title={"Firezone"} />} />
+        <Route path="/overview" element={<Titlebar title="Firezone" />} />
         <Route
           path="/general-settings"
-          element={<Titlebar title={"General Settings"} />}
+          element={<Titlebar title="General Settings" />}
         />
         <Route
           path="/advanced-settings"
-          element={<Titlebar title={"Advanced Settings"} />}
+          element={<Titlebar title="Advanced Settings" />}
         />
         <Route
-          path="/diagnostics"
-          element={<Titlebar title={"Diagnostics"} />}
+          path="/device-trust"
+          element={
+            deviceTrustCertificate ? <Titlebar title="Device Trust" /> : null
+          }
         />
-        <Route path="/about" element={<Titlebar title={"About"} />} />
+        <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
+        <Route path="/about" element={<Titlebar title="About" />} />
         <Route
           path="/colour-palette"
-          element={<Titlebar title={"Colour Palette"} />}
+          element={<Titlebar title="Colour Palette" />}
         />
       </Routes>
-      <div className="flex-1 bg-neutral-50 flex flex-row">
-        <Sidebar
-          aria-label="Sidebar"
-          className="w-52 flex-shrink-0 border-r border-neutral-200"
-        >
-          <SidebarItems>
-            <SidebarItemGroup>
-              <ReactRouterSidebarItem icon={HomeIcon} href="/overview">
-                Overview
-              </ReactRouterSidebarItem>
-              <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
-                <ReactRouterSidebarItem icon={CogIcon} href="/general-settings">
-                  General
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-surface">
+          <nav
+            aria-label="Client navigation"
+            className="flex-1 overflow-y-auto px-2 py-3"
+          >
+            <ul className="space-y-0.5">
+              <li>
+                <ReactRouterSidebarItem icon="home" href="/overview">
+                  Overview
                 </ReactRouterSidebarItem>
-                <ReactRouterSidebarItem
-                  icon={WrenchScrewdriverIcon}
-                  href="/advanced-settings"
+              </li>
+              <li>
+                <button
+                  aria-expanded={settingsOpen}
+                  className="nav-item w-full"
+                  onClick={() => setSettingsOpen((open) => !open)}
+                  type="button"
                 >
-                  Advanced
+                  <RemixIcon className="h-4 w-4" name="settings" />
+                  <span className="flex-1 text-left">Settings</span>
+                  <RemixIcon
+                    className={`h-3.5 w-3.5 transition-transform ${
+                      settingsOpen ? "rotate-180" : ""
+                    }`}
+                    name="arrow-down"
+                  />
+                </button>
+                {settingsOpen && (
+                  <ul className="mt-0.5 space-y-0.5 pl-4">
+                    <li>
+                      <ReactRouterSidebarItem
+                        icon="settings"
+                        href="/general-settings"
+                      >
+                        General
+                      </ReactRouterSidebarItem>
+                    </li>
+                    <li>
+                      <ReactRouterSidebarItem
+                        icon="equalizer"
+                        href="/advanced-settings"
+                      >
+                        Advanced
+                      </ReactRouterSidebarItem>
+                    </li>
+                  </ul>
+                )}
+              </li>
+              {deviceTrustCertificate && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="certificate"
+                    href="/device-trust"
+                  >
+                    Device Trust
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
+              <li>
+                <ReactRouterSidebarItem icon="database" href="/diagnostics">
+                  Diagnostics
                 </ReactRouterSidebarItem>
-              </SidebarCollapse>
-              <ReactRouterSidebarItem
-                icon={DocumentMagnifyingGlassIcon}
-                href="/diagnostics"
-              >
-                Diagnostics
-              </ReactRouterSidebarItem>
-              <ReactRouterSidebarItem
-                icon={InformationCircleIcon}
-                href="/about"
-              >
-                About
-              </ReactRouterSidebarItem>
-            </SidebarItemGroup>
-            {isDev && (
-              <SidebarItemGroup>
-                <ReactRouterSidebarItem
-                  icon={SwatchIcon}
-                  href="/colour-palette"
-                >
-                  Color Palette
+              </li>
+              <li>
+                <ReactRouterSidebarItem icon="information" href="/about">
+                  About
                 </ReactRouterSidebarItem>
-              </SidebarItemGroup>
-            )}
-          </SidebarItems>
-        </Sidebar>
-        <main className="flex-grow overflow-auto">
+              </li>
+              {isDev && (
+                <li className="mt-3 border-t border-border pt-3">
+                  <ReactRouterSidebarItem icon="palette" href="/colour-palette">
+                    Color Palette
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
+            </ul>
+          </nav>
+        </aside>
+
+        <main className="min-w-0 flex-1 overflow-auto bg-page">
           <Routes>
             <Route
               path="/overview"
@@ -181,6 +208,16 @@ export default function App() {
                   saveSettings={commands.applyAdvancedSettings}
                   resetSettings={commands.resetAdvancedSettings}
                 />
+              }
+            />
+            <Route
+              path="/device-trust"
+              element={
+                deviceTrustCertificate === null ? (
+                  <Navigate replace to="/overview" />
+                ) : deviceTrustCertificate === undefined ? null : (
+                  <DeviceTrustPage certificate={deviceTrustCertificate} />
+                )
               }
             />
             <Route

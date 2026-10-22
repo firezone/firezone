@@ -3,6 +3,7 @@ defmodule Portal.Changes.ConsumerTest do
 
   import ExUnit.CaptureLog
   alias Portal.Changes.Consumer
+  alias Portal.Fixture
 
   setup do
     tables =
@@ -70,7 +71,7 @@ defmodule Portal.Changes.ConsumerTest do
             end
           end)
 
-        refute log_output =~ "No hook defined for insert"
+        refute Fixture.logged_lines(log_output, table) =~ "No hook defined for insert"
       end
     end
   end
@@ -281,7 +282,13 @@ defmodule Portal.Changes.ConsumerTest do
         "sites" => Portal.Changes.Hooks.Sites,
         "policies" => Portal.Changes.Hooks.Policies,
         "resources" => Portal.Changes.Hooks.Resources,
-        "client_tokens" => Portal.Changes.Hooks.ClientTokens
+        "client_tokens" => Portal.Changes.Hooks.ClientTokens,
+        "intune_devices" => Portal.Changes.Hooks.IntuneDevices,
+        "iru_devices" => Portal.Changes.Hooks.IruDevices,
+        "defender_devices" => Portal.Changes.Hooks.DefenderDevices,
+        "santa_devices" => Portal.Changes.Hooks.SantaDevices,
+        "sentinelone_devices" => Portal.Changes.Hooks.SentinelOneDevices,
+        "sophos_devices" => Portal.Changes.Hooks.SophosDevices
       }
 
       # Verify the mapping includes all expected tables
@@ -294,7 +301,13 @@ defmodule Portal.Changes.ConsumerTest do
                  "policy_authorizations",
                  "sites",
                  "policies",
-                 "resources"
+                 "resources",
+                 "intune_devices",
+                 "iru_devices",
+                 "defender_devices",
+                 "santa_devices",
+                 "sentinelone_devices",
+                 "sophos_devices"
                ]
                |> Enum.sort()
     end

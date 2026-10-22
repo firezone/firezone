@@ -10,80 +10,95 @@ import Foundation
 public struct ConnlibState: Encodable, Decodable {
   // swiftlint:disable:next discouraged_optional_collection
   public let resources: [FirezoneKit.Resource]?
-  public let connectedDevices: [FirezoneKit.ConnectedDevice]
-  public let unreachableResources: [UnreachableResource]
   public let isLogStreamingActive: Bool
+  /// The account and actor the portal named in `init`, `nil` until it arrives.
+  public let accountSlug: String?
+  public let actorName: String?
 
   private enum CodingKeys: String, CodingKey {
     case resources
-    case connectedDevices
-    case unreachableResources
     case isLogStreamingActive
+    case accountSlug
+    case actorName
   }
 
   private init(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
-    connectedDevices: [FirezoneKit.ConnectedDevice],
-    unreachableResources: [UnreachableResource],
-    isLogStreamingActive: Bool
+    isLogStreamingActive: Bool,
+    accountSlug: String?,
+    actorName: String?
   ) {
     self.resources = resources
-    self.connectedDevices = connectedDevices
-    self.unreachableResources = unreachableResources
     self.isLogStreamingActive = isLogStreamingActive
+    self.accountSlug = accountSlug
+    self.actorName = actorName
   }
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     resources = try container.decodeIfPresent([FirezoneKit.Resource].self, forKey: .resources)
-    connectedDevices =
-      try container.decodeIfPresent([FirezoneKit.ConnectedDevice].self, forKey: .connectedDevices)
-      ?? []
-    unreachableResources = try container.decode(
-      [UnreachableResource].self, forKey: .unreachableResources)
     isLogStreamingActive =
       try container.decodeIfPresent(Bool.self, forKey: .isLogStreamingActive) ?? false
+    accountSlug = try container.decodeIfPresent(String.self, forKey: .accountSlug)
+    actorName = try container.decodeIfPresent(String.self, forKey: .actorName)
   }
 
-  private static let encoder = PropertyListEncoder()
-  private static let decoder = PropertyListDecoder()
+  /// A state snapshot that is known to differ from the hash it was compared against.
+  public struct Change {
+    let state: ConnlibState
+    let hash: Data
 
-  /// Decodes a ConnlibState from data and returns the state and its SHA256 hash.
-  /// - Parameter data: The encoded data to decode
-  /// - Returns: A tuple of the decoded state and its hash
-  /// - Throws: If decoding fails
-  public static func decode(from data: Data) throws -> (ConnlibState, Data) {
-    let hash = Data(SHA256.hash(data: data))
-    let state = try Self.decoder.decode(ConnlibState.self, from: data)
-    return (state, hash)
+    fileprivate init(state: ConnlibState, hash: Data) {
+      self.state = state
+      self.hash = hash
+    }
   }
 
-  /// Creates a ConnlibState from resources and returns encoded data only if different from currentHash
-  /// - Parameters:
-  ///   - resources: Optional array of resources
-  ///   - connectedDevices: Peer devices with a live connection
-  ///   - unreachableResources: Set of unreachable resources
-  ///   - isLogStreamingActive: Whether the NE has log streaming enabled
-  ///   - currentHash: The hash to compare against
-  /// - Returns: The encoded data if the hash differs, nil otherwise
-  /// - Throws: If encoding fails
-  public static func encodeIfChanged(
+  /// Creates a state snapshot only when its encoded content differs from `currentHash`.
+  public static func makeIfChanged(
     resources: [FirezoneKit.Resource]?,  // swiftlint:disable:this discouraged_optional_collection
-    connectedDevices: [FirezoneKit.ConnectedDevice],
-    unreachableResources: [UnreachableResource],
     isLogStreamingActive: Bool,
+    accountSlug: String? = nil,
+    actorName: String? = nil,
     comparedTo currentHash: Data
-  ) throws -> Data? {
+  ) throws -> Change? {
     let state = ConnlibState(
-      resources: resources, connectedDevices: connectedDevices,
-      unreachableResources: unreachableResources,
-      isLogStreamingActive: isLogStreamingActive)
-    let encodedData = try Self.encoder.encode(state)
-    let newHash = Data(SHA256.hash(data: encodedData))
+      resources: resources,
+      isLogStreamingActive: isLogStreamingActive,
+      accountSlug: accountSlug,
+      actorName: actorName
+    )
+    let encodedData = try PropertyListEncoder().encode(state)
+    let hash = Data(SHA256.hash(data: encodedData))
 
-    return newHash == currentHash ? nil : encodedData
+    guard hash != currentHash else { return nil }
+
+    return Change(state: state, hash: hash)
   }
+}
 
+public struct StatePollRequest: Codable, Sendable {
+  public let stateHash: Data
+
+  public init(stateHash: Data) {
+    self.stateHash = stateHash
+  }
+}
+
+public struct StatePollResponse: Codable {
+  // `state` and `stateHash` are both nil when the snapshot has not changed.
+  public let state: ConnlibState?
+  public let stateHash: Data?
+  public let notifications: [UnreachableResource]
+
+  public init(
+    stateChange: ConnlibState.Change?,
+    notifications: [UnreachableResource]
+  ) {
+    self.state = stateChange?.state
+    self.stateHash = stateChange?.hash
+    self.notifications = notifications
+  }
 }
 
 public enum UnreachableReason: Hashable, Encodable, Decodable {

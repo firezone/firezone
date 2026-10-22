@@ -18,10 +18,11 @@ defmodule Portal.Splunk.Sync do
   require Logger
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"log_sink_id" => log_sink_id}}) do
-    case Delivery.get_sink(Splunk.LogSink, log_sink_id) do
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "log_sink_id" => log_sink_id}}) do
+    case Delivery.get_sink(Splunk.LogSink, account_id, log_sink_id) do
       nil ->
         Logger.info("Splunk log sink not found, disabled, or account ineligible, skipping",
+          account_id: account_id,
           splunk_log_sink_id: log_sink_id
         )
 

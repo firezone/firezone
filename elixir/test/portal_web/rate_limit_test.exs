@@ -1,21 +1,11 @@
 defmodule PortalWeb.RateLimitTest do
-  use PortalWeb.ConnCase, async: false
+  use PortalWeb.ConnCase, async: true
 
   setup do
-    previous_config = Application.get_env(:portal, PortalWeb.RateLimit)
-
-    Application.put_env(:portal, PortalWeb.RateLimit,
+    Portal.Config.put_env_override(:portal, PortalWeb.RateLimit,
       refill_rate: 1,
       capacity: PortalWeb.RateLimit.default_cost()
     )
-
-    on_exit(fn ->
-      if previous_config do
-        Application.put_env(:portal, PortalWeb.RateLimit, previous_config)
-      else
-        Application.delete_env(:portal, PortalWeb.RateLimit)
-      end
-    end)
 
     :ok
   end

@@ -42,12 +42,12 @@ defmodule Portal.Workers.SweepAccountDeletions do
       now = DateTime.utc_now()
 
       from(a in Account,
-        where: not is_nil(a.disabled_at),
+        where: a.is_disabled == true,
         where: not is_nil(a.scheduled_deletion_at),
         where: a.scheduled_deletion_at <= ^now,
         select: a.id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

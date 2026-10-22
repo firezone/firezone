@@ -20,16 +20,26 @@ import UserNotifications
 @MainActor
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
-  @Published private(set) var actorName: String
+  /// The actor the portal named in `init`, `nil` until it arrives.
+  @Published private(set) var actorName: String?
+
+  /// The client certificate the settings screen can display.
+  @Published private(set) var deviceTrustCertificateSummary: DeviceTrustCertificateSummary?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
-  @Published private(set) var connectedDevices: [ConnectedDevice] = []
+
+  /// How a running session reads once the portal has named the actor.
+  var sessionHeading: String {
+    guard let actorName else { return "Signed in" }
+
+    return "Signed in as \(actorName)"
+  }
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
 
-  // Hash for resource list optimisation
-  private var connlibStateHash = Data()
+  // Hash of the last tunnel state snapshot received from the network extension.
+  private var tunnelStateHash = Data()
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -41,6 +51,10 @@ public final class Store: ObservableObject {
     // Set to true to request the menu bar be opened programmatically.
     // The UI layer observes this and resets it after handling.
     @Published public var menuBarOpenRequested = false
+
+    // Startup retries and the manual install button can both land on a staged
+    // replacement; the user only needs telling once per run.
+    private var shownRestartAlert = false
 
     public var quitMenuTitle: String {
       switch vpnStatus {
@@ -54,7 +68,7 @@ public final class Store: ObservableObject {
 
   private(set) var sessionNotification: SessionNotificationProtocol
   #if os(macOS)
-    let updateChecker: UpdateChecker
+    let updateChecker: any UpdateCheckerProtocol
     private let systemExtensionManager: any SystemExtensionManagerProtocol
   #endif
 
@@ -73,6 +87,9 @@ public final class Store: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
 
+  /// Where the certificate screen reads the certificate from; `nil` reads the keychain.
+  let x509CertificateSource: X509CertificateSource?
+
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
@@ -82,11 +99,11 @@ public final class Store: ObservableObject {
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
-  // Track which unreachable resource notifications we have already shown
-  private var unreachableResources: Set<UnreachableResource> = []
-
   /// UserDefaults instance for persisting GUI state.
   let userDefaults: UserDefaults
+
+  /// The app-side log directory; nil when the app group container is unavailable.
+  private let logDirectory: URL?
 
   // Task consuming VPN status updates; its presence means observers are active.
   private var vpnStatusTask: CancellableTask?
@@ -94,37 +111,54 @@ public final class Store: ObservableObject {
   #if os(macOS)
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
+      updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
+      logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
+      let sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
+
       self.configuration = configuration ?? Configuration.shared
-      self.updateChecker = UpdateChecker(configuration: configuration, userDefaults: userDefaults)
+      self.updateChecker =
+        updateChecker
+        ?? UpdateChecker(
+          configuration: configuration,
+          userDefaults: userDefaults,
+          sessionNotification: sessionNotification
+        )
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
+      self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
   #else
     public init(
       configuration: Configuration? = nil,
-      sessionNotification: SessionNotificationProtocol = SessionNotification(),
+      sessionNotification: SessionNotificationProtocol? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
+      logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
     ) {
       self.configuration = configuration ?? Configuration.shared
-      self.sessionNotification = sessionNotification
+      self.sessionNotification =
+        sessionNotification ?? SessionNotification(userDefaults: userDefaults)
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
+      self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -168,25 +202,37 @@ public final class Store: ObservableObject {
         self?.objectWillChange.send()
       }
       .store(in: &cancellables)
+  }
 
-    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
-    Task {
+  /// Loads our state from the system. Based on what's loaded, we may need to ask the user for
+  /// permission for things. When everything loads correctly, we attempt to start the tunnel if
+  /// connectOnStart is enabled.
+  ///
+  /// Kept out of `init` so that constructing a `Store` only wires it up: installing a system
+  /// extension and connecting a tunnel are things the app asks for, not things that happen
+  /// because a value was created. Previews and tests build a `Store` and never call this.
+  ///
+  /// `async` so the caller decides how to run it; the app fires and forgets, but that is
+  /// its call to make, not this function's.
+  public func start() async {
+    // A mocked run leaves launchd alone: the keep-app-running agent resurrects every
+    // instance a UI test ends, and the revived copy races the next test's launch.
+    if !MockRun.isActive {
       do {
         try await LaunchAgentManager.syncKeepAppRunning()
       } catch {
         Log.error(error)
       }
-
-      await startupSequence()
-      await initNotifications()
     }
+
+    await startupSequence()
+    await initNotifications()
   }
 
   #if os(macOS)
     /// Returns the appropriate menu bar icon name for the current state
     public var menuBarIconName: String {
-      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.updateAvailable)
+      Self.menuBarIcon(for: vpnStatus, updateAvailable: updateChecker.downloadURL != nil)
     }
 
     /// Requests the menu bar dropdown to be opened programmatically.
@@ -197,10 +243,8 @@ public final class Store: ObservableObject {
 
     public func quitApp() {
       SharedAccess.clearAppRunning()
-      Task {
-        do { try await stop() } catch { Log.error(error) }
-        NSApp.terminate(nil)
-      }
+      requestStop()
+      NSApp.terminate(nil)
     }
 
     /// Returns the appropriate icon name from asset catalog for the given state
@@ -226,6 +270,18 @@ public final class Store: ObservableObject {
 
     func installSystemExtension() async throws {
       self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+      alertIfNeedsReboot()
+    }
+
+    /// Tells the user when only a restart can finish an install we just asked for.
+    ///
+    /// Nothing the app can do finishes a staged replacement, and the system reports it
+    /// once, on the request that staged it, so this is the only chance to say so.
+    private func alertIfNeedsReboot() {
+      guard systemExtensionStatus == .needsReboot, !shownRestartAlert else { return }
+
+      shownRestartAlert = true
+      sessionNotification.showRestartRequiredAlertMacOS()
     }
   #endif
 
@@ -239,7 +295,7 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    let statusStream = IPCClient.vpnStatusUpdates(session: session)
+    let statusStream = session.statusUpdates()
 
     vpnStatusTask = CancellableTask { [weak self] in
       for await status in statusStream {
@@ -277,23 +333,35 @@ public final class Store: ObservableObject {
       if vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
-            if let nsError = error as NSError?,
-              nsError.domain == ConnlibError.errorDomain,
-              let code = ConnlibError.Code(rawValue: nsError.code),
-              let reason = nsError.userInfo["reason"] as? String,
-              let id = nsError.userInfo["id"] as? String
-            {
-              // Only show the alert if we haven't shown this specific error before
+            guard let error else { return }
+
+            switch DisconnectError(error) {
+            case .connlib(let code, let reason, let id):
+              // Every `ConnlibError` is worded for the user, so it is product copy rather than
+              // a diagnostic and must not be reported as telemetry.
+              Log.info(reason)
+
+              // Only show the notification if we haven't shown this specific error before
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
                 switch code {
                 case .sessionExpired:
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: true)
                 case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+                  self.sessionNotification.showDisconnectedNotification(
+                    reason, requiresSignIn: false)
                 }
                 self.markAlertAsShown(id)
               }
+            case .packetTunnelProvider(.credentialNotConfigured):
+              // The system started the tunnel while signed out.
+              Log.info(error.localizedDescription)
+            case .packetTunnelProvider(.providerConfigurationIsInvalid),
+              .packetTunnelProvider(.firezoneIdIsInvalid),
+              .unknown:
+              // Not worded for the user, so only reported, which is how we learn about new ones.
+              Log.error(error)
             }
           }
         } catch {
@@ -324,6 +392,12 @@ public final class Store: ObservableObject {
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
+        guard vpnConfigurationManager != nil else {
+          Log.debug("Startup: no VPN configuration, skipping the remaining startup")
+          return
+        }
+        Log.debug("Startup: loadDeviceTrustCertificateSummary")
+        await loadDeviceTrustCertificateSummary()
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
           await drainFlowLogsOnLaunch()
@@ -374,22 +448,84 @@ public final class Store: ObservableObject {
       // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
       if systemExtensionStatus == .needsReplacement {
         Log.info("Replacing system extension with current version")
-        self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+        try await replaceSystemExtension()
         Log.info("System extension replacement completed successfully")
       }
+
+      // Startup carries on either way, with whichever version the system still has.
+      alertIfNeedsReboot()
     #endif
   }
+
+  #if os(macOS)
+    /// Installs the current system extension over the one already there.
+    ///
+    /// macOS holds the swap until the next reboot while the extension being replaced still
+    /// has a provider running, and everything the app sends in the meantime goes to the old
+    /// version. So a running tunnel comes down for the install and goes back up afterwards,
+    /// whether the install worked or not. Only a version mismatch gets this far, so an
+    /// up-to-date extension never costs the user a disconnect.
+    private func replaceSystemExtension() async throws {
+      let session = try await VPNConfigurationManager.load(using: tunnelManagerFactory)?.session()
+      let stoppedTunnel: Bool
+
+      if let session {
+        stoppedTunnel = await IPCClient.stopIfRunning(session: session)
+      } else {
+        stoppedTunnel = false
+      }
+
+      defer {
+        if stoppedTunnel, let session {
+          do {
+            try IPCClient.start(
+              session: session,
+              token: nil,
+              identityReference: identityReference()
+            )
+          } catch { Log.error(error) }
+        }
+      }
+
+      self.systemExtensionStatus = try await systemExtensionManager.tryInstall()
+    }
+  #endif
 
   private func initVPNConfiguration() async throws {
     // Try to load existing configuration
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.loadConfiguration(into: configuration, userDefaults: userDefaults)
-      actorName = configuration.actorName
       await seedInitialSyncedSnapshot()
       self.vpnConfigurationManager = manager
       SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
+    }
+  }
+
+  private func loadDeviceTrustCertificateSummary() async {
+    let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
+    let source = x509CertificateSource ?? keychain
+
+    do {
+      guard let certificate = try await source.read() else {
+        deviceTrustCertificateSummary = nil
+
+        return
+      }
+
+      guard let summary = X509CertificateParser.summary(of: certificate) else {
+        Log.debug("The configured client certificate is not a valid X.509 certificate")
+        deviceTrustCertificateSummary = nil
+
+        return
+      }
+
+      deviceTrustCertificateSummary = summary
+    } catch {
+      Log.debug("Failed to read the client certificate: \(error.localizedDescription)")
+
+      deviceTrustCertificateSummary = nil
     }
   }
 
@@ -400,17 +536,24 @@ public final class Store: ObservableObject {
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
-      try IPCClient.start(session: session)
+
+      // Replacing the system extension puts a running tunnel back up itself.
+      guard ![.connected, .connecting, .reasserting].contains(session.status) else { return }
+
+      try IPCClient.start(
+        session: session,
+        token: nil,
+        identityReference: identityReference()
+      )
     }
   }
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
-    self.vpnConfigurationManager = try await VPNConfigurationManager(
-      manager: tunnelManagerFactory.createManager()
+    self.vpnConfigurationManager = try await VPNConfigurationManager.create(
+      using: tunnelManagerFactory
     )
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
-    actorName = configuration.actorName
     await seedInitialSyncedSnapshot()
 
     try await setupTunnelObservers()
@@ -424,6 +567,24 @@ public final class Store: ObservableObject {
     }
 
     return vpnConfigurationManager
+  }
+
+  /// Picks up a VPN configuration that the system replaced underneath us.
+  ///
+  /// Anything that writes the VPN preferences, the headless client included, leaves
+  /// every other process holding a copy the system no longer recognises. Ours then
+  /// fails every call with `NEVPNError.configurationInvalid` until it is replaced, and
+  /// the session it hands out is no longer the one status notifications arrive for, so
+  /// the observers have to be pointed at the new one as well.
+  private func reloadVPNConfiguration() async throws {
+    guard let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory)
+    else { return }
+
+    self.vpnConfigurationManager = manager
+
+    // Releasing it cancels it, and clearing it lets the observers be set up again.
+    vpnStatusTask = nil
+    try await setupTunnelObservers()
   }
 
   /// Establishes `lastSyncedSnapshot` after the VPN configuration is loaded and
@@ -507,24 +668,14 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  public func stop() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
+  public func requestStop() {
+    // No manager or no session is no tunnel, which is where stopping was headed anyway.
+    guard let session = try? manager().session() else { return }
 
     session.stopTunnel()
   }
 
-  func signIn(authResponse: AuthResponse) async throws {
-    let actorName = authResponse.actorName
-    let accountSlug = authResponse.accountSlug
-
-    // This is only shown in the GUI.
-    configuration.actorName = actorName
-    self.actorName = actorName
-
-    configuration.accountSlug = accountSlug
-
+  func signIn(token: String) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -532,14 +683,20 @@ public final class Store: ObservableObject {
     shownAlertIds.removeAll()
     userDefaults.removeObject(forKey: "shownAlertIds")
 
-    // Clear notified unreachable resources for fresh session
-    unreachableResources.removeAll()
-
     // Bring the tunnel up and send it a token to start
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+    try IPCClient.start(
+      session: session,
+      token: token,
+      identityReference: identityReference()
+    )
+  }
+
+  /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
+  private func identityReference() -> Data? {
+    try? manager().identityReference()
   }
 
   func signOut() async throws {
@@ -549,12 +706,94 @@ public final class Store: ObservableObject {
     try await IPCClient.signOut(session: session)
   }
 
-  func clearLogs() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.clearLogs(session: session)
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, the log directory is a single folder that contains all three
+  // directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories.
+  //
+  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
+  // is not started on demand, so the IPC calls hang. Thus, we use separate code
+  // paths for iOS and macOS.
+  func logDirectorySize() async -> UInt64? {
+    guard let logDirectory else { return nil }
+
+    let appLogSize = await Log.size(of: logDirectory)
+
+    #if os(macOS)
+      do {
+        guard let session = try manager().session() else {
+          throw VPNConfigurationManagerError.managerNotInitialized
+        }
+
+        let providerLogSize = try await IPCClient.getLogFolderSize(session: session)
+
+        return UInt64(clamping: appLogSize + providerLogSize)
+      } catch {
+        if let error = error as? IPCClient.Error,
+          case IPCClient.Error.noIPCData = error
+        {
+          // Will happen if the extension is not enabled
+          Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
+        } else {
+          Log.error(error)
+        }
+
+        return nil
+      }
+    #else
+      return UInt64(clamping: appLogSize)
+    #endif
   }
+
+  // On iOS, all the logs are stored in one directory.
+  // On macOS, we clear logs from the app process, then call over IPC
+  // to clear the provider's log directory.
+  func clearLogs() async throws {
+    // Deleting a large log tree is blocking filesystem work, so keep it off the
+    // main actor and hop back for the provider IPC.
+    let logDirectory = self.logDirectory
+    try await Task.detached {
+      try Log.clear(in: logDirectory)
+    }.value
+
+    #if os(macOS)
+      guard let session = try manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+
+      try await IPCClient.clearLogs(session: session)
+    #endif
+  }
+
+  #if os(macOS)
+    func exportLogs(to destination: URL) async throws {
+      guard let logDirectory else {
+        throw LogExporter.ExportError.invalidSourceDirectory
+      }
+      guard let session = try manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+
+      try await LogExporter.export(to: destination, from: logDirectory, session: session)
+    }
+  #endif
+
+  #if os(iOS)
+    /// Exports the logs to a temporary archive and returns its URL.
+    func exportLogs() async throws -> URL {
+      guard let logDirectory else {
+        throw LogExporter.ExportError.invalidSourceDirectory
+      }
+
+      let archiveURL = try LogExporter.tempFile()
+      try await LogExporter.export(to: archiveURL, from: logDirectory)
+
+      return archiveURL
+    }
+  #endif
 
   // MARK: Private functions
 
@@ -595,15 +834,31 @@ public final class Store: ObservableObject {
     self.stateUpdateTask = Task {
       defer { self.stateUpdateTask = nil }
 
+      // Reloading is worth one attempt per run of failures: the tunnel not being up
+      // yet reports the same error, and that resolves on its own.
+      var didReload = false
+
       while !Task.isCancelled {
         do {
-          try await self.pollStateOnce()
+          try await self.pollUpdatesOnce()
+          didReload = false
         } catch is CancellationError {
           break
+        } catch IPCClient.Error.noIPCData {
+          // The extension can go away underneath a connected session, and it answers
+          // nothing while it does. The status change that follows stops the poller, so
+          // there is nothing to act on here.
+          Log.debug("Tunnel did not answer the state poll")
         } catch let error as NSError {
           // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
           if error.domain == "NEVPNErrorDomain" && error.code == 1 {
-            // not initialized yet
+            // Either the tunnel isn't up yet, or the configuration we hold was replaced
+            // and every later poll would fail the same way, leaving resources loading
+            // forever. Reloading costs a preferences read and settles both.
+            if !didReload {
+              didReload = true
+              do { try await self.reloadVPNConfiguration() } catch { Log.error(error) }
+            }
           } else {
             Log.error(error)
           }
@@ -627,9 +882,8 @@ public final class Store: ObservableObject {
     stateUpdateTask?.cancel()
     stateUpdateTask = nil
     resourceList = ResourceList.loading
-    connlibStateHash = Data()
-    unreachableResources.removeAll()
-    connectedDevices.removeAll()
+    tunnelStateHash = Data()
+    actorName = nil
     Log.setStreamingActive(false)
   }
 
@@ -665,56 +919,40 @@ public final class Store: ObservableObject {
     }
   #endif
 
-  private func pollStateOnce() async throws {
+  private func pollUpdatesOnce() async throws {
     guard let session = try self.manager().session() else { return }
-    try await self.fetchState(session: session)
-  }
-
-  /// Fetches state from the tunnel provider, using hash-based optimisation.
-  ///
-  /// If the hash matches what the provider has, state is unchanged.
-  /// Otherwise, fetches and caches the new state.
-  ///
-  /// - Parameter session: The tunnel provider session to communicate with
-  /// - Throws: IPCClient.Error if IPC communication fails
-  private func fetchState(session: any TunnelSessionProtocol) async throws {
-    // Capture current hash before IPC call
-    let currentHash = self.connlibStateHash
-
-    // If no data returned, state hasn't changed - no update needed
-    guard let data = try await IPCClient.fetchState(session: session, currentHash: currentHash)
-    else {
-      return
-    }
+    let response = try await IPCClient.pollUpdates(
+      session: session,
+      currentHash: tunnelStateHash
+    )
 
     try Task.checkCancellation()
 
     guard vpnStatus == .connected else { return }
 
-    // Decode state and compute hash
-    let (state, hash) = try ConnlibState.decode(from: data)
+    if let state = response.state {
+      guard let stateHash = response.stateHash else {
+        throw IPCClient.Error.decodeIPCDataFailed
+      }
 
-    // Update both hash and resource list
-    self.connlibStateHash = hash
+      tunnelStateHash = stateHash
+      Log.setStreamingActive(state.isLogStreamingActive)
 
-    // Propagate log streaming state from the NE to the main app process
-    Log.setStreamingActive(state.isLogStreamingActive)
+      if let resources = state.resources {
+        resourceList = ResourceList.loaded(resources)
+      }
 
-    if let resources = state.resources {
-      resourceList = ResourceList.loaded(resources)
+      if state.actorName == nil, actorName != nil {
+        Log.warning("Portal did not name the actor on `init`")
+      }
+
+      actorName = state.actorName
     }
 
-    connectedDevices = state.connectedDevices
-
-    let newlyUnreachableResources = Set(state.unreachableResources).subtracting(
-      self.unreachableResources)
-
     await showNotificationsForUnreachableResources(
-      unreachableResources: newlyUnreachableResources,
-      resources: state.resources ?? []
+      unreachableResources: Set(response.notifications),
+      resources: resourceList.asArray()
     )
-
-    self.unreachableResources = Set(state.unreachableResources)
   }
 
   private func showNotificationsForUnreachableResources(

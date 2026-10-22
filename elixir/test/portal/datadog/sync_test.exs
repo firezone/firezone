@@ -32,11 +32,11 @@ defmodule Portal.Datadog.SyncTest do
           enabled_streams: [:session],
           tags: "env:prod,team:secops"
         )
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:intake, conn, [event]}
       assert conn.request_path == "/api/v2/logs"
@@ -64,7 +64,7 @@ defmodule Portal.Datadog.SyncTest do
 
     test "a 403 disables the sink immediately", %{account: account} do
       sink = datadog_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Datadog.APIClient, fn conn ->
@@ -73,7 +73,7 @@ defmodule Portal.Datadog.SyncTest do
         |> Req.Test.json(%{"errors" => [%{"detail" => "Invalid API key"}]})
       end)
 
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -83,7 +83,7 @@ defmodule Portal.Datadog.SyncTest do
 
     test "a 429 is transient", %{account: account} do
       sink = datadog_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Datadog.APIClient, fn conn ->
@@ -92,12 +92,23 @@ defmodule Portal.Datadog.SyncTest do
         |> Req.Test.json(%{"errors" => ["Too many requests"]})
       end)
 
-      assert :ok = perform_job(Datadog.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Datadog.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled
       assert sink.errored_at
       assert sink.error_message == "Datadog returned HTTP 429: Too many requests"
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = datadog_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Datadog.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:intake, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
     end
   end
 
@@ -110,7 +121,7 @@ defmodule Portal.Datadog.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Datadog.Scheduler, %{})
 
-      assert_enqueued(worker: Datadog.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Datadog.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Datadog.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Datadog.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

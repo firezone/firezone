@@ -14,10 +14,9 @@ config :portal, Portal.Entra.AuthProvider,
     "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 config :portal, PortalWeb.Endpoint,
-  cache_static_manifest: "priv/static/cache_manifest.json",
-  server: true
+  cache_static_manifest: "priv/static/cache_manifest.json"
 
-config :portal, PortalAPI.Endpoint, server: true
+config :portal, Portal.Endpoint, server: true
 config :portal, PortalOps.Endpoint, server: true
 
 config :portal, Portal.Billing,
@@ -27,11 +26,11 @@ config :portal, Portal.Billing,
     "prod_PY9HpTq72kNPk7",
     # Team
     "prod_PnvjiKBrSTBVqp",
+    # Business
+    "prod_VMyGOVTAFNKIPP",
     # Enterprise
     "prod_PY9QUBMAlUEYes"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrOXz3nZyOI15i"
+  ]
 
 ###############################
 ##### Third-party configs #####
@@ -39,6 +38,7 @@ config :portal, Portal.Billing,
 
 secret_keys = [
   "password",
+  "assertion",
   "secret",
   "nonce",
   "fragment",

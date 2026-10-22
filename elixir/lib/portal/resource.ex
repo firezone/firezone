@@ -2,6 +2,8 @@ defmodule Portal.Resource do
   use Ecto.Schema
   import Ecto.Changeset
   import Portal.Changeset
+  alias Portal.Authentication
+  alias __MODULE__.Database
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -12,12 +14,15 @@ defmodule Portal.Resource do
           ports: [Portal.Types.Int4Range.t()]
         }
 
+  @self_device_pool_name "My devices"
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           address: String.t(),
           address_description: String.t() | nil,
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet | :static_device_pool | :dynamic_device_pool,
+          type: :cidr | :ip | :dns | :internet | :device_pool,
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.t() | nil,
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
@@ -34,8 +39,9 @@ defmodule Portal.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum,
-      values: [:cidr, :ip, :dns, :internet, :static_device_pool, :dynamic_device_pool]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet, :device_pool]
+
+    field :device_membership_criteria, Portal.Resource.DeviceMembershipCriteria
 
     field :ip_stack, Ecto.Enum, values: [:ipv4_only, :ipv6_only, :dual]
 
@@ -48,7 +54,6 @@ defmodule Portal.Resource do
 
     has_many :policies, Portal.Policy, references: :id
     has_many :groups, through: [:policies, :group]
-    has_many :static_pool_members, Portal.StaticDevicePoolMember, references: :id
 
     timestamps()
   end
@@ -62,11 +67,20 @@ defmodule Portal.Resource do
     |> validate_length(:address_description, min: 1, max: 255)
     |> maybe_put_default_ip_stack()
     |> validate_device_pool_site_id()
+    |> validate_device_membership_criteria()
     |> validate_address_format()
+    |> check_constraint(:device_membership_criteria,
+      name: :resources_device_membership_criteria_matches_type,
+      message: "must be set for device pools and empty for other types"
+    )
     |> check_constraint(:ip_stack,
       name: :resources_ip_stack_not_null,
       message:
         "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+    )
+    |> check_constraint(:address,
+      name: :require_resources_address,
+      message: "must be set for cidr, ip, and dns Resources and empty for other types"
     )
     |> cast_embed(:filters, with: &filter_changeset/2)
     |> assoc_constraint(:site)
@@ -82,6 +96,61 @@ defmodule Portal.Resource do
       message: "Internet resource already exists for this account"
     )
   end
+
+  @doc """
+  Attributes of the `My devices` pool every account gets at creation: a device
+  pool holding each actor's own devices, reached at `<slug>.firezone.network`,
+  see `Portal.Device.fqdn/1`.
+  """
+  @spec self_device_pool_attrs() :: map()
+  def self_device_pool_attrs do
+    %{
+      type: :device_pool,
+      device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
+      name: @self_device_pool_name
+    }
+  end
+
+  @doc """
+  Validates that the Resource type and its Site agree with each other.
+
+  The Internet Resource belongs to the system managed Internet Site, every other
+  Resource belongs to a Site managed by the account. The Site is only looked up
+  when the pairing can change, so unrelated updates do not hit the database.
+  """
+  @spec validate_site_matches_type(Ecto.Changeset.t(), Authentication.Subject.t()) ::
+          Ecto.Changeset.t()
+  def validate_site_matches_type(
+        %Ecto.Changeset{} = changeset,
+        %Authentication.Subject{} = subject
+      ) do
+    type = get_field(changeset, :type)
+    site_id = get_field(changeset, :site_id)
+
+    if is_nil(type) or is_nil(site_id) or not site_pairing_changed?(changeset) do
+      changeset
+    else
+      validate_site_pairing(changeset, type, Database.fetch_site(site_id, subject))
+    end
+  end
+
+  defp site_pairing_changed?(changeset) do
+    Map.has_key?(changeset.changes, :type) or Map.has_key?(changeset.changes, :site_id)
+  end
+
+  defp validate_site_pairing(changeset, :internet, %Portal.Site{managed_by: :system}) do
+    changeset
+  end
+
+  defp validate_site_pairing(changeset, :internet, _site) do
+    add_error(changeset, :site_id, "must be the Internet Site for an Internet Resource")
+  end
+
+  defp validate_site_pairing(changeset, _type, %Portal.Site{managed_by: :system}) do
+    add_error(changeset, :site_id, "cannot be the Internet Site")
+  end
+
+  defp validate_site_pairing(changeset, _type, _site), do: changeset
 
   defp validate_address_format(changeset) do
     if has_errors?(changeset, :type) or has_errors?(changeset, :address) do
@@ -110,12 +179,11 @@ defmodule Portal.Resource do
 
   defp validate_address_by_type(changeset) do
     case fetch_field(changeset, :type) do
-      {_, :dns} -> validate_dns_address(changeset)
+      {_, :dns} -> changeset |> validate_dns_address() |> validate_not_reserved_domain()
       {_, :cidr} -> validate_cidr_address(changeset)
       {_, :ip} -> validate_ip_address(changeset)
       {_, :internet} -> put_change(changeset, :address, nil)
-      {_, :static_device_pool} -> put_change(changeset, :address, nil)
-      {_, :dynamic_device_pool} -> validate_dns_address(changeset)
+      {_, :device_pool} -> put_change(changeset, :address, nil)
       _ -> changeset
     end
   end
@@ -211,6 +279,19 @@ defmodule Portal.Resource do
 
         true ->
           []
+      end
+    end)
+  end
+
+  defp validate_not_reserved_domain(changeset) do
+    validate_change(changeset, :address, fn field, address ->
+      address = String.downcase(address)
+      domain = Portal.Device.domain()
+
+      if address == domain or String.ends_with?(address, "." <> domain) do
+        [{field, "#{domain} is reserved for Firezone"}]
+      else
+        []
       end
     end)
   end
@@ -312,11 +393,18 @@ defmodule Portal.Resource do
 
   defp validate_device_pool_site_id(changeset) do
     case fetch_field(changeset, :type) do
-      {_, type} when type in [:static_device_pool, :dynamic_device_pool] ->
+      {_, :device_pool} ->
         put_change(changeset, :site_id, nil)
 
       _ ->
         changeset
+    end
+  end
+
+  defp validate_device_membership_criteria(changeset) do
+    case fetch_field(changeset, :type) do
+      {_, :device_pool} -> validate_required(changeset, [:device_membership_criteria])
+      _ -> put_change(changeset, :device_membership_criteria, nil)
     end
   end
 
@@ -409,8 +497,8 @@ defmodule Portal.Resource do
   @doc """
     Matches a fully-qualified domain name against a DNS-style wildcard pattern.
 
-    Supports the same wildcard tokens that `:dns` and `:dynamic_device_pool` resource
-    addresses are validated against:
+    Supports the same wildcard tokens that `:dns` resource addresses are validated
+    against:
 
       * `**` — zero or more labels (with dots)
       * `*`  — zero or more characters within a single label (no dots)
@@ -432,21 +520,10 @@ defmodule Portal.Resource do
   def adapt_resource_for_version(resource, nil), do: resource
 
   def adapt_resource_for_version(
-        %{type: :static_device_pool} = resource,
+        %{type: :device_pool} = resource,
         %Portal.Device{type: :client} = client
       ) do
-    if Portal.Version.client_supports_static_device_pools?(client) do
-      adapt_resource_for_version(resource, client.last_seen_version)
-    else
-      nil
-    end
-  end
-
-  def adapt_resource_for_version(
-        %{type: :dynamic_device_pool} = resource,
-        %Portal.Device{type: :client} = client
-      ) do
-    if Portal.Version.client_supports_dynamic_device_pools?(client) do
+    if Portal.Version.client_supports_device_pools?(client) do
       adapt_resource_for_version(resource, client.last_seen_version)
     else
       nil
@@ -514,5 +591,17 @@ defmodule Portal.Resource do
       end)
 
     Regex.compile!("\\A" <> body <> "\\z")
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    @spec fetch_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: Portal.Site.t() | nil
+    def fetch_site(site_id, subject) do
+      from(s in Portal.Site, where: s.id == ^site_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
   end
 end

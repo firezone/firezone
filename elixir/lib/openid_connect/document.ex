@@ -8,6 +8,7 @@ defmodule OpenIDConnect.Document do
   alias OpenIDConnect.Document.Cache
 
   defstruct raw: nil,
+            issuer: nil,
             authorization_endpoint: nil,
             end_session_endpoint: nil,
             token_endpoint: nil,
@@ -188,11 +189,12 @@ defmodule OpenIDConnect.Document do
   end
 
   defp build_document(document_json) do
-    required_keys = ["jwks_uri", "authorization_endpoint", "token_endpoint"]
+    required_keys = ["issuer", "jwks_uri", "authorization_endpoint", "token_endpoint"]
 
-    if Enum.all?(required_keys, &Map.has_key?(document_json, &1)) do
+    if Enum.all?(required_keys, &valid_required_value?(document_json, &1)) do
       document = %__MODULE__{
         raw: document_json,
+        issuer: Map.fetch!(document_json, "issuer"),
         authorization_endpoint: Map.fetch!(document_json, "authorization_endpoint"),
         end_session_endpoint: Map.get(document_json, "end_session_endpoint"),
         token_endpoint: Map.fetch!(document_json, "token_endpoint"),
@@ -214,6 +216,13 @@ defmodule OpenIDConnect.Document do
       {:ok, document}
     else
       {:error, :invalid_document}
+    end
+  end
+
+  defp valid_required_value?(document, key) do
+    case Map.fetch(document, key) do
+      {:ok, value} when is_binary(value) -> String.trim(value) != ""
+      _ -> false
     end
   end
 

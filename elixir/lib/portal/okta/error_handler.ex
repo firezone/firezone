@@ -12,6 +12,11 @@ defmodule Portal.Okta.ErrorHandler do
 
   @non_disabling_steps [:batch_upsert_identities, :batch_upsert_memberships]
 
+  # Okta can return intermittent 403s as well as timeouts and rate limits.
+  # Treat these as transient even after HTTP retries are exhausted so a single
+  # failure does not disable the directory.
+  @transient_statuses [403, 408, 429]
+
   def handle(%Okta.SyncError{error: error, step: step}, directory_id) do
     type = classify(error, step)
     message = format(error)
@@ -30,6 +35,9 @@ defmodule Portal.Okta.ErrorHandler do
   defp classify(error, _step), do: classify(error)
 
   # Classification
+
+  defp classify(%Req.Response{status: status}) when status in @transient_statuses,
+    do: :transient
 
   defp classify(%Req.Response{status: status}) when status >= 400 and status < 500 do
     :client_error
@@ -138,8 +146,8 @@ defmodule Portal.Okta.ErrorHandler do
 
     def get_directory(directory_id) do
       from(d in Okta.Directory, where: d.id == ^directory_id)
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def update_directory(directory, attrs) do

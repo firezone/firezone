@@ -43,14 +43,16 @@ defmodule Portal.Azure.ManagedIdentity do
   error.
   """
   def access_token!(resource) when is_binary(resource) do
-    case Portal.TokenCache.fetch(@token_cache, resource, fn -> fetch_token(resource) end) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    token_cache = Keyword.get(config, :token_cache, @token_cache)
+
+    case Portal.TokenCache.fetch(token_cache, resource, fn -> fetch_token(resource, config) end) do
       {:ok, token} -> token
       {:error, exception} -> raise exception
     end
   end
 
-  defp fetch_token(resource) do
-    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+  defp fetch_token(resource, config) do
     req_opts =
       (config[:req_opts] || [])
       |> Keyword.put(:allow_private_ips, true)

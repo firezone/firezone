@@ -1,11 +1,4 @@
 defmodule PortalAPI.FlowLogController do
-  # This endpoint is intentionally omitted from the OpenAPI spec. It is not part
-  # of the public REST API: it exists solely for Clients and Gateways to batch-post
-  # their flow logs, and is not meant to be called by API consumers. That is why
-  # this controller deliberately does not `use OpenApiSpex.ControllerSpecs` and
-  # declares no `operation`/`request_body` specs (which is what would otherwise
-  # cause `Paths.from_router/1` to document it).
-  #
   # The request carries a single per-authorization ingest token (see
   # `Portal.FlowLogToken`) in the `Authorization: Bearer` header. It both
   # authenticates the request and supplies the authoritative attribution fields
@@ -14,15 +7,50 @@ defmodule PortalAPI.FlowLogController do
   # names one policy authorization, a
   # request may only carry flow logs for that authorization: a record declaring
   # a different `policy_authorization_id` fails the whole request with 422. The
-  # body supplies the network fields: the inner tunnel tuple, the outer
-  # (WireGuard) tuple, the flow window, and the byte/packet counters.
+  # body supplies the network fields: the inner tunnel tuple, the ordered outer
+  # (WireGuard) paths, the flow window, and the byte/packet counters.
   use PortalAPI, :controller
+  use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
+  alias OpenApiSpex.Schema
   alias Portal.FlowLog
-  alias Portal.FlowLogToken
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
+  alias PortalAPI.Schemas.ProblemDetails, as: ProblemDetailsSchema
   alias __MODULE__.Database
+
+  # ApiSpec resolves this operation to retain its request schemas as a versioned
+  # contract, then removes the private ingestion path from the published API.
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :create,
+    summary: "Ingest Flow Logs",
+    request_body:
+      {"Flow Log batch", "application/json", PortalAPI.Schemas.FlowLogIngest.Request,
+       required: true},
+    responses:
+      [
+        ok:
+          {"Flow Logs accepted", "application/json",
+           %Schema{
+             type: :object,
+             required: [:data],
+             properties: %{
+               data: %Schema{
+                 type: :object,
+                 required: [:status],
+                 properties: %{status: %Schema{type: :string, enum: ["ok"]}}
+               }
+             }
+           }}
+      ] ++
+        ProblemDetailsSchema.responses([
+          :bad_request,
+          :unauthorized,
+          :unprocessable_entity,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
 
   # Schema fields we cast/persist. `log_id` is server-assigned per record (a
   # fresh flow_log log_id is minted here, not trusted from the body); on a
@@ -39,8 +67,10 @@ defmodule PortalAPI.FlowLogController do
                   initiator_device_uuid initiator_device_identifier_for_vendor
                   initiator_device_firebase_installation_id protocol
                   inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
-                  outer_src_ip outer_dst_ip outer_src_port outer_dst_port flow_start flow_end
+                  outers flow_start flow_end
                   last_packet rx_packets tx_packets rx_bytes tx_bytes inserted_at]a
+
+  @scalar_cast_fields @cast_fields -- [:outers]
 
   @max_batch_size 10_000
 
@@ -50,9 +80,9 @@ defmodule PortalAPI.FlowLogController do
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
-    with {:ok, claims} <- authenticate(conn),
-         :ok <- ensure_uploads_enabled(claims),
-         :ok <- ensure_single_authorization(records, claims) do
+    claims = conn.assigns.flow_log_claims
+
+    with :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
       {valid, errors} =
@@ -69,24 +99,13 @@ defmodule PortalAPI.FlowLogController do
       if errors == [] do
         conn
         |> put_status(200)
-        |> put_view(json: PortalAPI.FlowLogJSON)
-        |> render(:ok)
+        |> json(%{data: %{status: "ok"}})
       else
         ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
           validation_errors: render_validation_errors(Enum.reverse(errors))
         })
       end
     else
-      {:error, :unauthenticated} ->
-        ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
-
-      {:error, :uploads_disabled} ->
-        ProblemDetails.send(
-          conn,
-          401,
-          "Flow log uploads are not enabled for this authorization"
-        )
-
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
           conn,
@@ -99,25 +118,6 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, _params) do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
-
-  # The single per-authorization ingest token authenticates the whole request.
-  # An unknown account, a bad signature, an expired or malformed token, and a
-  # missing header all collapse to the same 401 so the endpoint reveals nothing.
-  defp authenticate(conn) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, claims} <- FlowLogToken.verify(token) do
-      {:ok, claims}
-    else
-      _ -> {:error, :unauthenticated}
-    end
-  end
-
-  # Tokens are minted for every authorization so devices always receive their
-  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
-  # Devices honor it client-side; this is the server-side backstop. A token
-  # without the claim fails closed.
-  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
-  defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which
@@ -160,7 +160,11 @@ defmodule PortalAPI.FlowLogController do
       |> changeset()
 
     if changeset.valid? do
-      entry = Map.new(@cast_fields, &{&1, get_field(changeset, &1)})
+      entry =
+        @cast_fields
+        |> Map.new(&{&1, get_field(changeset, &1)})
+        |> Map.put(:outers, outers_for_storage(changeset))
+
       {[{index, entry} | valid], invalid}
     else
       {valid, [{index, changeset} | invalid]}
@@ -168,9 +172,22 @@ defmodule PortalAPI.FlowLogController do
   end
 
   defp changeset(attrs) do
+    # Ecto represents a missing embeds_many value as an empty list but rejects
+    # an explicit JSON null. Both forms mean "not reported yet" on a flow-start
+    # record, so normalize null to omission before casting. A close still fails
+    # validation below when the resulting outer list is empty.
+    attrs = if is_nil(attrs["outers"]), do: Map.delete(attrs, "outers"), else: attrs
+
     %FlowLog{}
-    |> cast(attrs, @cast_fields)
+    |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()
+  end
+
+  defp outers_for_storage(changeset) do
+    case get_field(changeset, :outers) do
+      [] -> nil
+      outers -> outers
+    end
   end
 
   defp render_validation_errors(errors) do
@@ -193,7 +210,7 @@ defmodule PortalAPI.FlowLogController do
   # counters. Everything else (attribution, log_id, inserted_at) is set from
   # the verified token or the server below.
   @body_fields ~w[protocol inner_src_ip inner_dst_ip inner_src_port inner_dst_port domain
-                  outer_src_ip outer_dst_ip outer_src_port outer_dst_port
+                  outers
                   flow_start flow_end last_packet rx_packets tx_packets rx_bytes tx_bytes]
 
   # Attribution comes from the verified token (authoritative); the network
@@ -269,8 +286,9 @@ defmodule PortalAPI.FlowLogController do
     # transition (a still-open row receiving its close); a replayed open, a
     # replayed close, or a late open arriving after the close all leave the row
     # untouched, so an open never churns the row and a closed flow is immutable.
-    # The attribution snapshot, both tunnel tuples, and domain are stable for the
-    # life of a flow and are only ever set on insert.
+    # The attribution snapshot, inner tunnel tuple, and domain are stable for the
+    # life of a flow and are only ever set on insert. A close replaces `outers`
+    # because it may contain paths accumulated after an older open report.
     defp on_conflict_query do
       # The close takes a fresh seq so cursor-based consumers that already
       # delivered the open row see it again and deliver the close; start_seq
@@ -280,6 +298,7 @@ defmodule PortalAPI.FlowLogController do
           set: [
             seq: fragment("nextval('flow_logs_seq_seq')"),
             start_seq: f.seq,
+            outers: fragment("EXCLUDED.outers"),
             flow_end: fragment("EXCLUDED.flow_end"),
             last_packet: fragment("EXCLUDED.last_packet"),
             rx_packets: fragment("EXCLUDED.rx_packets"),

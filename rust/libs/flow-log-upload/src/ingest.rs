@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
 use http::header;
-use http_client::HttpClient;
+use http_client::{HttpClient, TlsConfig};
 use socket_factory::{SocketFactory, TcpSocket};
 use url::Url;
 
@@ -119,9 +119,15 @@ async fn connect(
 
     let addresses = tunnel_bypass_resolver::resolve(&host).await?;
 
-    HttpClient::new(host, addresses, socket_factory)
-        .await
-        .context("Failed to connect to ingest host")
+    HttpClient::new(
+        host,
+        443,
+        addresses,
+        TlsConfig::webpki_roots(),
+        socket_factory,
+    )
+    .await
+    .context("Failed to connect to ingest host")
 }
 
 /// Resolves a redirect's `Location` against the current endpoint.

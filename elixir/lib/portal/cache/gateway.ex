@@ -161,7 +161,7 @@ defmodule Portal.Cache.Gateway do
         [policy_authorizations: f],
         {f.id, f.initiating_device_id, f.resource_id, f.expires_at}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

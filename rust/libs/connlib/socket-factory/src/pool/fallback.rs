@@ -12,7 +12,7 @@ use std::{
 
 use anyhow::Result;
 
-use crate::DatagramSegmentIter;
+use crate::DatagramBatch;
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -41,9 +41,9 @@ impl SocketPool {
         &self,
         cx: &mut Context<'_>,
         mut try_recv: F,
-    ) -> Poll<Result<DatagramSegmentIter>>
+    ) -> Poll<Result<DatagramBatch>>
     where
-        F: FnMut(Socket<'_>) -> io::Result<DatagramSegmentIter>,
+        F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
     {
         poll_recv_ready(cx, self.wildcard.as_socket(), &mut try_recv)
     }

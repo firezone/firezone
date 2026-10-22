@@ -49,7 +49,7 @@ impl BufferedTransmits {
             },
         };
 
-        let src = match sending_host.egress(src, transmit.dst) {
+        let src = match sending_host.egress(src, transmit.dst, now) {
             Ok(src) => src,
             Err(e) => {
                 tracing::debug!(%src, dst = %transmit.dst, "Edge dropped outbound packet: {e:#}");
@@ -110,52 +110,5 @@ impl BufferedTransmits {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    #[test]
-    fn by_time_orders_from_earliest_to_latest() {
-        let mut heap = BinaryHeap::new();
-        let start = Instant::now();
-
-        heap.push(ByTime {
-            at: start + Duration::from_secs(1),
-            value: 1,
-        });
-        heap.push(ByTime {
-            at: start,
-            value: 0,
-        });
-        heap.push(ByTime {
-            at: start + Duration::from_secs(2),
-            value: 2,
-        });
-
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start + Duration::from_secs(2),
-                value: 2
-            },
-        );
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start + Duration::from_secs(1),
-                value: 1
-            }
-        );
-        assert_eq!(
-            heap.pop().unwrap(),
-            ByTime {
-                at: start,
-                value: 0
-            }
-        );
     }
 }

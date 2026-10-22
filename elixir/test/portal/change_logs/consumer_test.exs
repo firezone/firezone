@@ -56,6 +56,25 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       refute "log_sinks" in tables
       refute "log_sink_cursors" in tables
     end
+
+    # Only the typed rows are audited, matching log sinks. The synced devices are
+    # a mirror of the tenant rather than something an admin does.
+    test "includes the typed posture provider tables only", %{tables: tables} do
+      assert "intune_posture_providers" in tables
+      assert "iru_posture_providers" in tables
+      assert "defender_posture_providers" in tables
+      assert "santa_posture_providers" in tables
+      assert "sentinelone_posture_providers" in tables
+      assert "sophos_posture_providers" in tables
+
+      refute "posture_providers" in tables
+      refute "intune_devices" in tables
+      refute "iru_devices" in tables
+      refute "defender_devices" in tables
+      refute "santa_devices" in tables
+      refute "sentinelone_devices" in tables
+      refute "sophos_devices" in tables
+    end
   end
 
   describe "on_begin/2" do
@@ -212,6 +231,59 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       attrs = result_state.flush_buffer[12345]
       assert attrs.after["hec_token"] == "[redacted]"
       assert attrs.after["collector_url"] == "https://http-inputs-acme.splunkcloud.com"
+    end
+
+    test "redacts the Iru API token in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "subdomain" => "acme",
+        "region" => "us",
+        "api_token" => "super-secret-token"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12346,
+          :insert,
+          "iru_posture_providers",
+          nil,
+          data
+        )
+
+      attrs = result_state.flush_buffer[12346]
+      assert attrs.after["api_token"] == "[redacted]"
+      assert attrs.after["subdomain"] == "acme"
+    end
+
+    test "redacts the Workshop API key in the buffered snapshot", %{
+      account: account,
+      initial_state: initial_state
+    } do
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "api_url" => "https://acme.workshop.cloud",
+        "api_key" => "npsws_sk_secret"
+      }
+
+      result_state =
+        Consumer.on_write(
+          initial_state,
+          12347,
+          :insert,
+          "santa_posture_providers",
+          nil,
+          data
+        )
+
+      attrs = result_state.flush_buffer[12347]
+      assert attrs.after["api_key"] == "[redacted]"
+      assert attrs.after["api_url"] == "https://acme.workshop.cloud"
     end
 
     test "preserves existing buffer items", %{account: account, initial_state: initial_state} do
@@ -734,7 +806,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     test "persists log_id and timestamp end-to-end through flush", %{
       account: account
     } do
-      commit_timestamp = ~U[2026-05-26 12:00:00.999000Z]
+      commit_timestamp = DateTime.utc_now()
 
       state =
         %{
@@ -768,7 +840,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "successfully flushes buffer and clears it", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       attrs1 = %{
         log_id: LogId.build_change_log(@seq_start, 0),
@@ -820,8 +892,54 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert log2.timestamp == committed_at
     end
 
+    test "sends the flushed changes to PostHog", %{account: account} do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:posthog, JSON.decode!(body)})
+        Req.Test.json(conn, %{"status" => "Ok"})
+      end)
+
+      Portal.Config.put_env_override(:portal, Portal.Analytics.PostHog,
+        enabled: true,
+        host: "https://posthog.test",
+        project_api_key: "phc_test",
+        req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+      )
+
+      actor_id = Ecto.UUID.generate()
+
+      entry = %{
+        log_id: LogId.build_change_log(@seq_start, 0),
+        timestamp: DateTime.utc_now(),
+        lsn: 700,
+        object: "policies",
+        operation: :delete,
+        account_id: account.id,
+        after: nil,
+        before: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+        vsn: 0,
+        subject: %{
+          "actor_id" => actor_id,
+          "actor_type" => "api_client",
+          "user_agent" => "Terraform/1.9.0 terraform-provider-firezone/0.4.0"
+        }
+      }
+
+      Consumer.flush(%{flush_buffer: %{700 => entry}, seq_start: @seq_start, tenant_offsets: %{}})
+
+      assert_receive {:posthog, %{"batch" => [%{"properties" => properties}]}}
+      assert properties["distinct_id"] == actor_id
+      assert properties["object"] == "policy"
+      assert properties["operation"] == "delete"
+      assert properties["source"] == "terraform"
+      assert properties["account_name"] == account.name
+      assert properties["account_slug"] == account.slug
+    end
+
     test "flushes entries regardless of buffer key order", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       attrs_map = %{
         400 => %{
@@ -874,7 +992,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     test "drops entries for a deleted account but persists valid entries in the batch", %{
       account: account
     } do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
       missing_account_id = Ecto.UUID.generate()
 
       valid_entry = %{
@@ -919,7 +1037,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "raises constraint violations that are not a missing account_id", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       # Omitting the NOT NULL vsn column triggers a different Postgrex error. It
       # must surface as a crash rather than being silently dropped like the
@@ -956,7 +1074,7 @@ defmodule Portal.ChangeLogs.ConsumerTest do
     end
 
     test "skips replayed entries that already committed", %{account: account} do
-      committed_at = ~U[2026-05-26 12:00:00.000000Z]
+      committed_at = DateTime.utc_now()
 
       entry = %{
         log_id: LogId.build_change_log(@seq_start, 0),

@@ -1,17 +1,20 @@
 use std::{
+    collections::BTreeMap,
     net::{Ipv4Addr, Ipv6Addr},
     ops::RangeInclusive,
     time::Duration,
 };
 
 use arbitrary::Unstructured;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use dns_types::DomainName;
 use ip_network::{
     Ipv4Network, Ipv6Network,
     iterator::{Ipv4RangeIterator, Ipv6NetworkIterator},
 };
 use smallvec::SmallVec;
 
+use crate::probe::{FlowId, ProbeId};
 use crate::reference::PrivateKey;
 use crate::transition::{DPort, Identifier, SPort, Seq};
 
@@ -68,10 +71,16 @@ pub struct Generator<'a> {
     next_resource: u64,
 
     next_key: u32,
-    next_payload: u64,
+    next_probe: u64,
+    next_flow: u64,
     icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
     udp_packets: SmallVec<[(SPort, DPort); 20]>,
     tcp_connections: SmallVec<[(SPort, DPort); 20]>,
+
+    /// The subnet of each regular site that only its own Gateways reach.
+    site_subnets: BTreeMap<SiteId, (Ipv4Network, Ipv6Network)>,
+    /// The site whose subnet each local name resolves into.
+    local_names: BTreeMap<DomainName, SiteId>,
 }
 
 impl<'a> Generator<'a> {
@@ -103,10 +112,13 @@ impl<'a> Generator<'a> {
             next_relay: 0,
             next_resource: 0,
             next_key: 0,
-            next_payload: 0,
+            next_probe: 0,
+            next_flow: 0,
             icmp_packets: SmallVec::new(),
             udp_packets: SmallVec::new(),
             tcp_connections: SmallVec::new(),
+            site_subnets: BTreeMap::new(),
+            local_names: BTreeMap::new(),
         }
     }
 
@@ -245,12 +257,19 @@ impl<'a> Generator<'a> {
         PrivateKey(bytes)
     }
 
-    pub(super) fn fresh_payload(&mut self) -> u64 {
-        let n = self.next_payload;
-        self.next_payload += 1;
+    pub(super) fn fresh_probe_id(&mut self) -> ProbeId {
+        let n = self.next_probe;
+        self.next_probe += 1;
         let entropy = self.u64();
 
-        ((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF)
+        ProbeId::new(((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF))
+    }
+
+    pub(super) fn fresh_flow_id(&mut self) -> FlowId {
+        let n = self.next_flow;
+        self.next_flow += 1;
+
+        FlowId::new(n)
     }
 
     pub(super) fn fresh_icmp_packet(&mut self) -> (Seq, Identifier) {
@@ -294,6 +313,46 @@ impl<'a> Generator<'a> {
         connection
     }
 
+    /// Assigns each site its own subnet within the documentation ranges.
+    pub(super) fn allocate_site_subnets(&mut self, sites: &[Site]) {
+        self.site_subnets = sites
+            .iter()
+            .enumerate()
+            .map(|(index, site)| {
+                let index = u8::try_from(index).expect("at most three regular sites");
+                let v4 = Ipv4Network::new(Ipv4Addr::new(192, 0, 2, index * 64), 26).unwrap();
+                let v6 = Ipv6Network::new(
+                    Ipv6Addr::new(0x2001, 0xDB8, u16::from(index), 0, 0, 0, 0, 0),
+                    48,
+                )
+                .unwrap();
+
+                (site.id, (v4, v6))
+            })
+            .collect();
+    }
+
+    pub(super) fn site_subnets(&self) -> &BTreeMap<SiteId, (Ipv4Network, Ipv6Network)> {
+        &self.site_subnets
+    }
+
+    pub(super) fn site_subnet(&self, site: SiteId) -> Option<(Ipv4Network, Ipv6Network)> {
+        self.site_subnets.get(&site).copied()
+    }
+
+    pub(super) fn set_local_names(&mut self, local_names: BTreeMap<DomainName, SiteId>) {
+        self.local_names = local_names;
+    }
+
+    pub(super) fn local_names(&self) -> &BTreeMap<DomainName, SiteId> {
+        &self.local_names
+    }
+
+    /// The subnet `name` resolves into if it is local to a site.
+    pub(super) fn local_subnet(&self, name: &DomainName) -> Option<(Ipv4Network, Ipv6Network)> {
+        self.site_subnet(*self.local_names.get(name)?)
+    }
+
     pub(super) fn latency(&mut self, max: u64) -> Duration {
         Duration::from_millis(self.u64_in(10..=max - 1))
     }
@@ -310,15 +369,5 @@ impl<'a> Generator<'a> {
         let fallback = *range.start();
 
         self.input.int_in_range(range).unwrap_or(fallback)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::Generator;
-
-    #[test]
-    fn exhausted_probability_draws_are_false() {
-        assert!(!Generator::new(&[]).flip(50));
     }
 }

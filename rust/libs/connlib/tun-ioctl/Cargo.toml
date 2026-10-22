@@ -1,0 +1,11 @@
+[package]
+name = "tun-ioctl"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
+libc = { workspace = true }
+
+[lints]
+workspace = true

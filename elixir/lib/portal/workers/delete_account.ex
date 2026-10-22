@@ -97,7 +97,7 @@ defmodule Portal.Workers.DeleteAccount do
       from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         select: a.email
       )
       |> Safe.unscoped()
@@ -110,7 +110,7 @@ defmodule Portal.Workers.DeleteAccount do
 
       from(a in Account,
         where: a.id == ^account_id,
-        where: not is_nil(a.disabled_at),
+        where: a.is_disabled == true,
         where: not is_nil(a.scheduled_deletion_at),
         where: a.scheduled_deletion_at <= ^now,
         select: a

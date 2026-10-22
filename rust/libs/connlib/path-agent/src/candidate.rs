@@ -4,6 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 pub enum Candidate {
     Host(SocketAddr),
     ServerReflexive { addr: SocketAddr, local: SocketAddr },
+    PeerReflexive(SocketAddr),
     Relayed { addr: SocketAddr, local: SocketAddr },
 }
 
@@ -16,6 +17,10 @@ impl Candidate {
         Self::ServerReflexive { addr, local }
     }
 
+    pub const fn peer_reflexive(addr: SocketAddr) -> Self {
+        Self::PeerReflexive(addr)
+    }
+
     pub const fn relayed(addr: SocketAddr, local: SocketAddr) -> Self {
         Self::Relayed { addr, local }
     }
@@ -24,6 +29,7 @@ impl Candidate {
         match self {
             Self::Host(a) => *a,
             Self::ServerReflexive { addr, .. } | Self::Relayed { addr, .. } => *addr,
+            Self::PeerReflexive(a) => *a,
         }
     }
 
@@ -33,6 +39,7 @@ impl Candidate {
         match self {
             Self::Host(a) => *a,
             Self::ServerReflexive { local, .. } => *local,
+            Self::PeerReflexive(a) => *a,
             Self::Relayed { addr, .. } => *addr,
         }
     }
@@ -41,6 +48,7 @@ impl Candidate {
         match self {
             Self::Host(_) => CandidateKind::Host,
             Self::ServerReflexive { .. } => CandidateKind::ServerReflexive,
+            Self::PeerReflexive(_) => CandidateKind::PeerReflexive,
             Self::Relayed { .. } => CandidateKind::Relayed,
         }
     }
@@ -52,6 +60,7 @@ impl Candidate {
     pub const fn is_family_matched(&self) -> bool {
         match self {
             Self::Host(_) | Self::ServerReflexive { .. } => true,
+            Self::PeerReflexive(_) => true,
             Self::Relayed { addr, local } => addr.is_ipv4() == local.is_ipv4(),
         }
     }
@@ -65,6 +74,7 @@ impl Candidate {
         let (typ, related) = match self {
             Self::Host(_) => ("host", None),
             Self::ServerReflexive { local, .. } => ("srflx", Some(local)),
+            Self::PeerReflexive(_) => ("prflx", None),
             Self::Relayed { local, .. } => ("relay", Some(local)),
         };
 
@@ -126,6 +136,7 @@ impl Candidate {
         match typ {
             "host" => Ok(Self::host(addr)),
             "srflx" => Ok(Self::server_reflexive(addr, related.ok_or(E::MissingBase)?)),
+            "prflx" => Ok(Self::peer_reflexive(addr)),
             "relay" => Ok(Self::relayed(addr, related.ok_or(E::MissingBase)?)),
             _ => Err(E::UnknownType),
         }
@@ -148,6 +159,7 @@ impl Candidate {
         let type_preference: u32 = match self.kind() {
             CandidateKind::Host => 126,
             CandidateKind::ServerReflexive => 100,
+            CandidateKind::PeerReflexive => 100,
             CandidateKind::Relayed => 0,
         };
 
@@ -207,11 +219,12 @@ impl std::fmt::Display for ParseCandidateError {
 
 impl std::error::Error for ParseCandidateError {}
 
-/// Declaration order determines `Ord`: `Host < ServerReflexive < Relayed`.
+/// Declaration order determines `Ord`: `Host < ServerReflexive < PeerReflexive < Relayed`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CandidateKind {
     Host,
     ServerReflexive,
+    PeerReflexive,
     Relayed,
 }
 
@@ -285,6 +298,7 @@ mod tests {
         round_trip(Candidate::host(addr_v6()));
         round_trip(Candidate::server_reflexive(addr(), other_addr()));
         round_trip(Candidate::server_reflexive(addr_v6(), addr_v6()));
+        round_trip(Candidate::peer_reflexive(addr()));
         round_trip(Candidate::relayed(addr(), other_addr()));
         round_trip(Candidate::relayed(addr_v6(), addr_v6()));
     }

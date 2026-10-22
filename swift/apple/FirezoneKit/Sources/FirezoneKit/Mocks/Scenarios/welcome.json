@@ -1,0 +1,10 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "disconnected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "clientCertificate": "absent",
+  "resources": [],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}

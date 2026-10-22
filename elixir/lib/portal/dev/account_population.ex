@@ -16,6 +16,7 @@ defmodule Portal.Dev.AccountPopulation do
   alias Portal.Repo
   alias Portal.Resource
   alias Portal.Site
+  alias Portal.X509
 
   alias Portal.Authentication.{Context, Credential, Subject}
 
@@ -32,9 +33,7 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "community",
       features: %{
         policy_conditions: false,
-        traffic_filters: false,
         idp_sync: false,
-        rest_api: false,
         internet_resource: false
       },
       limits: %{
@@ -85,9 +84,7 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "email",
       features: %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: false,
-        rest_api: false,
         internet_resource: true
       },
       limits: %{
@@ -138,9 +135,7 @@ defmodule Portal.Dev.AccountPopulation do
       support_type: "email_and_slack",
       features: %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
-        rest_api: true,
         internet_resource: true
       },
       limits: %{
@@ -255,17 +250,6 @@ defmodule Portal.Dev.AccountPopulation do
     run(plan, level, opts)
   end
 
-  def runtime_argv do
-    system_argv = System.argv()
-    plain_argv = Enum.map(:init.get_plain_arguments(), &List.to_string/1)
-
-    cond do
-      option_argv?(system_argv) -> system_argv
-      option_argv?(plain_argv) -> plain_argv
-      true -> system_argv
-    end
-  end
-
   def ensure_runtime_started do
     for app <- [:crypto, :ssl, :postgrex, :ecto, :ecto_sql] do
       {:ok, _} = Application.ensure_all_started(app)
@@ -273,10 +257,6 @@ defmodule Portal.Dev.AccountPopulation do
 
     unless Process.whereis(Portal.Repo) do
       {:ok, _pid} = Portal.Repo.start_link()
-    end
-
-    unless Process.whereis(Portal.Repo.Replica) do
-      {:ok, _pid} = Portal.Repo.Replica.start_link()
     end
 
     :ok
@@ -308,10 +288,6 @@ defmodule Portal.Dev.AccountPopulation do
 
   defp normalize_level!(level) when level in [:empty, :light, :heavy], do: level
   defp normalize_level!(level), do: raise(ArgumentError, "unknown level #{inspect(level)}")
-
-  defp option_argv?(argv) when is_list(argv) do
-    Enum.any?(argv, &String.starts_with?(&1, "--"))
-  end
 
   defp normalize_slug(slug) do
     slug
@@ -402,6 +378,7 @@ defmodule Portal.Dev.AccountPopulation do
 
     everyone_group = create_group(account, %{name: "Everyone", type: :managed})
     email_provider = create_email_provider(account)
+    _x509_provider = create_x509_provider(account)
 
     admin_actor =
       create_actor(account, :account_admin_user, "Admin 1", email_for(account.slug, "admin-1"))
@@ -409,6 +386,9 @@ defmodule Portal.Dev.AccountPopulation do
     default_site = create_site(account, "Default Site", :account)
     internet_site = create_site(account, "Internet", :system)
     internet_resource = create_resource(account, internet_site, 1, :internet, spec)
+    account_owner_group = create_group(account, Group.account_owner_attrs())
+    create_membership(account, account_owner_group, admin_actor)
+    self_device_pool = create_self_device_pool(account, account_owner_group)
 
     %{
       account: account,
@@ -417,8 +397,8 @@ defmodule Portal.Dev.AccountPopulation do
       everyone_group: everyone_group,
       actors: %{admins: [admin_actor], users: [], service_accounts: []},
       sites: %{account_sites: [default_site], internet_site: internet_site},
-      resources: %{internet: internet_resource, managed: []},
-      groups: [everyone_group],
+      resources: %{internet: internet_resource, self_device_pool: self_device_pool, managed: []},
+      groups: [everyone_group, account_owner_group],
       policies: [],
       gateways: [],
       clients: [],
@@ -484,12 +464,7 @@ defmodule Portal.Dev.AccountPopulation do
     current_total = length(state.resources.managed) + 1
     additional_count = max(targets.resources - current_total, 0)
 
-    filtered_count =
-      subset_count(
-        additional_count,
-        resource_filter_ratio(targets),
-        spec.features.traffic_filters
-      )
+    filtered_count = floor(additional_count * resource_filter_ratio(targets))
 
     new_resources =
       for index <- positive_range(additional_count) do
@@ -670,6 +645,31 @@ defmodule Portal.Dev.AccountPopulation do
     |> Repo.insert!()
   end
 
+  defp create_membership(account, group, actor) do
+    Repo.insert!(%Membership{
+      account_id: account.id,
+      group_id: group.id,
+      actor_id: actor.id
+    })
+  end
+
+  defp create_self_device_pool(account, account_owner_group) do
+    resource =
+      %Resource{account_id: account.id}
+      |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+      |> Resource.changeset()
+      |> Repo.insert!()
+
+    Repo.insert!(%Policy{
+      account_id: account.id,
+      group_id: account_owner_group.id,
+      resource_id: resource.id,
+      description: "Lets the account owner reach their own devices."
+    })
+
+    resource
+  end
+
   defp create_resource(account, site, index, type, spec, filtered? \\ false)
 
   defp create_resource(account, site, _index, :internet, _spec, _filtered?) do
@@ -772,6 +772,7 @@ defmodule Portal.Dev.AccountPopulation do
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
       |> put_change(:site_id, site.id)
+      |> Portal.Devices.put_free_slug(state.account.id, nil)
       |> Device.changeset()
       |> Repo.insert!()
 
@@ -838,6 +839,7 @@ defmodule Portal.Dev.AccountPopulation do
       |> put_change(:type, :client)
       |> put_change(:account_id, state.account.id)
       |> put_change(:actor_id, actor.id)
+      |> Portal.Devices.put_free_slug(state.account.id, Portal.Devices.owner_name(actor))
       |> Device.changeset()
       |> Repo.insert!()
 
@@ -886,6 +888,33 @@ defmodule Portal.Dev.AccountPopulation do
     |> Repo.insert!()
   end
 
+  defp create_x509_provider(account) do
+    provider_id = Ecto.UUID.generate()
+
+    %AuthProvider{}
+    |> cast(%{id: provider_id, account_id: account.id, type: :x509}, [
+      :id,
+      :account_id,
+      :type
+    ])
+    |> AuthProvider.changeset()
+    |> Repo.insert!()
+
+    %X509.AuthProvider{}
+    |> cast(
+      %{
+        id: provider_id,
+        account_id: account.id,
+        name: "X.509",
+        context: :clients_only,
+        is_disabled: true
+      },
+      [:id, :account_id, :name, :context, :is_disabled]
+    )
+    |> X509.AuthProvider.changeset()
+    |> Repo.insert!()
+  end
+
   defp create_gateway_token(site, account) do
     subject = subject_for(account)
     {:ok, token} = Authentication.create_gateway_token(site, subject)
@@ -915,7 +944,7 @@ defmodule Portal.Dev.AccountPopulation do
     token
   end
 
-  defp subject_for(account) do
+  defp subject_for(%Portal.Account{} = account) do
     %Subject{
       account: account,
       actor: %Actor{
@@ -924,7 +953,10 @@ defmodule Portal.Dev.AccountPopulation do
         type: :account_admin_user,
         name: "Population Script"
       },
-      credential: %Credential{id: Ecto.UUID.generate(), type: :token},
+      credential: %Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: Ecto.UUID.generate()
+      },
       expires_at: DateTime.add(DateTime.utc_now(), 1, :hour),
       context: %Context{
         type: :client,

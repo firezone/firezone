@@ -22,6 +22,8 @@ defmodule PortalAPI do
 
       import Plug.Conn
 
+      plug PortalAPI.Plugs.ValidateRequest
+
       unquote(verified_routes())
     end
   end

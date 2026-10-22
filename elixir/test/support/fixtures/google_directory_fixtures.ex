@@ -20,7 +20,9 @@ defmodule Portal.GoogleDirectoryFixtures do
       name: "Google Directory #{unique_num}",
       impersonation_email: "admin#{unique_num}@example#{unique_num}.com",
       is_verified: true,
-      orgunit_sync_enabled: true
+      orgunit_sync_enabled: true,
+      # Tests exercising multi-domain opt in explicitly.
+      sync_all_domains: false
     })
   end
 
@@ -78,7 +80,12 @@ defmodule Portal.GoogleDirectoryFixtures do
         :error_message,
         :error_email_count,
         :group_sync_mode,
-        :orgunit_sync_enabled
+        :orgunit_sync_enabled,
+        :sync_all_domains,
+        :webhook_secret,
+        :users_channel_id,
+        :users_resource_id,
+        :channel_expires_at
       ])
       |> Portal.Google.Directory.changeset()
       |> Portal.Repo.insert()
@@ -96,5 +103,24 @@ defmodule Portal.GoogleDirectoryFixtures do
     |> Enum.into(%{})
     |> Map.put_new(:synced_at, DateTime.utc_now())
     |> google_directory_fixture()
+  end
+
+  @doc "Generate a Google directory with an existing webhook subscription."
+  def subscribed_google_directory_fixture(attrs \\ %{}) do
+    attrs
+    |> Enum.into(%{
+      webhook_secret: "secret",
+      users_channel_id: "existing-channel",
+      users_resource_id: "existing-resource",
+      channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+    })
+    |> google_directory_fixture()
+  end
+
+  @doc "Build an active Google user API payload."
+  def google_api_user_fixture(attrs \\ %{}) do
+    Enum.into(attrs, %{})
+    |> Map.put_new("suspended", false)
+    |> Map.put_new("archived", false)
   end
 end

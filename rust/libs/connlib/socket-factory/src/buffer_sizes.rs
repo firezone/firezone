@@ -1,4 +1,4 @@
-use crate::DatagramSegmentIter;
+use crate::DatagramBatch;
 use bufferpool::Buffer;
 use std::mem::size_of;
 use std::time::Duration;
@@ -6,9 +6,10 @@ use std::time::Duration;
 /// Kernel queue for a UDP socket's controlled egress.
 ///
 /// Unlike the receive buffer, this does not need to bridge scheduler stalls: our bounded userspace
-/// send channel applies backpressure while the send task is not running. It only needs to fit one
-/// complete GSO / USO send and enough data to keep the interface busy while send completions are
-/// processed. At 10 Gbit/s, the 1 ms queue window is 1.25 MB and rounds up to 2 MiB.
+/// send channel applies backpressure while the send task is not running. It needs to fit complete
+/// GSO / USO sends and absorb the bursts handed to the send task while the interface drains its
+/// queue, as a full buffer stalls that task. At 10 Gbit/s, the 2 ms queue window is 2.5 MB and
+/// rounds up to 4 MiB.
 ///
 /// On Apple platforms UDP datagrams are handed straight to the interface and `SO_SNDBUF` primarily
 /// caps the maximum datagram size, so 64 KiB is sufficient for one complete send.
@@ -26,18 +27,23 @@ pub const RECV_BUFFER_SIZE: usize = recv_buffer_size_for_service_gap(
     RECV_SERVICE_GAP.saturating_mul(RECV_SERVICE_GAP_WINDOWS as u32),
 );
 
-/// Worst-case heap that a single received batch ([`DatagramSegmentIter`]) pins.
+/// Worst-case heap that a single received batch ([`DatagramBatch`]) pins.
 ///
-/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata. Each buffer
-/// is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams of at most
-/// [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer is 64x the
-/// size of the datagram it might actually carry. That factor dominates this figure even on Windows,
-/// where Quinn currently leaves URO disabled but allocates URO-capable buffers.
-pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramSegmentIter>()
+/// A batch owns [`quinn_udp::BATCH_SIZE`] receive buffers plus their handles and metadata.
+pub const MAX_RECV_BATCH_MEMORY: usize = size_of::<DatagramBatch>()
     + quinn_udp::BATCH_SIZE
-        * (ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS
+        * (MAX_RECV_BUFFER_MEMORY
             + size_of::<Buffer<Vec<u8>>>()
             + size_of::<quinn_udp::RecvMeta>());
+
+/// Worst-case heap that a single receive buffer ([`DatagramIn`](crate::DatagramIn)) pins.
+///
+/// Each buffer is sized to hold a full coalesced batch - up to `MAX_RECV_BUFFER_SEGMENTS` datagrams
+/// of at most [`ip_packet::MAX_FZ_PAYLOAD`] bytes - so on Linux / Android and Windows a single buffer
+/// is 64x the size of the datagram it might actually carry. That factor dominates the memory of the
+/// receive path even on Windows, where Quinn currently leaves URO disabled but allocates URO-capable
+/// buffers.
+pub const MAX_RECV_BUFFER_MEMORY: usize = ip_packet::MAX_FZ_PAYLOAD * MAX_RECV_BUFFER_SEGMENTS;
 
 /// Largest traffic rate in either direction for which we size the UDP socket buffers.
 const MAX_EXPECTED_UDP_BITS_PER_SECOND: u64 = 10_000_000_000;
@@ -46,7 +52,7 @@ const MAX_ATOMIC_UDP_SEND_BYTES: usize = u16::MAX as usize;
 /// Time worth of controlled egress that may be queued in the kernel.
 const SEND_QUEUE_WINDOW: Duration = cfg_select! {
     apple => { Duration::ZERO }
-    _ => { Duration::from_millis(1) }
+    _ => { Duration::from_millis(2) }
 };
 /// How long a normally-scheduled receive thread may reasonably go without servicing its socket.
 const RECV_SERVICE_GAP: Duration = Duration::from_millis(10);
@@ -115,7 +121,7 @@ mod tests {
 
         let expected_send_buffer_size = cfg_select! {
             apple => { 64 * 1024 }
-            _ => { 2 * MIB }
+            _ => { 4 * MIB }
         };
         let expected_recv_buffer_size = cfg_select! {
             any(apple, target_os = "windows") => { 32 * MIB }

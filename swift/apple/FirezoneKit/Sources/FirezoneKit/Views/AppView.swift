@@ -34,12 +34,12 @@ public struct AppView: View {
         .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)
         .sink(receiveValue: { vpnStatus, systemExtensionStatus in
           // Open window in case permissions are revoked
-          if vpnStatus == .invalid || systemExtensionStatus != .installed {
+          if vpnStatus == .invalid || systemExtensionStatus?.isUsable != true {
             WindowDefinition.main.openWindow()
           }
 
           // Close window for day to day use
-          if vpnStatus != .invalid && systemExtensionStatus == .installed
+          if vpnStatus != .invalid && systemExtensionStatus?.isUsable == true
             && launchedBefore(userDefaults: store.userDefaults)
           {
             WindowDefinition.main.window()?.close()

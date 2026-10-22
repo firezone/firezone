@@ -1,15 +1,26 @@
 defmodule PortalWeb.ResourcesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Policy, Repo}
   alias Portal.Changes.Change
   alias Portal.Resource
+  alias PortalWeb.Resources.Components.Database
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
-  import Portal.FeaturesFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyAuthorizationFixtures
@@ -40,6 +51,37 @@ defmodule PortalWeb.ResourcesTest do
   end
 
   describe "index (default action)" do
+    test "looks up the filtered site only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account, name: "Notice Site")
+      conn = authorize_conn(conn, actor)
+      path = ~p"/#{account}/resources?#{%{"resources_filter[site_id]" => site.id}}"
+
+      static = conn |> get(path) |> html_response(200)
+      refute static =~ "Viewing Resources for Site"
+
+      {:ok, _lv, html} = live(conn, path)
+      assert html =~ "Viewing Resources for Site"
+      assert html =~ "Notice Site"
+    end
+
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      resource_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/resources") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#resources-skeleton")
+      assert Floki.find(static, "#resources-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "#resources-rows tr")
+      refute has_element?(lv, "#resources-skeleton")
+    end
+
     test "renders resource list page", %{conn: conn, account: account, actor: actor} do
       resource = resource_fixture(account: account)
 
@@ -95,7 +137,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -107,16 +149,35 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
+    test "shows an own devices pool with multiple addresses and no site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      own_devices_pool_resource_fixture(account: account, name: "Personal devices")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "Personal devices"
+      assert html =~ "My devices"
+      assert html =~ "Multiple Addresses"
+      refute html =~ "&lt;slug&gt;"
+      assert html =~ "No Site Needed"
+    end
+
     test "shows online member count instead of offline for device pools", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client_one = client_fixture(account: account, actor: actor)
-      client_two = client_fixture(account: account, actor: actor)
+      device_one = client_fixture(account: account, actor: actor)
+      device_two = client_fixture(account: account, actor: actor)
 
       _resource =
-        static_device_pool_resource_fixture(account: account, clients: [client_one, client_two])
+        device_pool_resource_fixture(account: account, devices: [device_one, device_two])
 
       {:ok, _lv, html} =
         conn
@@ -126,29 +187,26 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "0 / 2 online"
     end
 
-    test "hides device pool option from the type filter when client_to_client is disabled",
+    test "shows device pool option in the type filter",
          %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources")
 
-      refute has_element?(lv, "#resources-type-static_device_pool")
+      assert has_element?(lv, "#resources-type-device_pool")
       assert has_element?(lv, "#resources-type-dns")
     end
 
-    test "shows device pool option in the type filter when client_to_client is enabled",
+    test "offers the device pool type when creating a resource",
          %{conn: conn, account: account, actor: actor} do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources")
+        |> live(~p"/#{account}/resources/new")
 
-      assert has_element?(lv, "#resources-type-static_device_pool")
-      assert has_element?(lv, "#resources-type-dns")
+      assert has_element?(lv, "#resource-form-type--device-pool")
+      assert has_element?(lv, "#resource-form-type--dns")
     end
 
     test "hides Internet Resource row for starter accounts without the feature", %{conn: conn} do
@@ -157,10 +215,7 @@ defmodule PortalWeb.ResourcesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
-            idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            idp_sync: true
           }
         )
 
@@ -272,9 +327,6 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -282,25 +334,93 @@ defmodule PortalWeb.ResourcesTest do
 
       lv
       |> form("[phx-submit='submit_resource_form']",
-        resource: %{type: "static_device_pool", name: "My Device Pool"}
+        resource: %{type: "device_pool", name: "My Device Pool"}
       )
       |> render_change()
 
       html =
         lv
         |> form("[phx-submit='submit_resource_form']",
-          resource: %{type: "static_device_pool", name: "My Device Pool"}
+          resource: %{type: "device_pool", name: "My Device Pool"}
         )
         |> render_submit()
 
       assert html =~ "created successfully"
     end
 
-    test "manages DNS traffic restriction controls", %{
+    test "does not offer the Internet Site", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      assert html =~ site.id
+      refute html =~ internet_site.id
+    end
+
+    test "rejects a resource submitted for the Internet Site", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      internet_site = internet_site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{
+            "type" => "dns",
+            "name" => "App Example",
+            "address" => "app.example.com",
+            "site_id" => internet_site.id
+          }
+        })
+
+      assert html =~ "cannot be the Internet Site"
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
+    end
+
+    test "rejects an internet resource submitted for a regular Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{
+            "type" => "internet",
+            "name" => "Internet",
+            "site_id" => site.id
+          }
+        })
+
+      assert html =~ "must be the Internet Site for an Internet Resource"
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
+    end
+
+    test "manages DNS traffic restriction controls for Starter accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -333,12 +453,9 @@ defmodule PortalWeb.ResourcesTest do
            account: account,
            actor: actor
          } do
-      enable_feature(:client_to_client)
-
       features =
         account.features
         |> Map.from_struct()
-        |> Map.put(:client_to_client, true)
 
       account = update_account(account, features: features)
 
@@ -348,7 +465,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       render_click(lv, "toggle_resource_filters_dropdown")
@@ -365,7 +482,7 @@ defmodule PortalWeb.ResourcesTest do
         lv
         |> form("[phx-submit='submit_resource_form']",
           resource: %{
-            type: "static_device_pool",
+            type: "device_pool",
             name: "Filtered Device Pool",
             filters: %{
               tcp: %{enabled: "true", protocol: "tcp", ports: "443, 8443"},
@@ -386,14 +503,12 @@ defmodule PortalWeb.ResourcesTest do
              }
     end
 
-    test "manages static device pool client picker", %{
+    test "manages static device pool device picker", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      account = update_account(account, features: %{client_to_client: true})
-      client = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
+      device = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
 
       {:ok, lv, _html} =
         conn
@@ -401,38 +516,35 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
-      assert render_focus(element(lv, "input[name='client_search']")) =~ "Search clients to add"
+      assert render_focus(element(lv, "input[name='device_search']")) =~ "Search devices to add"
 
       html =
-        lv
-        |> element("input[name='client_search']")
-        |> render_change(%{"client_search" => "Workstation"})
+        search_devices_in(lv, "Workstation")
 
-      assert html =~ client.name
+      assert html =~ device.name
 
-      html = render_click(lv, "add_client", %{"client_id" => client.id})
-      assert html =~ client.name
+      # Adding a device keeps the search and only drops that device from the results.
+      html = render_click(lv, "add_device", %{"device_id" => device.id})
+      assert html =~ "No devices found"
+      assert has_element?(lv, "input[name='device_search'][value='Workstation']")
+      assert has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+      refute has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{device.id}']")
 
-      html = render_click(lv, "remove_client", %{"client_id" => client.id})
-      assert html =~ "Search above to add devices"
+      # Removing it puts it back into the results for the same search.
+      render_click(lv, "remove_device", %{"device_id" => device.id})
+      render_async(lv)
+      refute has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+      assert has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{device.id}']")
 
-      lv
-      |> element("input[name='client_search']")
-      |> render_change(%{"client_search" => "Workstation"})
-
-      html = render_click(lv, "add_client", %{"client_id" => client.id})
-      assert html =~ client.name
-
-      assert has_element?(
-               lv,
-               "button[phx-click='remove_client'][phx-value-client_id='#{client.id}']"
-             )
+      # Device details live in a popover on the info icon rather than the whole card.
+      assert has_element?(lv, "[role='tooltip'] dd", device.id)
+      assert has_element?(lv, "[phx-hook='Popover'] .ri-information-line")
     end
 
-    test "client picker search surfaces online clients ahead of the result limit", %{
+    test "device picker search surfaces online devices ahead of the page", %{
       account: account,
       actor: actor
     } do
@@ -442,14 +554,414 @@ defmodule PortalWeb.ResourcesTest do
         client_fixture(account: account, actor: actor, name: "Bulk Offline #{i}")
       end
 
-      online_client = client_fixture(account: account, actor: actor, name: "Bulk Online")
-      :ok = Portal.Presence.Clients.Account.track(account.id, online_client.id)
+      online_device = client_fixture(account: account, actor: actor, name: "Bulk Online")
+      :ok = Portal.Presence.Devices.Account.track(online_device)
 
-      results = PortalWeb.Resources.Components.Database.search_clients("Bulk", subject, [])
+      assert %{devices: devices, total: 11, page: 1} = Database.search_devices("Bulk", subject, [])
+      assert length(devices) == 10
+      assert [%{id: id, online?: true} | _] = devices
+      assert id == online_device.id
+    end
 
-      assert length(results) == 10
-      assert [%{id: id, online?: true} | _] = results
-      assert id == online_client.id
+    test "device picker search orders offline devices by most recently seen", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      never_seen = client_fixture(account: account, actor: actor, name: "Ordered Never")
+      stale = client_fixture(account: account, actor: actor, name: "Ordered Stale")
+      recent = client_fixture(account: account, actor: actor, name: "Ordered Recent")
+      online = client_fixture(account: account, actor: actor, name: "Ordered Online")
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      now = DateTime.utc_now()
+      set_last_seen_at(never_seen, nil)
+      set_last_seen_at(stale, DateTime.add(now, -60, :day))
+      set_last_seen_at(recent, DateTime.add(now, -1, :hour))
+      set_last_seen_at(online, DateTime.add(now, -90, :day))
+
+      %{devices: devices} = Database.search_devices("Ordered", subject, [])
+
+      assert Enum.map(devices, & &1.id) == [online.id, recent.id, stale.id, never_seen.id]
+    end
+
+    test "device picker search pages through results", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      for i <- 1..25 do
+        client_fixture(account: account, actor: actor, name: "Paged #{i}")
+      end
+
+      page_ids = fn page ->
+        %{devices: devices} = Database.search_devices("Paged", subject, [], page: page)
+        Enum.map(devices, & &1.id)
+      end
+
+      [first, second, third] = Enum.map(1..3, page_ids)
+
+      # Each page carries the next page's devices as a reserve for backfilling.
+      %{reserve: reserve} = Database.search_devices("Paged", subject, [], page: 1)
+      assert Enum.map(reserve, & &1.id) == second
+      assert %{reserve: []} = Database.search_devices("Paged", subject, [], page: 3)
+
+      assert {length(first), length(second), length(third)} == {10, 10, 5}
+      assert first |> Enum.concat(second) |> Enum.concat(third) |> Enum.uniq() |> length() == 25
+
+      # A page past the end falls back to the last page.
+      assert %{page: 3, total: 25, devices: last_page} = Database.search_devices("Paged", subject, [], page: 99)
+      assert Enum.map(last_page, & &1.id) == third
+      assert %{page: 1} = Database.search_devices("Paged", subject, [], page: 0)
+      assert %{page: 1, total: 0, devices: []} = Database.search_devices("Nope", subject, [], page: 2)
+      assert Database.search_devices("", subject, []) == nil
+    end
+
+    test "device picker search leaves out and does not count other accounts' devices", %{
+      account: account,
+      actor: actor
+    } do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account)
+
+      for i <- 1..3 do
+        client_fixture(account: other_account, actor: other_actor, name: "Isolated #{i}")
+      end
+
+      own = client_fixture(account: account, actor: actor, name: "Isolated Own")
+
+      assert %{devices: [%{id: id}], reserve: [], total: 1} = Database.search_devices("Isolated", subject, [])
+      assert id == own.id
+    end
+
+    test "device picker search filters by online and recently seen", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      online = client_fixture(account: account, actor: actor, name: "Filter Online")
+      recent = client_fixture(account: account, actor: actor, name: "Filter Recent")
+      stale = client_fixture(account: account, actor: actor, name: "Filter Stale")
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      set_last_seen_at(online, nil)
+      set_last_seen_at(recent, DateTime.add(DateTime.utc_now(), -2, :day))
+      set_last_seen_at(stale, DateTime.add(DateTime.utc_now(), -45, :day))
+
+      ids = fn search, opts ->
+        search |> Database.search_devices(subject, [], opts) |> Map.fetch!(:devices) |> Enum.map(& &1.id)
+      end
+
+      assert ids.("Filter", online_only: true) == [online.id]
+      assert ids.("Filter", recently_seen: true) == [online.id, recent.id]
+      assert ids.("Filter", []) == [online.id, recent.id, stale.id]
+
+      # Filters list devices even without a search term.
+      assert online.id in ids.("", online_only: true)
+    end
+
+    test "device picker pages and filters results in the form", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      devices =
+        for i <- 1..15 do
+          client_fixture(account: account, actor: actor, name: "Paging Box #{i}")
+        end
+
+      online = List.last(devices)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        search_devices_in(lv, "Paging Box")
+
+      assert result_count(lv) == 10
+      assert html =~ "1–10 of 15"
+      assert html =~ "1 / 2"
+
+      # Each result shows its owner, with identifiers moved into a hover popover.
+      assert html =~ actor.email
+      assert has_element?(lv, "[role='tooltip'] dd", online.id)
+      assert has_element?(lv, "button[aria-label='Previous page'][disabled]")
+
+      html = click_and_await(lv, "button[aria-label='Next page']")
+
+      assert result_count(lv) == 5
+      assert html =~ "11–15 of 15"
+      assert has_element?(lv, "button[aria-label='Next page'][disabled]")
+
+      # Adding and removing a device keeps the current page and search.
+      on_page = Enum.find(devices, &has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{&1.id}']"))
+      render_click(lv, "add_device", %{"device_id" => on_page.id})
+      assert render(lv) =~ "11–14 of 14"
+
+      render_click(lv, "remove_device", %{"device_id" => on_page.id})
+      render_async(lv)
+
+      assert render(lv) =~ "11–15 of 15"
+
+      # Toggling a filter returns to the first page.
+      html =
+        click_and_await(lv, "button[phx-click='toggle_device_search_filter'][phx-value-filter='online_only']")
+
+      assert result_count(lv) == 1
+      assert html =~ online.name
+      refute has_element?(lv, "button[aria-label='Next page']")
+
+      assert has_element?(lv, "button[role='switch'][phx-value-filter='online_only'][aria-checked='true']")
+      assert has_element?(lv, "button[phx-value-filter='online_only'] .ri-checkbox-fill")
+      assert has_element?(lv, "button[role='switch'][phx-value-filter='recently_seen'][aria-checked='false']")
+      assert has_element?(lv, "button[phx-value-filter='recently_seen'] .ri-checkbox-blank-line")
+    end
+
+    test "adding a device drops it from the results without searching again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device = client_fixture(account: account, actor: actor, name: "Requery Box 1")
+      client_fixture(account: account, actor: actor, name: "Requery Box 2")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Requery Box")
+
+      # A device created after the search only shows up if the search runs again.
+      late = client_fixture(account: account, actor: actor, name: "Requery Box 3")
+
+      render_click(lv, "add_device", %{"device_id" => device.id})
+
+      assert result_count(lv) == 1
+      refute has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{late.id}']")
+      assert has_element?(lv, "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']")
+    end
+
+    test "adding the last result on a page loads the previous page", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      devices =
+        for i <- 1..11 do
+          client_fixture(account: account, actor: actor, name: "Last Page Box #{i}")
+        end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Last Page Box")
+
+      html = click_and_await(lv, "button[aria-label='Next page']")
+      assert html =~ "11–11 of 11"
+
+      [last_on_page] =
+        Enum.filter(devices, &has_element?(lv, "button[phx-click='add_device'][phx-value-device_id='#{&1.id}']"))
+
+      render_click(lv, "add_device", %{"device_id" => last_on_page.id})
+      render_async(lv)
+
+      assert result_count(lv) == 10
+      refute has_element?(lv, "button[aria-label='Next page']")
+    end
+
+    test "adding a device backfills the page from the next page's results", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..15 do
+        client_fixture(account: account, actor: actor, name: "Backfill Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Backfill Box")
+
+      [first | _] = before = result_ids(lv)
+
+      html = render_click(lv, "add_device", %{"device_id" => first})
+      after_add = result_ids(lv)
+
+      # The page stays full: the added device is gone and one new device slid in from the reserve.
+      assert length(after_add) == 10
+      assert after_add -- before != []
+      refute first in after_add
+      assert html =~ "1–10 of 14"
+    end
+
+    test "the reserve is topped up once it gets down to 5", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..30 do
+        client_fixture(account: account, actor: actor, name: "Topup Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Topup Box")
+
+      # Only a fresh search can find this device, and it sorts ahead of every other offline one.
+      late = client_fixture(account: account, actor: actor, name: "Topup Box Late")
+      set_last_seen_at(late, DateTime.utc_now())
+
+      # Five adds take the reserve from 10 down to 5, which starts the top-up.
+      for _ <- 1..5 do
+        [id | _] = result_ids(lv)
+        render_click(lv, "add_device", %{"device_id" => id})
+        render_async(lv)
+      end
+
+      refute late.id in result_ids(lv)
+
+      # The topped-up reserve now leads with the late device, so the next add slides it in.
+      [id | _] = result_ids(lv)
+      render_click(lv, "add_device", %{"device_id" => id})
+
+      assert late.id in result_ids(lv)
+      assert result_count(lv) == 10
+    end
+
+    test "running out of backfill refills the page in the background", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      for i <- 1..25 do
+        client_fixture(account: account, actor: actor, name: "Refill Box #{i}")
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      search_devices_in(lv, "Refill Box")
+
+      # The first 10 adds are backfilled from the reserve; the 11th needs a refill.
+      for _ <- 1..11 do
+        [id | _] = result_ids(lv)
+        render_click(lv, "add_device", %{"device_id" => id})
+        render_async(lv)
+      end
+
+      html = render(lv)
+      assert html =~ "Selected (11)"
+      assert result_count(lv) == 10
+      assert html =~ "1–10 of 14"
+    end
+
+    test "device picker lists the most recently selected device first", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first = client_fixture(account: account, actor: actor, name: "Chosen First")
+      second = client_fixture(account: account, actor: actor, name: "Chosen Second")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      render_click(lv, "add_device", %{"device_id" => first.id})
+      html = render_click(lv, "add_device", %{"device_id" => second.id})
+
+      assert html =~ "Selected (2)"
+
+      selected_ids =
+        html
+        |> Floki.parse_document!()
+        |> Floki.find("#device-picker-selected button[phx-click='remove_device']")
+        |> Enum.flat_map(&Floki.attribute(&1, "phx-value-device_id"))
+
+      assert selected_ids == [second.id, first.id]
+    end
+
+    test "device picker shows a searching state until results arrive", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor, name: "Loading Box")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      # The event handler only starts the search, so its render shows the searching state.
+      html =
+        lv
+        |> element("input[name='device_search']")
+        |> render_change(%{"device_search" => "Loading Box"})
+
+      assert html =~ "Searching…"
+      assert html =~ "ri-loader-4-line"
+
+      html = render_async(lv)
+
+      refute html =~ "Searching…"
+      assert result_count(lv) == 1
+    end
+
+    test "device picker search matches the device slug", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor, slug: "build-box-7")
+      client_fixture(account: account, actor: actor)
+
+      assert %{devices: [%{id: id}]} = Database.search_devices("build-box", subject, [])
+
+      assert id == device.id
     end
   end
 
@@ -488,7 +1000,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -537,12 +1049,38 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Grant access"
     end
 
+    test "grants access with device postures", %{conn: conn} do
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+      assert html =~ "Device posture"
+
+      render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+      html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
+
+      lv
+      |> form("#grant-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(:client_up_to_date)
+      assert Portal.Policies.Postures.to_map(policy.postures) == check.expansion
+    end
+
     test "grants access with flow log reporting disabled", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      enable_feature(:flow_logs)
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)
 
@@ -565,7 +1103,6 @@ defmodule PortalWeb.ResourcesTest do
     end
 
     test "defaults Internet Resource flow logs off and allows enabling them", %{conn: conn} do
-      enable_feature(:flow_logs)
       account = account_fixture(features: %{internet_resource: true})
       actor = admin_actor_fixture(account: account)
       resource = internet_resource_fixture(account: account)
@@ -588,6 +1125,9 @@ defmodule PortalWeb.ResourcesTest do
       lv
       |> form("#grant-form")
       |> render_submit()
+
+      # The next reload would kill this one mid-query, which breaks the test's sandbox connection
+      render_async(lv)
 
       default_policy =
         Repo.get_by!(Policy, resource_id: resource.id, group_id: default_group.id)
@@ -613,10 +1153,7 @@ defmodule PortalWeb.ResourcesTest do
         starter_account_fixture(
           features: %{
             policy_conditions: false,
-            traffic_filters: true,
-            idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            idp_sync: true
           }
         )
 
@@ -630,10 +1167,13 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "open_grant_form")
 
-      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade your plan to unlock policy conditions and device posture checks."
+      assert length(Floki.find(Floki.parse_fragment!(html), "[data-locked-section]")) == 1
+      assert [_, _] = String.split(html, "Upgrade to Unlock")
+      assert :binary.match(html, "Flow log reporting") < :binary.match(html, "data-locked-section")
       assert html =~ "Upgrade to Unlock"
       assert html =~ ~s(href="/#{account.slug}/settings/account")
-      assert html =~ ~s(id="resource-grant-conditions-locked-container")
+      assert html =~ ~s(data-locked-section="policy-restrictions")
       assert html =~ "blur-[2px]"
       assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
@@ -708,6 +1248,27 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "Already Granted Group"
     end
 
+    test "group row links to the granting policy and menu links to the group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account, name: "Ops Team")
+      policy = policy_fixture(account: account, resource: resource, group: group)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "toggle_group_actions", %{"group_id" => group.id})
+
+      assert html =~ ~p"/#{account}/policies/#{policy.id}"
+      assert html =~ "Go to Group"
+      assert html =~ ~p"/#{account}/groups/#{group.id}"
+    end
+
     test "disables, enables, and removes group access", %{
       conn: conn,
       account: account,
@@ -727,14 +1288,14 @@ defmodule PortalWeb.ResourcesTest do
       render_click(lv, "disable_policy", %{"group_id" => group.id})
 
       policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
-      assert policy.disabled_at
+      assert policy.is_disabled
 
       assert render_click(lv, "toggle_group_actions", %{"group_id" => group.id}) =~ "Enable"
 
       render_click(lv, "enable_policy", %{"group_id" => group.id})
 
       policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
-      assert is_nil(policy.disabled_at)
+      refute policy.is_disabled
 
       assert render_click(lv, "toggle_group_actions", %{"group_id" => group.id}) =~
                "Remove access"
@@ -804,7 +1365,7 @@ defmodule PortalWeb.ResourcesTest do
           account: account,
           resource: resource,
           group: group,
-          disabled_at: DateTime.utc_now()
+          is_disabled: true
         )
 
       {:ok, lv, _html} =
@@ -929,6 +1490,360 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Updated Resource Name"
     end
 
+    test "creates a My devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--own-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "own_devices", name: "Laptops"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Laptops")
+      assert resource.type == :device_pool
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(resource.address)
+      assert is_nil(resource.site_id)
+    end
+
+    test "offers the four kinds of pool membership", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      refute html =~ "Pool membership criteria"
+      refute html =~ "Requires a recent Firezone client"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+        |> render_change()
+
+      assert html =~ "Requires a recent Firezone client"
+      assert html =~ "https://www.firezone.dev/kb/concepts/resources?utm_source=product#device-pools"
+      assert html =~ "See supported versions"
+
+      for {id, label, hint} <- [
+            {"own-devices", "My devices", "Each actor&#39;s own devices"},
+            {"all-devices", "All devices", "Every device in the account"},
+            {"actor-group", "A group&#39;s devices", "Devices of a group&#39;s members"},
+            {"listed", "Static list", "Explicitly choose the devices in this pool"}
+          ] do
+        assert has_element?(lv, "#resource-form-members--#{id}")
+        assert html =~ label
+        assert html =~ hint
+      end
+    end
+
+    test "counts the devices each membership rule matches", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor)
+      teammate = actor_fixture(account: account)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: teammate, group: group)
+      in_group = client_fixture(account: account, actor: teammate)
+      client_fixture(account: account, actor: actor_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='own_devices']", "1")
+      assert has_element?(lv, "[data-pool-count-for='all_devices']", "3")
+      assert has_element?(lv, "[data-pool-count-for='listed']", "0")
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "-")
+
+      render_click(lv, "add_device", %{"device_id" => in_group.id})
+      assert has_element?(lv, "[data-pool-count-for='listed']", "1")
+
+      render_click(lv, "remove_device", %{"device_id" => in_group.id})
+      render_async(lv)
+
+      assert has_element?(lv, "[data-pool-count-for='listed']", "0")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group"}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "-")
+      assert has_element?(lv, "[data-pool-count-for='listed']", "-")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group", group_id: group.id}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "1")
+    end
+
+    test "creates an all devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--all-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices", name: "Everything"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Everything")
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.all_devices()
+    end
+
+    test "creates a group pool from the members choice and the picked group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group"}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert has_element?(lv, "#resource-form-group-id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Engineering laptops"}
+        )
+        |> render_submit(%{resource: %{group_id: group.id}})
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Engineering laptops")
+
+      assert resource.device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
+    test "refuses a group pool without a group", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Nobody"}
+        )
+        |> render_submit()
+
+      refute html =~ "created successfully"
+      refute Repo.get_by(Portal.Resource, account_id: account.id, name: "Nobody")
+    end
+
+    test "edits a group pool with its group preselected", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert html =~ "Engineering"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Renamed"
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
+    test "does not warn when only the devices a pool names change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      listed = client_fixture(account: account)
+      joining = client_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account, devices: [listed], name: "Lab")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html = render_click(lv, "add_device", %{"device_id" => joining.id})
+      refute html =~ warning
+
+      html = render_click(lv, "remove_device", %{"device_id" => listed.id})
+      render_async(lv)
+
+      refute html =~ warning
+    end
+
+    test "warns that changing a pool's members drops its connections", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_change()
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      assert html =~ warning
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/new")
+
+      refute html =~ warning
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      refute html =~ warning
+    end
+
+    test "updates the My devices pool without a site and keeps its type and rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = own_devices_pool_resource_fixture(account: account, name: "My devices")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert html =~ "Edit Resource"
+      assert has_element?(lv, "#resource-form-members--own-devices[checked]")
+      refute has_element?(lv, "#resource-form_site_id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Own Devices"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Own Devices"
+      assert updated.type == :device_pool
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(updated.address)
+    end
+
+    test "rejects moving a resource to the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      html =
+        render_submit(lv, "submit_resource_form", %{
+          "resource" => %{"site_id" => internet_site.id}
+        })
+
+      assert html =~ "cannot be the Internet Site"
+      refute html =~ "updated successfully"
+
+      assert Repo.get_by!(Resource, id: resource.id, account_id: account.id).site_id == site.id
+    end
+
     test "shows confirm delete then deletes resource", %{
       conn: conn,
       account: account,
@@ -1038,12 +1953,18 @@ defmodule PortalWeb.ResourcesTest do
     } do
       resource = resource_fixture(account: account)
 
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
 
       assert html =~ "No recent policy authorizations"
+
+      assert has_element?(
+               lv,
+               "[data-authorization-flow-logs-notice] a[href='#{~p"/#{account}/logs/flow_logs"}']",
+               "flow logs"
+             )
     end
 
     test "Authorizations tab renders actor name for membership-based authorization", %{
@@ -1083,7 +2004,7 @@ defmodule PortalWeb.ResourcesTest do
       resource = resource_fixture(account: account, site: site)
       group = group_fixture(account: account)
       policy = policy_fixture(account: account, group: group, resource: resource)
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
       gateway = gateway_fixture(account: account, site: site)
       token = client_token_fixture(account: account, actor: actor)
 
@@ -1092,7 +2013,7 @@ defmodule PortalWeb.ResourcesTest do
         |> Ecto.Changeset.cast(
           %{
             policy_id: policy.id,
-            initiating_device_id: client.id,
+            initiating_device_id: device.id,
             receiving_device_id: gateway.id,
             resource_id: resource.id,
             token_id: token.id,
@@ -1173,7 +2094,7 @@ defmodule PortalWeb.ResourcesTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/resources")
 
       assert html =~ "Loading..."
 
@@ -1240,16 +2161,16 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
-  describe ":show clients tab (device pool)" do
-    test "defaults to the clients tab for device pool resources", %{
+  describe ":show devices tab (device pool)" do
+    test "defaults to the devices tab for device pool resources", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1259,35 +2180,59 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
-    test "lists pool clients with owner and tunnel IPs", %{
+    test "lists pool devices with owner and tunnel IPs", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert html =~ client.name
-      assert html =~ client.actor.name
-      assert html =~ to_string(client.ipv4)
+      assert html =~ device.name
+      assert html =~ device.actor.name
+      assert html =~ to_string(device.ipv4)
     end
 
-    test "shows an offline status for clients without presence", %{
+    test "says the group was deleted on a pool that followed it", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group's devices")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group's devices")
+
+      Repo.delete!(group)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group deleted")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group deleted")
+    end
+
+    test "shows an offline status for devices without presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1298,17 +2243,17 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "0 / 1 online"
     end
 
-    test "shows an online status for connected clients", %{
+    test "shows an online status for connected devices", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
-      :ok = Portal.Presence.Clients.Account.track(account.id, client.id)
+      :ok = Portal.Presence.Devices.Account.track(device)
 
       {:ok, _lv, html} =
         conn
@@ -1319,31 +2264,48 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "1 / 1 online"
     end
 
-    test "shows an empty state when the pool has no clients", %{
+    test "warns when the pool has no devices", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert html =~ "No clients in this pool"
+      assert html =~ "No devices in this pool"
+      assert html =~ "An empty pool has nothing to connect to"
     end
 
-    test "expands and collapses a client row to reveal details", %{
+    test "warns in the resources list when the pool has no devices", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client =
+      device_pool_resource_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "No devices"
+      refute html =~ "0 / 0 online"
+    end
+
+    test "expands and collapses a device row to reveal details", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device =
         client_fixture(account: account, actor: actor, device_serial: "SERIAL-1234")
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, html} =
         conn
@@ -1351,14 +2313,21 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       refute html =~ "Tunnel IPv6"
+      refute html =~ Portal.Device.fqdn(device)
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       assert html =~ "Tunnel IPv6"
-      assert html =~ to_string(client.ipv6)
-      assert html =~ "SERIAL-1234"
-      assert has_element?(lv, ~s|a[href="/#{account.slug}/clients/#{client.id}"]|)
+      assert html =~ to_string(device.ipv6)
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      assert has_element?(
+               lv,
+               "#pool-member-#{device.id}-detail-dns-name-code",
+               Portal.Device.fqdn(device)
+             )
+      assert html =~ "SERIAL-1234"
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/devices/#{device.id}"]|)
+
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       refute html =~ "Tunnel IPv6"
     end
 
@@ -1367,53 +2336,53 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       _session =
         client_session_fixture(
           account: account,
           actor: actor,
-          client: client,
+          client: device,
           user_agent: "Mac OS/14.0 connlib/1.3.0"
         )
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
 
       assert html =~ "Operating System"
       assert html =~ "Mac OS 14.0"
       assert html =~ "Last Seen"
     end
 
-    test "switching to the clients tab patches the URL", %{
+    test "switching to the devices tab patches the URL", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}?tab=groups")
 
-      render_click(lv, "switch_resource_tab", %{"tab" => "clients"})
-      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=clients")
+      render_click(lv, "switch_resource_tab", %{"tab" => "devices"})
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=devices")
 
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
-    test "does not show the clients tab for non-device-pool resources", %{
+    test "does not show the devices tab for non-device-pool resources", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1429,7 +2398,7 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end
 
-    test "ignores the clients tab for non-device-pool resources and falls back to groups", %{
+    test "ignores the devices tab for non-device-pool resources and falls back to groups", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1439,15 +2408,209 @@ defmodule PortalWeb.ResourcesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources/#{resource.id}?tab=clients")
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=devices")
 
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end
+  end
+
+  describe "new resource form site select" do
+    test "keeps the site select markup stable across validation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      before = site_select(html)
+      assert [option] = Floki.find(before, "option[selected]")
+      assert Floki.attribute(option, "value") == [""]
+
+      html =
+        render_change(lv, "change_resource_form", %{
+          "_target" => ["resource", "address"],
+          "resource" => %{
+            "type" => "dns",
+            "name" => "My App",
+            "address" => "app.example.com",
+            "_unused_address_description" => "",
+            "address_description" => "",
+            "_unused_site_id" => "",
+            "site_id" => ""
+          }
+        })
+
+      assert Floki.raw_html(site_select(html)) == Floki.raw_html(before)
+    end
+  end
+
+  defp set_last_seen_at(device, last_seen_at) do
+    device
+    |> Ecto.Changeset.change(last_seen_at: last_seen_at)
+    |> Repo.update!()
+  end
+
+  defp search_devices_in(lv, term) do
+    lv
+    |> element("input[name='device_search']")
+    |> render_change(%{"device_search" => term})
+
+    render_async(lv)
+  end
+
+  defp click_and_await(lv, selector) do
+    lv |> element(selector) |> render_click()
+    render_async(lv)
+  end
+
+  defp result_ids(lv) do
+    lv
+    |> render()
+    |> Floki.parse_document!()
+    |> Floki.find("button[phx-click='add_device']")
+    |> Enum.flat_map(&Floki.attribute(&1, "phx-value-device_id"))
+  end
+
+  defp result_count(lv) do
+    lv
+    |> render()
+    |> Floki.parse_document!()
+    |> Floki.find("button[phx-click='add_device']")
+    |> length()
   end
 
   defp count_occurrences(haystack, needle) do
     haystack
     |> :binary.matches(needle)
     |> length()
+  end
+
+  defp site_select(html) do
+    html |> Floki.parse_document!() |> Floki.find("#resource_site_id")
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      site = site_fixture(account: account)
+      matching = resource_fixture(account: account, site: site, name: "alpha-server")
+      other = resource_fixture(account: account, site: site, name: "beta-server")
+      filter = %{"resources_filter[name_or_address]" => "alpha"}
+      %{site: site, matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_form")
+      assert_patch(lv, ~p"/#{account}/resources/new?#{filter}")
+
+      render_click(lv, "cancel_resource_form")
+      assert_patch(lv, ~p"/#{account}/resources?#{filter}")
+
+      render_click(lv, "open_new_form")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "dns"})
+      |> render_change()
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{
+          type: "dns",
+          name: "alpha-two",
+          address: "alpha2.example.com",
+          site_id: site.id
+        }
+      )
+      |> render_submit()
+
+      resource = Repo.get_by!(Resource, account_id: account.id, name: "alpha-two")
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "alpha-two"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing and deleting a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_resource_form")
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{name: "alpha-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      html = render_async(lv)
+      assert html =~ "alpha-renamed"
+      refute html =~ other.name
+
+      render_click(lv, "confirm_delete_resource")
+      render_click(lv, "delete_resource")
+      assert_patch(lv, ~p"/#{account}/resources?#{filter}")
+    end
+
+    test "are kept when granting access to a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_grant_form")
+      render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+
+      html =
+        lv
+        |> form("#grant-form")
+        |> render_submit()
+
+      assert Repo.get_by!(Policy, resource_id: matching.id, group_id: group.id)
+      assert html =~ group.name
+      refute html =~ other.name
+      assert has_element?(lv, "input[name='resources[name_or_address]'][value='alpha']")
+    end
   end
 end

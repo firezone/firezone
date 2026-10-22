@@ -83,14 +83,14 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.5.3
+          - release_name: gateway-1.6.4
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.11
+          - release_name: headless-client-1.5.15
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.11]
+        release_name: [headless-client-1.5.15]
         # mark:next-headless-version
-        version: [1.5.11]
+        version: [1.5.15]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -130,17 +130,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RESOLVED_SHA }}
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
           path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
           key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Build binaries
         if: steps.binary-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -214,9 +218,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.11
+            release_name: headless-client-1.5.15
             # mark:next-headless-version
-            version: 1.5.11
+            version: 1.5.15
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -224,9 +228,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.5.3
+            release_name: gateway-1.6.4
             # mark:next-gateway-version
-            version: 1.5.3
+            version: 1.6.4
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -235,6 +239,10 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      # The `.deb` is only produced for release Gateways, and only a dispatched
+      # build publishes it. On a push, the `.deb` would just expire unread as an
+      # artifact.
+      BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
       relay_image: ${{ steps.image-name.outputs.relay_image }}
@@ -248,30 +256,32 @@ jobs:
         id: login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-musl
-        with:
-          target: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.arch.target }}
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
           path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }}
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
-      # `firezone-cli` ships as an asset of the gateway's `.deb`, so it is built
-      # separately below and needs its own entry.
-      - uses: ./.github/actions/setup-rust-binary-cache
-        id: cli-binary-cache
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+      # Restored binaries skip every `cargo build` below, so the toolchains only
+      # needed to compile them are skipped too. `cargo deb` still needs cargo and
+      # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
+      - uses: ./.github/actions/setup-musl
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
-          path: rust/target/${{ matrix.arch.target }}/release/firezone-cli
-          key: firezone-cli-${{ matrix.arch.target }}-release
+          target: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-stable
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' || matrix.name.package == 'firezone-relay' }}
         with:
+          # Stamping the SHA into the relay shells out to coreutils only, so a
+          # restored relay needs `mise` as a task runner but none of its tools.
+          install: ${{ steps.binary-cache.outputs.cache-hit != 'true' || env.BUILDS_DEB == 'true' }}
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -286,11 +296,6 @@ jobs:
             PROFILE="--release"
           else
             PROFILE=""
-            # Build the debug images with `line-tables-only` debug info: keeps
-            # backtraces but roughly halves the binaries, so the images pull
-            # faster/more reliably from ghcr and are smaller in the test-image
-            # artifact. Local `cargo build` is unaffected (keeps full debug).
-            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
           fi
 
           cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
@@ -313,7 +318,7 @@ jobs:
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
@@ -344,11 +349,8 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
 
-      - name: Build firezone-cli
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
-        run: cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
       - name: Create Firezone Gateway .deb package
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
@@ -373,13 +375,14 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
       - name: Upload `.deb` artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Docker Buildx
         uses: ./.github/actions/setup-buildx
       - name: Docker meta
@@ -401,7 +404,7 @@ jobs:
       - name: Build Docker images (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
         id: build_ro
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -420,7 +423,7 @@ jobs:
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
         id: build_rw
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -442,7 +445,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
@@ -475,7 +478,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.5.3
+            version: 1.6.4
           - name: client
             # mark:next-client-version
             version: 1.0.6
@@ -489,7 +492,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ env.RESOLVED_SHA }}-digest-*
           merge-multiple: true
@@ -543,7 +546,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
         if: ${{ matrix.image.name != 'http-test-server' }}
-        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}

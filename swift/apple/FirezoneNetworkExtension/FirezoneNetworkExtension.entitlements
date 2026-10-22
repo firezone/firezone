@@ -16,5 +16,15 @@
 		-->
 		<string>$(APP_GROUP_ID_PRE_1_4_0)</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<!--
+		  The app's own group must come first: it stays the default group for items
+		  Firezone writes itself. The managed group is where MDM delivers the VPN
+		  identity used for mutual TLS.
+		-->
+		<string>$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+		<string>com.apple.managed.vpn.shared</string>
+	</array>
 </dict>
 </plist>

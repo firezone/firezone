@@ -9,6 +9,8 @@ defmodule PortalOps.Router do
          "img-src 'self' data:; " <>
          "font-src 'self' data:; " <>
          "connect-src 'self' ws: wss:; " <>
+         "object-src 'none'; " <>
+         "base-uri 'self'; " <>
          "frame-ancestors 'none'"
 
   @secure_browser_headers PortalWeb.Plugs.PutSecurityHeaders.headers(@csp)

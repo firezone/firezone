@@ -4,15 +4,16 @@
 //! opened grant a return-traffic exemption from the inbound filter, so
 //! revoking or expiring an authorization cuts off peer-opened flows.
 
-use ip_packet::{IpPacket, Protocol};
-use std::collections::BTreeMap;
+use fast_random_state::FastRandomState;
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Protocol};
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
 #[derive(Default, Debug)]
 pub(crate) struct ConnTrack {
-    initiated: BTreeMap<Key, Instant>,
-    received: BTreeMap<Key, Instant>,
+    initiated: HashMap<Key, Instant, FastRandomState>,
+    received: HashMap<Key, Instant, FastRandomState>,
 }
 
 /// Which side opened a tracked flow.
@@ -29,6 +30,10 @@ impl ConnTrack {
     /// that the peer opened are ignored: those flows must keep passing the
     /// inbound filter, so that they stop once their authorization is gone.
     pub(crate) fn record_outbound_as_originator(&mut self, packet: &IpPacket, now: Instant) {
+        if is_echo_reply(packet) {
+            return;
+        }
+
         let Ok(local) = packet.source_protocol() else {
             return;
         };
@@ -43,7 +48,10 @@ impl ConnTrack {
             peer_ip: packet.destination(),
         };
 
-        if self.received.contains_key(&key) && !self.initiated.contains_key(&key) {
+        if !is_echo_request(packet)
+            && self.received.contains_key(&key)
+            && !self.initiated.contains_key(&key)
+        {
             return;
         }
 
@@ -52,6 +60,10 @@ impl ConnTrack {
 
     /// Record an inbound packet of a flow the *peer* opened to us.
     pub(crate) fn record_inbound(&mut self, packet: &IpPacket, now: Instant) {
+        if is_echo_reply(packet) {
+            return;
+        }
+
         let Ok(local) = packet.destination_protocol() else {
             return;
         };
@@ -72,6 +84,10 @@ impl ConnTrack {
 
     /// Returns `true` if the packet is the reply to a flow *we* opened.
     pub(crate) fn is_return_traffic(&self, packet: &IpPacket) -> bool {
+        if is_echo_request(packet) {
+            return false;
+        }
+
         let Ok(peer) = packet.source_protocol() else {
             return false;
         };
@@ -87,10 +103,12 @@ impl ConnTrack {
         })
     }
 
-    /// Returns `true` if the packet belongs to an existing flow in either direction.
+    /// Returns `true` if a packet arriving from the peer belongs to an existing flow,
+    /// opened by either side.
     ///
-    /// An ICMP error belongs to the flow of the failed packet it references.
-    pub(crate) fn is_known_flow(&self, packet: &IpPacket) -> bool {
+    /// An ICMP error belongs to the flow of the packet it refers to. That packet was
+    /// travelling away from us, so its source is our own endpoint.
+    pub(crate) fn is_known_inbound_flow(&self, packet: &IpPacket) -> bool {
         if let Ok(Some((failed, _))) = packet.icmp_error() {
             return self.contains(Key {
                 local: failed.src_proto(),
@@ -119,6 +137,24 @@ impl ConnTrack {
         self.initiated.contains_key(&key) || self.received.contains_key(&key)
     }
 
+    /// Returns `true` if an ICMP error we are about to send refers to an existing flow.
+    ///
+    /// The direction matters: unlike [`ConnTrack::is_known_inbound_flow`], the packet
+    /// it refers to was travelling towards us, so our own endpoint is its destination.
+    /// The same error is therefore legitimate to send and illegitimate to accept.
+    pub(crate) fn is_known_outbound_error(&self, packet: &IpPacket) -> bool {
+        let Ok(Some((failed, _))) = packet.icmp_error() else {
+            return false;
+        };
+
+        self.contains(Key {
+            local: failed.dst_proto(),
+            peer: failed.src_proto(),
+            local_ip: failed.dst(),
+            peer_ip: failed.src(),
+        })
+    }
+
     /// Who opened the flow this *outbound* packet belongs to, if it is tracked.
     pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
         let Ok(local) = packet.source_protocol() else {
@@ -135,11 +171,11 @@ impl ConnTrack {
             peer_ip: packet.destination(),
         };
 
-        if self.initiated.contains_key(&key) {
+        if !is_echo_reply(packet) && self.initiated.contains_key(&key) {
             return Some(Originator::Us);
         }
 
-        if self.received.contains_key(&key) {
+        if !is_echo_request(packet) && self.received.contains_key(&key) {
             return Some(Originator::Peer);
         }
 
@@ -148,9 +184,10 @@ impl ConnTrack {
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for map in [&mut self.initiated, &mut self.received] {
-            for _ in map.extract_if(.., |key, last_seen| {
-                now.saturating_duration_since(*last_seen) >= ttl(key)
-            }) {}
+            for _ in map
+                .extract_if(|key, last_seen| now.saturating_duration_since(*last_seen) >= ttl(key))
+            {
+            }
         }
     }
 }
@@ -178,6 +215,24 @@ fn ttl(key: &Key) -> Duration {
         Protocol::Udp(_) => UDP_TTL,
         Protocol::IcmpEcho(_) => ICMP_TTL,
     }
+}
+
+fn is_echo_request(packet: &IpPacket) -> bool {
+    packet
+        .as_icmpv4()
+        .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoRequest(_)))
+        || packet
+            .as_icmpv6()
+            .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoRequest(_)))
+}
+
+fn is_echo_reply(packet: &IpPacket) -> bool {
+    packet
+        .as_icmpv4()
+        .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoReply(_)))
+        || packet
+            .as_icmpv6()
+            .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoReply(_)))
 }
 
 #[cfg(test)]
@@ -230,7 +285,26 @@ mod tests {
 
         let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
-        assert!(ct.is_known_flow(&reply));
+        assert!(ct.is_known_inbound_flow(&reply));
+    }
+
+    /// The same error is legitimate to send and illegitimate to accept, which is why
+    /// the two directions cannot share one check: a peer reporting that its *own*
+    /// packet to us failed is nonsense, and accepting it would let them inject errors
+    /// into every flow they opened.
+    #[test]
+    fn an_error_we_may_send_is_not_one_we_would_accept() {
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+
+        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+            .expect("valid packet");
+        ct.record_inbound(&inbound, now);
+
+        let error = make::icmp_dest_unreachable_network(&inbound).expect("valid packet");
+
+        assert!(ct.is_known_outbound_error(&error));
+        assert!(!ct.is_known_inbound_flow(&error));
     }
 
     #[test]
@@ -297,6 +371,55 @@ mod tests {
         let reply =
             make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
         assert!(ct.is_return_traffic(&reply));
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn opposite_echo_requests_with_the_same_identifier_are_independent(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
+        let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
+        let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let peer_reply = make::icmp_reply_packet(peer, local, 2, 42, &[]).unwrap();
+        ct.record_inbound(&inbound, now);
+
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
+        ct.record_outbound_as_originator(&outbound, now);
+
+        assert_eq!(ct.outbound_flow_originator(&outbound), Some(Originator::Us));
+        assert_eq!(
+            ct.outbound_flow_originator(&our_reply),
+            Some(Originator::Peer)
+        );
+        assert!(ct.is_return_traffic(&peer_reply));
+        assert!(!ct.is_return_traffic(&inbound));
+
+        let error = make::icmp_dest_unreachable_prohibited(&our_reply).unwrap();
+        assert!(ct.is_known_inbound_flow(&error));
+        assert!(!ct.is_known_outbound_error(&error));
+        let error = make::icmp_dest_unreachable_prohibited(&peer_reply).unwrap();
+        assert!(ct.is_known_outbound_error(&error));
+        assert!(!ct.is_known_inbound_flow(&error));
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn echo_replies_do_not_open_flows(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
+
+        ct.record_outbound_as_originator(&outbound, now);
+        ct.record_inbound(&inbound, now);
+
+        assert!(!ct.is_return_traffic(&inbound));
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
     }
 
     #[test]

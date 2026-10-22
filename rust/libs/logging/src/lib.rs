@@ -12,21 +12,20 @@ mod unwrap_or;
 mod ansi;
 mod capturing_writer;
 mod display_btree_set;
+mod drop_events_whose_message_contains;
 mod err_with_sources;
-mod event_message_contains_filter;
 pub mod windows_event_log;
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use event_message_contains_filter::EventMessageContains;
+use drop_events_whose_message_contains::DropEventsWhoseMessageContains;
 use sentry_tracing::EventFilter;
-use telemetry::feature_flags;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
-    filter::{FilterExt, ParseError, Targets},
+    filter::{ParseError, Targets},
     fmt,
     layer::SubscriberExt as _,
     registry::LookupSpan,
@@ -245,7 +244,8 @@ where
                 event_filter |= EventFilter::Breadcrumb;
             }
 
-            if feature_flags::stream_logs(md) {
+            #[cfg(feature = "telemetry")]
+            if telemetry::feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log
             }
 
@@ -259,33 +259,37 @@ where
         })
         .enable_span_attributes()
         .with_filter(parse_filter("trace").expect("static filter always parses"))
-        .with_filter(EventMessageContains::all(
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 "WinTun: Failed to create process: rundll32",
                 r#"RemoveInstance "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Error executing worker process: "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 "WinTun: Failed to remove adapter when closing",
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Failed to remove orphaned adapter "Firezone""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
+            Level::WARN,
+            &["ignoring response from", "because it does not match name_server"],
+        ))
 }

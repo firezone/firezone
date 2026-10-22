@@ -17,6 +17,8 @@ defmodule Portal.APIToken do
 
     field :name, :string
 
+    field :scopes, {:array, :string}
+
     field :secret_hash, :string, redact: true
     field :secret_salt, :string, redact: true
 
@@ -39,6 +41,8 @@ defmodule Portal.APIToken do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_length(:name, max: 255)
+    |> validate_required([:scopes])
+    |> Portal.Scope.validate(:scopes)
     |> trim_change(:name)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)

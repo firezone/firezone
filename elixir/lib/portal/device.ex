@@ -23,6 +23,7 @@ defmodule Portal.Device do
     last_seen_remote_ip_location_lon
     last_seen_version
     last_seen_at
+    last_attested_at
     client_token_id
     gateway_token_id
   ]a
@@ -35,10 +36,12 @@ defmodule Portal.Device do
           # nil for pre-created gateways until they first connect and report one
           firezone_id: String.t() | nil,
           name: String.t(),
+          slug: String.t(),
           psk_base: binary(),
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          attested?: boolean(),
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
           last_seen_user_agent: String.t() | nil,
@@ -64,6 +67,8 @@ defmodule Portal.Device do
           last_attested_mdm_device_id: String.t() | nil,
           last_attested_cert_serial: String.t() | nil,
           last_attested_cert_fingerprint: String.t() | nil,
+          last_attested_cert_issuer: binary() | nil,
+          last_attested_at: DateTime.t() | nil,
           verified_at: DateTime.t() | nil,
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -77,17 +82,22 @@ defmodule Portal.Device do
 
     field :firezone_id, :string
     field :name, :string
+    field :slug, :string
     field :psk_base, :binary, read_after_writes: true, redact: true
 
     field :ipv4, Portal.Types.IP, read_after_writes: true
     field :ipv6, Portal.Types.IP, read_after_writes: true
 
-    # Client-only
-    belongs_to :actor, Portal.Actor
+    # Self-reported hardware metadata
     field :device_serial, :string
     field :device_uuid, :string
+
+    # Mobile client-only
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
+
+    # Client-only
+    belongs_to :actor, Portal.Actor
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -97,6 +107,16 @@ defmodule Portal.Device do
     field :last_attested_mdm_device_id, :string
     field :last_attested_cert_serial, :string
     field :last_attested_cert_fingerprint, :string
+    # Who issued that certificate, DER-encoded exactly as the certificate
+    # carries the name. A serial only identifies a certificate together with
+    # its issuer, so both are needed to match a device against a revocation
+    # learned after it connected.
+    field :last_attested_cert_issuer, :binary
+    # When the device last proved possession of an MDM-provisioned client
+    # certificate. Point-in-time history, never cleared by the flush; whether
+    # the CURRENT session proved possession is live connection state (the
+    # `attested?` presence attribute).
+    field :last_attested_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
@@ -122,7 +142,26 @@ defmodule Portal.Device do
     field :gateway_token_id, :binary_id
 
     # Virtual fields
+    # The token minted with a Gateway, carried only on the provisioning response.
+    field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
+
+    # Whether THIS connection proved possession of an MDM-issued certificate.
+    # Live connection state, unlike last_attested_at, which is the row's
+    # point-in-time history. Policy conditions read this, so it must describe
+    # the session being evaluated and never the device's past.
+    field :attested?, :boolean, virtual: true, default: false
+
+    # Posture provider rows matched to this device, by provider type. Live
+    # connection state loaded at connect, read by policy postures.
+    field :posture, :map, virtual: true, default: %{}
+
+    # rotated_at of the gateway_token this device last connected with,
+    # populated by queries that select_merge it (see
+    # PortalAPI.GatewayController). Non-nil means a replacement token has
+    # been minted and this one is inside its grace period - the signal an
+    # operator needs to tell "rotation pending" from "rotation complete".
+    field :gateway_token_rotated_at, :utc_datetime_usec, virtual: true
 
     # Set when this connect adopted a new firezone_id (attested-first merge).
     # The session flush persists firezone_id only for merged connects, so the
@@ -134,11 +173,14 @@ defmodule Portal.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> trim_change(~w[name firezone_id hostname]a)
+    |> trim_change(~w[name slug firezone_id hostname]a)
     |> normalize_hostname()
-    |> validate_required([:type, :name, :firezone_id])
+    |> validate_required([:type, :name])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_format(:slug, ~r/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+      message: "must be 1 to 63 lowercase letters, digits or hyphens"
+    )
     |> validate_length(:firezone_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
@@ -152,8 +194,25 @@ defmodule Portal.Device do
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
+    |> unique_constraint(:slug,
+      name: :devices_account_id_slug_index,
+      message: "is already used by another device in this account"
+    )
     |> check_constraint(:hostname, name: :devices_hostname_length)
   end
+
+  @domain "firezone.network"
+
+  @doc "The domain every client device is reached under, the same in every deployment."
+  @spec domain() :: String.t()
+  def domain, do: @domain
+
+  @doc "The name other clients reach this device at."
+  @spec fqdn(t()) :: String.t()
+  def fqdn(%__MODULE__{slug: slug}), do: fqdn_for_slug(slug)
+
+  @spec fqdn_for_slug(String.t()) :: String.t()
+  def fqdn_for_slug(slug) when is_binary(slug), do: "#{slug}.#{@domain}"
 
   @doc """
     Folds a device update broadcast from the WAL onto the copy a socket holds.
@@ -179,6 +238,7 @@ defmodule Portal.Device do
       :client ->
         changeset
         |> validate_required([:actor_id])
+        |> validate_client_firezone_id()
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_length(:identifier_for_vendor, max: 255)
@@ -188,23 +248,39 @@ defmodule Portal.Device do
         |> validate_length(:last_attested_mdm_device_id, max: 255)
         |> validate_length(:last_attested_cert_serial, max: 255)
         |> validate_length(:last_attested_cert_fingerprint, max: 255)
-        |> unique_constraint(:last_attested_device_serial,
-          name: :devices_account_id_actor_id_last_attested_device_serial_index
-        )
-        |> unique_constraint(:last_attested_device_uuid,
-          name: :devices_account_id_actor_id_last_attested_device_uuid_index
-        )
+        # Bounded so an absurd distinguished name cannot push the index row it
+        # shares with the certificate serial past what a btree entry holds.
+        |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
         |> unique_constraint(:last_attested_mdm_device_id,
           name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+        )
+        |> unique_constraint(:last_attested_cert_serial,
+          name: :devices_account_id_cert_issuer_serial_actor_id_index
         )
 
       :gateway ->
         changeset
         |> validate_required([:site_id])
+        |> validate_length(:device_serial, max: 255)
+        |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()
 
       _ ->
         changeset
+    end
+  end
+
+  # An attested client is identified by what its certificate proved, so it
+  # carries no firezone_id at all: the column stays NULL and can never resolve
+  # the row back to a client-supplied value. Every attested row pins a
+  # certificate fingerprint, whether or not its certificate also carried an MDM
+  # device id, so that is what marks the row as certificate-identified.
+  # Unattested clients still require a firezone_id.
+  defp validate_client_firezone_id(changeset) do
+    if is_nil(get_field(changeset, :last_attested_cert_fingerprint)) do
+      validate_required(changeset, [:firezone_id])
+    else
+      changeset
     end
   end
 

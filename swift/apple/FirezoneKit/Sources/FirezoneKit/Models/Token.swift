@@ -54,17 +54,26 @@ public struct Token: CustomStringConvertible, Sendable {
 
   // Upsert token to Keychain
   public func save() throws {
-
-    guard Keychain.search(query: Token.query) == nil
-    else {
-      let query = Token.query.merging([
+    if let existingRef = Keychain.search(query: Token.query) {
+      let updateQuery = Token.query.merging([
         kSecClass: kSecClassGenericPassword
       ]) { (_, new) in new }
 
-      return try Keychain.update(
-        query: query,
-        attributesToUpdate: [kSecValueData: data]
-      )
+      do {
+        try Keychain.update(
+          query: updateQuery,
+          attributesToUpdate: [kSecValueData: data]
+        )
+        return
+      } catch let error as KeychainError {
+        // If update fails due to permissions (item owned by different code signature),
+        // delete the old item and add a fresh one
+        if case .appleSecError("SecItemUpdate", errSecWrPerm) = error {
+          try Keychain.delete(persistentRef: existingRef)
+        } else {
+          throw error
+        }
+      }
     }
 
     let query = Token.query.merging([

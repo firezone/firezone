@@ -9,17 +9,18 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceList,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
-    mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
+mod authorization_rejections;
+mod cache;
 mod client;
 mod conn_track;
 pub mod dns;
@@ -31,7 +32,7 @@ mod malicious_behaviour;
 pub mod messages;
 pub mod otel;
 mod p2p_control;
-mod packet_kind;
+pub mod packet_kind;
 mod peer_store;
 mod portal_connection;
 #[cfg(test)]
@@ -73,29 +74,33 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    ResourceConnectionIntent {
-        resource: ResourceId,
-        preferred_gateways: Vec<GatewayId>,
-        /// Set for connection intents to a specific device pool member;
-        /// `None` for intents to a gateway-routed resource.
+    /// Requests access through the candidate resources, most preferred first.
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
+        /// The target device's tunnel address when requesting access through device pools.
         ip: Option<IpAddr>,
+        preferred_gateways: Vec<GatewayId>,
     },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
+    /// A DNS query for a device name asks the portal to resolve it.
+    DeviceDomainQueried {
         domain: DomainName,
     },
-    /// The list of resources or connected device peers has changed; UI clients
-    /// may have to be updated.
+    /// A PTR query in the device domain asks the portal which names it lists.
+    DeviceDomainBrowsed {
+        domain: DomainName,
+    },
+    /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: ResourceList,
+        resources: Vec<ResourceView>,
     },
     DnsRecordsChanged {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
-    Error(TunnelError),
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -140,51 +145,10 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
-    Error(TunnelError),
-}
-
-/// A collection of errors that occurred during a single event-loop tick.
-///
-/// This type purposely doesn't provide a `From` implementation for any errors.
-/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
-#[derive(Debug, Default)]
-pub struct TunnelError {
-    errors: Vec<anyhow::Error>,
-}
-
-impl TunnelError {
-    pub fn single(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            errors: vec![e.into()],
-        }
-    }
-
-    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
-        self.errors.push(e.into());
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.errors.is_empty()
-    }
-
-    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
-        mem::take(&mut self.errors).into_iter()
-    }
-}
-
-impl Drop for TunnelError {
-    fn drop(&mut self) {
-        debug_assert!(
-            self.errors.is_empty(),
-            "should never drop `TunnelError` without consuming errors"
-        );
-
-        if !self.errors.is_empty() {
-            tracing::error!("should never drop `TunnelError` without consuming errors")
-        }
-    }
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -213,5 +177,17 @@ mod unittests {
     #[test]
     fn mldv2_routers_are_not_peers() {
         assert!(!is_peer("ff02::16".parse().unwrap()))
+    }
+
+    #[test]
+    fn tunnel_ips_of_both_families_are_peers() {
+        assert!(is_peer("100.64.0.3".parse().unwrap()));
+        assert!(is_peer("fd00:2021:1111::3".parse().unwrap()));
+    }
+
+    #[test]
+    fn addresses_outside_the_tunnel_ranges_are_not_peers() {
+        assert!(!is_peer("100.96.0.1".parse().unwrap()));
+        assert!(!is_peer("fd00:2021:1111:8000::1".parse().unwrap()));
     }
 }

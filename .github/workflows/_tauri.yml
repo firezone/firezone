@@ -7,12 +7,16 @@ defaults:
   run:
     working-directory: ./rust/gui-client
 
+# Stamped into every build below, so the smoke test, the install test and any
+# artifact from a pull request stay silent. The release build overrides it.
 env:
   TSLINK_BUILD: true
+  FIREZONE_NO_TELEMETRY: "true"
 
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+  security-events: "write" # trivy SARIF upload from setup-mise
 
 jobs:
   update-release-draft:
@@ -23,9 +27,9 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.16
+      RELEASE_NAME: gui-client-1.5.20
     steps:
-      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -48,6 +52,25 @@ jobs:
       - run: pnpm install
       - run: pnpm eslint .
 
+  # Renders every screen the client can show to a PNG; nothing is compared against
+  # a reference. Only a pull request has a diff to put them in.
+  screenshots:
+    if: github.ref_name != 'main' && !startsWith(github.head_ref, 'chore/publish-')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./rust/gui-client
+      - run: pnpm install
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec vitest run
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-client-screenshots
+          path: rust/gui-client/screenshots
+
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   smoke-test:
@@ -55,7 +78,14 @@ jobs:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2022, windows-2025]
+        runs-on:
+          [
+            ubuntu-22.04,
+            ubuntu-24.04,
+            windows-2022,
+            windows-2025,
+            windows-11-arm,
+          ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -76,19 +106,73 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - name: Install GNOME screenshot dependencies
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri
       - run: pnpm install
       - run: pnpm vite build
-      - name: Build client
-        run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # v2.84.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: dump_syms
-      - name: Run smoke test
+      - name: Build client and smoke tests
+        # The GNOME capture runs without a Vite server, so embed the frontend.
+        run: cargo build -p firezone-gui-client -p gui-smoke-test --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
+      - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
-        run: cargo run -p gui-smoke-test
+        run: cargo run -p gui-smoke-test -- starts-and-quits
+        timeout-minutes: 2
+      - name: GUI handles a crash
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- handles-crash
+        timeout-minutes: 2
+      - name: Tunnel service rejects a non-allowlisted GUI
+        if: runner.os == 'Linux'
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- rejects-unallowlisted-gui
+        timeout-minutes: 2
+      - name: Second GUI instance hands off to the first
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- hands-off-to-first-instance
+        timeout-minutes: 2
+      # Confined to a single runner: only one may draw the committed
+      # screenshot, or the Windows runners would fight over it.
+      - name: Photograph the Windows tray menu
+        id: windows-tray
+        if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
         timeout-minutes: 4
+      - name: Photograph the Windows tray menu with a device pool open
+        id: windows-tray-device-pool
+        if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Lab hardware" --output gui-client/screenshots/windows-tray-menu-device-pool-light.png
+        timeout-minutes: 4
+      - name: Photograph the GNOME tray menu
+        id: gnome-tray
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
+        timeout-minutes: 5
+      - name: Photograph the GNOME tray menu with a device pool open
+        id: gnome-tray-device-pool
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Lab hardware" --output gui-client/screenshots/gnome-tray-menu-device-pool-light.png
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.windows-tray-device-pool.outcome == 'success' || steps.gnome-tray.outcome == 'success' || steps.gnome-tray-device-pool.outcome == 'success') }}
+        with:
+          name: gui-client-tray-screenshots-${{ matrix.runs-on }}
+          path: |
+            rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
+            rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-device-pool-light.png
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
+        with:
+          name: gui-client-tray-diagnostics-gnome
+          path: rust/target/gui-smoke-test/gnome-tray
+          if-no-files-found: ignore
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
@@ -97,6 +181,7 @@ jobs:
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write # OIDC auth
+      security-events: write # for Trivy SARIF upload in setup-mise
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -113,23 +198,22 @@ jobs:
             arch: x86_64
             os: windows
             pkg-extension: msi
+          - runs-on: windows-11-arm
+            arch: aarch64
+            os: windows
+            pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.20_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.20_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.16_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.20_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.16
-      RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
-      SYMBOLS_SCRIPT: ../../scripts/build/tauri-symbols-${{ matrix.os }}.sh
-      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}
-      TARGET_DIR: ../target
-      UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
+      FIREZONE_GUI_VERSION: 1.5.20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -145,12 +229,14 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 15
-      - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+      - uses: ./.github/actions/setup-mise
         with:
-          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          organization: firezone-inc
-      - name: Install pnpm deps
-        run: pnpm install
+          install_args: "--cd rust github:getsentry/sentry-cli"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check sentry-cli runs
+        shell: bash
+        run: mise exec -- sentry-cli --version
       - uses: ./.github/actions/setup-azure-sign-tool
         if: ${{ runner.os == 'Windows' }}
         with:
@@ -159,23 +245,29 @@ jobs:
       - name: Build release exe and MSI / deb
         env:
           CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
-        # `tauri build` signs Firezone.exe (after Tauri patches it) and the
-        # MSI via `bundle.windows.signCommand`.
-        run: pnpm build
+          # For Sentry. Ends up in the pdb on Windows and a `.debug` file on Linux.
+          CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
+          FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' || github.ref_name != 'main' }}"
+        run: mise run build --out ${{ env.BINARY_DEST_PATH }}
       - name: Ensure unmodified Git workspace
         run: git diff --exit-code
-      - name: Rename artifacts and compute SHA256
-        shell: bash
-        run: ${{ env.RENAME_SCRIPT }}
       - name: Upload deb / msi package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
+      - name: Upload debug info
+        if: "${{ runner.os == 'Linux' }}"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.ARTIFACT_DST }}-debug
+          path: rust/target/release/*.debug
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload rpm package
         if: "${{ runner.os == 'Linux' }}"
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm
@@ -183,11 +275,11 @@ jobs:
       - name: Test installation (Linux)
         if: "${{ runner.os == 'Linux' }}"
         shell: bash
-        run: ${{ env.TEST_INSTALL_SCRIPT }}.sh
+        run: ../../scripts/tests/gui-client-install-linux-deb.sh
       - name: Test installation (Windows)
         if: "${{ runner.os == 'Windows' }}"
         shell: powershell
-        run: ${{ env.TEST_INSTALL_SCRIPT }}.ps1
+        run: ../../scripts/tests/gui-client-install-windows-msi.ps1
 
       - name: Dump install.log
         # `always()` so the MSI's verbose log surfaces even when
@@ -230,21 +322,28 @@ jobs:
 
       - name: Upload debug symbols to Sentry
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
-        shell: bash
-        run: ${{ env.SYMBOLS_SCRIPT }}
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: firezone-inc
+        run: mise run upload-symbols
 
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
-        run: ${{ env.UPLOAD_SCRIPT }}
+        run: |
+          # The asset names are tied to the update checker in `src-tauri/src/updates.rs`.
+          if [[ "$RUNNER_OS" == Linux ]]; then exts=(deb rpm); else exts=(msi); fi
+          for ext in "${exts[@]}"; do
+              ARTIFACT_PATH="$BINARY_DEST_PATH.$ext" ../../scripts/upload/github-release.sh
+          done
 
       - name: Azure login (OIDC)
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
@@ -281,7 +380,7 @@ jobs:
 
       - name: Azure login (OIDC) for QA artifacts
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}

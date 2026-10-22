@@ -4,14 +4,21 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+mod client_identity;
 mod fd;
 mod platform;
+
+// Links the `x509claims` UniFFI scaffolding into `libconnlib`, so that one Rust
+// library serves both namespaces. A binary can only carry a single Rust staticlib
+// without duplicating the runtime, so the bindings ship inside `libconnlib` instead
+// of a second library.
+use x509claims as _;
 
 use crate::fd::RawFd;
 
 use std::{
     fmt,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -34,9 +41,19 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    events: Mutex<client_shared::EventStream>,
     runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
+}
+
+/// The events emitted by a [`Session`], which ends once the [`Session`] has been dropped.
+#[derive(uniffi::Object)]
+pub struct EventStream(Mutex<client_shared::EventStream>);
+
+/// A new [`Session`] together with its [`EventStream`], which is handed out only once.
+#[derive(uniffi::Record)]
+pub struct Connection {
+    pub session: Arc<Session>,
+    pub events: Arc<EventStream>,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -47,6 +64,41 @@ pub struct ConnlibError(anyhow::Error);
 pub enum CallbackError {
     #[error("{0}")]
     Failed(String),
+}
+
+/// The TLS handshake signature schemes a platform-held key can sign with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TlsSignatureScheme {
+    RsaPkcs1Sha256,
+    RsaPkcs1Sha384,
+    RsaPkcs1Sha512,
+    RsaPssSha256,
+    RsaPssSha384,
+    RsaPssSha512,
+    EcdsaNistp256Sha256,
+    EcdsaNistp384Sha384,
+    EcdsaNistp521Sha512,
+}
+
+/// A certificate chain and a non-exportable platform key, presented to the portal for mutual TLS.
+///
+/// The key material stays in the platform keystore, so we ask it for a signature whenever the TLS handshake needs one.
+#[uniffi::export(with_foreign)]
+pub trait ClientTlsIdentity: Send + Sync + fmt::Debug {
+    /// Returns the DER-encoded certificate chain, end-entity certificate first.
+    fn certificate_chain(&self) -> Result<Vec<Vec<u8>>, CallbackError>;
+
+    /// Returns the signature schemes the key can sign with, most preferred first.
+    ///
+    /// All of them must belong to the same key algorithm.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the keystore cannot be consulted.
+    fn supported_signature_schemes(&self) -> Result<Vec<TlsSignatureScheme>, CallbackError>;
+
+    /// Signs the unhashed TLS handshake message with the requested scheme.
+    fn sign(&self, scheme: TlsSignatureScheme, message: Vec<u8>) -> Result<Vec<u8>, CallbackError>;
 }
 
 #[derive(uniffi::Object, Debug)]
@@ -67,6 +119,20 @@ pub struct DeviceInfo {
     pub device_uuid: Option<String>,
     pub device_serial: Option<String>,
     pub identifier_for_vendor: Option<String>,
+}
+
+/// Configuration for constructing an Android session.
+///
+/// Passing one record across the FFI boundary avoids JNA's arm64 calling-convention issues with
+/// constructors that have many by-value `RustBuffer` arguments.
+#[derive(uniffi::Record)]
+pub struct AndroidSessionConfig {
+    pub api_url: String,
+    pub token: Option<String>,
+    pub device_id: String,
+    pub device_name: String,
+    pub device_info: DeviceInfo,
+    pub is_internet_resource_active: bool,
 }
 
 /// Resource status enum
@@ -121,6 +187,16 @@ pub enum Resource {
     Dns { resource: DnsResource },
     Cidr { resource: CidrResource },
     Internet { resource: InternetResource },
+    DevicePool { resource: DevicePoolResource },
+}
+
+/// Device pool resource view
+#[derive(uniffi::Record)]
+pub struct DevicePoolResource {
+    pub id: String,
+    pub name: String,
+    /// The devices of this pool we currently have a live connection to.
+    pub devices: Vec<ConnectedDevice>,
 }
 
 /// A device peer that this client currently has a live connection to.
@@ -129,13 +205,12 @@ pub struct ConnectedDevice {
     pub id: String,
     /// Name assigned to the connected client.
     pub name: String,
+    /// Label the device is reached at under the device domain, e.g. `bench-controller-01`.
+    pub slug: String,
     /// Tunnel IPv4 address the device is reachable on.
     pub tun_ipv4: String,
     /// Tunnel IPv6 address the device is reachable on.
     pub tun_ipv6: String,
-    /// Names of the device pools this peer belongs to, sorted (typically one,
-    /// but can be multiple).
-    pub pools: Vec<String>,
 }
 
 #[derive(uniffi::Enum)]
@@ -150,7 +225,10 @@ pub enum Event {
     },
     ResourcesUpdated {
         resources: Vec<Resource>,
-        connected_devices: Vec<ConnectedDevice>,
+    },
+    ConnectedToPortal {
+        account_slug: String,
+        actor_name: String,
     },
     AllGatewaysOffline {
         resource_id: String,
@@ -164,13 +242,42 @@ pub enum Event {
 }
 
 #[uniffi::export]
-impl DisconnectError {
+impl ConnlibError {
+    /// Renders the error and its source chain.
+    ///
+    /// UniFFI maps this type to an opaque foreign class, so the `Display` impl is
+    /// not otherwise reachable from the bindings.
     pub fn message(&self) -> String {
-        self.0.to_string()
+        self.to_string()
+    }
+}
+
+#[uniffi::export]
+impl DisconnectError {
+    /// Returns the sentence to show the user.
+    pub fn user_message(&self) -> String {
+        self.0.user_message()
     }
 
-    pub fn is_authentication_error(&self) -> bool {
-        self.0.is_authentication_error()
+    /// Returns whether the error is worded for the user.
+    ///
+    /// Such an error is product copy rather than a diagnostic and must not be reported as
+    /// telemetry.
+    pub fn is_user_facing(&self) -> bool {
+        self.0.is_user_facing()
+    }
+
+    /// Returns the error with its full cause chain, for the logs.
+    pub fn log_message(&self) -> String {
+        self.0.log_message()
+    }
+
+    /// Returns whether the stored token must be discarded and the user sent through sign-in again.
+    ///
+    /// This does not report whether the failure was authentication-related in general.
+    /// Only failures that render the token itself unusable require a new sign-in.
+    pub fn requires_sign_in(&self) -> bool {
+        self.0.requires_sign_in()
     }
 }
 
@@ -181,156 +288,124 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 
 #[uniffi::export]
 #[cfg(target_os = "android")]
-impl Session {
-    #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
-    pub fn new_android(
-        api_url: String,
-        token: String,
-        device_id: String,
-        account_slug: String,
-        device_name: String,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
-        protect_socket: Arc<dyn ProtectSocket>,
-    ) -> Result<Self, ConnlibError> {
-        let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
-        let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
+pub fn connect_android(
+    config: AndroidSessionConfig,
+    protect_socket: Arc<dyn ProtectSocket>,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    let AndroidSessionConfig {
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+    } = config;
+    let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
+    let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
 
-        connect(
-            api_url,
-            token,
-            device_id,
-            account_slug,
-            Some(device_name),
-            log_dir,
-            log_filter,
-            flow_logs_dir,
-            device_info,
-            is_internet_resource_active,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )
-    }
+    connect(
+        api_url,
+        token,
+        device_id,
+        Some(device_name),
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )
 }
 
 #[uniffi::export]
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-impl Session {
-    #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
-    pub fn new_apple(
-        api_url: String,
-        token: String,
-        device_id: String,
-        account_slug: String,
-        device_name: Option<String>,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
-    ) -> Result<Self, ConnlibError> {
-        // iOS doesn't need socket protection like Android
-        let tcp_socket_factory = Arc::new(socket_factory::tcp);
-        let udp_socket_factory = Arc::new(socket_factory::udp);
+pub fn connect_apple(
+    api_url: String,
+    token: Option<String>,
+    device_id: String,
+    device_name: Option<String>,
+    device_info: DeviceInfo,
+    is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    // iOS doesn't need socket protection like Android
+    let tcp_socket_factory = Arc::new(socket_factory::tcp);
+    let udp_socket_factory = Arc::new(socket_factory::udp);
 
-        let session = connect(
-            api_url,
-            token,
-            device_id,
-            account_slug,
-            device_name,
-            log_dir,
-            log_filter,
-            flow_logs_dir,
-            device_info,
-            is_internet_resource_active,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )?;
+    // Locate the TUN device before `connect` spawns anything: every failed
+    // search used to leave a Tokio runtime and its threads behind, and the
+    // NetworkExtension process outlives the session that owns them.
+    let tun_fd = find_tun_fd()?;
 
-        set_tun_from_search(&session)?;
+    let connection = connect(
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )?;
 
-        Ok(session)
-    }
+    let runtime = connection.session.runtime.as_ref().context("No runtime")?;
+    // SAFETY: NetworkExtension owns the descriptor and keeps it open for the session.
+    let tun = unsafe { platform::Tun::from_fd(tun_fd, runtime.handle()) }
+        .context("Failed to create new Tun")?;
+    connection.session.inner.set_tun(Box::new(tun));
+
+    Ok(connection)
 }
 
+/// Dummy constructor that isn't feature-gated by an OS.
+///
+/// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
 #[uniffi::export]
-impl Session {
-    #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
-    /// Dummy constructor that isn't feature-gated by an OS.
-    ///
-    /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
-    pub fn new_dummy(
-        api_url: String,
-        token: String,
-        device_id: String,
-        account_slug: String,
-        device_name: Option<String>,
-        log_dir: String,
-        log_filter: String,
-        flow_logs_dir: Option<String>,
-        device_info: DeviceInfo,
-        is_internet_resource_active: bool,
-    ) -> Result<Self, ConnlibError> {
-        let tcp_socket_factory = Arc::new(socket_factory::tcp);
-        let udp_socket_factory = Arc::new(socket_factory::udp);
+pub fn connect_dummy(
+    api_url: String,
+    token: Option<String>,
+    device_id: String,
+    device_name: Option<String>,
+    device_info: DeviceInfo,
+    is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
+) -> Result<Connection, ConnlibError> {
+    let tcp_socket_factory = Arc::new(socket_factory::tcp);
+    let udp_socket_factory = Arc::new(socket_factory::udp);
 
-        let session = connect(
-            api_url,
-            token,
-            device_id,
-            account_slug,
-            device_name,
-            log_dir,
-            log_filter,
-            flow_logs_dir,
-            device_info,
-            is_internet_resource_active,
-            tcp_socket_factory,
-            udp_socket_factory,
-        )?;
-
-        Ok(session)
-    }
+    connect(
+        api_url,
+        token,
+        device_id,
+        device_name,
+        device_info,
+        is_internet_resource_active,
+        tls_identity,
+        tcp_socket_factory,
+        udp_socket_factory,
+    )
 }
 
-/// Set up TUN device with retry logic.
+/// Find the TUN device with retry logic.
 ///
 /// Retries a few times with a small delay, as the NetworkExtension
 /// might still be setting up the TUN interface.
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
+fn find_tun_fd() -> Result<RawFd, ConnlibError> {
     const MAX_TUN_SETUP_ATTEMPTS: u32 = 5;
     const TUN_SETUP_RETRY_DELAY_MS: u64 = 100;
 
-    let runtime = session.runtime.as_ref().context("No runtime")?;
-
     let mut last_error = None;
     for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
-        tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
-        match platform::Tun::new(runtime.handle()) {
-            Ok(tun) => {
-                tracing::debug!("Successfully found and set TUN device");
-                session.inner.set_tun(Box::new(tun));
-                return Ok(());
+        tracing::debug!(attempt, "Attempting to find TUN device");
+        match platform::search_fd() {
+            Ok(fd) => {
+                tracing::debug!("Successfully found TUN device");
+                return Ok(fd);
             }
             Err(e) => {
-                tracing::warn!("Attempt {} failed: {}", attempt, e);
+                tracing::debug!(attempt, error = %e, "Failed to find TUN device");
                 last_error = Some(e);
                 if attempt < MAX_TUN_SETUP_ATTEMPTS {
                     std::thread::sleep(std::time::Duration::from_millis(TUN_SETUP_RETRY_DELAY_MS));
@@ -350,14 +425,20 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        tracing::debug!("Received disconnect command");
+
         self.inner.stop();
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
+        tracing::debug!(active, "Received set_internet_resource_state command");
+
         self.inner.set_internet_resource_state(active);
     }
 
     pub fn set_dns(&self, dns_servers: Vec<String>) {
+        tracing::debug!(?dns_servers, "Received set_dns command");
+
         let dns_servers = dns_servers
             .into_iter()
             .filter_map(|server| {
@@ -372,33 +453,36 @@ impl Session {
     }
 
     pub fn reset(&self, reason: String) {
+        tracing::debug!(%reason, "Received reset command");
+
         self.inner.reset(reason)
     }
+}
 
-    pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
-        let (_, reload_handle, _) = LOGGER_STATE.get().context("Logger not yet initialised")?;
-
-        reload_handle
-            .reload(&directives)
-            .context("Failed to apply new directives")?;
-
-        Ok(())
-    }
-
+#[cfg(target_os = "android")]
+#[uniffi::export]
+impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        use std::os::fd::{FromRawFd as _, OwnedFd};
+
+        tracing::debug!("Received set_tun command");
+
         let runtime = self.runtime.as_ref().context("No runtime")?;
-        // SAFETY: FD must be open.
-        let tun = unsafe {
-            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
-        };
+        // SAFETY: Android transfers ownership of an open descriptor via `detachFd`.
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let tun = platform::Tun::new(fd, runtime.handle()).context("Failed to create new Tun")?;
 
         self.inner.set_tun(Box::new(tun));
 
         Ok(())
     }
+}
 
-    pub async fn next_event(&self) -> Option<Event> {
-        match self.events.lock().await.next().await? {
+#[uniffi::export]
+impl EventStream {
+    /// Returns the next event, or `None` once the [`Session`] has shut down.
+    pub async fn next(&self) -> Option<Event> {
+        match self.0.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
@@ -431,21 +515,24 @@ impl Session {
                     ipv6_routes,
                 })
             }
-            client_shared::Event::ResourcesUpdated(resource_list) => {
-                let resources = resource_list
-                    .resources
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
-                let connected_devices = resource_list
-                    .connected_devices
-                    .into_iter()
-                    .map(Into::into)
-                    .collect();
+            client_shared::Event::ResourcesUpdated(resources) => {
+                let resources = resources.into_iter().map(Into::into).collect();
 
-                Some(Event::ResourcesUpdated {
-                    resources,
-                    connected_devices,
+                Some(Event::ResourcesUpdated { resources })
+            }
+            client_shared::Event::ConnectedToPortal(connected) => {
+                telemetry::set_account_slug(connected.account_slug.clone());
+
+                analytics::identify(
+                    RELEASE.to_owned(),
+                    connected.account_slug.clone(),
+                    None,
+                    None,
+                );
+
+                Some(Event::ConnectedToPortal {
+                    account_slug: connected.account_slug,
+                    actor_name: connected.actor_name,
                 })
             }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
@@ -473,10 +560,9 @@ impl Drop for Session {
 
         self.inner.stop(); // Instruct the event-loop to shut down.
 
+        // Keep the runtime alive so the event-loop can gracefully close its connections.
         runtime.block_on(async {
-            // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
-            let drain = async { self.events.lock().await.drain().await };
-            let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
         });
 
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
@@ -498,18 +584,15 @@ impl Drop for Session {
 
 fn connect(
     api_url: String,
-    token: String,
+    token: Option<String>,
     device_id: String,
-    account_slug: String,
     device_name: Option<String>,
-    log_dir: String,
-    log_filter: String,
-    flow_logs_dir: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-) -> Result<Session, ConnlibError> {
+) -> Result<Connection, ConnlibError> {
     // Convert FFI DeviceInfo to internal phoenix_channel::DeviceInfo
     let device_info = phoenix_channel::DeviceInfo {
         device_uuid: device_info.device_uuid,
@@ -517,7 +600,9 @@ fn connect(
         identifier_for_vendor: device_info.identifier_for_vendor,
         firebase_installation_id: device_info.firebase_installation_id,
     };
-    let secret = SecretString::from(token);
+    let token = token
+        .map(SecretString::from)
+        .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -528,25 +613,34 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    let flow_logs_dir = flow_logs_dir
-        .filter(|dir| !dir.is_empty())
-        .map(PathBuf::from);
-
-    init_logging(&PathBuf::from(log_dir), log_filter, flow_logs_dir.clone())?;
+    // Fail loudly rather than run a session with no logs and no flow-log spool.
+    let flow_logs_dir = LOGGER
+        .get()
+        .context("Logger must be configured before connecting")?
+        .flow_log_guard
+        .as_ref()
+        .map(|guard| guard.spool_root().to_path_buf());
 
     tunnel_bypass_resolver::configure(tcp_socket_factory.clone(), udp_socket_factory.clone());
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
-    telemetry::set_account_slug(account_slug.clone());
+    // The portal names the account in `init`; until then this session has none.
+    telemetry::set_account_slug(None);
 
-    analytics::identify(RELEASE.to_owned(), Some(account_slug));
+    analytics::identify(RELEASE.to_owned(), None, None, None);
+
+    let certificate = tls_identity
+        .map(client_identity::certificate)
+        .transpose()
+        .context("Failed to set up the client certificate")?;
 
     let url = LoginUrl::client(
         api_url.as_str(),
         device_id.clone(),
         device_name,
         device_info,
+        certificate,
     )
     .context("Failed to create login URL")?;
 
@@ -554,7 +648,7 @@ fn connect(
 
     let portal = PhoenixChannel::disconnected(
         url,
-        secret,
+        Some(token),
         get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),
@@ -588,11 +682,13 @@ fn connect(
 
     analytics::new_session(device_id, api_url);
 
-    Ok(Session {
-        inner: session,
-        events: Mutex::new(events),
-        runtime: Some(runtime),
-        uploader,
+    Ok(Connection {
+        session: Arc::new(Session {
+            inner: session,
+            runtime: Some(runtime),
+            uploader,
+        }),
+        events: Arc::new(EventStream(Mutex::new(events))),
     })
 }
 
@@ -624,25 +720,64 @@ pub fn stop_telemetry() {
     telemetry::stop();
 }
 
-static LOGGER_STATE: OnceLock<(
-    logging::file::Handle,
-    logging::FilterReloadHandle,
-    Option<flow_log_writer::Guard>,
-)> = OnceLock::new();
+/// The process-wide logger, installed once by [`configure_logger`].
+struct Logger {
+    reload_handle: logging::FilterReloadHandle,
+    /// Owns the flow-log spool root, so the uploader can be pointed at the same
+    /// place the writer uses rather than told separately.
+    flow_log_guard: Option<flow_log_writer::Guard>,
+    _file_handle: logging::file::Handle,
+}
 
-fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBuf>) -> Result<()> {
-    if let Some((_, reload_handle, _)) = LOGGER_STATE.get() {
-        reload_handle
+static LOGGER: OnceLock<Logger> = OnceLock::new();
+
+/// Serialises [`configure_logger`], which entry points call from whichever thread
+/// the platform hands them.
+///
+/// [`LOGGER`] is only filled in once the install has succeeded, so concurrent
+/// callers would otherwise both find it empty and race to install a global
+/// subscriber. The loser of that race leaves the process with a subscriber no
+/// [`Logger`] describes, which fails every later call and denies [`connect`] the
+/// flow-log spool root for good.
+static CONFIGURE_LOGGER: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+/// Installs the logger, or re-applies `log_filter` when it is already installed.
+///
+/// A session is not the only thing that logs: the network extension is woken
+/// without one to drain flow logs, and every event emitted before this runs is
+/// dropped. So every entry point configures the logger itself, and [`connect`]
+/// requires that to have happened already: it reads the flow-log spool root back
+/// off the installed logger rather than being told it a second time.
+///
+/// Only `log_filter` is re-applied. The directories stay whichever the first
+/// call passed, so callers must agree on them.
+#[uniffi::export]
+pub fn configure_logger(
+    log_dir: String,
+    log_filter: String,
+    flow_logs_dir: Option<String>,
+) -> Result<(), ConnlibError> {
+    let _guard = CONFIGURE_LOGGER.lock();
+
+    if let Some(logger) = LOGGER.get() {
+        logger
+            .reload_handle
             .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
         return Ok(());
     }
 
-    let (file_log_filter, file_reload_handle) = logging::try_filter(&log_filter)?;
-    let (platform_log_filter, platform_reload_handle) = logging::try_filter(&log_filter)?;
-    let (file_layer, handle) = logging::file::layer(log_dir, "connlib");
+    let (file_log_filter, file_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (platform_log_filter, platform_reload_handle) =
+        logging::try_filter(&log_filter).context("Failed to parse log filter")?;
+    let (file_layer, handle) = logging::file::layer(&PathBuf::from(log_dir), "connlib");
     // Spools flow-log reports for the uploader, like the desktop entrypoints do.
-    let (flow_log_layer, flow_log_guard) = flow_logs_dir.map(flow_log_writer::layer).unzip();
+    let (flow_log_layer, flow_log_guard) = flow_logs_dir
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .map(flow_log_writer::layer)
+        .unzip();
 
     let subscriber = tracing_subscriber::registry()
         .with(file_layer.with_filter(file_log_filter))
@@ -660,8 +795,12 @@ fn init_logging(log_dir: &Path, log_filter: String, flow_logs_dir: Option<PathBu
 
     logging::init(subscriber)?;
 
-    LOGGER_STATE
-        .set((handle, reload_handle, flow_log_guard))
+    LOGGER
+        .set(Logger {
+            reload_handle,
+            flow_log_guard,
+            _file_handle: handle,
+        })
         .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
@@ -807,6 +946,9 @@ impl From<connlib_model::ResourceView> for Resource {
             connlib_model::ResourceView::Internet(internet) => Resource::Internet {
                 resource: internet.into(),
             },
+            connlib_model::ResourceView::DevicePool(pool) => Resource::DevicePool {
+                resource: pool.into(),
+            },
         }
     }
 }
@@ -848,14 +990,24 @@ impl From<connlib_model::InternetResourceView> for InternetResource {
     }
 }
 
+impl From<connlib_model::DevicePoolResourceView> for DevicePoolResource {
+    fn from(pool: connlib_model::DevicePoolResourceView) -> Self {
+        DevicePoolResource {
+            id: pool.id.to_string(),
+            name: pool.name,
+            devices: pool.devices.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 impl From<connlib_model::ConnectedDeviceView> for ConnectedDevice {
     fn from(device: connlib_model::ConnectedDeviceView) -> Self {
         ConnectedDevice {
             id: device.id.to_string(),
             name: device.name,
+            slug: device.slug,
             tun_ipv4: device.tun_ipv4.to_string(),
             tun_ipv6: device.tun_ipv6.to_string(),
-            pools: device.pools,
         }
     }
 }

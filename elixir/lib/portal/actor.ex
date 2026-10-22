@@ -2,6 +2,7 @@ defmodule Portal.Actor do
   use Ecto.Schema
   import Ecto.Changeset
   import Portal.Changeset
+  alias Portal.Email
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -39,9 +40,13 @@ defmodule Portal.Actor do
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :identity_count, :integer, virtual: true
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     belongs_to :directory, Portal.Directory, foreign_key: :created_by_directory_id
+
+    # Set only by directory sync, which writes raw SQL. Any other change to
+    # is_disabled clears it, see `track_disabling_directory/1`.
+    belongs_to :disabling_directory, Portal.Directory, foreign_key: :disabled_by_directory_id
 
     timestamps()
   end
@@ -52,10 +57,13 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory, name: :actors_created_by_directory_id_fkey)
+    |> assoc_constraint(:disabling_directory, name: :actors_disabled_by_directory_id_fkey)
+    |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
   end
@@ -93,10 +101,24 @@ defmodule Portal.Actor do
     end
   end
 
+  # A directory re-enables only the actors it disabled itself, so any disable or
+  # enable made outside directory sync takes the decision away from it.
+  defp track_disabling_directory(changeset) do
+    if changed?(changeset, :is_disabled) and not changed?(changeset, :disabled_by_directory_id) do
+      put_change(changeset, :disabled_by_directory_id, nil)
+    else
+      changeset
+    end
+  end
+
   defp normalize_for_compare(nil), do: ""
 
-  defp normalize_for_compare(value) when is_binary(value),
-    do: value |> String.trim() |> String.downcase()
+  defp normalize_for_compare(value) when is_binary(value) do
+    case Email.normalize_for_match(value) do
+      {:ok, email} -> email
+      :error -> value |> String.trim() |> String.downcase()
+    end
+  end
 
   defp normalize_email(changeset, field) do
     update_change(changeset, field, fn
@@ -104,7 +126,7 @@ defmodule Portal.Actor do
         nil
 
       email when is_binary(email) ->
-        case encode_email(email) do
+        case Email.normalize(email) do
           {:ok, encoded} ->
             encoded
 
@@ -116,22 +138,5 @@ defmodule Portal.Actor do
       other ->
         other
     end)
-  end
-
-  defp encode_email(email) do
-    case String.split(email, "@", parts: 2) do
-      [local, domain] ->
-        local = String.trim(local)
-        domain = String.trim(domain) |> String.downcase()
-
-        case try_encode_domain(domain) do
-          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
-          _error -> :error
-        end
-
-      # No @ sign, return as-is (will be caught by validate_email)
-      _ ->
-        {:ok, email}
-    end
   end
 end

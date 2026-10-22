@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useState } from "react";
-import { Button, Label } from "flowbite-react";
-import { ManagedTextInput } from "./ManagedInput";
 import { AdvancedSettingsViewModel } from "../generated/bindings";
+import Button from "./Button";
+import { ManagedTextInput } from "./ManagedInput";
+import RemixIcon from "./RemixIcon";
 
 interface Props {
   settings: AdvancedSettingsViewModel | null;
@@ -9,117 +10,115 @@ interface Props {
   resetSettings: () => void;
 }
 
+const defaultSettings: AdvancedSettingsViewModel = {
+  api_url: "",
+  api_url_is_managed: false,
+  auth_url: "",
+  auth_url_is_managed: false,
+  log_filter: "",
+  log_filter_is_managed: false,
+};
+
 export default function AdvancedSettingsPage({
   settings,
   saveSettings,
   resetSettings,
 }: Props) {
-  // Local settings can be edited without affecting the global state.
   const [localSettings, setLocalSettings] = useState<AdvancedSettingsViewModel>(
-    settings ?? {
-      api_url: "",
-      api_url_is_managed: false,
-      auth_url: "",
-      auth_url_is_managed: false,
-      log_filter: "",
-      log_filter_is_managed: false,
-    }
+    settings ?? defaultSettings
   );
 
   useEffect(() => {
-    setLocalSettings(
-      settings ?? {
-        api_url: "",
-        api_url_is_managed: false,
-        auth_url: "",
-        auth_url_is_managed: false,
-        log_filter: "",
-        log_filter_is_managed: false,
-      }
-    );
+    setLocalSettings(settings ?? defaultSettings);
   }, [settings]);
 
   const authBaseUrlId = useId();
   const apiUrlId = useId();
-  const logFilterInput = useId();
+  const logFilterInputId = useId();
 
   return (
-    <div className="container p-4">
-      <p className="text-neutral-900 mb-6">
-        <strong>WARNING</strong>: These settings are intended for internal debug
-        purposes <strong>only</strong>. Changing these is not supported and will
-        disrupt access to your resources.
-      </p>
+    <div className="page">
+      <div className="mb-4 flex max-w-xl gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
+        <RemixIcon className="mt-0.5 h-4 w-4" name="alert" />
+        <p>
+          <strong>WARNING</strong>: These settings are intended for internal
+          debug purposes <strong>only</strong>. Changing these is not supported
+          and will disrupt access to your resources.
+        </p>
+      </div>
 
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        className="max-w-xl space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w flex flex-col gap-2"
       >
         <div>
-          <Label className="text-neutral-600" htmlFor={authBaseUrlId}>
+          <label className="form-label" htmlFor={authBaseUrlId}>
             Auth Base URL
-          </Label>
+          </label>
           <ManagedTextInput
-            name="auth_base_url"
             id={authBaseUrlId}
             managed={localSettings.auth_url_is_managed}
-            value={localSettings.auth_url}
-            onChange={(e) =>
+            name="auth_base_url"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                auth_url: e.target.value,
+                auth_url: event.target.value,
               })
             }
             required
+            value={localSettings.auth_url}
           />
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor={apiUrlId}>
+          <label className="form-label" htmlFor={apiUrlId}>
             API URL
-          </Label>
+          </label>
           <ManagedTextInput
-            name="api_url"
             id={apiUrlId}
             managed={localSettings.api_url_is_managed}
-            value={localSettings.api_url}
-            onChange={(e) =>
+            name="api_url"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                api_url: e.target.value,
+                api_url: event.target.value,
               })
             }
             required
+            value={localSettings.api_url}
           />
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor={logFilterInput}>
+          <label className="form-label" htmlFor={logFilterInputId}>
             Log Filter
-          </Label>
+          </label>
           <ManagedTextInput
-            name="log_filter"
-            id={logFilterInput}
+            className="font-mono text-xs"
+            id={logFilterInputId}
             managed={localSettings.log_filter_is_managed}
-            value={localSettings.log_filter}
-            onChange={(e) =>
+            name="log_filter"
+            onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                log_filter: e.target.value,
+                log_filter: event.target.value,
               })
             }
             required
+            value={localSettings.log_filter}
           />
         </div>
 
-        <div className="flex justify-end gap-4 mt-4">
-          <Button type="reset" onClick={resetSettings} color="alternative">
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
+          <Button onClick={resetSettings} type="reset">
             Reset to Defaults
           </Button>
-          <Button type="submit">Apply</Button>
+          <Button type="submit" variant="primary">
+            Apply
+          </Button>
         </div>
       </form>
     </div>

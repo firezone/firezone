@@ -15,6 +15,7 @@ defmodule OpenIDConnect.DocumentTest do
 
       assert %OpenIDConnect.Document{
                authorization_endpoint: "https://common.auth0.com/authorize",
+               issuer: "https://common.auth0.com/",
                claims_supported: [
                  "aud",
                  "auth_time",
@@ -169,6 +170,12 @@ defmodule OpenIDConnect.DocumentTest do
       end)
 
       uri = "http://#{test_name}/.well-known/discovery-document.json"
+
+      assert fetch_document(uri, req_test_options(test_name)) == {:error, :invalid_document}
+    end
+
+    test "rejects a discovery document without a valid issuer" do
+      {test_name, uri} = start_fixture("google", %{"issuer" => nil})
 
       assert fetch_document(uri, req_test_options(test_name)) == {:error, :invalid_document}
     end

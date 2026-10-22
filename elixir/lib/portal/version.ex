@@ -25,10 +25,6 @@ defmodule Portal.Version do
 
   def fetch_version(_user_agent), do: {:error, :invalid_user_agent}
 
-  def fetch_gateway_version(_user_agent) do
-    {:error, :invalid_user_agent}
-  end
-
   @site_payload_min_versions %{
     apple: "1.5.11",
     headless: "1.5.6",
@@ -70,41 +66,34 @@ defmodule Portal.Version do
     end
   end
 
-  # Static device pool resources require:
+  # Device pool resources require:
   #   apple    >= 1.5.16
   #   gui      >= 1.5.13 (windows / linux gui)
   #   headless >= 1.5.9  (windows / linux headless)
-  #   android  -- not yet supported
-  def client_supports_static_device_pools?(%Device{type: :client, last_seen_version: nil}),
+  #   android  >= 1.5.11
+  def client_supports_device_pools?(%Device{type: :client, last_seen_version: nil}),
     do: false
 
-  def client_supports_static_device_pools?(%Device{
+  def client_supports_device_pools?(%Device{
         type: :client,
         actor: %Portal.Actor{type: :service_account},
         last_seen_version: version
       }),
       do: Version.compare(version, "1.5.9") != :lt
 
-  def client_supports_static_device_pools?(%Device{type: :client, last_seen_user_agent: nil}),
+  def client_supports_device_pools?(%Device{type: :client, last_seen_user_agent: nil}),
     do: false
 
-  def client_supports_static_device_pools?(%Device{type: :client} = client) do
+  def client_supports_device_pools?(%Device{type: :client} = client) do
     if String.contains?(client.last_seen_user_agent, "headless-client/") do
       Version.compare(client.last_seen_version, "1.5.9") != :lt
     else
       case ComponentVersions.get_component_type_from_user_agent(client.last_seen_user_agent) do
         :apple -> Version.compare(client.last_seen_version, "1.5.16") != :lt
         :gui -> Version.compare(client.last_seen_version, "1.5.13") != :lt
-        :android -> false
+        :android -> Version.compare(client.last_seen_version, "1.5.11") != :lt
       end
     end
-  end
-
-  # Dynamic device pool resources require the same minimum versions as static device
-  # pools: connlib's `DynamicDevicePool` resource type and `resolve_device_pool_domain`
-  # message support shipped together with the device-pool ingress wire format.
-  def client_supports_dynamic_device_pools?(%Device{} = client) do
-    client_supports_static_device_pools?(client)
   end
 
   # Receiving `client_device_access_authorized` / `client_device_access_denied` messages

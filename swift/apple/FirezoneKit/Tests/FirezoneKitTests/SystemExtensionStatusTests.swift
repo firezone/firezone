@@ -86,5 +86,13 @@
       )
       #expect(status == .needsReplacement)
     }
+
+    @Test("only an installed or staged extension can serve the app")
+    func usableStatuses() {
+      #expect(SystemExtensionStatus.installed.isUsable)
+      #expect(SystemExtensionStatus.needsReboot.isUsable)
+      #expect(!SystemExtensionStatus.needsInstall.isUsable)
+      #expect(!SystemExtensionStatus.needsReplacement.isUsable)
+    }
   }
 #endif

@@ -181,12 +181,7 @@ fn filter() -> impl Strategy<Value = Filter> {
 }
 
 fn port_range() -> impl Strategy<Value = PortRange> {
-    any::<u16>().prop_flat_map(|s| {
-        (s..=u16::MAX).prop_map(move |d| PortRange {
-            port_range_start: s,
-            port_range_end: d,
-        })
-    })
+    any::<u16>().prop_flat_map(|s| (s..=u16::MAX).prop_map(move |d| PortRange::new(s, d).unwrap()))
 }
 
 fn number_of_hosts_ipv4(mask: u8) -> u32 {

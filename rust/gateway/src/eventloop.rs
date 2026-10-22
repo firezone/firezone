@@ -27,7 +27,7 @@ use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
 
-use crate::RELEASE;
+use crate::{RELEASE, account_slug};
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -46,6 +46,8 @@ pub struct Eventloop {
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
+
+    account_slug: account_slug::Cache,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -85,6 +87,7 @@ impl Eventloop {
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
+        account_slug: account_slug::Cache,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -104,6 +107,7 @@ impl Eventloop {
             resolver,
             flow_logs_dir,
             local_flow_logs,
+            account_slug,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -120,9 +124,10 @@ impl Eventloop {
 
 enum CombinedEvent {
     SigIntTerm,
-    Tunnel(GatewayEvent),
+    Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
+    Clock(clock::Event),
 }
 
 impl Eventloop {
@@ -188,6 +193,18 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
+            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().handle_timeout(now);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Clock(clock::Event::Late(by)) => {
+                tracing::info!(late_by = ?by, "Event loop ran late");
+
+                Ok(ControlFlow::Continue(()))
+            }
             CombinedEvent::SigIntTerm => {
                 tracing::info!("Received SIGINT/SIGTERM");
 
@@ -199,6 +216,10 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
@@ -213,13 +234,18 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
         }
 
-        let now = self.clock.now();
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
-            return Poll::Ready(CombinedEvent::Tunnel(event));
-        }
-
         if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::SigIntTerm);
+        }
+
+        let now = self.clock.now();
+        if let Some(tunnel) = self.tunnel.as_mut() {
+            if let Poll::Ready(event) = tunnel.poll_next_event(cx, now) {
+                return Poll::Ready(CombinedEvent::Tunnel(event));
+            }
+
+            // Nothing to do until the tunnel's next deadline: ask once, then suspend.
+            self.clock.set_alarm(cx, tunnel.next_timeout(now));
         }
 
         Poll::Pending
@@ -241,12 +267,15 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(&mut self, event: tunnel::GatewayEvent) -> Result<()> {
+    async fn handle_tunnel_event(
+        &mut self,
+        event: Result<GatewayEvent, TunnelError>,
+    ) -> Result<()> {
         match event {
-            tunnel::GatewayEvent::AddedIceCandidates {
+            Ok(GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
                         ClientsIceCandidates {
@@ -256,10 +285,10 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            tunnel::GatewayEvent::RemovedIceCandidates {
+            Ok(GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
-            } => {
+            }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(
                         EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
@@ -269,7 +298,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+            Ok(GatewayEvent::ResolveDns(setup_nat)) => {
                 if self
                     .resolve_tasks
                     .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
@@ -278,13 +307,15 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            tunnel::GatewayEvent::NoRelays => {
+            Ok(GatewayEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NoRelays {}))
+                    .send(PortalCommand::Send(EgressMessages::NoRelays {
+                        excluded_relay_ids,
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }
-            GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
+            Err(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
@@ -293,7 +324,7 @@ impl Eventloop {
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
         for e in e.drain() {
             self.tunnel_errors
-                .add(1, &telemetry::otel::error_layers(&e));
+                .add(1, &otel_attributes::error_layers(&e));
 
             if e.any_downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -309,6 +340,7 @@ impl Eventloop {
 
             if e.any_is::<tunnel::UdpSocketThreadStopped>()
                 || e.any_is::<tunnel::TunChannelClosed>()
+                || e.any_is::<tunnel::CryptoWorkersStopped>()
                 || e.any_is::<socket_factory::RoutingLoopPreventionFailed>()
             {
                 return Err(e);
@@ -336,14 +368,24 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled
-                    && let Err(e) =
-                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                {
-                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                if token.claims().uploads_enabled {
+                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                        .context("Failed to persist flow-log ingest token")
+                    {
+                        Ok(()) => {}
+                        Err(e)
+                            if e.any_downcast_ref::<std::io::Error>()
+                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                        {
+                            tracing::debug!("{e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
+                    }
                 }
 
-                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
+                tunnel.state_mut().create_authorization(
                     msg.client,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
@@ -352,16 +394,7 @@ impl Eventloop {
                     msg.use_iceless,
                     now,
                     msg.flow_logs_ingest_token,
-                ) {
-                    tracing::debug!("Failed to create authorization: No TURN servers available");
-
-                    self.portal_cmd_tx
-                        .send(PortalCommand::Send(EgressMessages::NoRelays {}))
-                        .await
-                        .context("Failed to send message to portal")?;
-
-                    return Ok(());
-                };
+                );
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::AuthorizationCreated {
@@ -416,20 +449,35 @@ impl Eventloop {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
 
-                    analytics::identify(RELEASE.to_owned(), Some(account_slug))
+                    if let Err(e) = self.account_slug.set(&account_slug) {
+                        tracing::debug!("Failed to cache account slug: {e:#}");
+                    }
+
+                    analytics::identify(RELEASE.to_owned(), account_slug, None, None)
                 }
 
                 tunnel
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                if let Err(e) = flow_log_upload::configure_uploads(
+                match flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
                     flow_logs.upload_batch_size,
-                ) {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                )
+                .context("Failed to persist flow-log upload config")
+                {
+                    Ok(()) => {}
+                    Err(e)
+                        if e.any_downcast_ref::<std::io::Error>()
+                            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                    {
+                        tracing::debug!("{e:#}");
+                    }
+                    Err(e) => {
+                        tracing::warn!("{e:#}");
+                    }
                 }
 
                 tunnel
@@ -602,7 +650,7 @@ async fn phoenix_channel_event_loop(
                     body = phoenix_channel::http_error_body(&error).map(tracing::field::display),
                     "Hiccup in portal connection: {error:#}"
                 );
-                hiccups.add(1, &telemetry::otel::error_layers(&error));
+                hiccups.add(1, &otel_attributes::error_layers(&error));
 
                 let _ = event_tx.send(Ok(PortalEvent::Disconnected)).await;
 

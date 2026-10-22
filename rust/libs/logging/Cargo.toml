@@ -7,6 +7,11 @@ publish = false
 license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+# Consult telemetry's feature flags when deciding which events to stream.
+# Without this, log streaming stays at its default: off.
+telemetry = ["dep:telemetry"]
+
 [dependencies]
 anyhow = { workspace = true }
 nu-ansi-term = { workspace = true }
@@ -14,7 +19,7 @@ output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 sentry-tracing = { workspace = true }
 supports-color = { workspace = true }
-telemetry = { workspace = true }
+telemetry = { workspace = true, optional = true }
 time = { workspace = true, features = ["formatting", "macros"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }

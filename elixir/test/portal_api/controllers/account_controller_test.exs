@@ -3,6 +3,9 @@ defmodule PortalAPI.AccountControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.ClientSessionFixtures
+  import Portal.DeviceFixtures
+  import Portal.SubjectFixtures
 
   describe "show/2" do
     test "returns account details with limits", %{conn: conn} do
@@ -62,9 +65,55 @@ defmodule PortalAPI.AccountControllerTest do
       assert used_mau + available_mau == 100
     end
 
+    test "includes ad hoc service accounts when the account has them", %{conn: conn} do
+      account =
+        update_account(account_fixture(), %{
+          limits: %{monthly_active_users_count: 10, adhoc_service_accounts_count: 5}
+        })
+
+      service_account = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: service_account)
+      client_session_fixture(account: account, actor: service_account, client: client)
+
+      actor = actor_fixture(type: :api_client, account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/account")
+
+      assert %{"data" => %{"limits" => limits}} = json_response(conn, 200)
+
+      assert limits["adhoc_service_accounts"] == %{"used" => 1, "available" => 4, "total" => 5}
+      assert limits["monthly_active_users"] == %{"used" => 0, "available" => 10, "total" => 10}
+    end
+
+    test "omits ad hoc service accounts without the add-on", %{conn: conn} do
+      account = account_fixture()
+      actor = actor_fixture(type: :api_client, account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/account")
+
+      assert %{"data" => %{"limits" => limits}} = json_response(conn, 200)
+      refute Map.has_key?(limits, "adhoc_service_accounts")
+    end
+
     test "returns 401 when not authenticated", %{conn: conn} do
       conn = get(conn, ~p"/account")
       assert json_response(conn, 401)
+    end
+  end
+
+  describe "Database.fetch_account/2" do
+    test "returns not_found when the id doesn't match the subject's own account" do
+      subject = subject_fixture()
+      other_account = account_fixture()
+
+      assert PortalAPI.AccountController.Database.fetch_account(other_account.id, subject) ==
+               {:error, :not_found}
     end
   end
 end

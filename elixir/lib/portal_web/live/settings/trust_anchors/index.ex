@@ -1,65 +1,155 @@
 defmodule PortalWeb.Settings.TrustAnchors.Index do
   use PortalWeb, :live_view
 
-  import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3]
+  import Ecto.Changeset, only: [cast: 3, put_change: 3, add_error: 3, get_field: 3]
 
   alias Portal.{Safe, TrustAnchor}
   alias Portal.Crypto.X509
+  alias PortalWeb.Settings.Components, as: SettingsComponents
 
   @max_upload_size 1_000_000
   @max_upload_entries 10
+  @max_trust_anchors 10
+  @max_trust_anchor_certificates 20
 
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, TrustAnchor}
 
+    def count_trust_anchors(subject) do
+      from(t in TrustAnchor)
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
+    end
+
+    # Counts certificates rather than anchors, since one anchor may hold a
+    # whole bundle. The anchor being edited is excluded so its own rows are
+    # not counted twice against the certificates replacing them.
+    def count_trust_anchor_certificates(subject, except_trust_anchor_id) do
+      from(c in Portal.TrustAnchorCertificate)
+      |> then(fn queryable ->
+        if except_trust_anchor_id do
+          where(queryable, [c], c.trust_anchor_id != ^except_trust_anchor_id)
+        else
+          queryable
+        end
+      end)
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
+    end
+
     def list_trust_anchors(subject) do
       from(t in TrustAnchor, order_by: [asc: t.inserted_at, asc: t.id])
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
-      |> Safe.preload(:certificates, :replica)
+      |> Safe.preload(:certificates)
     end
 
     def get_trust_anchor!(id, subject) do
-      # Bake the preload into the query itself rather than a separate
-      # `Safe.preload/3` call, so on replica lag both the trust anchor and
-      # its certificates fall back to primary together instead of pairing a
-      # primary parent with stale (possibly empty) replica children.
       from(t in TrustAnchor, where: t.id == ^id, preload: [:certificates])
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one!(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
+
+    # Keyed on the issuer rather than on the anchor, so an endpoint is shown
+    # against whichever uploaded certificate bears that name.
+    def list_revocation_endpoints(issuers, subject) do
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    # Distinct serials rather than rows: a CA that partitions its list can hold
+    # the same serial in more than one partition, and the connect check reads
+    # their union.
+    def count_revocations(issuers, subject) do
+      from(r in Portal.CrlRevocation,
+        where: r.issuer in ^issuers,
+        group_by: r.issuer,
+        select: {r.issuer, count(r.serial, :distinct)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    # One row per issuer for the whole table, so the list does not read an
+    # endpoint per anchor.
+    def revocation_health(issuers, subject) do
+      from(e in Portal.RevocationEndpoint,
+        where: e.issuer in ^issuers,
+        group_by: e.issuer,
+        select: {
+          e.issuer,
+          %{
+            disabled: fragment("bool_or(?)", e.is_disabled),
+            errored: fragment("bool_or(? IS NOT NULL)", e.errored_at),
+            error_message: fragment("max(coalesce(?, ?))", e.crl_error, e.ocsp_error)
+          }
+        }
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
+    # Editing the anchor is the only way back: a disabled endpoint never fetches,
+    # so it can never notice that the CA has recovered.
+    def clear_revocation_errors(issuers, subject) do
+      now = DateTime.utc_now()
+
+      from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
+      |> update(
+        set: [
+          errored_at: nil,
+          is_disabled: false,
+          disabled_reason: nil,
+          crl_error: nil,
+          delta_error: nil,
+          ocsp_error: nil,
+          updated_at: ^now
+        ]
+      )
+      |> Safe.scoped(subject)
+      |> Safe.update_all([])
+    end
+
+    def count_revoked_statuses(issuers, subject) do
+      from(s in Portal.OcspStatus,
+        where: s.issuer in ^issuers,
+        where: s.status == "revoked",
+        group_by: s.issuer,
+        select: {s.issuer, count(s.serial)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> Map.new()
+    end
+
   end
 
   def mount(_params, _session, socket) do
-    trust_anchors_enabled? = PortalWeb.NavigationComponents.trust_anchors_enabled?()
+    socket =
+      socket
+      |> assign(page_title: "Trust Anchors")
+      |> load_trust_anchors_if_connected()
+      |> assign(selected_trust_anchor: nil)
+      |> assign(form: nil, input_mode: :paste)
+      |> assign(confirm_delete?: false)
+      |> assign(revocation: [])
+      |> assign(panel_tab: :overview, expanded_endpoint: nil)
+      |> allow_upload(:cert_file,
+        accept: ~w(.pem .crt .cer .der .txt),
+        max_entries: @max_upload_entries,
+        max_file_size: @max_upload_size,
+        auto_upload: true
+      )
 
-    if trust_anchors_enabled? do
-      trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
-
-      socket =
-        socket
-        |> assign(page_title: "Trust Anchors")
-        |> assign(trust_anchors: trust_anchors)
-        |> assign(selected_trust_anchor: nil)
-        |> assign(form: nil, input_mode: :paste)
-        |> assign(confirm_delete?: false)
-        |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
-        |> allow_upload(:cert_file,
-          accept: ~w(.pem .crt .cer .der .txt),
-          max_entries: @max_upload_entries,
-          max_file_size: @max_upload_size,
-          auto_upload: true
-        )
-
-      {:ok, socket}
-    else
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
-    end
+    {:ok, socket}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
-    changeset = build_creation_changeset(%{})
+    changeset = build_creation_changeset(%{}, socket.assigns.subject)
 
     socket =
       socket
@@ -71,7 +161,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :edit}} = socket) do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
-    changeset = build_edit_changeset(trust_anchor, %{})
+    changeset = build_edit_changeset(trust_anchor, %{}, socket.assigns.subject)
 
     socket =
       socket
@@ -85,11 +175,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     trust_anchor = Database.get_trust_anchor!(id, socket.assigns.subject)
 
     socket =
-      assign(socket,
+      socket
+      |> assign(
         selected_trust_anchor: trust_anchor,
         form: nil,
-        confirm_delete?: false
+        confirm_delete?: false,
+        panel_tab: :overview,
+        expanded_endpoint: nil
       )
+      |> assign_revocation(trust_anchor)
 
     {:noreply, socket}
   end
@@ -107,76 +201,80 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">Trust Anchors</h2>
-            <span class="text-xs text-subtle tabular-nums">
+            <span :if={@trust_anchors} class="text-xs text-subtle tabular-nums">
               {length(@trust_anchors)}
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <.link
+            <Navigation.docs_action path="/device-trust" />
+            <Navigation.link
               patch={~p"/#{@account}/settings/trust_anchors/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </.link>
+              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </Navigation.link>
           </div>
         </div>
 
         <div class="flex-1 overflow-auto">
-          <%= if Enum.empty?(@trust_anchors) do %>
-            <div class="flex items-center justify-center h-full">
-              <div class="flex flex-col items-center gap-3 py-16">
-                <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <.icon name="ri-shield-check-line" class="w-3 h-3" />
+          <%= cond do %>
+            <% is_nil(@trust_anchors) -> %>
+              <SettingsComponents.skeleton id="trust-anchors-skeleton" />
+            <% Enum.empty?(@trust_anchors) -> %>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <Core.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No trust anchors yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      Add a CA certificate chain to validate presented certificates against.
+                    </p>
+                  </div>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/trust_anchors/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
+                  </Navigation.link>
                 </div>
-                <div class="text-center">
-                  <p class="text-sm font-medium text-heading">No trust anchors yet</p>
-                  <p class="text-xs text-subtle mt-0.5">
-                    Add a CA certificate chain to validate presented certificates against.
-                  </p>
-                </div>
-                <.link
-                  patch={~p"/#{@account}/settings/trust_anchors/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a trust anchor
-                </.link>
               </div>
-            </div>
-          <% else %>
-            <table class="w-full text-sm border-collapse">
-              <thead class="sticky top-0 z-10 bg-raised">
-                <tr class="border-b border-border-strong">
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                    Name
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Certificates
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Created
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <.trust_anchor_row
-                  :for={trust_anchor <- @trust_anchors}
-                  trust_anchor={trust_anchor}
-                  selected?={
-                    !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
-                  }
-                />
-              </tbody>
-            </table>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
+                      Name
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Certificates
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Created
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.trust_anchor_row
+                    :for={trust_anchor <- @trust_anchors}
+                    trust_anchor={trust_anchor}
+                    health={@revocation_health[trust_anchor.id]}
+                    selected?={
+                      !!@selected_trust_anchor && @selected_trust_anchor.id == trust_anchor.id
+                    }
+                  />
+                </tbody>
+              </table>
           <% end %>
         </div>
       </div>
@@ -197,6 +295,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           account={@account}
           trust_anchor={@selected_trust_anchor}
           confirm_delete?={@confirm_delete?}
+          revocation={@revocation}
+          panel_tab={@panel_tab}
+          expanded_endpoint={@expanded_endpoint}
         />
       </div>
 
@@ -214,8 +315,11 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div :if={@live_action == :new && @form} class="flex flex-col h-full overflow-hidden">
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
+                <Navigation.docs_action path="/device-trust" />
+              </div>
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -230,14 +334,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <.button type="button" phx-click="close_panel" size="sm">
+            <Form.panel_footer>
+              <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="sm">
+              </Form.panel_footer_button>
+              <Form.panel_footer_button type="submit" style="primary">
                 Create
-              </.button>
-            </div>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -260,7 +364,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-heading">Edit Trust Anchor</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -275,14 +379,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <.trust_anchor_form_fields form={@form} input_mode={@input_mode} uploads={@uploads} />
             </div>
 
-            <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-              <.button type="button" phx-click="close_panel" size="sm">
+            <Form.panel_footer>
+              <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="sm">
+              </Form.panel_footer_button>
+              <Form.panel_footer_button type="submit" style="primary">
                 Save
-              </.button>
-            </div>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -290,8 +394,35 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     """
   end
 
+  attr :health, :any, required: true
+
+  # An icon rather than a status column: an anchor with no revocation endpoint
+  # yet is not unhealthy, so the common case should say nothing at all. The
+  # detail lives one click away, on the panel's Revocation tab.
+  defp revocation_warning_icon(%{health: nil} = assigns) do
+    ~H"""
+    """
+  end
+
+  defp revocation_warning_icon(%{health: %{state: :disabled}} = assigns) do
+    ~H"""
+    <span title="Revocation is not being checked for at least one of this CA's addresses.">
+      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-danger" />
+    </span>
+    """
+  end
+
+  defp revocation_warning_icon(assigns) do
+    ~H"""
+    <span title="Firezone is having trouble reaching at least one of this CA's addresses.">
+      <Core.icon name="ri-error-warning-fill" class="w-4 h-4 text-warning" />
+    </span>
+    """
+  end
+
   attr :trust_anchor, :any, required: true
   attr :selected?, :boolean, required: true
+  attr :health, :any, required: true
 
   defp trust_anchor_row(assigns) do
     ~H"""
@@ -305,7 +436,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       ]}
     >
       <td class="px-6 py-3">
-        <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <div class="text-sm font-medium text-heading truncate">{@trust_anchor.name}</div>
+          <.revocation_warning_icon health={@health} />
+        </div>
         <div class="font-mono text-[10px] text-subtle mt-0.5 truncate">
           {@trust_anchor.id}
         </div>
@@ -315,16 +449,128 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </td>
       <td class="px-6 py-3 w-36">
         <span class="text-sm text-body">
-          {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+          <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
         </span>
       </td>
     </tr>
     """
   end
 
+  attr :label, :string, required: true
+  attr :tab, :atom, required: true
+  attr :active, :atom, required: true
+  attr :warn, :boolean, default: false
+
+  defp panel_tab(assigns) do
+    ~H"""
+    <button
+      role="tab"
+      aria-selected={@active == @tab}
+      phx-click="switch_anchor_tab"
+      phx-value-tab={@tab}
+      class={[
+        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+        if(@active == @tab,
+          do: "border-brand text-brand",
+          else: "border-transparent text-body hover:text-heading"
+        )
+      ]}
+    >
+      {@label}
+      <Core.icon
+        :if={@warn}
+        name="ri-error-warning-fill"
+        class="w-3.5 h-3.5 text-warning"
+      />
+    </button>
+    """
+  end
+
+  attr :endpoint, :any, required: true
+
+  defp endpoint_status_badge(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @endpoint.is_disabled -> %>
+        <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
+      <% @endpoint.errored_at -> %>
+        <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
+      <% checked_at(@endpoint) -> %>
+        <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
+      <% true -> %>
+        <Core.status_badge style={:neutral} dot={false}>Pending</Core.status_badge>
+    <% end %>
+    """
+  end
+
+  attr :entry, :any, required: true
+
+  defp endpoint_details(assigns) do
+    ~H"""
+    <div class="space-y-3">
+      <p
+        :if={@entry.endpoint.is_disabled}
+        class="flex items-start gap-1.5 text-xs text-danger"
+      >
+        <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone has stopped checking this address, so certificates this CA has
+          revoked are still let on. Edit and Save this trust anchor to start
+          checking again.
+        </span>
+      </p>
+
+      <p
+        :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
+        class="flex items-start gap-1.5 text-xs text-warning"
+      >
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone is retrying. Checking stops if this keeps failing for 24 hours.
+        </span>
+      </p>
+
+      <div :for={group <- endpoint_detail_groups(@entry)}>
+        <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1.5">
+          {group.title}
+        </p>
+        <dl class="grid grid-cols-2 gap-x-6 gap-y-1.5">
+          <div :for={{label, value} <- group.rows} class="min-w-0">
+            <dt class="text-[10px] text-subtle">{label}</dt>
+            <dd class={[
+              "text-xs break-all font-medium",
+              label == "Error" && "text-danger",
+              label != "Error" && "text-body"
+            ]}>
+              <.detail_value value={value} />
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+    """
+  end
+
+  attr :value, :any, required: true
+
+  defp detail_value(%{value: %DateTime{}} = assigns) do
+    ~H"""
+    <Core.relative_datetime datetime={@value} />
+    """
+  end
+
+  defp detail_value(assigns) do
+    ~H"""
+    {@value}
+    """
+  end
+
   attr :account, :any, required: true
   attr :trust_anchor, :any, required: true
   attr :confirm_delete?, :boolean, required: true
+  attr :revocation, :list, required: true
+  attr :panel_tab, :atom, required: true
+  attr :expanded_endpoint, :string, default: nil
 
   defp trust_anchor_show_panel(assigns) do
     certificate_details = Enum.map(assigns.trust_anchor.certificates, &describe_certificate/1)
@@ -339,38 +585,116 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <p class="font-mono text-[10px] text-subtle mt-0.5 truncate">{@trust_anchor.id}</p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <.link
+            <Navigation.link
               patch={~p"/#{@account}/settings/trust_anchors/#{@trust_anchor.id}/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-            </.link>
-            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+            </Navigation.link>
+            <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
           </div>
         </div>
       </div>
 
+      <div
+        role="tablist"
+        class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
+      >
+        <.panel_tab label="Overview" tab={:overview} active={@panel_tab} />
+        <.panel_tab
+          label={"Certificates (#{length(@certificate_details)})"}
+          tab={:certificates}
+          active={@panel_tab}
+        />
+        <.panel_tab
+          label={"Revocation (#{length(@revocation)})"}
+          tab={:revocation}
+          active={@panel_tab}
+          warn={Enum.any?(@revocation, &failing?(&1.endpoint))}
+        />
+      </div>
+
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        <section>
+        <section :if={@panel_tab == :overview}>
           <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
             Details
           </h3>
           <dl class="space-y-2.5">
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-              <dd class="text-xs text-body">
-                {PortalWeb.Format.short_date(@trust_anchor.inserted_at)}
+              <dd class="text-xs text-body font-medium">
+                <Core.relative_datetime datetime={@trust_anchor.inserted_at} />
               </dd>
+            </div>
+            <div>
+              <dt class="text-[10px] text-subtle mb-0.5">Certificates</dt>
+              <dd class="text-xs text-body font-medium">{cert_count_label(@trust_anchor.certificates)}</dd>
             </div>
           </dl>
         </section>
 
-        <div class="border-t border-border"></div>
+        <section :if={@panel_tab == :revocation}>
+          <p :if={@revocation == []} class="text-xs text-subtle">
+            No revocation endpoint known yet. A CA publishes its address in the certificates it
+            issues, so this fills in the first time a device connects with one.
+          </p>
 
-        <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-            Certificates ({length(@certificate_details)})
-          </h3>
+          <table :if={@revocation != []} class="w-full table-fixed text-xs">
+            <thead>
+              <tr class="border-b border-border text-subtle">
+                <th class="text-left px-2 py-2 font-medium">Certificate authority</th>
+                <th class="text-left px-2 py-2 font-medium w-20">Checked via</th>
+                <th class="text-left px-2 py-2 font-medium w-24">Status</th>
+                <th class="w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for entry <- @revocation do %>
+                <tr
+                  phx-click="toggle_revocation_endpoint"
+                  phx-keydown="toggle_revocation_endpoint"
+                  phx-key="Enter"
+                  phx-value-id={endpoint_key(entry.endpoint)}
+                  tabindex="0"
+                  class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
+                >
+                  <td class="px-2 py-2 text-heading">
+                    <span class="block truncate">
+                      {X509.describe_name(entry.endpoint.issuer) || "(unnamed issuer)"}
+                    </span>
+                    <span class="block font-mono text-[10px] text-subtle truncate">
+                      {entry.endpoint.distribution_point}
+                    </span>
+                  </td>
+                  <td class="px-2 py-2 text-body">{checked_via(entry.endpoint)}</td>
+                  <td class="px-2 py-2">
+                    <.endpoint_status_badge endpoint={entry.endpoint} />
+                  </td>
+                  <td class="px-2 py-2 text-subtle">
+                    <Core.icon
+                      name={
+                        if @expanded_endpoint == endpoint_key(entry.endpoint),
+                          do: "ri-arrow-up-s-line",
+                          else: "ri-arrow-down-s-line"
+                      }
+                      class="w-4 h-4"
+                    />
+                  </td>
+                </tr>
+                <tr
+                  :if={@expanded_endpoint == endpoint_key(entry.endpoint)}
+                  class="border-b border-border bg-raised"
+                >
+                  <td colspan="4" class="px-3 py-3">
+                    <.endpoint_details entry={entry} />
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </section>
+
+        <section :if={@panel_tab == :certificates}>
           <div class="space-y-3">
             <div
               :for={detail <- @certificate_details}
@@ -385,13 +709,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   download={download_filename(@trust_anchor.name, detail)}
                   class="shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[10px] border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-elevated transition-colors"
                 >
-                  <.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
+                  <Core.icon name="ri-download-line" class="w-3 h-3" /> Download PEM
                 </a>
               </div>
               <dl class="space-y-2">
                 <div :for={{label, value} <- certificate_detail_rows(detail)}>
                   <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-                  <dd class="text-xs text-heading font-mono break-all">{value}</dd>
+                  <dd class="text-xs text-body font-mono break-all font-medium">
+                    <.detail_value value={value} />
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -401,7 +727,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div class="border-t border-border"></div>
 
         <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
             Danger Zone
           </h3>
           <button
@@ -410,7 +736,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             phx-click="confirm_delete_trust_anchor"
             class="w-full flex items-center gap-2 px-3 py-2 rounded border border-error/20 text-xs text-error hover:bg-error-light transition-colors"
           >
-            <.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
+            <Core.icon name="ri-delete-bin-line" class="w-4 h-4 shrink-0" /> Delete trust anchor
           </button>
           <div
             :if={@confirm_delete?}
@@ -421,10 +747,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
             </p>
             <div class="flex items-center gap-2">
-              <.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
+              <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
                 Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 type="button"
                 phx-click="delete_trust_anchor"
                 style="danger"
@@ -432,7 +758,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                 class="font-medium"
               >
                 Delete
-              </.button>
+              </Form.button>
             </div>
           </div>
         </section>
@@ -450,7 +776,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     certs_errors =
       if Phoenix.Component.used_input?(certs_field) do
-        Enum.map(certs_field.errors, &translate_error/1)
+        Enum.map(certs_field.errors, &Core.translate_error/1)
       else
         []
       end
@@ -462,7 +788,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
     ~H"""
     <div>
-      <.input
+      <Form.input
         field={@form[:name]}
         label="Name"
         placeholder="E.g. 'Corporate Issuing CA'"
@@ -478,7 +804,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <div class="grid gap-3 grid-cols-2 mb-4">
         <div>
-          <.input
+          <Form.input
             id="trust-anchor-input-mode--paste"
             type="radio_button_group"
             name="trust_anchor[input_mode]"
@@ -495,14 +821,14 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             ]}
           >
             <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-              <.icon name="ri-clipboard-line" class="w-4 h-4 shrink-0" /> Paste
+              <Core.icon name="ri-clipboard-line" class="w-4 h-4 shrink-0" /> Paste
             </span>
             <span class="text-xs text-body my-auto">Paste PEM or base64 DER text.</span>
           </label>
         </div>
 
         <div>
-          <.input
+          <Form.input
             id="trust-anchor-input-mode--upload"
             type="radio_button_group"
             name="trust_anchor[input_mode]"
@@ -519,7 +845,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             ]}
           >
             <span class="text-sm font-semibold text-heading mb-1 flex items-center gap-1.5">
-              <.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
+              <Core.icon name="ri-upload-2-line" class="w-4 h-4 shrink-0" /> Upload File
             </span>
             <span class="text-xs text-body my-auto">Upload one or more chain files.</span>
           </label>
@@ -527,7 +853,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </div>
 
       <div :if={@input_mode == :paste}>
-        <.input
+        <Form.input
           type="textarea"
           field={@form[:certs]}
           multiple={true}
@@ -540,44 +866,31 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         />
       </div>
 
-      <div :if={@input_mode == :upload} class="space-y-2">
-        <.label>Chain file(s)</.label>
-        <.live_file_input
-          upload={@uploads.cert_file}
-          class="block w-full text-xs text-subtle file:mr-3 file:cursor-pointer file:rounded file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-body file:transition-colors hover:file:bg-raised hover:file:text-heading"
-        />
-        <p class="text-xs text-subtle">
+      <Form.file_upload
+        :if={@input_mode == :upload}
+        upload={@uploads.cert_file}
+        label="Chain file(s)"
+        cancel_event="cancel_upload"
+        error_message={&upload_error_to_string/1}
+        errors={@certs_errors}
+      >
+        <:hint>
           Accepts .pem, .crt, .cer, .der, or .txt, up to 1&nbsp;MB each. Select multiple files to upload
           a root and intermediate CA separately; a DER file holds a single certificate.
-        </p>
-        <div
-          :for={entry <- @uploads.cert_file.entries}
-          class="flex flex-col gap-0.5"
-        >
-          <div class="flex items-center gap-2 text-xs text-body">
-            <.icon name="ri-file-line" class="w-3.5 h-3.5 shrink-0" />
-            <span class="truncate">{entry.client_name}</span>
-            <progress value={entry.progress} max="100" class="w-16">{entry.progress}%</progress>
-            <button
-              type="button"
-              phx-click="cancel_upload"
-              phx-value-ref={entry.ref}
-              class="text-error"
-            >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <.error :for={err <- upload_errors(@uploads.cert_file, entry)} inline>
-            {upload_error_to_string(err)}
-          </.error>
-        </div>
-        <.error :for={msg <- @certs_errors}>{msg}</.error>
-        <.error :for={err <- upload_errors(@uploads.cert_file)}>
-          {upload_error_to_string(err)}
-        </.error>
-      </div>
+        </:hint>
+      </Form.file_upload>
     </div>
     """
+  end
+
+  def handle_event("switch_anchor_tab", %{"tab" => tab}, socket)
+      when tab in ~w[overview certificates revocation] do
+    {:noreply, assign(socket, panel_tab: String.to_existing_atom(tab))}
+  end
+
+  def handle_event("toggle_revocation_endpoint", %{"id" => id}, socket) do
+    expanded = if socket.assigns.expanded_endpoint == id, do: nil, else: id
+    {:noreply, assign(socket, expanded_endpoint: expanded)}
   end
 
   def handle_event("close_panel", _params, socket) do
@@ -609,7 +922,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("validate_new", %{"trust_anchor" => attrs}, socket) do
     changeset =
       attrs
-      |> build_creation_changeset()
+      |> build_creation_changeset(socket.assigns.subject)
       |> Map.put(:action, :insert)
 
     socket =
@@ -622,7 +935,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("create_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset = build_creation_changeset(attrs)
+    changeset = build_creation_changeset(attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.insert() do
       {:ok, _trust_anchor} ->
@@ -643,7 +956,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   def handle_event("validate_edit", %{"trust_anchor" => attrs}, socket) do
     changeset =
       socket.assigns.selected_trust_anchor
-      |> build_edit_changeset(attrs)
+      |> build_edit_changeset(attrs, socket.assigns.subject)
       |> Map.put(:action, :update)
 
     socket =
@@ -656,13 +969,18 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("update_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset = build_edit_changeset(socket.assigns.selected_trust_anchor, attrs)
+    changeset =
+      build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
 
     case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, _trust_anchor} ->
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
         socket =
           socket
-          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
           |> put_flash(:success, "Trust anchor updated successfully")
           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
 
@@ -694,6 +1012,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
 
+      # Another session deleted this trust anchor after it was loaded into the
+      # panel. The end state already matches the user's intent, so just
+      # refresh and close.
+      {:error, :not_found} ->
+        socket =
+          socket
+          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
       {:error, _reason} ->
         socket =
           socket
@@ -702,30 +1031,55 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
     end
-  rescue
-    # Another session deleted this trust anchor after it was loaded into the
-    # panel, so `Repo.delete` affected zero rows. The end state already
-    # matches the user's intent, so just refresh and close.
-    Ecto.StaleEntryError ->
-      socket =
-        socket
-        |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
-        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
-      {:noreply, socket}
   end
 
-  defp build_creation_changeset(attrs) do
+  defp build_creation_changeset(attrs, subject) do
     %TrustAnchor{}
     |> cast(attrs, [:name, :certs])
     |> TrustAnchor.changeset()
+    |> validate_anchor_limit(subject)
+    |> validate_certificate_limit(subject, nil)
   end
 
-  defp build_edit_changeset(trust_anchor, attrs) do
+  # Every attested connect validates the presented certificate against every
+  # anchor the account holds, so the pool is capped to keep that work bounded.
+  defp validate_anchor_limit(changeset, subject) do
+    if Database.count_trust_anchors(subject) >= @max_trust_anchors do
+      add_error(
+        changeset,
+        :name,
+        "an account may have at most #{@max_trust_anchors} trust anchors"
+      )
+    else
+      changeset
+    end
+  end
+
+  defp build_edit_changeset(trust_anchor, attrs, subject) do
     trust_anchor
     |> cast(attrs, [:name, :certs])
     |> seed_certs_pem_if_untouched(attrs, trust_anchor)
     |> TrustAnchor.changeset()
+    |> validate_certificate_limit(subject, trust_anchor.id)
+  end
+
+  # The anchor cap alone does not bound the work an attested connect does: one
+  # anchor may carry a bundle of any size, and an edit can grow it without ever
+  # adding an anchor. Every connect validates against every certificate the
+  # account holds, so the certificates are what has to be capped.
+  defp validate_certificate_limit(changeset, subject, trust_anchor_id) do
+    pending = changeset |> get_field(:certs, []) |> length()
+    existing = Database.count_trust_anchor_certificates(subject, trust_anchor_id)
+
+    if existing + pending > @max_trust_anchor_certificates do
+      add_error(
+        changeset,
+        :certs,
+        "an account may have at most #{@max_trust_anchor_certificates} CA certificates"
+      )
+    else
+      changeset
+    end
   end
 
   defp seed_certs_pem_if_untouched(changeset, attrs, trust_anchor) do
@@ -784,6 +1138,203 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     "#{count} certificate#{if count == 1, do: "", else: "s"}"
   end
 
+  # A CA advertises where it publishes in the certificates it issues, not in its
+  # own, so nothing is known here until a device presents one. Until then the
+  # panel says so rather than implying the CA publishes nothing.
+  # Saving the anchor is what an admin is told to do to start checking again, so
+  # it clears the failure state whether or not the certificates changed.
+  defp clear_revocation_errors(trust_anchor, subject) do
+    trust_anchor = Safe.preload(trust_anchor, :certificates)
+
+    case anchor_issuers(trust_anchor) do
+      [] -> :ok
+      issuers -> Database.clear_revocation_errors(issuers, subject)
+    end
+  end
+
+  defp anchor_issuers(trust_anchor) do
+    trust_anchor.certificates
+    |> Enum.flat_map(fn certificate ->
+      case X509.pem_decode(certificate.pem) do
+        {:ok, [{_type, der, _headers} | _rest]} -> [X509.subject(der)]
+        _other -> []
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  # The static render shows a skeleton instead, so the trust anchors are only
+  # queried once, by the connected mount.
+  defp load_trust_anchors_if_connected(socket) do
+    if connected?(socket) do
+      trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
+      socket
+      |> assign(trust_anchors: trust_anchors)
+      |> assign_revocation_health(trust_anchors)
+    else
+      assign(socket, trust_anchors: nil, revocation_health: %{})
+    end
+  end
+
+  # Every anchor's issuers in one lookup, keyed by anchor, so the table reads
+  # the endpoints once rather than once per row.
+  defp assign_revocation_health(socket, trust_anchors) do
+    issuers = Enum.flat_map(trust_anchors, &anchor_issuers/1) |> Enum.uniq()
+
+    by_issuer =
+      if issuers == [] do
+        %{}
+      else
+        Database.revocation_health(issuers, socket.assigns.subject)
+      end
+
+    health =
+      Map.new(trust_anchors, fn trust_anchor ->
+        {trust_anchor.id,
+         trust_anchor |> anchor_issuers() |> Enum.map(&Map.get(by_issuer, &1)) |> worst_health()}
+      end)
+
+    assign(socket, revocation_health: health)
+  end
+
+  # An anchor is only as healthy as its unhealthiest issuer: one CA that cannot
+  # be reached is one CA whose revocations are not being seen.
+  defp worst_health(entries) do
+    entries = Enum.reject(entries, &is_nil/1)
+
+    cond do
+      Enum.any?(entries, & &1.disabled) -> Enum.find(entries, & &1.disabled) |> Map.put(:state, :disabled)
+      Enum.any?(entries, & &1.errored) -> Enum.find(entries, & &1.errored) |> Map.put(:state, :errored)
+      true -> nil
+    end
+  end
+
+  defp assign_revocation(socket, trust_anchor) do
+    subject = socket.assigns.subject
+
+    issuers = anchor_issuers(trust_anchor)
+
+    endpoints =
+      if issuers == [] do
+        []
+      else
+        counts = %{
+          crl: Database.count_revocations(issuers, subject),
+          ocsp: Database.count_revoked_statuses(issuers, subject)
+        }
+
+        issuers
+        |> Database.list_revocation_endpoints(subject)
+        |> Enum.map(&with_revoked_count(&1, counts))
+        |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
+      end
+
+    assign(socket, revocation: endpoints)
+  end
+
+  defp with_revoked_count(endpoint, counts) do
+    by_issuer = if checks_via_list?(endpoint), do: counts.crl, else: counts.ocsp
+
+    %{endpoint: endpoint, revoked_count: Map.get(by_issuer, endpoint.issuer, 0)}
+  end
+
+  # A list that we cannot fetch, such as an ldap:// distribution point, is not
+  # coverage, so those issuers are checked through their responder instead.
+  defp checks_via_list?(endpoint) do
+    Enum.any?(endpoint.crl_urls, &String.starts_with?(&1, ["http://", "https://"]))
+  end
+
+  defp checked_via(endpoint) do
+    if checks_via_list?(endpoint), do: "CRL", else: "OCSP"
+  end
+
+  # The primary key is the issuer bytes and the address, and the issuer is DER
+  # rather than text, so it is hashed to something that survives a DOM id.
+  defp endpoint_key(endpoint) do
+    :crypto.hash(:sha256, endpoint.issuer <> endpoint.distribution_point)
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp failing?(endpoint), do: endpoint.is_disabled or not is_nil(endpoint.errored_at)
+
+  defp checked_at(endpoint), do: endpoint.crl_fetched_at || endpoint.ocsp_checked_at
+
+  # Everything recorded about one endpoint, grouped the way the fetching works:
+  # the complete list, the delta published on top of it, and the responder. A
+  # CA using only one of the three leaves the other groups out rather than
+  # showing a column of blanks.
+  defp endpoint_detail_groups(%{endpoint: endpoint, revoked_count: revoked_count}) do
+    [
+      %{title: "Endpoint", rows: endpoint_rows(endpoint, revoked_count)},
+      %{title: "Revocation list", rows: crl_rows(endpoint)},
+      %{title: "Delta list", rows: delta_rows(endpoint)},
+      %{title: "Responder (OCSP)", rows: ocsp_rows(endpoint)}
+    ]
+    |> Enum.reject(&(&1.rows == []))
+  end
+
+  defp endpoint_rows(endpoint, revoked_count) do
+    [
+      {"Certificate authority", X509.describe_name(endpoint.issuer)},
+      {"Distribution point", endpoint.distribution_point},
+      {"Checked via", checked_via(endpoint)},
+      {"Revoked certificates", to_string(revoked_count)},
+      {"List addresses", format_urls(endpoint.crl_urls)},
+      {"Responder addresses", format_urls(endpoint.ocsp_urls)},
+      {"Failing since", endpoint.errored_at},
+      {"Stopped because", endpoint.is_disabled && endpoint.disabled_reason},
+      {"First seen", endpoint.inserted_at}
+    ]
+    |> drop_blanks()
+  end
+
+  defp crl_rows(endpoint) do
+    if endpoint.crl_urls == [] do
+      []
+    else
+      [
+        {"Last fetched", endpoint.crl_fetched_at || "Never"},
+        {"Published", endpoint.crl_this_update},
+        {"Expires", endpoint.crl_next_update},
+        {"CRL number", endpoint.crl_number && to_string(endpoint.crl_number)},
+        {"Error", endpoint.crl_error}
+      ]
+      |> drop_blanks()
+    end
+  end
+
+  defp delta_rows(endpoint) do
+    [
+      {"Last fetched", endpoint.delta_fetched_at},
+      {"Published", endpoint.delta_this_update},
+      {"Expires", endpoint.delta_next_update},
+      {"Delta number", endpoint.delta_number && to_string(endpoint.delta_number)},
+      {"Error", endpoint.delta_error}
+    ]
+    |> drop_blanks()
+  end
+
+  defp ocsp_rows(endpoint) do
+    if endpoint.ocsp_urls == [] do
+      []
+    else
+      [
+        {"Last checked", endpoint.ocsp_checked_at || "Never"},
+        {"Error", endpoint.ocsp_error}
+      ]
+      |> drop_blanks()
+    end
+  end
+
+  defp format_urls([]), do: nil
+  defp format_urls(urls), do: Enum.join(urls, "\n")
+
+  defp drop_blanks(rows) do
+    Enum.reject(rows, fn {_label, value} -> value in [nil, "", false] end)
+  end
+
   defp describe_certificate(certificate) do
     with {:ok, [{_type, der, _headers} | _rest]} <- X509.pem_decode(certificate.pem),
          {:ok, otp_cert} <- X509.decode_der_certificate(der) do
@@ -809,7 +1360,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         subject_key_identifier: X509.subject_key_identifier(otp_cert),
         authority_key_identifier: X509.authority_key_identifier(otp_cert),
         subject_alt_names: X509.subject_alt_names(otp_cert),
-        crl_distribution_points: X509.crl_distribution_points(otp_cert),
+        crl_distribution_points: otp_cert |> X509.crl_distribution_points() |> List.flatten(),
         ocsp_urls: aia.ocsp,
         ca_issuer_urls: aia.ca_issuers
       }
@@ -827,8 +1378,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       {"Issuer", Map.get(detail, :issuer_name)},
       {"Serial Number", detail |> Map.get(:serial_number) |> format_serial()},
       {"Version", detail |> Map.get(:version) |> format_version()},
-      {"Valid From", detail |> Map.get(:not_before) |> format_date()},
-      {"Expires", detail |> Map.get(:not_after) |> format_date()},
+      {"Valid From", Map.get(detail, :not_before)},
+      {"Expires", Map.get(detail, :not_after)},
       {"Public Key",
        format_public_key(Map.get(detail, :public_key_algorithm), Map.get(detail, :public_key_size))},
       {"Signature Algorithm", Map.get(detail, :signature_algorithm)},
@@ -862,9 +1413,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   defp format_version(nil), do: nil
   defp format_version(version), do: version |> Atom.to_string() |> String.trim_leading("v")
-
-  defp format_date(nil), do: nil
-  defp format_date(datetime), do: PortalWeb.Format.short_date(datetime)
 
   defp format_public_key(nil, _key_size), do: nil
   defp format_public_key(algorithm, nil), do: algorithm

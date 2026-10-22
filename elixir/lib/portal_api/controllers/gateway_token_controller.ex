@@ -3,10 +3,15 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Authentication
   alias PortalAPI.Error
+  alias PortalAPI.JSON
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
   tags ["Gateway Tokens"]
+
+  # Single-owner tokens replace multi-owner Site tokens; this endpoint is
+  # deprecated ahead of its own removal, independent of any API versioning.
+  @multi_owner_token_sunset_at ~D[2026-10-01]
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
@@ -40,15 +45,30 @@ defmodule PortalAPI.GatewayTokenController do
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site_id" => site_id}) do
     subject = conn.assigns.subject
+    conn = deprecate(conn, @multi_owner_token_sunset_at)
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  # Marks a response as deprecated per RFC 8594 - just this one endpoint,
+  # independent of any API versioning. If a second endpoint ever needs this,
+  # promote it back to a shared plug rather than copy-pasting it.
+  defp deprecate(conn, %Date{} = sunset) do
+    http_date =
+      sunset
+      |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+      |> Calendar.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+    conn
+    |> put_resp_header("deprecation", "true")
+    |> put_resp_header("sunset", http_date)
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -94,7 +114,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -157,7 +177,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -205,12 +225,12 @@ defmodule PortalAPI.GatewayTokenController do
   # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def delete(conn, %{"site_id" => _site_id, "id" => token_id}) do
+  def delete(conn, %{"site_id" => site_id, "id" => token_id}) do
     subject = conn.assigns.subject
 
-    with {:ok, token} <- Database.fetch_token(token_id, subject),
+    with {:ok, token} <- Database.fetch_token(token_id, site_id, subject),
          {:ok, deleted_token} <- Database.delete_token(token, subject) do
-      render(conn, :deleted, token: deleted_token)
+      json(conn, %{data: %{id: deleted_token.id}})
     else
       error -> Error.handle(conn, error)
     end
@@ -233,7 +253,7 @@ defmodule PortalAPI.GatewayTokenController do
           {"Deleted Tokens Response", "application/json",
            PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
       ] ++
-        ProblemDetails.responses([:unauthorized, :too_many_requests])
+        ProblemDetails.responses([:unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -243,7 +263,7 @@ defmodule PortalAPI.GatewayTokenController do
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {deleted_count, _} <- Database.delete_all_tokens(site, subject) do
-      render(conn, :deleted_all, count: deleted_count)
+      json(conn, %{data: %{deleted_count: deleted_count}})
     else
       error -> Error.handle(conn, error)
     end
@@ -261,8 +281,8 @@ defmodule PortalAPI.GatewayTokenController do
         from(d in Device, as: :gateways)
         |> where([gateways: d], d.id == ^id and d.type == :gateway)
         |> where([gateways: d], d.site_id == ^site_id)
-        |> Safe.scoped(subject, :replica)
-        |> Safe.one(fallback_to_primary: true)
+        |> Safe.scoped(subject)
+        |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
@@ -275,7 +295,7 @@ defmodule PortalAPI.GatewayTokenController do
       result =
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -287,10 +307,18 @@ defmodule PortalAPI.GatewayTokenController do
       end
     end
 
-    def fetch_token(id, subject) do
+    def fetch_token(id, site_id, subject) do
+      # A token belongs to the given site either directly (multi-owner
+      # tokens, which have site_id set) or via its owning device
+      # (single-owner tokens, which have device_id set and site_id nil).
       result =
-        from(t in GatewayToken, where: t.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        from(t in GatewayToken, as: :tokens, where: t.id == ^id)
+        |> join(:left, [tokens: t], d in Device,
+          on: d.id == t.device_id and d.account_id == t.account_id,
+          as: :device
+        )
+        |> where([tokens: t, device: d], t.site_id == ^site_id or d.site_id == ^site_id)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

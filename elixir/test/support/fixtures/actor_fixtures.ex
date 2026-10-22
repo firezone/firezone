@@ -63,7 +63,7 @@ defmodule Portal.ActorFixtures do
 
     {:ok, actor} =
       %Portal.Actor{}
-      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in])
+      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in, :password_hash])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Actor.changeset()
       |> Portal.Repo.insert()
@@ -114,7 +114,46 @@ defmodule Portal.ActorFixtures do
     actor = actor_fixture(attrs)
 
     actor
-    |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+    |> Ecto.Changeset.change(is_disabled: true)
+    |> Portal.Repo.update!()
+  end
+
+  @doc "Mark an actor as created by a directory and preload its account."
+  def mark_created_by_directory(actor_id, directory) do
+    Portal.Actor
+    |> Portal.Repo.get_by!(id: actor_id)
+    |> Ecto.Changeset.change(created_by_directory_id: directory.id)
+    |> Portal.Repo.update!()
+    |> Portal.Repo.preload(:account)
+  end
+
+  @doc """
+  Update an actor's preferences, such as the channels a notification uses.
+
+      actor_preferences_fixture(actor, notifications: %{outdated_gateways: []})
+
+  """
+  def actor_preferences_fixture(actor, attrs \\ %{}) do
+    preferences_fields = Portal.Actor.Preferences.__schema__(:fields) -- [:notifications]
+    notifications_fields = Portal.Actor.Preferences.Notifications.__schema__(:fields)
+
+    actor
+    |> Ecto.Changeset.cast(%{preferences: Enum.into(attrs, %{})}, [])
+    |> Ecto.Changeset.cast_embed(:preferences,
+      with: fn preferences, attrs ->
+        (preferences || %Portal.Actor.Preferences{})
+        |> Ecto.Changeset.cast(attrs, preferences_fields)
+        |> Ecto.Changeset.cast_embed(:notifications,
+          with: fn notifications, attrs ->
+            Ecto.Changeset.cast(
+              notifications || %Portal.Actor.Preferences.Notifications{},
+              attrs,
+              notifications_fields
+            )
+          end
+        )
+      end
+    )
     |> Portal.Repo.update!()
   end
 end

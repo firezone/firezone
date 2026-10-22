@@ -25,11 +25,15 @@ public protocol SessionNotificationProtocol: AnyObject {
   /// Shows a notification for an unreachable resource.
   func showResourceNotification(title: String, body: String) async
 
-  #if os(macOS)
-    /// Shows a signed-out alert on macOS.
-    func showSignedOutAlertMacOS(_ message: String?) async
+  /// Shows a notification saying why the session ended, with a Sign In action if
+  /// `requiresSignIn`.
+  func showDisconnectedNotification(_ message: String, requiresSignIn: Bool)
 
-    /// Shows a disconnected alert on macOS.
-    func showDisconnectedAlertMacOS(_ message: String?) async
+  #if os(macOS)
+    /// Shows an alert asking the user to restart to finish a system extension update.
+    func showRestartRequiredAlertMacOS()
+
+    /// Shows a notification that a new version is available at `downloadURL`.
+    func showUpdateNotification(downloadURL: URL)
   #endif
 }

@@ -65,6 +65,9 @@ impl BootstrapDnsClient {
         }
     }
 
+    /// Resolves `host` to its IP addresses.
+    ///
+    /// An IP literal, including a bracketed IPv6 address, resolves to itself without sending a query.
     pub fn resolve<H>(&self, host: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
     where
         H: Into<Cow<'static, str>>,
@@ -75,6 +78,10 @@ impl BootstrapDnsClient {
         let host = host.into();
 
         async move {
+            if let Some(ip) = ip_literal(&host) {
+                return Ok(vec![ip]);
+            }
+
             anyhow::ensure!(!servers.is_empty(), "No servers specified");
 
             let domain =
@@ -126,6 +133,14 @@ impl BootstrapDnsClient {
     }
 }
 
+fn ip_literal(host: &str) -> Option<IpAddr> {
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
+        .parse()
+        .ok()
+}
+
 /// Dispatches each `(server, query)` pair concurrently and collects every response.
 async fn dispatch_all<Fut>(
     queries: impl Iterator<Item = (SocketAddr, dns_types::Query)>,
@@ -165,7 +180,7 @@ async fn send_query_tcp(
     query: dns_types::Query,
 ) -> Result<dns_types::Response> {
     let socket = socket_factory
-        .bind(unspecified_bind_addr(server))
+        .bind(server)
         .context("Failed to create TCP socket")?;
 
     let response = tokio::time::timeout(BootstrapDnsClient::TIMEOUT, async move {
@@ -308,6 +323,21 @@ mod tests {
         let ips = client.resolve("example.com").await;
 
         assert_eq!(ips.unwrap_err().to_string(), "No servers specified")
+    }
+
+    #[tokio::test]
+    async fn resolves_ip_literals_without_servers() {
+        let client = BootstrapDnsClient::new(
+            Arc::new(socket_factory::udp),
+            Arc::new(socket_factory::tcp),
+            vec![],
+        );
+
+        let ipv4 = client.resolve("192.0.2.1").await.unwrap();
+        let ipv6 = client.resolve("[2001:db8::1]").await.unwrap();
+
+        assert_eq!(ipv4, vec![IpAddr::from([192, 0, 2, 1])]);
+        assert_eq!(ipv6, vec![IpAddr::from([0x2001, 0xdb8, 0, 0, 0, 0, 0, 1])]);
     }
 
     #[tokio::test]

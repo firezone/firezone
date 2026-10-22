@@ -16,8 +16,8 @@ defmodule Portal.OpsTest do
   alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
 
-  describe "count_presences/0" do
-    test "returns presence counts grouped by topic prefix" do
+  describe "count_global_presences/0" do
+    test "returns cluster-wide presence counts grouped by topic prefix" do
       # Use unique topic names to avoid collisions with parallel tests
       unique_id = Ecto.UUID.generate()
 
@@ -34,11 +34,50 @@ defmodule Portal.OpsTest do
       {:ok, _} =
         Portal.Presence.track(self(), "presences:test_relays:#{unique_id}", "relay1", %{})
 
-      result = count_presences()
+      result = count_global_presences()
 
       assert {"presences:test_clients", 2} in result
       assert {"presences:test_gateways", 1} in result
       assert {"presences:test_relays", 1} in result
+    end
+  end
+
+  describe "count_local_presences/0" do
+    test "returns local presence counts grouped by topic prefix" do
+      unique_id = Ecto.UUID.generate()
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client1", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_clients:#{unique_id}", "client2", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_gateways:#{unique_id}", "gw1", %{})
+
+      {:ok, _} =
+        Portal.Presence.track(self(), "presences:test_relays:#{unique_id}", "relay1", %{})
+
+      result = count_local_presences()
+
+      assert {"presences:test_clients", 2} in result
+      assert {"presences:test_gateways", 1} in result
+      assert {"presences:test_relays", 1} in result
+    end
+  end
+
+  describe "count_regional_presences/1" do
+    test "returns presence counts for nodes in the requested region" do
+      unique_id = Ecto.UUID.generate()
+      region = "centralus-#{unique_id}"
+      prefix = "presences:regional_clients_#{unique_id}"
+      Portal.Config.put_env_override(:portal, :region, region)
+
+      {:ok, _} = Portal.Presence.track(self(), "#{prefix}:account", "client1", %{})
+      {:ok, _} = Portal.Presence.track(self(), "#{prefix}:account", "client2", %{})
+
+      assert {prefix, 2} in count_regional_presences(region)
+      refute {prefix, 2} in count_regional_presences("another-region")
     end
   end
 
@@ -108,7 +147,7 @@ defmodule Portal.OpsTest do
       api_token_fixture(account: account)
 
       account =
-        update_account(account, %{disabled_at: DateTime.utc_now(), disabled_reason: "Testing"})
+        update_account(account, %{is_disabled: true, disabled_reason: "Testing"})
 
       assert delete_disabled_account(account.id) == :ok
 
@@ -118,20 +157,39 @@ defmodule Portal.OpsTest do
 
       refute Repo.one(Portal.Account)
     end
+
+    test "queues the cancellation of the account's Stripe subscriptions" do
+      account =
+        update_account(account_fixture(), %{
+          is_disabled: true,
+          metadata: %{stripe: %{customer_id: "cus_deleted"}}
+        })
+
+      assert delete_disabled_account(account.id) == :ok
+
+      assert [job] =
+               jobs_for_worker_and_arg(
+                 "Portal.Workers.DeleteSubscription",
+                 "customer_id",
+                 "cus_deleted"
+               )
+
+      assert job.args == %{"customer_id" => "cus_deleted"}
+    end
   end
 
   describe "schedule_missing_account_deletion_jobs/0" do
     test "enqueues a delete job for accounts already pending deletion without a job" do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
-      _active_account = account_fixture()
+      _enabled_account = account_fixture()
 
       assert {:ok, 1} = schedule_missing_account_deletion_jobs()
 
@@ -146,12 +204,12 @@ defmodule Portal.OpsTest do
     end
 
     test "does not enqueue duplicate delete jobs for accounts that already have one" do
-      disabled_at = DateTime.utc_now() |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -202,15 +260,15 @@ defmodule Portal.OpsTest do
     import ExUnit.CaptureIO
 
     test "queues one batched email per account with enabled admins" do
-      account1 = account_fixture()
-      account2 = account_fixture()
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
 
       admin1 = admin_actor_fixture(account: account1)
       disabled_admin = admin_actor_fixture(account: account1)
       admin2 = admin_actor_fixture(account: account2)
 
       disabled_admin
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       capture_io("y\n", fn ->
@@ -245,14 +303,14 @@ defmodule Portal.OpsTest do
     end
 
     test "skips disabled accounts when queuing for :all" do
-      enabled_account = account_fixture()
-      disabled_account = account_fixture()
+      enabled_account = active_account_fixture()
+      disabled_account = active_account_fixture()
 
       enabled_admin = admin_actor_fixture(account: enabled_account)
       _disabled_admin = admin_actor_fixture(account: disabled_account)
 
       update_account(disabled_account, %{
-        disabled_at: DateTime.utc_now(),
+        is_disabled: true,
         disabled_reason: "Testing"
       })
 
@@ -280,7 +338,7 @@ defmodule Portal.OpsTest do
     end
 
     test "aborts when user declines confirmation" do
-      account = account_fixture()
+      account = active_account_fixture()
       admin_actor_fixture(account: account)
 
       capture_io("n\n", fn ->
@@ -297,7 +355,7 @@ defmodule Portal.OpsTest do
     end
 
     test "normalizes admin emails to lowercase" do
-      account = account_fixture()
+      account = active_account_fixture()
       admin_actor_fixture(account: account, email: "Admin.User@Example.COM")
 
       capture_io("y\n", fn ->
@@ -316,8 +374,8 @@ defmodule Portal.OpsTest do
     end
 
     test "keeps each account in one send window" do
-      account1 = account_fixture()
-      account2 = account_fixture()
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
 
       Enum.each(1..60, fn i ->
         admin_actor_fixture(
@@ -330,6 +388,8 @@ defmodule Portal.OpsTest do
           email: "account-2-admin-#{String.pad_leading(to_string(i), 3, "0")}@example.com"
         )
       end)
+
+      started_at = DateTime.utc_now()
 
       output =
         capture_io("y\n", fn ->
@@ -368,8 +428,11 @@ defmodule Portal.OpsTest do
           assert length(scheduled_jobs) == 2
           assert length(Enum.uniq(Enum.map(scheduled_jobs, & &1.scheduled_at))) == 1
 
+          finished_at = DateTime.utc_now()
+
           assert Enum.all?(scheduled_jobs, fn job ->
-                   DateTime.diff(job.scheduled_at, job.inserted_at, :second) in 299..300
+                   DateTime.diff(job.scheduled_at, started_at, :second) >= 295 and
+                     DateTime.diff(job.scheduled_at, finished_at, :second) <= 305
                  end)
 
           assert Enum.all?(jobs, fn job ->
@@ -379,6 +442,217 @@ defmodule Portal.OpsTest do
 
       assert output =~ "120 unique admin(s)"
       assert output =~ "2 account(s)"
+    end
+
+    test "skips accounts with no session logs" do
+      active_account = active_account_fixture()
+      dormant_account = account_fixture()
+
+      active_admin = admin_actor_fixture(account: active_account)
+      admin_actor_fixture(account: dormant_account)
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_admin_email(
+                   [active_account.id, dormant_account.id],
+                   "Admin Subject",
+                   "<p>Admin HTML</p>",
+                   "Admin Text"
+                 )
+
+        assert [%{bcc: [{"", email}]}] = collect_queued_emails(active_account.id)
+        assert email == String.downcase(active_admin.email)
+
+        assert collect_queued_emails(dormant_account.id) == []
+      end)
+    end
+
+    test "emails a paid account with no session logs" do
+      account = team_account_fixture()
+      admin = admin_actor_fixture(account: account)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+
+          assert [%{bcc: [{"", email}]}] = collect_queued_emails(account.id)
+          assert email == String.downcase(admin.email)
+        end)
+
+      refute output =~ "dormant"
+    end
+
+    test "errors without prompting when every account is dormant" do
+      account = account_fixture()
+      admin_actor_fixture(account: account)
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+        end)
+
+      assert output =~ "Skipping 1 dormant account(s)"
+      assert output =~ "No admin recipients found."
+      refute output =~ "Continue?"
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "errors when no account has an enabled admin" do
+      account = active_account_fixture()
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_admin_email(
+                     [account.id],
+                     "Admin Subject",
+                     "<p>Admin HTML</p>",
+                     "Admin Text"
+                   )
+        end)
+
+      assert output =~ "No admin recipients found."
+      refute output =~ "dormant"
+    end
+  end
+
+  describe "queue_product_announcement/4" do
+    import ExUnit.CaptureIO
+
+    test "queues one email per admin with a link to turn announcements off" do
+      account = active_account_fixture()
+      admin1 = admin_actor_fixture(account: account)
+      admin2 = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_product_announcement(
+                   [account.id],
+                   "What's new",
+                   "<p>New features</p>",
+                   "New features"
+                 )
+      end)
+
+      emails = collect_queued_emails(account.id)
+
+      assert emails |> Enum.flat_map(& &1.to) |> Enum.sort() ==
+               Enum.sort([{"", admin1.email}, {"", admin2.email}])
+
+      for email <- emails do
+        assert email.subject == "What's new"
+        assert email.html_body =~ "<p>New features</p>"
+        assert email.text_body =~ "New features"
+        assert email.text_body =~ "/#{account.id}/unsubscribe/"
+      end
+
+      tokens =
+        Enum.map(emails, fn email ->
+          [token] =
+            Regex.run(~r{/#{account.id}/unsubscribe/([A-Za-z0-9_.-]+)}, email.text_body,
+              capture: :all_but_first
+            )
+
+          {:ok, payload} = Portal.UnsubscribeToken.verify(token)
+          payload
+        end)
+
+      assert Enum.sort(tokens) ==
+               Enum.sort([
+                 {account.id, admin1.id, :product_announcements},
+                 {account.id, admin2.id, :product_announcements}
+               ])
+    end
+
+    test "sends only to enabled admins" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "skips admins who turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      opted_out = admin_actor_fixture(account: account)
+      actor_preferences_fixture(opted_out, notifications: %{product_announcements: []})
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "sends once to a person who is an admin of two accounts" do
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
+      email = "shared-#{System.unique_integer([:positive])}@example.com"
+      admin_actor_fixture(account: account1, email: email)
+      admin_actor_fixture(account: account2, email: email)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_product_announcement(
+                     [account1.id, account2.id],
+                     "What's new",
+                     "<p>Hi</p>",
+                     "Hi"
+                   )
+        end)
+
+      assert output =~ "to 1 unique admin(s)"
+
+      assert length(collect_queued_emails(account1.id) ++ collect_queued_emails(account2.id)) ==
+               1
+    end
+
+    test "aborts when user declines confirmation" do
+      account = active_account_fixture()
+      admin_actor_fixture(account: account)
+
+      capture_io("n\n", fn ->
+        assert :aborted =
+                 queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "errors when every admin turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_preferences_fixture(admin, notifications: %{product_announcements: []})
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+        end)
+
+      assert output =~ "No admin recipients found."
     end
   end
 end

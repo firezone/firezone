@@ -78,7 +78,7 @@ defmodule Portal.Workers.AccountDeletionReminder do
       from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         select: a.email
       )
       |> Safe.unscoped()

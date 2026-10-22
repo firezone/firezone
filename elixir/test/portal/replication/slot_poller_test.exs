@@ -73,6 +73,38 @@ defmodule Portal.Replication.SlotPollerTest do
     end
   end
 
+  # Every test runs the poller through this repo. Slot creation becomes a copy
+  # of a template slot, since a new slot waits for every open transaction on
+  # the server and async tests keep theirs open.
+  defmodule TestRepo do
+    def query!(statement, params, opts \\ []) do
+      if String.contains?(statement, "pg_create_logical_replication_slot") do
+        Portal.Test.LogicalSlots.create!(hd(params))
+        %Postgrex.Result{command: :select, columns: [], rows: [], num_rows: 0}
+      else
+        maybe_pause_before_advance(statement)
+        Portal.Repo.query!(statement, params, opts)
+      end
+    end
+
+    defdelegate query(statement, params, opts \\ []), to: Portal.Repo
+
+    defp maybe_pause_before_advance(statement) do
+      control = Portal.Config.get_env(:portal, :slot_poller_test_advance_control)
+
+      if String.contains?(statement, "pg_replication_slot_advance") and
+           control &&
+           :atomics.compare_exchange(control, 1, 1, 2) == :ok do
+        test_pid = Portal.Config.get_env(:portal, :slot_poller_test_pid)
+        send(test_pid, {:before_advance, self()})
+
+        receive do
+          :continue_advance -> :ok
+        end
+      end
+    end
+  end
+
   setup do
     uid = System.unique_integer([:positive])
     slot = "test_poller_slot_#{uid}"
@@ -82,15 +114,12 @@ defmodule Portal.Replication.SlotPollerTest do
     region = "test_region_#{uid}"
 
     # Non-sandboxed connection: its DDL and writes commit for real so they
-    # reach the WAL, unlike sandboxed writes which never commit. The slot and
-    # publication are pre-created here because Postgres refuses to create a
-    # logical slot inside a transaction that has performed writes, which the
-    # sandbox wrapping transaction may have; the poller then takes its
-    # exists-paths, which are transaction-safe.
+    # reach the WAL, unlike sandboxed writes which never commit. The slot is
+    # copied after the publication exists, so it only decodes later changes.
     aux = start_supervised!({Postgrex, aux_config()})
     Postgrex.query!(aux, "CREATE TABLE #{table} (id int PRIMARY KEY, val text)", [])
     Postgrex.query!(aux, "CREATE PUBLICATION #{publication} FOR TABLE #{table}", [])
-    Postgrex.query!(aux, "SELECT pg_create_logical_replication_slot($1, 'pgoutput')", [slot])
+    Portal.Test.LogicalSlots.create!(slot)
 
     on_exit(fn ->
       {:ok, cleanup} = Postgrex.start_link(aux_config())
@@ -107,7 +136,7 @@ defmodule Portal.Replication.SlotPollerTest do
     Portal.Config.put_env_override(:slot_poller_test_pid, self())
 
     Portal.Config.put_env_override(TestConsumer,
-      repo: Portal.Repo,
+      repo: TestRepo,
       replication_slot_name: slot,
       publication_name: publication,
       table_subscriptions: [table],
@@ -215,6 +244,34 @@ defmodule Portal.Replication.SlotPollerTest do
     refute_receive {:write, _, :insert, ^table, nil, %{"id" => "3"}}, 500
   end
 
+  test "holds leadership while advancing the slot", %{
+    aux: aux,
+    slot: slot,
+    region: region
+  } do
+    control = :atomics.new(1, [])
+    Portal.Config.put_env_override(:slot_poller_test_advance_control, control)
+
+    poller = start_poller!()
+    :atomics.put(control, 1, 1)
+
+    assert_receive {:before_advance, ^poller}, 5000
+
+    key = "#{slot}/#{region}"
+
+    %{rows: [[locked?]]} =
+      Postgrex.query!(aux, "SELECT pg_try_advisory_lock(hashtext($1))", [key])
+
+    if locked? do
+      Postgrex.query!(aux, "SELECT pg_advisory_unlock(hashtext($1))", [key])
+    end
+
+    send(poller, :continue_advance)
+
+    refute locked?
+    assert :sys.get_state(poller).consumer_state
+  end
+
   test "consumer-internal transaction rollbacks do not abort the cycle", %{
     aux: aux,
     slot: slot,
@@ -255,23 +312,6 @@ defmodule Portal.Replication.SlotPollerTest do
       assert {:ok, _} = Postgrex.query(aux, "SELECT pg_drop_replication_slot($1)", [slot])
     end)
 
-    # The recreated slot is visible before creation finds its consistent
-    # point, which can take a while under concurrent test transactions; only
-    # rows written after confirmed_flush_lsn is set are decodable
-    wait_for(
-      fn ->
-        %{rows: rows} =
-          Postgrex.query!(
-            aux,
-            "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND confirmed_flush_lsn IS NOT NULL",
-            [slot]
-          )
-
-        assert rows == [[1]]
-      end,
-      30
-    )
-
     # Recreation went through setup, which re-initialized the consumer
     assert_receive :init_state, 5000
 
@@ -301,9 +341,6 @@ defmodule Portal.Replication.SlotPollerTest do
     slot: slot,
     table: table
   } do
-    start_poller!()
-    assert_receive :init_state, 5000
-
     # Unpublished-table WAL never shows up in a peek, so only the idle
     # (empty-batch) advance can move the slot past it
     Postgrex.query!(aux, "CREATE TABLE #{table}_idle (id int)", [])
@@ -318,23 +355,27 @@ defmodule Portal.Replication.SlotPollerTest do
     %{rows: [[target]]} =
       Postgrex.query!(aux, "SELECT (pg_current_wal_flush_lsn() - '0/0'::pg_lsn)::bigint", [])
 
-    wait_for(fn ->
-      %{rows: [[confirmed]]} =
-        Postgrex.query!(
-          aux,
-          "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
-          [slot]
-        )
+    # Started only now, so its first cycle captures an advance position at or
+    # past target. A cycle already in flight would land short of it.
+    start_poller!()
+    assert_receive :init_state, 5000
 
-      assert confirmed >= target
-    end)
+    wait_for(
+      fn ->
+        %{rows: [[confirmed]]} =
+          Postgrex.query!(
+            aux,
+            "SELECT (confirmed_flush_lsn - '0/0'::pg_lsn)::bigint FROM pg_replication_slots WHERE slot_name = $1",
+            [slot]
+          )
+
+        assert confirmed >= target
+      end,
+      5
+    )
   end
 
-  test "drops and recreates the slot after it was invalidated", %{
-    aux: aux,
-    slot: slot,
-    table: table
-  } do
+  test "drops and recreates the slot after it was invalidated", %{aux: aux, table: table} do
     start_poller!()
     assert_receive :init_state, 5000
 
@@ -342,22 +383,7 @@ defmodule Portal.Replication.SlotPollerTest do
     assert_receive {:write, _, :insert, ^table, nil, %{"id" => "9"}}, 5000
 
     # Setup re-ran: the slot was dropped and recreated past the poisoned
-    # batch, so it does not replay. Recreation can take a while to find its
-    # consistent point under concurrent test transactions.
-    wait_for(
-      fn ->
-        %{rows: rows} =
-          Postgrex.query!(
-            aux,
-            "SELECT 1 FROM pg_replication_slots WHERE slot_name = $1 AND confirmed_flush_lsn IS NOT NULL",
-            [slot]
-          )
-
-        assert rows == [[1]]
-      end,
-      30
-    )
-
+    # batch, so it does not replay
     assert_receive :init_state, 5000
     refute_receive {:write, _, :insert, ^table, nil, %{"id" => "9"}}, 500
 

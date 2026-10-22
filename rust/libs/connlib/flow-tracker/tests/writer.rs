@@ -11,7 +11,7 @@ use std::{
 use base64::Engine as _;
 use chrono::TimeZone as _;
 use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
-use flow_tracker::{FlowClose, FlowProtocol, IngestToken, Record, Role, Tracker};
+use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
 use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
 
@@ -28,10 +28,18 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
         inner_dst_ip: "10.0.0.5".parse().unwrap(),
         inner_dst_port: 443,
         domain: Some("download.httpbin".parse().unwrap()),
-        outer_src_ip: "198.51.100.1".parse().unwrap(),
-        outer_src_port: 51820,
-        outer_dst_ip: "203.0.113.7".parse().unwrap(),
-        outer_dst_port: 51820,
+        outers: vec![
+            FlowContext::new(
+                "198.51.100.1:51820".parse::<SocketAddr>().unwrap(),
+                "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
+            ),
+            FlowContext::new(
+                None,
+                "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_030, 0).unwrap(),
+            ),
+        ],
         flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 500).unwrap(),
         close: Some(FlowClose {
             flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
@@ -54,10 +62,13 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["inner_dst_ip"], record.inner_dst_ip.to_string());
     assert_eq!(payload["inner_dst_port"], record.inner_dst_port);
     assert_eq!(payload["domain"], "download.httpbin");
-    assert_eq!(payload["outer_src_ip"], record.outer_src_ip.to_string());
-    assert_eq!(payload["outer_src_port"], record.outer_src_port);
-    assert_eq!(payload["outer_dst_ip"], record.outer_dst_ip.to_string());
-    assert_eq!(payload["outer_dst_port"], record.outer_dst_port);
+    assert_eq!(
+        payload["outers"],
+        serde_json::json!([
+            {"src_ip": "198.51.100.1", "src_port": 51820, "dst_ip": "203.0.113.7", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20.000000500Z"},
+            {"dst_ip": "203.0.113.7", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:50Z"},
+        ])
+    );
     assert_eq!(payload["flow_start"], format!("{:?}", record.flow_start));
     // Attribution rides the token, not the spooled record.
     assert!(payload.get("initiator_actor_id").is_none());
@@ -71,6 +82,79 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
     assert_eq!(payload["tx_bytes"], close.tx_bytes);
 }
 
+/// Guards the field contract between the spooled reports and the portal's
+/// ingest endpoint: every report shape the tracker can produce must conform
+/// to the Portal-generated OpenAPI schema committed at the workspace root.
+#[test]
+fn spooled_reports_conform_to_the_committed_ingest_contract() {
+    let openapi = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../../elixir/priv/static/openapi.json"
+    ))
+    .unwrap();
+    let schema = openapi
+        .pointer("/components/schemas/FlowLogIngestRecord")
+        .expect("Portal OpenAPI spec contains the flow-log ingest contract");
+    let validator = jsonschema::options()
+        .should_validate_formats(true)
+        .build(schema)
+        .unwrap();
+
+    let authz_id = "aaaaaaaa-1111-2222-3333-444444444444";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        // A completed flow to a DNS resource over a relay: exercises `domain`
+        // and an outer path without a source.
+        flow_tracker::emit(&Record {
+            ingest_token: test_token(authz_id, "responder"),
+            protocol: FlowProtocol::Udp,
+            inner_src_ip: "100.64.0.1".parse().unwrap(),
+            inner_src_port: 40_000,
+            inner_dst_ip: "10.0.0.5".parse().unwrap(),
+            inner_dst_port: 443,
+            domain: Some("download.httpbin".parse().unwrap()),
+            outers: vec![FlowContext::new(
+                None,
+                "203.0.113.7:51820".parse().unwrap(),
+                chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            )],
+            flow_start: chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            close: Some(FlowClose {
+                flow_end: chrono::Utc.timestamp_opt(1_700_000_060, 0).unwrap(),
+                last_packet: chrono::Utc.timestamp_opt(1_700_000_059, 500).unwrap(),
+                rx_packets: 10,
+                tx_packets: 12,
+                rx_bytes: 1024,
+                tx_bytes: 2048,
+            }),
+        });
+
+        // A tracked flow that roams: an open and a close report, two outer paths.
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        drive_tx_from(
+            &mut tracker,
+            "203.0.113.7:52000",
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(3),
+        );
+        tracker.close_all(t0 + Duration::from_secs(5));
+    });
+
+    // The manual close plus the driven flow's open and close reports; a
+    // fourth report for the same input should fail loudly.
+    let reports = spool.reports();
+    assert_eq!(reports.len(), 3);
+
+    for (path, payload) in reports {
+        if let Err(error) = validator.validate(&payload) {
+            panic!("{} violates the contract: {error}", path.display());
+        }
+    }
+}
+
 /// Drives the tracker as a Gateway would and asserts that both halves of the
 /// flow's report end up in the spool.
 #[test]
@@ -79,8 +163,8 @@ fn tracked_packets_spool_open_and_completed_reports() {
     let token = test_token(authz_id, "responder");
 
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>();
     let now = Instant::now();
+    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
 
     let client = ClientId::from_u128(1);
     let resource = ResourceId::from_u128(2);
@@ -101,7 +185,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
             flow_tracker::record_decrypted_packet(&request);
             flow_tracker::record_peer(client, Role::Responder);
             flow_tracker::record_resource(resource);
-            flow_tracker::record_ingest_token(Some(token.clone()));
+            flow_tracker::record_ingest_token(Some(&token));
             drop(flow);
         }
 
@@ -122,10 +206,12 @@ fn tracked_packets_spool_open_and_completed_reports() {
     assert_eq!(open["inner_src_port"], 1234);
     assert_eq!(open["inner_dst_ip"], "10.0.0.5");
     assert_eq!(open["inner_dst_port"], 5201);
-    assert_eq!(open["outer_src_ip"], "198.51.100.1");
-    assert_eq!(open["outer_src_port"], 45000);
-    assert_eq!(open["outer_dst_ip"], "203.0.113.1");
-    assert_eq!(open["outer_dst_port"], 51820);
+    assert_eq!(
+        open["outers"],
+        serde_json::json!([
+            {"src_ip": "198.51.100.1", "src_port": 45000, "dst_ip": "203.0.113.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20Z"}
+        ])
+    );
     assert!(open.get("flow_end").is_none());
 
     let completed = spool.report(".end.json");
@@ -140,8 +226,8 @@ fn tracked_packets_spool_open_and_completed_reports() {
 fn syn_retransmit_updates_flow_instead_of_splitting() {
     let authz_id = "33333333-3333-3333-3333-333333333333";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
@@ -163,17 +249,17 @@ fn syn_retransmit_updates_flow_instead_of_splitting() {
 }
 
 #[test]
-fn syn_after_return_traffic_splits_flow() {
+fn syn_retransmit_after_syn_ack_updates_flow() {
     let authz_id = "44444444-4444-4444-4444-444444444444";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
         drive_rx(
             &mut tracker,
-            &tcp_return_packet(&[0; 100]),
+            &tcp_return_packet(syn_ack(), &[]),
             t0 + Duration::from_secs(1),
         );
         drive_tx(
@@ -188,8 +274,109 @@ fn syn_after_return_traffic_splits_flow() {
     let flows = spool.completed_flows();
     assert_eq!(
         packet_counts(&flows),
-        vec![(1, 0), (1, 1)],
-        "a new SYN closes the old flow and starts a fresh one"
+        vec![(2, 1)],
+        "a SYN retransmitted because the SYN-ACK got lost counts into the same flow"
+    );
+}
+
+#[test]
+fn syn_after_established_connection_splits_flow() {
+    let authz_id = "88888888-8888-8888-8888-888888888888";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        drive_rx(
+            &mut tracker,
+            &tcp_return_packet(syn_ack(), &[]),
+            t0 + Duration::from_secs(1),
+        );
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(ack(), &[]),
+            authz_id,
+            t0 + Duration::from_secs(2),
+        );
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(syn(), &[]),
+            authz_id,
+            t0 + Duration::from_secs(3),
+        );
+        tracker.close_all(t0 + Duration::from_secs(4));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(
+        packet_counts(&flows),
+        vec![(1, 0), (2, 1)],
+        "a SYN after the handshake completed reuses the tuple for a new connection"
+    );
+}
+
+#[test]
+fn context_change_stamps_the_path_activation_time() {
+    let authz_id = "99999999-9999-9999-9999-999999999999";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+        // A packet on the unchanged path keeps the original stamp.
+        drive_tx(
+            &mut tracker,
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(5),
+        );
+        drive_tx_from(
+            &mut tracker,
+            "203.0.113.7:52000",
+            &tcp_packet(ack(), &[0; 10]),
+            authz_id,
+            t0 + Duration::from_secs(9),
+        );
+        tracker.close_all(t0 + Duration::from_secs(10));
+    });
+
+    let [flow]: [serde_json::Value; 1] = spool.completed_flows().try_into().unwrap();
+    assert_eq!(
+        flow["outers"],
+        serde_json::json!([
+            {"src_ip": "203.0.113.7", "src_port": 51820, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:20Z"},
+            {"src_ip": "203.0.113.7", "src_port": 52000, "dst_ip": "198.51.100.1", "dst_port": 51820, "path_activated_at": "2023-11-14T22:13:29Z"},
+        ])
+    );
+}
+
+#[test]
+fn context_change_past_the_cap_splits_flow() {
+    let authz_id = "77777777-7777-7777-7777-777777777777";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        // The 17th distinct tuple does not fit the cap of 16 and splits the flow.
+        for i in 0..17u16 {
+            drive_tx_from(
+                &mut tracker,
+                &format!("203.0.113.7:{}", 51820 + i),
+                &tcp_packet(ack(), &[0; 10]),
+                authz_id,
+                t0 + Duration::from_secs(u64::from(i)),
+            );
+        }
+        tracker.close_all(t0 + Duration::from_secs(30));
+    });
+
+    assert_eq!(
+        packet_counts(&spool.completed_flows()),
+        vec![(1, 0), (16, 0)],
+        "the flow splits only once the context list is full"
     );
 }
 
@@ -197,8 +384,8 @@ fn syn_after_return_traffic_splits_flow() {
 fn bare_ack_does_not_create_flow() {
     let authz_id = "55555555-5555-5555-5555-555555555555";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(ack(), &[]), authz_id, t0);
@@ -212,8 +399,8 @@ fn bare_ack_does_not_create_flow() {
 fn data_packet_creates_flow_without_syn() {
     let authz_id = "66666666-6666-6666-6666-666666666666";
     let spool = SpoolObserver::new(authz_id);
-    let mut tracker = enabled_tracker();
     let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
 
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(ack(), &[0; 100]), authz_id, t0);
@@ -223,8 +410,9 @@ fn data_packet_creates_flow_without_syn() {
     assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
 }
 
-fn enabled_tracker<S>() -> Tracker<S> {
-    let mut tracker = Tracker::new(Instant::now(), Duration::from_secs(1_700_000_000));
+/// A tracker whose UTC clock reads exactly 1_700_000_000 at `now`.
+fn enabled_tracker<S>(now: Instant) -> Tracker<S> {
+    let mut tracker = Tracker::new(now, Duration::from_secs(1_700_000_000));
     tracker.set_enabled(true);
 
     tracker
@@ -238,14 +426,25 @@ fn drive_tx(
     authz_id: &str,
     now: Instant,
 ) {
+    drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
+}
+
+/// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
+fn drive_tx_from(
+    tracker: &mut Tracker<ClientOrGatewayId>,
+    remote: &str,
+    packet: &IpPacket,
+    authz_id: &str,
+    now: Instant,
+) {
     let _flow = tracker.begin_network_packet(
         "198.51.100.1:51820".parse().unwrap(),
-        "203.0.113.7:51820".parse().unwrap(),
+        remote.parse().unwrap(),
         now,
     );
     flow_tracker::record_decrypted_packet(packet);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
-    flow_tracker::record_ingest_token(Some(test_token(authz_id, "responder")));
+    flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's
@@ -273,6 +472,14 @@ fn ack() -> ip_packet::make::TcpFlags {
     }
 }
 
+fn syn_ack() -> ip_packet::make::TcpFlags {
+    ip_packet::make::TcpFlags {
+        syn: true,
+        ack: true,
+        ..Default::default()
+    }
+}
+
 fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
@@ -287,13 +494,13 @@ fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
 
 /// The matching return packet for [`tcp_packet`], in its natural
 /// (responder-to-initiator) orientation.
-fn tcp_return_packet(payload: &[u8]) -> IpPacket {
+fn tcp_return_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
         "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
         443,
         1234,
-        ip_packet::make::TcpFlags::default(),
+        flags,
         payload,
     )
     .unwrap()
@@ -323,7 +530,7 @@ impl SpoolObserver {
         let subscriber = tracing_subscriber::registry().with(layer);
 
         tracing::subscriber::with_default(subscriber, f);
-        drop(guard); // joins the writer thread, so the reports are on disk
+        guard.join(); // every emitted report is on disk once this returns
     }
 
     fn completed_flows(&self) -> Vec<serde_json::Value> {
@@ -334,6 +541,22 @@ impl SpoolObserver {
             .map(|entry| entry.unwrap().path())
             .filter(|path| path.to_string_lossy().ends_with(".end.json"))
             .map(|path| flow_log_spool::deserialize(&std::fs::read(path).unwrap()).unwrap())
+            .collect()
+    }
+
+    /// Reads every report spooled for the authorization, paired with its path.
+    fn reports(&self) -> Vec<(std::path::PathBuf, serde_json::Value)> {
+        let authz_dir = self.dir.path().join("responder").join(&self.authz_id);
+
+        std::fs::read_dir(&authz_dir)
+            .expect("spooled report dir exists")
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.to_string_lossy().ends_with(".json"))
+            .map(|path| {
+                let payload = flow_log_spool::deserialize(&std::fs::read(&path).unwrap()).unwrap();
+
+                (path, payload)
+            })
             .collect()
     }
 

@@ -17,15 +17,21 @@ arbitrary = { workspace = true, optional = true, features = ["derive"] }
 bufferpool = { workspace = true }
 incremental-inet-checksum = { workspace = true }
 ingot = { workspace = true }
+prefetch = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 divan = { workspace = true }
+test-case = { workspace = true }
 test-strategy = { workspace = true }
 
 [[bench]]
 name = "parse"
+harness = false
+
+[[bench]]
+name = "checksum"
 harness = false
 
 [lints]

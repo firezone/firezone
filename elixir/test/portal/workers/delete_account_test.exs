@@ -11,12 +11,12 @@ defmodule Portal.Workers.DeleteAccountTest do
 
   describe "perform/1" do
     test "deletes account and enqueues AccountDeletionCompleted job with admin emails" do
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -36,12 +36,12 @@ defmodule Portal.Workers.DeleteAccountTest do
     end
 
     test "deletes account without enqueuing completion job when there are no admin actors" do
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 
@@ -57,7 +57,7 @@ defmodule Portal.Workers.DeleteAccountTest do
     test "is a no-op when account conditions cleared (scheduled_deletion_at nil)" do
       account =
         update_account(account_fixture(),
-          disabled_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          is_disabled: true,
           scheduled_deletion_at: nil
         )
 
@@ -66,10 +66,10 @@ defmodule Portal.Workers.DeleteAccountTest do
       refute_enqueued(worker: AccountDeletionCompleted)
     end
 
-    test "is a no-op when account conditions cleared (disabled_at nil)" do
+    test "is a no-op when account conditions cleared (is_disabled false)" do
       account =
         update_account(account_fixture(),
-          disabled_at: nil,
+          is_disabled: false,
           scheduled_deletion_at:
             DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second)
         )
@@ -81,12 +81,12 @@ defmodule Portal.Workers.DeleteAccountTest do
 
     test "schedules DeleteSubscription job when customer_id present" do
       customer_id = "cus_#{System.unique_integer([:positive])}"
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at,
           metadata: %{stripe: %{customer_id: customer_id}}
         )
@@ -98,12 +98,12 @@ defmodule Portal.Workers.DeleteAccountTest do
     end
 
     test "skips DeleteSubscription job when no customer_id" do
-      disabled_at = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
-      scheduled_deletion_at = DateTime.add(disabled_at, 7, :day)
+      now = DateTime.utc_now() |> DateTime.add(-8, :day) |> DateTime.truncate(:second)
+      scheduled_deletion_at = DateTime.add(now, 7, :day)
 
       account =
         update_account(account_fixture(),
-          disabled_at: disabled_at,
+          is_disabled: true,
           scheduled_deletion_at: scheduled_deletion_at
         )
 

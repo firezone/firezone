@@ -12,12 +12,13 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
+          postures: Portal.Policies.Postures.t() | nil,
           group_id: Ecto.UUID.t() | nil,
           group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           flow_log_uploads_enabled: boolean(),
-          disabled_at: DateTime.t() | nil,
+          is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -29,6 +30,7 @@ defmodule Portal.Policy do
     field :description, :string
 
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
+    field :postures, Portal.Policies.Postures
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
     field :group_idp_id, :string
@@ -36,7 +38,7 @@ defmodule Portal.Policy do
 
     field :flow_log_uploads_enabled, :boolean, default: true
 
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     timestamps()
   end
@@ -123,8 +125,8 @@ defmodule Portal.Policy do
             Portal.Resource.t() | nil
     def fetch_resource(resource_id, subject) do
       from(r in Portal.Resource, where: r.id == ^resource_id)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.scoped(subject)
+      |> Safe.one()
     end
 
     @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

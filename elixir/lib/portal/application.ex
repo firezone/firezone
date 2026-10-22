@@ -3,6 +3,8 @@ defmodule Portal.Application do
 
   require Logger
 
+  @expected_client_error_filter :portal_relevel_expected_client_errors
+
   @impl true
   def start(_type, _args) do
     configure_logger()
@@ -11,15 +13,16 @@ defmodule Portal.Application do
     # Attach Oban Sentry reporter
     Portal.Telemetry.Reporter.Oban.attach()
 
+    # Send portal page views and actions to PostHog (a no-op unless it's configured)
+    :ok = PortalWeb.Analytics.attach()
+
     # OpenTelemetry setup
     :ok = OpentelemetryLoggerMetadata.setup()
     :ok = OpentelemetryEcto.setup([:portal, :repo])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :web])
     :ok = OpentelemetryEcto.setup([:portal, :repo, :api])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :web])
-    :ok = OpentelemetryEcto.setup([:portal, :repo, :replica, :api])
-    :ok = OpentelemetryBandit.setup()
+    :ok = OpentelemetryEcto.setup([:portal, :repo, :job])
+    :ok = Portal.Telemetry.OtelBandit.setup()
     :ok = OpentelemetryPhoenix.setup(adapter: :bandit)
     :ok = OpentelemetryOban.setup()
 
@@ -31,6 +34,7 @@ defmodule Portal.Application do
     # Remove the Sentry logger handler before Sentry.Supervisor terminates
     # to avoid noproc errors during shutdown
     _ = :logger.remove_handler(:sentry)
+    _ = :logger.remove_primary_filter(@expected_client_error_filter)
     :ok
   end
 
@@ -40,14 +44,12 @@ defmodule Portal.Application do
     base_children = token_caches() ++ [
       # Core services
       Portal.Repo,
-      Portal.Repo.Replica,
-      # Isolated connection pools (web/api/poller)
+      # Isolated connection pools (web/api/job/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
-      Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api,
+      Portal.Repo.Job,
       Portal.Repo.Poller,
-      Portal.Repo.Replica.Poller,
+      {Task.Supervisor, name: Portal.Analytics.TaskSupervisor},
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},
       # Named pg scope for Portal.PG, isolated so a crash here does not affect replication
@@ -58,16 +60,23 @@ defmodule Portal.Application do
       Portal.Presence,
       Portal.Mailer.RateLimiter,
       Portal.ComponentVersions,
+      Portal.OSReleases,
       Portal.ClockDriftAlarm,
       OpenIDConnect.Document.Cache
     ]
 
     endpoint_children = [
+      # Builds the MCP tool table from the API spec; must be ready before the
+      # API endpoint starts serving /mcp.
+      PortalAPI.MCP.Tools,
       # Give Phoenix socket drain enough time to gracefully close channel topics
       # before transports are force-terminated.
       {PortalWeb.Endpoint, shutdown: 40_000},
       {PortalAPI.Endpoint, shutdown: 40_000},
-      {PortalOps.Endpoint, shutdown: 40_000}
+      {PortalOps.Endpoint, shutdown: 40_000},
+      # The public listener stops first during reverse-order shutdown, before
+      # the endpoints it dispatches into begin draining.
+      {Portal.Endpoint, shutdown: 40_000}
     ]
 
     # Child order is chosen to make reverse-order shutdown graceful:
@@ -79,11 +88,23 @@ defmodule Portal.Application do
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
+      revocation_endpoint_queue() ++
       rate_limit() ++
       telemetry() ++ oban() ++ endpoint_children ++ replication() ++ [Portal.Cluster]
   end
 
   defp configure_logger do
+    # Bandit and Thousand Island report some routine client disconnects, timeouts,
+    # and malformed requests as errors. Relevel those known client-side events to
+    # info before they reach stdout (and Azure) or the Sentry handler.
+    case :logger.add_primary_filter(
+           @expected_client_error_filter,
+           {&Portal.LoggerFilters.relevel_expected_client_errors/2, nil}
+         ) do
+      :ok -> :ok
+      {:error, {:already_exist, @expected_client_error_filter}} -> :ok
+    end
+
     # Attach Oban to the logger
     Oban.Telemetry.attach_default_logger(encode: false, level: log_level())
 
@@ -128,6 +149,13 @@ defmodule Portal.Application do
     queue_child(
       :policy_authorization_queue,
       PortalAPI.Client.Channel.policy_authorization_queue_opts()
+    )
+  end
+
+  defp revocation_endpoint_queue do
+    queue_child(
+      :revocation_endpoint_queue,
+      PortalAPI.Client.DeviceTrust.revocation_endpoint_queue_opts()
     )
   end
 
@@ -176,7 +204,8 @@ defmodule Portal.Application do
     # generating the OpenAPI spec without a Postgres service). Oban 2.22+
     # verifies migrations at supervisor start, which requires a live DB.
     if Portal.Config.env_var_to_config!(:oban_enabled) do
-      [{Oban, Application.fetch_env!(:portal, Oban)}]
+      # The rescuer stops after Oban, once the jobs Oban killed are gone.
+      [Portal.DirectorySync.Rescuer, {Portal.Oban, Application.fetch_env!(:portal, Oban)}]
     else
       []
     end

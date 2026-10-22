@@ -60,7 +60,10 @@ pub fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image>
         let gamma = 2.2;
         let inv_gamma = 1.0 / gamma;
 
-        for (src, dst) in rgba.chunks_exact(4).zip(dst.rgba.chunks_exact_mut(4)) {
+        let (src_pixels, _) = rgba.as_chunks::<4>();
+        let (dst_pixels, _) = dst.rgba.as_chunks_mut::<4>();
+
+        for (src, dst) in src_pixels.iter().zip(dst_pixels) {
             let src_a = src[3] as f32 / 255.0;
 
             for (src_int, dst_int) in (src[0..3]).iter().zip(&mut dst[0..3]) {

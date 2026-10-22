@@ -17,11 +17,8 @@ defmodule Portal.Telemetry.DevAggregator do
     [:phoenix, :channel_joined],
     [:phoenix, :channel_handled_in],
     [:portal, :repo, :query],
-    [:portal, :repo, :replica, :query],
     [:portal, :repo, :web, :query],
-    [:portal, :repo, :api, :query],
-    [:portal, :repo, :replica, :web, :query],
-    [:portal, :repo, :replica, :api, :query]
+    [:portal, :repo, :api, :query]
   ]
 
   @spec start_link(keyword()) :: GenServer.on_start()

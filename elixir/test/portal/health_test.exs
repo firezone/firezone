@@ -94,11 +94,9 @@ defmodule Portal.HealthTest do
         draining_file_path: draining_file_path,
         repos: [
           Portal.Repo,
-          Portal.Repo.Replica,
           Portal.Repo.Web,
           Portal.Repo.Api,
-          Portal.Repo.Replica.Web,
-          Portal.Repo.Replica.Api
+          Portal.Repo.Job
         ]
       )
 
@@ -116,11 +114,9 @@ defmodule Portal.HealthTest do
         draining_file_path: draining_file_path,
         repos: [
           Portal.Repo,
-          Portal.Repo.Replica,
           Portal.Repo.Web,
           Portal.Repo.Api,
-          Portal.Repo.Replica.Web,
-          Portal.Repo.Replica.Api
+          Portal.Repo.Job
         ],
         repo_check_query: "SELECT 1 FROM pg_sleep(0.25)"
       )

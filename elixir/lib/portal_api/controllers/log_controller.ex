@@ -2,7 +2,9 @@ defmodule PortalAPI.LogController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Types.LogId
   alias __MODULE__.Database
@@ -32,7 +34,10 @@ defmodule PortalAPI.LogController do
   operation(:index,
     summary: "List Logs",
     description: """
-    Lists log entries of the requested `type` for the authenticated account.
+    Retrieves Firezone audit, session, network flow, or REST API request logs
+    for the authenticated account. Use this to investigate configuration
+    changes, review session activity, or troubleshoot network access and API
+    requests. Returns a page of log entries, most recent first.
 
     - `change`: audit entries recording each insert, update, or delete event
       against an account-scoped object, most recent first.
@@ -43,16 +48,12 @@ defmodule PortalAPI.LogController do
     - `api_request`: one entry per authenticated REST API request, most
       recent first.
 
-    The `begin` and `end` query parameters bound the time window. For
-    `change`, `session`, and `api_request`, entries match when their
-    `timestamp` falls inside the window; for `flow`, entries match when
-    the flow was active at any point inside the window, i.e. when
-    `[flow_start, flow_end)` overlaps it. Both must be RFC 3339 (ISO
-    8601) timestamps, for example `2026-05-26T00:00:00Z`; values with a
-    non-UTC offset are accepted and converted to UTC. When omitted,
-    `begin` defaults to 90 days before the current time and `end`
-    defaults to the current time. `begin` must be less than or equal to
-    `end`.
+    Select one log stream with the required `type` argument. Narrow results
+    with `begin` and `end` RFC 3339 timestamps, for example
+    `2026-05-26T00:00:00Z`. The inclusive window applies to the entry's
+    `timestamp`, or `flow_start` for flows. Non-UTC offsets are converted
+    to UTC. The default window is the last 90 days; `begin` must not be
+    later than `end`.
 
     Results can be further narrowed by `actor_id` (every type) or
     `actor_email` (`change`, `session`, and `flow`), which matches the
@@ -60,8 +61,9 @@ defmodule PortalAPI.LogController do
     API clients, which have no email, so `actor_email` is not supported
     for `api_request`.
 
-    Use the `next_page` cursor returned in `metadata` to fetch the
-    following page of results.
+    Returns up to `limit` entries (default 50, maximum 100). Pass the
+    `next_page` cursor from the response's `metadata` as `page_cursor`
+    to retrieve the next page.
     """,
     parameters: [
       type: [
@@ -75,11 +77,9 @@ defmodule PortalAPI.LogController do
       limit: [
         in: :query,
         description: """
-        Maximum number of Logs to return per page. Defaults to 50.
-        Values greater than 100 are capped to 100, and values less than 1
-        are raised to 1.
+        Maximum number of Logs to return per page, from 1 to 100. Defaults to 50.
         """,
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 50
       ],
       page_cursor: [
@@ -93,6 +93,8 @@ defmodule PortalAPI.LogController do
         Inclusive start of the time window. RFC 3339 timestamp; non-UTC
         offsets are accepted and converted to UTC. Defaults to 90 days
         before the current time when omitted.
+
+        For `flow` entries the window applies to when the flow started.
         """,
         type: :string,
         example: "2026-02-25T00:00:00Z"
@@ -103,6 +105,8 @@ defmodule PortalAPI.LogController do
         Inclusive end of the time window. RFC 3339 timestamp; non-UTC
         offsets are accepted and converted to UTC. Defaults to the current
         time when omitted.
+
+        For `flow` entries the window applies to when the flow started.
         """,
         type: :string,
         example: "2026-05-26T00:00:00Z"
@@ -133,9 +137,8 @@ defmodule PortalAPI.LogController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    pagination_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, type} <- parse_type(params),
+    with {:ok, pagination_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, type} <- parse_type(params),
          {:ok, filters} <- coerce_filters(type, params),
          {:ok, logs, metadata} <-
            Database.list_logs(
@@ -143,7 +146,7 @@ defmodule PortalAPI.LogController do
              conn.assigns.subject,
              Keyword.put(pagination_opts, :filter, filters)
            ) do
-      render(conn, :index, logs: logs, metadata: metadata)
+      json(conn, JSON.encode(logs, metadata, schema: &log_schema/1))
     else
       error -> Error.handle(conn, error)
     end
@@ -178,7 +181,7 @@ defmodule PortalAPI.LogController do
     with {:ok, log_id} <- parse_log_id(log_id),
          {:ok, type} <- type_from_log_id(log_id),
          {:ok, log} <- Database.fetch_log(type, log_id, conn.assigns.subject) do
-      render(conn, :show, log: log)
+      json(conn, JSON.encode(log, schema: &log_schema/1))
     else
       error -> Error.handle(conn, error)
     end
@@ -219,8 +222,8 @@ defmodule PortalAPI.LogController do
          :ok <- validate_type_filters(type, actor_email) do
       filters =
         [begin: begin_at, end: end_at]
-        |> maybe_append(:actor_id, actor_id)
-        |> maybe_append(:actor_email, actor_email)
+        |> Filters.maybe_append(:actor_id, actor_id)
+        |> Filters.maybe_append(:actor_email, actor_email)
 
       {:ok, filters}
     end
@@ -257,8 +260,8 @@ defmodule PortalAPI.LogController do
 
   defp parse_uuid(value, name) when is_binary(value) do
     case Ecto.UUID.cast(value) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
+      {:ok, uuid} when byte_size(value) == 36 -> {:ok, uuid}
+      _ -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
     end
   end
 
@@ -289,8 +292,10 @@ defmodule PortalAPI.LogController do
     end
   end
 
-  defp maybe_append(filters, _name, nil), do: filters
-  defp maybe_append(filters, name, value), do: filters ++ [{name, value}]
+  defp log_schema(%Portal.ChangeLog{}), do: PortalAPI.Schemas.Log.Change
+  defp log_schema(%Portal.SessionLog{}), do: PortalAPI.Schemas.Log.Session
+  defp log_schema(%Portal.FlowLog{}), do: PortalAPI.Schemas.Log.Flow
+  defp log_schema(%Portal.APIRequestLog{}), do: PortalAPI.Schemas.Log.APIRequest
 
   defmodule Database do
     import Ecto.Query
@@ -302,25 +307,25 @@ defmodule PortalAPI.LogController do
 
     def list_logs(:change, subject, opts) do
       from(cl in ChangeLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Change, opts)
     end
 
     def list_logs(:session, subject, opts) do
       from(sl in SessionLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Session, opts)
     end
 
     def list_logs(:flow, subject, opts) do
       from(fl in FlowLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.Flow, opts)
     end
 
     def list_logs(:api_request, subject, opts) do
       from(arl in APIRequestLog, as: :logs)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__.APIRequest, opts)
     end
 
@@ -328,7 +333,7 @@ defmodule PortalAPI.LogController do
       result =
         type
         |> by_log_id_query(log_id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -469,36 +474,18 @@ defmodule PortalAPI.LogController do
         ]
       end
 
-      # The window matches flows that were active at any point inside it:
-      # the flow's [flow_start, flow_end) range must overlap [begin, end].
-      # Each bound is written as a range-overlap against
-      # tstzrange(flow_start, flow_end, '[)') so it matches the expression
-      # indexed by the flow_logs_unique_flow_per_window exclusion constraint
-      # and can be served by its GiST index.
+      # The window is a plain range over flow_start, the same way the other log
+      # types filter on their one timestamp. flow_end is reported by the
+      # gateway from its own clock and is never queried, so a flow whose
+      # reported end precedes its start is listed like any other.
+      #
+      # flow_start is also the partition key, so both bounds prune.
       defp filter_by_begin(queryable, %DateTime{} = begin_at) do
-        {queryable,
-         dynamic(
-           [logs: l],
-           fragment(
-             "tstzrange(?, ?, '[)') && tstzrange(?, NULL, '[)')",
-             l.flow_start,
-             l.flow_end,
-             ^begin_at
-           )
-         )}
+        {queryable, dynamic([logs: l], l.flow_start >= ^begin_at)}
       end
 
       defp filter_by_end(queryable, %DateTime{} = end_at) do
-        {queryable,
-         dynamic(
-           [logs: l],
-           fragment(
-             "tstzrange(?, ?, '[)') && tstzrange(NULL, ?, '(]')",
-             l.flow_start,
-             l.flow_end,
-             ^end_at
-           )
-         )}
+        {queryable, dynamic([logs: l], l.flow_start <= ^end_at)}
       end
 
       # The `actor_id` / `actor_email` filter names are shared across all four

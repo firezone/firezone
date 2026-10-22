@@ -29,13 +29,9 @@ import SystemPackage
     @MainActor
     static func export(
       to archiveURL: URL,
+      from logFolderURL: URL,
       session: any TunnelSessionProtocol
     ) async throws {
-      guard let logFolderURL = SharedAccess.logFolderURL
-      else {
-        throw ExportError.invalidSourceDirectory
-      }
-
       // 1. Create a temporary working directory to stage app and tunnel archives
       let sharedLogFolderURL = fileManager
         .temporaryDirectory
@@ -61,7 +57,23 @@ import SystemPackage
       // 3. Await tunnel log export from tunnel process
       try await IPCClient.exportLogs(session: session, fd: fd)
 
-      // 4. Create app log archive
+      // 4. Archive the app logs and join both into the final archive
+      try await archive(
+        appLogs: logFolderURL,
+        staging: sharedLogFolderURL,
+        tunnelArchive: tunnelLogURL,
+        to: archiveURL
+      )
+    }
+
+    // @concurrent: zipping a large log tree must not run on the main actor.
+    @concurrent
+    private static func archive(
+      appLogs logFolderURL: URL,
+      staging sharedLogFolderURL: URL,
+      tunnelArchive tunnelLogURL: URL,
+      to archiveURL: URL
+    ) async throws {
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
       try ZipService.createZip(
         source: logFolderURL,
@@ -91,12 +103,9 @@ import SystemPackage
       case documentDirectoryNotAvailable
     }
 
-    static func export(to archiveURL: URL) async throws {
-      guard let logFolderURL = SharedAccess.logFolderURL
-      else {
-        throw ExportError.invalidSourceDirectory
-      }
-
+    // @concurrent: zipping a large log tree must not run on the main actor.
+    @concurrent
+    static func export(to archiveURL: URL, from logFolderURL: URL) async throws {
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 

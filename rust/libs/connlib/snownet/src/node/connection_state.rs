@@ -18,7 +18,7 @@ pub(crate) enum ConnectionState {
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
-        wg_buffer: AllocRingBuffer<Vec<u8>>,
+        wg_buffer: AllocRingBuffer<sanstun::Datagram>,
     },
     /// A socket has been nominated.
     Connected {
@@ -267,11 +267,53 @@ pub(crate) enum PeerSocket {
     },
 }
 
+/// The selected network path for a connection.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum ConnectionPath {
+    PeerToPeer,
+    PeerToRelay,
+    RelayToPeer,
+    RelayToRelay,
+}
+
+impl ConnectionPath {
+    /// All possible metric labels, ordered by [`ConnectionPath::index`].
+    pub(crate) const KINDS: [&'static str; 4] =
+        ["PeerToPeer", "PeerToRelay", "RelayToPeer", "RelayToRelay"];
+
+    pub(crate) fn as_str(self) -> &'static str {
+        Self::KINDS[self.index()]
+    }
+
+    /// Returns the index used by connection path metrics.
+    pub fn index(self) -> usize {
+        match self {
+            ConnectionPath::PeerToPeer => 0,
+            ConnectionPath::PeerToRelay => 1,
+            ConnectionPath::RelayToPeer => 2,
+            ConnectionPath::RelayToRelay => 3,
+        }
+    }
+}
+
+impl From<PeerSocket> for ConnectionPath {
+    fn from(value: PeerSocket) -> Self {
+        match value {
+            PeerSocket::PeerToPeer { .. } => Self::PeerToPeer,
+            PeerSocket::PeerToRelay { .. } => Self::PeerToRelay,
+            PeerSocket::RelayToPeer { .. } => Self::RelayToPeer,
+            PeerSocket::RelayToRelay { .. } => Self::RelayToRelay,
+        }
+    }
+}
+
 impl PeerSocket {
-    pub(crate) fn fmt<RId>(&self, relay: RId) -> String
+    pub(crate) fn fmt<RId>(&self, relay: Option<RId>) -> String
     where
         RId: fmt::Display,
     {
+        let relay = relay.map_or_else(|| "none".to_owned(), |r| r.to_string());
+
         match self {
             PeerSocket::PeerToPeer { source, dest } => {
                 format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
@@ -288,22 +330,12 @@ impl PeerSocket {
         }
     }
 
-    /// All possible values returned by [`PeerSocket::kind`], ordered by
-    /// [`PeerSocket::kind_index`].
-    pub(crate) const KINDS: [&'static str; 4] =
-        ["PeerToPeer", "PeerToRelay", "RelayToPeer", "RelayToRelay"];
-
     pub(crate) fn kind(&self) -> &'static str {
-        Self::KINDS[self.kind_index()]
+        ConnectionPath::from(*self).as_str()
     }
 
-    /// Index of this socket's kind into [`PeerSocket::KINDS`].
+    /// Index of this socket's kind into [`ConnectionPath::KINDS`].
     pub(crate) fn kind_index(&self) -> usize {
-        match self {
-            PeerSocket::PeerToPeer { .. } => 0,
-            PeerSocket::PeerToRelay { .. } => 1,
-            PeerSocket::RelayToPeer { .. } => 2,
-            PeerSocket::RelayToRelay { .. } => 3,
-        }
+        ConnectionPath::from(*self).index()
     }
 }

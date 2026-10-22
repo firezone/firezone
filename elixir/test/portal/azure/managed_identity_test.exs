@@ -1,5 +1,5 @@
 defmodule Portal.Azure.ManagedIdentityTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Portal.Azure.ManagedIdentity
   alias Portal.TokenCache
@@ -50,7 +50,7 @@ defmodule Portal.Azure.ManagedIdentityTest do
 
   describe "access token cache" do
     setup do
-      server = start_supervised!({TokenCache, name: Portal.Azure.TokenCache})
+      server = start_token_cache()
 
       # Establish stub ownership before allowing the server process to use it
       Req.Test.stub(ManagedIdentity, fn conn ->
@@ -156,4 +156,10 @@ defmodule Portal.Azure.ManagedIdentityTest do
     end
   end
 
+  defp start_token_cache do
+    name = :"azure_token_cache_#{System.unique_integer([:positive])}"
+    server = start_supervised!({TokenCache, name: name})
+    Portal.Config.put_env_override(:portal, ManagedIdentity, token_cache: server)
+    server
+  end
 end

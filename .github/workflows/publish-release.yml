@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -121,14 +121,16 @@ jobs:
   # scope, and `firezone-bot` must be a write collaborator on the fork
   # `firezone/winget-pkgs`.
   #
-  # We deliberately do NOT grant the `workflow` scope. That means
-  # `komac sync-fork` will fail ("UpdateRef" denied) whenever upstream
-  # microsoft/winget-pkgs has new commits touching `.github/workflows/*`,
-  # because syncing the fork would require writing workflow files. When that
-  # happens, sync `firezone/winget-pkgs` manually (e.g. via the GitHub "Sync
-  # fork" button on the repo page) and re-run this job. The tradeoff: adding
-  # `workflow` scope would grant the bot write access to workflow files in
-  # every repo where it is a collaborator, which we consider too broad.
+  # We deliberately do NOT grant the `workflow` scope: it would give the bot
+  # write access to workflow files in every repo where it is a collaborator,
+  # which we consider too broad. The cost is that the bot cannot sync the
+  # fork whenever upstream microsoft/winget-pkgs has new commits touching
+  # `.github/workflows/*`, so this job does not sync it at all. The
+  # `winget-pkgs` environment below covers that: its required reviewers
+  # hold this job and get notified, which is the prompt to hit "Sync fork"
+  # on firezone/winget-pkgs and then approve.
+  # GitHub creates a referenced-but-missing environment with no protection
+  # rules, so that hold only exists while the environment has reviewers.
   #
   # Do NOT switch to a fine-grained PAT: komac opens the winget PR from
   # `firezone/winget-pkgs` into `microsoft/winget-pkgs`, and fine-grained PATs
@@ -136,28 +138,35 @@ jobs:
   # succeeds but `komac update --submit` fails with "Resource not accessible
   # by personal access token / failed to create pull request".
   publish-clients-to-winget:
-    name: Publish ${{ matrix.identifier }} to winget
+    if: >-
+      ${{
+        startsWith(inputs.release_name || github.event.release.name, 'gui-client') ||
+        startsWith(inputs.release_name || github.event.release.name, 'headless-client')
+      }}
     runs-on: windows-latest
-    strategy:
-      matrix:
-        include:
-          - identifier: Firezone.Client.GUI
-            tag_prefix: gui-client
-          - identifier: Firezone.Client.Headless
-            tag_prefix: headless-client
+    environment:
+      name: winget-pkgs
+      url: https://github.com/firezone/winget-pkgs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: get-version
+      - id: package
+        env:
+          release_name: ${{ inputs.release_name || github.event.release.name }}
         run: |
-          version=${{ inputs.release_name || github.event.release.name }}
-          version=${version#${{ matrix.tag_prefix }}-}
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          if [[ "$release_name" == gui-client-* ]]; then
+            echo "identifier=Firezone.Client.GUI" >> "$GITHUB_OUTPUT"
+            echo "version=${release_name#gui-client-}" >> "$GITHUB_OUTPUT"
+          else
+            echo "identifier=Firezone.Client.Headless" >> "$GITHUB_OUTPUT"
+            echo "version=${release_name#headless-client-}" >> "$GITHUB_OUTPUT"
+          fi
         shell: bash
       - uses: ./.github/actions/winget-releaser
-        if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}
         with:
-          identifier: ${{ matrix.identifier }}
-          version: ${{ steps.get-version.outputs.version }}
+          identifier: ${{ steps.package.outputs.identifier }}
+          version: ${{ steps.package.outputs.version }}
           token: ${{ secrets.WINGET_TOKEN }}
           release-notes-url: https://www.firezone.dev/changelog
           release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
@@ -166,25 +175,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
-          - tag_prefix: gateway
-            component: gateway
-          - tag_prefix: gui-client
-            component: gui-client
-          - tag_prefix: headless-client
-            component: headless-client
-          - tag_prefix: macos-client
-            component: apple-client
-          - tag_prefix: android-client
-            component: android-client
+        component:
+          - gateway
+          - gui-client
+          - headless-client
+          - apple-client
+          - android-client
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-gpg
         id: setup-gpg
-        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
           key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           email: github-bot@firezone.dev
@@ -221,13 +224,13 @@ jobs:
 
             echo "$env_name=$checksum" >> "$GITHUB_ENV"
           done
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         run: |
           set -x
 
           # Extract version from release name
           version=${{ inputs.release_name || github.event.release.name }}
-          version=${version#${{ matrix.tag_prefix }}-}
+          version=${version#${{ matrix.component }}-}
 
           # Configure git
           git config --local user.email "github-bot@firezone.dev"
@@ -250,20 +253,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
-          - tag_prefix: gateway
-            component: gateway
-          - tag_prefix: gui-client
-            component: gui-client
-          - tag_prefix: headless-client
-            component: headless-client
-          - tag_prefix: macos-client
-            component: apple-client
-          - tag_prefix: android-client
-            component: android-client
+        component:
+          - gateway
+          - gui-client
+          - headless-client
+          - apple-client
+          - android-client
     steps:
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         env:
           # repository_dispatch on firezone/website requires this token to
           # have Contents: write there.
@@ -272,7 +269,7 @@ jobs:
         run: |
           set -xeuo pipefail
 
-          version=${release_name#${{ matrix.tag_prefix }}-}
+          version=${release_name#${{ matrix.component }}-}
 
           gh api \
             --method POST \
@@ -284,31 +281,29 @@ jobs:
             --field "client_payload[version]=$version"
 
   create-sentry-release:
-    name: create_${{ matrix.component }}_sentry_release
+    name: create_${{ matrix.component || matrix.project }}_sentry_release
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
         include:
-          - component: gateway
-            projects: gateway
-          - component: gui-client
-            projects: gui-client
-          - component: headless-client
-            projects: headless-client
-          - component: macos-client
-            projects: apple-client
-          - component: android-client
-            projects: android-client
+          - project: gateway
+          - project: gui-client
+          - project: headless-client
+          - project: android-client
+          # The `apple-client` release ships two components, each reporting its own release name to Sentry.
+          - project: apple-client
+            component: macos-client
+          - project: apple-client
+            component: ios-client
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
-        if: ${{ startsWith(github.event.release.name, matrix.component) }}
+        if: ${{ startsWith(github.event.release.name, matrix.project) }}
         with:
+          project: ${{ matrix.project }}
           component: ${{ matrix.component }}
-          projects: ${{ matrix.projects }}
           sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   promote-deb-packages:
@@ -331,7 +326,7 @@ jobs:
       - uses: ./.github/actions/setup-azure-cli
 
       - name: Azure login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
@@ -381,7 +376,7 @@ jobs:
       - uses: ./.github/actions/setup-azure-cli
 
       - name: Azure login (OIDC)
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}

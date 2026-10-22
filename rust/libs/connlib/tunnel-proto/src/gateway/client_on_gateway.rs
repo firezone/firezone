@@ -1,10 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
-use std::net::IpAddr;
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
@@ -17,7 +18,7 @@ use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
+use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -30,13 +31,13 @@ pub struct ClientOnGateway {
     ///
     /// Recorded into a flow when it is created so the flow log can be attributed
     /// and ingested. Has the same lifetime as the resource authorization.
-    ingest_tokens: HashMap<ResourceId, IngestToken>,
+    ingest_tokens: HashMap<ResourceId, IngestToken, FastRandomState>,
 
     resources: ExpiringMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
-    permanent_translations: BTreeMap<IpAddr, TranslationState>,
+    permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 }
@@ -44,8 +45,11 @@ pub struct ClientOnGateway {
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    DestinationUnreachable(IpPacket),
-    Filtered(IpPacket),
+    IcmpError {
+        reply: IpPacket,
+        /// Identifies traffic rejected by the access policy.
+        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
+    },
 }
 
 impl ClientOnGateway {
@@ -87,6 +91,14 @@ impl ClientOnGateway {
         resolved_ips: BTreeSet<IpAddr>,
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
+        // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
+        for proxy_ip in &proxy_ips {
+            anyhow::ensure!(
+                is_dns_addr(*proxy_ip),
+                "Proxy IP {proxy_ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}"
+            );
+        }
+
         if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
@@ -186,15 +198,45 @@ impl ClientOnGateway {
             .map(|e| e.saturating_duration_since(now))
             .unwrap_or(NEVER_EXPIRES_TTL);
 
-        if let Some(existing) = self.resources.get_mut(&rid) {
-            existing.update(&resource);
-            self.resources.update_expiry(&rid, now, ttl);
-        } else {
-            self.resources
-                .insert(rid, ResourceOnGateway::new(resource), now, ttl);
+        match self.resources.get_mut(&rid) {
+            Some(existing) if existing.has_same_address(&resource) => {
+                existing.set_filters(resource.filters());
+                self.resources.update_expiry(&rid, now, ttl);
+            }
+            _ => {
+                let resource = ResourceOnGateway::new(resource);
+                self.remove_stale_translations(rid, &resource);
+                self.resources.insert(rid, resource, now, ttl);
+            }
         }
 
         self.recalculate_filters();
+    }
+
+    /// Removes `rid` from translations for domains the newly authorized resource does not cover.
+    ///
+    /// Translations outlive the authorization of their resource so that a re-authorized DNS
+    /// resource keeps working without the Client re-sending its proxy IPs. The resource ID may
+    /// however come back with a different type or address.
+    fn remove_stale_translations(&mut self, rid: ResourceId, resource: &ResourceOnGateway) {
+        for state in self.permanent_translations.values_mut() {
+            let covered = match resource {
+                ResourceOnGateway::Dns { address, .. } => {
+                    crate::dns::is_subdomain(&state.domain, address)
+                }
+                ResourceOnGateway::Cidr { .. } => false,
+                ResourceOnGateway::Internet => false,
+            };
+
+            if !covered {
+                state.resources.remove(&rid);
+            }
+        }
+
+        for _ in self
+            .permanent_translations
+            .extract_if(|_, state| state.resources.is_empty())
+        {}
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
@@ -209,7 +251,12 @@ impl ClientOnGateway {
             return;
         };
 
-        resource.update(new_description);
+        if !resource.has_same_address(new_description) {
+            tracing::warn!(rid = %new_description.id(), "Resources cannot change type or address");
+            return;
+        }
+
+        resource.set_filters(new_description.filters());
 
         self.recalculate_filters();
     }
@@ -316,60 +363,74 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
+    ) -> Result<TranslateOutboundResult> {
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
-        // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_outbound(&packet) {
-            tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
-            ));
+        if let Err(error) = self.ensure_allowed_outbound(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{error:#}");
+
+            let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
+                Some(InternetResourceRejectedAddress(_)) => {
+                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                }
+                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+            };
+
+            let no_authorization = error
+                .any_is::<NotAllowedResource>()
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                });
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply,
+                no_authorization,
+            });
         }
 
-        // Failing to transform is an error we want to know about further up.
         let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
     }
 
-    pub fn translate_inbound(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket> {
+    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(packet),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(packet),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(()),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        let packet = self.transform_tun_to_network(packet, now)?;
+        self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
+        ensure_not_peer_ip(packet.source())
+            .with_context(|| UnroutablePacket::not_allowed(packet))?;
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(packet);
+            return Ok(());
         }
 
         let rid = self
             .classify_resource(packet.source(), packet.source_protocol())
-            .with_context(|| UnroutablePacket::not_allowed(&packet))?;
+            .with_context(|| UnroutablePacket::not_allowed(packet))?;
 
         flow_tracker::record_resource(rid);
 
-        Ok(packet)
+        Ok(())
     }
 
     fn transform_network_to_tun(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
+    ) -> Result<TranslateOutboundResult> {
         let dst = packet.destination();
 
         // Packets to the TUN interface don't get transformed.
@@ -385,65 +446,73 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         };
-
-        let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
-        };
-
-        if resolved_ip.is_ipv4() != dst.is_ipv4() {
-            tracing::debug!(
-                %dst,
-                resolved = %resolved_ip,
-                "Cannot translate between IP versions"
-            );
-
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
-        }
 
         flow_tracker::record_domain(state.domain.clone());
 
-        let (source_protocol, real_ip) =
-            self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+        let existing = self
+            .nat_table
+            .try_translate_outgoing_existing(&packet, now)?;
+        let (source_protocol, real_ip) = match existing {
+            Some(existing) => existing,
+            None => {
+                let Some(resolved_ip) = state.resolved_ip else {
+                    return Ok(TranslateOutboundResult::IcmpError {
+                        reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                        no_authorization: None,
+                    });
+                };
+
+                if resolved_ip.is_ipv4() != dst.is_ipv4() {
+                    tracing::debug!(
+                        %dst,
+                        resolved = %resolved_ip,
+                        "Cannot translate between IP versions"
+                    );
+
+                    return Ok(TranslateOutboundResult::IcmpError {
+                        reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                        no_authorization: None,
+                    });
+                }
+
+                self.nat_table
+                    .translate_outgoing(&packet, resolved_ip, now)?
+            }
+        };
 
         packet
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
 
+        flow_tracker::record_translated_destination(source_protocol, real_ip);
+
         Ok(TranslateOutboundResult::Send(packet))
     }
 
-    fn transform_tun_to_network(
-        &mut self,
-        mut packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket> {
-        let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
+    fn transform_tun_to_network(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+        let (proto, ip) = match self.nat_table.translate_incoming(packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
-                let icmp_error = prototype
+                *packet = prototype
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
-                return Ok(icmp_error);
+                return Ok(());
             }
             TranslateIncomingResult::ExpiredNatSession => {
-                bail!(UnroutablePacket::expired_nat_session(&packet))
+                bail!(UnroutablePacket::expired_nat_session(packet))
             }
             TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
-                return Ok(packet);
+                return Ok(());
             }
         };
 
@@ -451,20 +520,22 @@ impl ClientOnGateway {
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
 
-        Ok(packet)
+        Ok(())
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
             return Ok(());
         }
+
+        ensure_not_peer_ip(packet.destination())?;
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
@@ -473,12 +544,12 @@ impl ClientOnGateway {
             return Ok(());
         }
         flow_tracker::record_resource(rid);
-        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid).cloned());
+        flow_tracker::record_ingest_token(self.ingest_tokens.get(&rid));
 
         Ok(())
     }
 
-    fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
+    fn ensure_client_ip(&self, ip: IpAddr) -> Result<()> {
         if !self.allowed_ips().contains(&ip) {
             return Err(anyhow::Error::new(NotClientIp(ip)));
         }
@@ -493,22 +564,36 @@ impl ClientOnGateway {
         &mut self,
         resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> anyhow::Result<ResourceId> {
-        // Note a Gateway with Internet resource should never get packets for other resources
-        if let Some(rid) = self.internet_resource_enabled
-            && !is_dns_addr(resource_ip)
-        {
-            return Ok(rid);
-        }
+    ) -> Result<ResourceId> {
+        let resource = match self.internet_resource_enabled {
+            Some(internet_resource) => match resource_ip {
+                ip if is_dns_addr(ip) => self.classify_non_internet_resource(ip, protocol)?,
+                ip if internet_resource_rejects(ip) => {
+                    bail!(InternetResourceRejectedAddress(ip))
+                }
+                // Note a Gateway with Internet resource should never get packets for other resources.
+                _ => internet_resource,
+            },
+            None => self.classify_non_internet_resource(resource_ip, protocol)?,
+        };
 
+        Ok(resource)
+    }
+
+    fn classify_non_internet_resource(
+        &mut self,
+        resource_ip: IpAddr,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> Result<ResourceId> {
         let entry = self
             .routing_table
-            .matches(resource_ip, protocol.clone())
-            .context(NotAllowedResource(resource_ip))?;
-
-        entry
-            .filter
-            .apply(protocol)
+            .matches(
+                resource_ip,
+                protocol,
+                crate::routing_table::FilterMode::Apply,
+            )
+            .context(NotAllowedResource(resource_ip))?
+            .first()
             .context(NotAllowedResource(resource_ip))?;
 
         Ok(entry.resource_id)
@@ -523,6 +608,10 @@ impl ClientOnGateway {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Internet resource rejects IP: {0}")]
+struct InternetResourceRejectedAddress(IpAddr);
+
 #[derive(Debug)]
 enum ResourceOnGateway {
     Cidr {
@@ -531,7 +620,7 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        domains: HashMap<DomainName, BTreeSet<IpAddr>, FastRandomState>,
         filters: Vec<Filter>,
     },
     Internet,
@@ -541,7 +630,7 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                domains: BTreeMap::default(),
+                domains: HashMap::default(),
                 filters: r.filters,
                 address: r.address,
             },
@@ -553,21 +642,26 @@ impl ResourceOnGateway {
         }
     }
 
-    fn update(&mut self, resource: &ResourceDescription) {
+    /// Whether `resource` is of the same type and, for DNS and CIDR resources, has the same address.
+    fn has_same_address(&self, resource: &ResourceDescription) -> bool {
         match (self, resource) {
-            (ResourceOnGateway::Cidr { filters, .. }, ResourceDescription::Cidr(new)) => {
-                *filters = new.filters.clone();
+            (ResourceOnGateway::Cidr { network, .. }, ResourceDescription::Cidr(new)) => {
+                *network == new.address
             }
-            (ResourceOnGateway::Dns { filters, .. }, ResourceDescription::Dns(new)) => {
-                *filters = new.filters.clone();
+            (ResourceOnGateway::Dns { address, .. }, ResourceDescription::Dns(new)) => {
+                *address == new.address
             }
-            (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => {
-                // No-op.
+            (ResourceOnGateway::Internet, ResourceDescription::Internet(_)) => true,
+            _ => false,
+        }
+    }
+
+    fn set_filters(&mut self, new: Vec<Filter>) {
+        match self {
+            ResourceOnGateway::Cidr { filters, .. } | ResourceOnGateway::Dns { filters, .. } => {
+                *filters = new;
             }
-            (current, new) => {
-                tracing::error!(?current, ?new, "Resources cannot change type");
-                // TODO: This could be enforced at compile-time if we had typed resource IDs.
-            }
+            ResourceOnGateway::Internet => {}
         }
     }
 
@@ -628,7 +722,7 @@ impl routing_table::RouteEntry for RouteEntry {
 #[derive(Debug)]
 struct TranslationState {
     /// Which (DNS) resources we belong to.
-    resources: BTreeSet<ResourceId>,
+    resources: HashSet<ResourceId, FastRandomState>,
     /// The IP we have resolved for the domain.
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
@@ -638,7 +732,7 @@ struct TranslationState {
 impl TranslationState {
     fn new(domain: DomainName) -> Self {
         Self {
-            resources: BTreeSet::default(),
+            resources: HashSet::default(),
             resolved_ip: None,
             domain,
         }
@@ -647,6 +741,49 @@ impl TranslationState {
 
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn internet_resource_rejects(addr: IpAddr) -> bool {
+    match addr {
+        IpAddr::V4(addr) => {
+            addr.is_private()
+                || addr.is_loopback()
+                || addr.is_link_local()
+                || is_cgnat(addr)
+                || addr.is_multicast()
+                || is_reserved(addr)
+        }
+        IpAddr::V6(addr) => {
+            addr.is_loopback()
+                || addr.to_ipv4_mapped().is_some()
+                || addr.is_unique_local()
+                || addr.is_unicast_link_local()
+                || addr.is_multicast()
+        }
+    }
+}
+
+fn is_cgnat(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [100, 64..=127, _, _])
+}
+
+fn is_reserved(addr: Ipv4Addr) -> bool {
+    matches!(addr.octets(), [240..=255, _, _, _])
+}
+
+/// Rejects addresses within Firezone's tunnel range.
+///
+/// A Client's counterpart is always a resource or this Gateway's own TUN device, never
+/// another Client. Admitting a tunnel address here would let the Internet Resource's
+/// catch-all in [`ClientOnGateway::classify_resource`] carry traffic between two Clients
+/// of this Gateway, hair-pinning through the TUN device and side-stepping the device pool
+/// authorization that governs Client-to-Client access.
+fn ensure_not_peer_ip(ip: IpAddr) -> Result<()> {
+    if crate::is_peer(ip) {
+        return Err(anyhow::Error::new(NotAllowedResource(ip)));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -678,10 +815,7 @@ mod tests {
                 id: foo_resource_id(),
                 address: cidr_v4_resource().into(),
                 name: "cidr1".to_owned(),
-                filters: vec![Filter::Tcp(PortRange {
-                    port_range_start: 20,
-                    port_range_end: 100,
-                })],
+                filters: vec![Filter::Tcp(PortRange::new(20, 100).unwrap())],
             }),
             Some(then),
             now,
@@ -691,10 +825,7 @@ mod tests {
                 id: bar_resource_id(),
                 address: cidr_v4_resource().into(),
                 name: "cidr2".to_owned(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_start: 20,
-                    port_range_end: 100,
-                })],
+                filters: vec![Filter::Udp(PortRange::new(20, 100).unwrap())],
             }),
             Some(after_then),
             now,
@@ -787,7 +918,7 @@ mod tests {
         )
         .unwrap();
 
-        let response = ip_packet::make::tcp_packet(
+        let mut response = ip_packet::make::tcp_packet(
             gateway_tun_ipv4(),
             client_tun_ipv4(),
             80,
@@ -801,7 +932,8 @@ mod tests {
             peer.translate_outbound(request, Instant::now()).unwrap(),
             TranslateOutboundResult::Send(_)
         ));
-        peer.translate_inbound(response, Instant::now()).unwrap();
+        peer.translate_inbound(&mut response, Instant::now())
+            .unwrap();
     }
 
     #[test]
@@ -841,7 +973,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -855,7 +987,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -905,7 +1037,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -918,6 +1050,51 @@ mod tests {
         .unwrap();
 
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn internet_resource_does_not_allow_traffic_to_another_client() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(internet_resource(), None, Instant::now());
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            other_client_tun_ipv4(),
+            5401,
+            80,
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(request, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError { .. }
+        ));
+    }
+
+    #[test]
+    fn internet_resource_does_not_allow_traffic_from_another_client() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(internet_resource(), None, now);
+
+        let mut hairpinned = ip_packet::make::udp_packet(
+            other_client_tun_ipv4(),
+            client_tun_ipv4(),
+            80,
+            5401,
+            &[0u8; 8],
+        )
+        .unwrap();
+
+        #[expect(clippy::disallowed_methods, reason = "This is a test.")]
+        let error = peer
+            .translate_inbound(&mut hairpinned, now)
+            .unwrap_err()
+            .downcast::<UnroutablePacket>()
+            .unwrap();
+
+        assert_eq!(error.reason(), RoutingError::NotAllowed);
     }
 
     #[test]
@@ -950,7 +1127,7 @@ mod tests {
             Ok(TranslateOutboundResult::Send(_))
         ));
 
-        let response = ip_packet::make::udp_packet(
+        let mut response = ip_packet::make::udp_packet(
             foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
@@ -962,9 +1139,9 @@ mod tests {
         now += Duration::from_secs(30);
         peer.handle_timeout(now);
 
-        peer.translate_inbound(response, now).unwrap();
+        peer.translate_inbound(&mut response, now).unwrap();
 
-        let response = ip_packet::make::udp_packet(
+        let mut response = ip_packet::make::udp_packet(
             foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
@@ -978,7 +1155,7 @@ mod tests {
 
         #[expect(clippy::disallowed_methods, reason = "This is a test.")]
         let err = peer
-            .translate_inbound(response, now)
+            .translate_inbound(&mut response, now)
             .unwrap_err()
             .downcast::<UnroutablePacket>()
             .unwrap();
@@ -1028,7 +1205,7 @@ mod tests {
 
             assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
-            let response = ip_packet::make::udp_packet(
+            let mut response = ip_packet::make::udp_packet(
                 foo_real_ip1(),
                 client_tun_ipv4(),
                 foo_allowed_port(),
@@ -1037,7 +1214,7 @@ mod tests {
             )
             .unwrap();
 
-            peer.translate_inbound(response, now).unwrap();
+            peer.translate_inbound(&mut response, now).unwrap();
         }
 
         {
@@ -1062,7 +1239,7 @@ mod tests {
                 "Request with a new source port should use new IP"
             );
 
-            let response = ip_packet::make::udp_packet(
+            let mut response = ip_packet::make::udp_packet(
                 foo_real_ip2(),
                 client_tun_ipv4(),
                 foo_allowed_port(),
@@ -1071,7 +1248,7 @@ mod tests {
             )
             .unwrap();
 
-            peer.translate_inbound(response, now).unwrap();
+            peer.translate_inbound(&mut response, now).unwrap();
         }
     }
 
@@ -1152,7 +1329,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::DestinationUnreachable(packet) =
+        let TranslateOutboundResult::IcmpError { reply: packet, .. } =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")
@@ -1245,6 +1422,32 @@ mod tests {
     }
 
     #[test]
+    fn rejects_proxy_ips_outside_reserved_ranges() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+
+        let bad_ips = [
+            "1.1.1.1",              // Public internet.
+            "100.64.0.1",           // CG-NAT but reserved for Client tunnel IPs.
+            "2606:4700:4700::1111", // Public internet.
+            "fd00:2021:1111::1",    // Reserved for Client tunnel IPs.
+        ];
+
+        for bad_ip in bad_ips {
+            let result = peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                BTreeSet::from([proxy_ip4_1(), bad_ip.parse().unwrap()]),
+            );
+
+            assert!(result.is_err(), "{bad_ip} should be rejected as proxy IP");
+        }
+
+        assert!(peer.permanent_translations.is_empty());
+    }
+
+    #[test]
     fn no_translate_outbound_icmp_error() {
         let _guard = logging::test("trace");
 
@@ -1273,10 +1476,7 @@ mod tests {
                 id: foo_resource_id(),
                 address: foo_name(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_end: foo_allowed_port(),
-                    port_range_start: foo_allowed_port(),
-                })],
+                filters: vec![Filter::Udp(PortRange::single(foo_allowed_port()))],
             },
         )
     }
@@ -1287,10 +1487,7 @@ mod tests {
                 id: foo_resource2_id(),
                 address: foo_name(),
                 name: "foo2".to_string(),
-                filters: vec![Filter::Tcp(PortRange {
-                    port_range_end: foo_allowed_port2(),
-                    port_range_start: foo_allowed_port2(),
-                })],
+                filters: vec![Filter::Tcp(PortRange::single(foo_allowed_port2()))],
             },
         )
     }
@@ -1312,10 +1509,7 @@ mod tests {
                 id: bar_resource_id(),
                 address: bar_address(),
                 name: "foo".to_string(),
-                filters: vec![Filter::Udp(PortRange {
-                    port_range_end: bar_allowed_port(),
-                    port_range_start: bar_allowed_port(),
-                })],
+                filters: vec![Filter::Udp(PortRange::single(bar_allowed_port()))],
             },
         )
     }
@@ -1397,6 +1591,10 @@ mod tests {
 
     fn client_tun_ipv6() -> Ipv6Addr {
         "fd00:2021:1111::1".parse().unwrap()
+    }
+
+    fn other_client_tun_ipv4() -> Ipv4Addr {
+        "100.64.0.3".parse().unwrap()
     }
 
     pub fn gateway_tun() -> IpConfig {
@@ -1819,12 +2017,8 @@ mod proptests {
         filters
             .into_iter()
             .filter_map(|f| match (f, protocol) {
-                (Filter::Udp(inner), ProtocolKind::Udp) => {
-                    Some(inner.port_range_start..=inner.port_range_end)
-                }
-                (Filter::Tcp(inner), ProtocolKind::Tcp) => {
-                    Some(inner.port_range_start..=inner.port_range_end)
-                }
+                (Filter::Udp(inner), ProtocolKind::Udp) => Some(inner.start()..=inner.end()),
+                (Filter::Tcp(inner), ProtocolKind::Tcp) => Some(inner.start()..=inner.end()),
                 (_, _) => None,
             })
             .collect::<RangeInclusiveSet<u16>>()
@@ -1834,16 +2028,12 @@ mod proptests {
 
     fn protocol_from_filter(f: Filter) -> impl Strategy<Value = Protocol> {
         match f {
-            Filter::Udp(PortRange {
-                port_range_end,
-                port_range_start,
-            }) => (port_range_start..=port_range_end)
+            Filter::Udp(range) => range
+                .to_range()
                 .prop_map(|dport| Protocol::Udp { dport })
                 .boxed(),
-            Filter::Tcp(PortRange {
-                port_range_end,
-                port_range_start,
-            }) => (port_range_start..=port_range_end)
+            Filter::Tcp(range) => range
+                .to_range()
                 .prop_map(|dport| Protocol::Tcp { dport })
                 .boxed(),
             Filter::Icmp => Just(Protocol::Icmp).boxed(),
@@ -1901,12 +2091,8 @@ mod proptests {
     }
 
     fn port_range() -> impl Strategy<Value = PortRange> {
-        any::<u16>().prop_flat_map(|s| {
-            (s..=u16::MAX).prop_map(move |d| PortRange {
-                port_range_start: s,
-                port_range_end: d,
-            })
-        })
+        any::<u16>()
+            .prop_flat_map(|s| (s..=u16::MAX).prop_map(move |d| PortRange::new(s, d).unwrap()))
     }
 
     fn supernet(ip: IpNetwork) -> Option<IpNetwork> {
@@ -1951,14 +2137,8 @@ mod proptests {
 
         fn into_filter(self, range: RangeInclusive<u16>) -> Filter {
             match self {
-                ProtocolKind::Tcp => Filter::Tcp(PortRange {
-                    port_range_start: *range.start(),
-                    port_range_end: *range.end(),
-                }),
-                ProtocolKind::Udp => Filter::Udp(PortRange {
-                    port_range_start: *range.start(),
-                    port_range_end: *range.end(),
-                }),
+                ProtocolKind::Tcp => Filter::Tcp(range.try_into().unwrap()),
+                ProtocolKind::Udp => Filter::Udp(range.try_into().unwrap()),
                 ProtocolKind::Icmp => Filter::Icmp,
             }
         }

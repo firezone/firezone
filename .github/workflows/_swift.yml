@@ -2,22 +2,45 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild even if this release is locked for store review
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || format('apple-ci-{0}', github.run_id) }}
+  cancel-in-progress: false
 
 jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      build_number: ${{ steps.release-metadata.outputs.build_number }}
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.5.19
+      RELEASE_NAME: apple-client-1.5.24
     steps:
-      - uses: release-drafter/release-drafter@4d75298e00d9e34c483e5ff8c68d0ea1c1940c1e # v7.5.1
+      - name: Set release metadata
+        id: release-metadata
+        run: |
+          echo "build_number=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+      - name: Check the release can be rebuilt
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && !inputs.force_rebuild
+        uses: ./.github/actions/check-release-review-lock
+        with:
+          release-name: ${{ env.RELEASE_NAME }}
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
-          config-name: release-drafter-macos-client.yml
+          config-name: release-drafter-apple-client.yml
           tag: ${{ env.RELEASE_NAME}}
           version: ${{ env.RELEASE_NAME}}
           name: ${{ env.RELEASE_NAME}}
@@ -41,7 +64,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: mise run //swift/apple:test-coverage
       - name: Upload coverage to Coveralls
-        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
           # The macOS runner installs the reporter from the coverallsapp/coveralls
           # Homebrew tap, which Homebrew 6.0.0 refuses to load unless trusted.
@@ -52,6 +75,215 @@ jobs:
           flag-name: swift-test
           parallel: true
           fail-on-error: false
+
+  # The same build runs on every macOS release, so the app and its UI tests are built
+  # once here and run on each release in parallel below.
+  build-macos-ui-tests:
+    # A release dispatch from main only needs the builds, not the UI tests.
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/restore-xcode-build
+        id: xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: macos
+      - name: Build the macOS app and its UI tests
+        # The runner context only exists at step level.
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+        run: mise run //swift/apple:build-macos-ui-tests
+      # Packed because the artifact store drops the executable bits the app and
+      # the test runner need.
+      - name: Pack the test products
+        run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/macos-ui-tests-build.tar" Products
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-ui-tests-build
+          path: ${{ runner.temp }}/macos-ui-tests-build.tar
+          retention-days: 1
+      # Only `main` writes, so a pull request cannot evict what every run reads.
+      # `success()` is spelled out because naming a condition replaces the
+      # implicit one.
+      - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ steps.xcode-build.outputs.key }}
+
+  # Runs the UI tests against the mocked backend (see MockTunnel.swift) and hands the
+  # screens they photograph to commit-screenshots. Nothing is compared against a
+  # reference.
+  # SwiftUI lays a window out with the macOS release it runs on rather than the
+  # SDK it was built with, so the screens are drawn on every release CI can run.
+  macos-ui-tests:
+    name: macos-${{ matrix.release }}-ui-tests
+    needs: build-macos-ui-tests
+    # Only a pull request has a diff to put the screens in.
+    if: github.ref_name != 'main'
+    runs-on: macos-${{ matrix.release }}
+    strategy:
+      fail-fast: false
+      matrix:
+        release: [26, 15]
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      # GPU blend rounding differs between Apple chip generations, so a pixel wobble
+      # can be traced to the chip that drew it.
+      - name: Name the hardware under the VM
+        run: |
+          sw_vers -productVersion
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
+      # The wallpaper shows through the window corners, and macOS shifts it over the day.
+      - name: Pin what is behind the windows
+        run: |
+          defaults -currentHost write com.apple.screensaver idleTime -int 0
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+
+          osascript -e "tell application \"System Events\" to tell every desktop \
+            to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
+            || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-ui-tests-build
+          path: ${{ runner.temp }}
+      - name: Unpack the test products
+        run: |
+          mkdir -p "${RUNNER_TEMP}/DerivedData/Build"
+          tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/macos-ui-tests-build.tar"
+      - name: Run the macOS UI tests
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE_DIR: ${{ runner.temp }}
+        run: mise run //swift/apple:macos-ui-tests
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-${{ matrix.release }}-screenshots
+          path: swift/apple/screenshots/macos/${{ matrix.release }}
+      # The result bundles hold XCUITest's own failure screenshots and logs.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: macos-${{ matrix.release }}-ui-tests-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
+
+  # The app target embeds the tunnel extension, which compiles connlib, and the
+  # same simulator build runs on every device. So the app and its UI tests are built
+  # once here and run on each simulator in parallel below.
+  build-ios-ui-tests:
+    # A release dispatch from main only needs the builds, not the UI tests.
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/restore-xcode-build
+        id: xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ios
+      - name: Build the iOS app and its UI tests
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+        run: mise run //swift/apple:build-ios-ui-tests
+      # Packed because the artifact store drops the executable bits the app and
+      # the test runner need.
+      - name: Pack the test products
+        run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/ios-ui-tests-build.tar" Products
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-ui-tests-build
+          path: ${{ runner.temp }}/ios-ui-tests-build.tar
+          retention-days: 1
+      - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ steps.xcode-build.outputs.key }}
+
+  ios-ui-tests:
+    name: ios-${{ matrix.device }}-ui-tests
+    needs: build-ios-ui-tests
+    # Only a pull request has a diff to put the screens in.
+    if: github.ref_name != 'main'
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iphone
+            simulator: iPhone 17 Pro Max
+          - device: ipad
+            simulator: iPad Pro 13-inch (M5)
+    env:
+      XCODE_VERSION: "26.2"
+      SIMULATOR_NAME: ${{ matrix.simulator }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - name: Name the hardware under the VM
+        run: |
+          sw_vers -productVersion
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ios-ui-tests-build
+          path: ${{ runner.temp }}
+      - name: Unpack the test products
+        run: |
+          mkdir -p "${RUNNER_TEMP}/DerivedData/Build"
+          tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/ios-ui-tests-build.tar"
+      - name: Boot the simulator
+        run: mise run //swift/apple:boot-simulator
+      - name: Run the ${{ matrix.device }} UI tests
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE_DIR: ${{ runner.temp }}
+        run: mise run //swift/apple:ios-ui-tests
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-${{ matrix.device }}-screenshots
+          path: swift/apple/screenshots/ios/${{ matrix.device }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: ios-${{ matrix.device }}-ui-tests-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
     runs-on: macos-26
@@ -90,8 +322,11 @@ jobs:
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
-            artifact-file: "Firezone.ipa"
+            # mark:next-apple-version
+            artifact-file: "firezone-ios-client-1.5.24.ipa"
             platform: iOS
+            # mark:next-apple-version
+            release-name: apple-client-1.5.24
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -105,11 +340,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.19.dmg"
+            artifact-file: "firezone-macos-client-1.5.24.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.19.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.24.pkg"
             # mark:next-apple-version
-            release-name: macos-client-1.5.19
+            release-name: apple-client-1.5.24
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -144,22 +379,34 @@ jobs:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
+          FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
+          BUILD_NUMBER: "${{ needs.update-release-draft.outputs.build_number }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
+      - name: Preserve the App Store package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'workflow_dispatch' && matrix.job_name != 'build-macos-standalone'
+        with:
+          name: ${{ matrix.job_name }}-package
+          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          if-no-files-found: error
+          retention-days: 90
       - name: Upload .dmg artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-dmg
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          retention-days: 7
       - name: Upload .pkg artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-pkg
           path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
+          retention-days: 7
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || matrix.job_name != 'build-macos-standalone') }}"
         env:
@@ -181,9 +428,17 @@ jobs:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
           PLATFORM: "${{ matrix.platform }}"
+      # The App Store IPA is also attached to the release so admins can verify the exact binary we shipped.
+      - name: Upload .ipa to the GitHub release
+        run: scripts/upload/github-release.sh
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name == 'build-ios' }}"
+        env:
+          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          RELEASE_NAME: "${{ matrix.release-name }}"
       - name: Setup sentry CLI
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        uses: matbour/setup-sentry-cli@ff4fff773f5e628fa214ebd19e46fb7289454ee2 #v3.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc

@@ -4,6 +4,7 @@ defmodule Portal.Cache.Cacheable.Policy do
     :resource_id,
     :group_id,
     :conditions,
+    :postures,
     :flow_log_uploads_enabled
   ]
 
@@ -13,7 +14,8 @@ defmodule Portal.Cache.Cacheable.Policy do
             | :remote_ip
             | :provider_id
             | :current_utc_datetime
-            | :client_verified,
+            | :client_verified
+            | :device_attested,
           operator:
             :contains
             | :does_not_contain
@@ -31,6 +33,7 @@ defmodule Portal.Cache.Cacheable.Policy do
           resource_id: Portal.Cache.Cacheable.uuid_binary(),
           group_id: Portal.Cache.Cacheable.uuid_binary() | nil,
           conditions: [condition()],
+          postures: Portal.Policies.Postures.t() | nil,
           flow_log_uploads_enabled: boolean()
         }
 end

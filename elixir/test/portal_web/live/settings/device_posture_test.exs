@@ -1,0 +1,1718 @@
+defmodule PortalWeb.Settings.DevicePostureTest do
+  use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
+
+  import Portal.ActorFixtures
+  import Portal.DevicePostureFixtures
+  import Portal.IntuneFixtures
+  import Portal.IruFixtures
+  import Portal.DefenderFixtures
+  import Portal.SantaFixtures
+  import Portal.SentinelOneFixtures
+
+  setup do
+    Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+      recipient: "feedback@example.com"
+    )
+
+    account = device_posture_account_fixture()
+    actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
+
+  defp reload(provider) do
+    provider.__struct__
+    |> Portal.Repo.get_by!(account_id: provider.account_id, id: provider.id)
+    |> Map.put(:name, provider_name(provider))
+  end
+
+  # The name lives on the shared posture_providers row.
+  defp provider_name(provider) do
+    Portal.Repo.get_by!(Portal.PostureProvider,
+      account_id: provider.account_id,
+      id: provider.id
+    ).name
+  end
+
+  defp reverify(lv, tenant_id) do
+    if has_element?(lv, "button[phx-click=reset_verification]") do
+      lv |> element("button[phx-click=reset_verification]") |> render_click()
+    end
+
+    lv |> element("#provider-verification-button") |> render_click()
+    assert_push_event(lv, "open_url", %{url: url})
+
+    state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+    {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+    # The OIDC controller consumes the pending verifier before the callback
+    # completes, which is what promotes it to the active verification.
+    send(lv.pid, {:get_pending_verification, self()})
+    assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+    ack_ref = make_ref()
+
+    send(lv.pid, {:intune_posture_provider_complete, tenant_id, ref, {self(), ack_ref}})
+    assert_receive {:verification_ack, ^ack_ref}
+
+    lv
+  end
+
+  describe "device_posture feature gate" do
+    test "shows the settings tab without the account feature", %{
+      conn: conn
+    } do
+      account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "settings/device_posture"
+      assert html =~ "Device Posture"
+    end
+
+    test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
+      account = Portal.AccountFixtures.account_fixture()
+      actor = Portal.ActorFixtures.admin_actor_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      assert html =~ "Upgrade to Unlock"
+      assert html =~ "Device Posture"
+      assert html =~
+               "Restrict access to resources based on device telemetry provided by MDM and EDR solutions"
+
+      assert html =~ "settings/device_posture"
+      refute html =~ "Add posture provider"
+
+      # The slide-over cannot be opened from the splash.
+      assert lv
+             |> render_patch(~p"/#{account}/settings/device_posture/intune/new")
+             |> Kernel.=~("Upgrade to Unlock")
+    end
+
+    test "refuses to write when the feature is switched off mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      disable_device_posture(account)
+
+      render_click(lv, "toggle", %{"id" => provider.id})
+
+      refute Portal.Repo.get_by!(Portal.Intune.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).is_disabled
+    end
+  end
+
+  test "loads the providers only after the socket connects", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_conn(conn, actor)
+
+    static = conn |> get(~p"/#{account}/settings/device_posture") |> html_response(200)
+    assert static =~ ~s(id="providers-skeleton")
+    refute static =~ "No posture providers yet"
+
+    {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/device_posture")
+    assert html =~ "No posture providers yet"
+    refute html =~ ~s(id="providers-skeleton")
+  end
+
+  test "renders the empty provider settings page", %{conn: conn, account: account, actor: actor} do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture")
+
+    assert html =~ "Device Posture"
+    assert html =~ "No posture providers yet"
+    assert html =~ "Add posture provider"
+    refute html =~ "Upgrade to Unlock"
+  end
+
+  test "shows coming-soon posture providers with their logos", context do
+    {:ok, lv, html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    for provider <- [
+          "CrowdStrike Falcon",
+          "Jamf Pro",
+          "Workspace ONE",
+          "Mosyle",
+          "Other"
+        ] do
+      assert html =~ provider
+    end
+
+    refute html =~ "Coming soon"
+
+    assert has_element?(lv, ~s(img[src="/images/logo-crowdstrike.svg"]))
+    refute has_element?(lv, "#register-interest-sophos")
+    assert has_element?(lv, ~s(img[src="/images/logo-jamf.svg"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-workspace-one-uem.png"]))
+    assert has_element?(lv, ~s(img[src="/images/logo-mosyle.svg"]))
+    assert has_element?(lv, "#register-interest-other .ri-apps-2-add-line")
+  end
+
+  for address <- [nil, "", "   "] do
+    @feedback_address address
+    test "disables interest and feedback when the address is #{inspect(address)}", context do
+      Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+        recipient: @feedback_address
+      )
+
+      {:ok, lv, _html} =
+        context.conn
+        |> authorize_conn(context.actor)
+        |> live(~p"/#{context.account}/settings/device_posture/new")
+
+      assert has_element?(lv, "#register-interest-crowdstrike[disabled]")
+      render_hook(lv, "register_interest", %{"provider" => "crowdstrike"})
+      render_hook(lv, "submit_interest_feedback", %{"feedback" => %{"message" => "Test"}})
+
+      refute has_element?(lv, "#posture-provider-interest")
+      refute has_element?(lv, "#posture-provider-feedback-form")
+      refute_email_sent()
+    end
+  end
+
+  test "registers interest and sends follow-up feedback", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    html =
+      lv
+      |> element("#register-interest-crowdstrike")
+      |> render_click()
+
+    assert html =~ "This provider is coming soon!"
+
+    assert html =~
+             "We&#39;ve registered your interest in CrowdStrike Falcon support in Firezone."
+
+    assert_email_sent(fn email ->
+      assert email.to == [{"", "feedback@example.com"}]
+      assert email.subject == "Posture Provider interest"
+      assert email.text_body =~ "Actor ID: #{context.actor.id}"
+      assert email.text_body =~ "Account ID: #{context.account.id}"
+      assert email.text_body =~ "Provider: CrowdStrike Falcon"
+      refute email.text_body =~ "Feedback:"
+      true
+    end)
+
+    html =
+      lv
+      |> form("#posture-provider-feedback-form",
+        feedback: %{message: "We need risk score and active threat posture."}
+      )
+      |> render_submit()
+
+    assert html =~ "Thanks for your feedback!"
+    refute html =~ "Send feedback"
+
+    assert_email_sent(fn email ->
+      assert email.to == [{"", "feedback@example.com"}]
+      assert email.subject == "Posture Provider interest"
+      assert email.text_body =~ "Actor ID: #{context.actor.id}"
+      assert email.text_body =~ "Account ID: #{context.account.id}"
+      assert email.text_body =~ "Provider: CrowdStrike Falcon"
+      assert email.text_body =~ "Feedback:\nWe need risk score and active threat posture."
+      true
+    end)
+  end
+
+  test "requires non-empty interest feedback", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    lv |> element("#register-interest-other") |> render_click()
+
+    html =
+      lv
+      |> form("#posture-provider-feedback-form", feedback: %{message: "   "})
+      |> render_submit()
+
+    assert html =~ "Please enter your feedback."
+    refute html =~ "Thanks for your feedback!"
+  end
+
+  test "rejects malformed interest feedback without crashing", context do
+    {:ok, lv, _html} =
+      context.conn
+      |> authorize_conn(context.actor)
+      |> live(~p"/#{context.account}/settings/device_posture/new")
+
+    lv |> element("#register-interest-other") |> render_click()
+
+    for params <- [
+          %{},
+          %{"feedback" => %{}},
+          %{"feedback" => %{"message" => nil}},
+          %{"feedback" => %{"message" => 42}}
+        ] do
+      html = render_hook(lv, "submit_interest_feedback", params)
+
+      assert html =~ "Please enter your feedback."
+      refute html =~ "Thanks for your feedback!"
+    end
+  end
+
+  test "counts the synced devices per provider", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = intune_posture_provider_fixture(account: account)
+
+    for state <- ~w[compliant compliant noncompliant inGracePeriod unknown] do
+      intune_device_fixture(provider: provider, compliance_state: state)
+    end
+
+    intune_device_fixture(compliance_state: "compliant")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture")
+
+    assert render(lv) =~ ~r/tabular-nums">\s*5\s*<\/td>/
+  end
+
+  test "uses the signed Microsoft consent flow and creates the verified provider", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+    assert has_element?(
+             lv,
+             "#provider-verification.p-4.border.border-border.bg-raised.rounded"
+           )
+    assert has_element?(lv, "#provider-verification-open-url[phx-hook=OpenURL]")
+
+    assert has_element?(
+             lv,
+             "#provider-verification-button[phx-click=start_verification]",
+             "Verify Now"
+           )
+
+    assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
+
+    lv |> element("#provider-verification-button") |> render_click()
+    assert_push_event(lv, "open_url", %{url: url})
+    assert has_element?(lv, "#provider-verification-open-url button[disabled]", "Verifying...")
+
+    state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+    assert {:ok,
+            %{
+              type: "intune-posture-provider",
+              verification_ref: verification_ref
+            }} = PortalWeb.OIDC.verify_verification_state(state)
+
+    send(lv.pid, {:get_pending_verification, self()})
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
+    ack_ref = make_ref()
+
+    send(
+      lv.pid,
+      {:intune_posture_provider_complete, "tenant-123", verification_ref, {self(), ack_ref}}
+    )
+
+    assert_receive {:verification_ack, ^ack_ref}
+    assert render(lv) =~ "tenant-123"
+    assert has_element?(lv, "#provider-verification-status", "Verified")
+    assert has_element?(lv, "#provider-tenant-id", "tenant-123")
+    assert has_element?(lv, "button[phx-click=reset_verification]", "Reset verification")
+
+    lv
+    |> form("#device-posture-form", provider: %{name: "Corporate Intune"})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+    provider = Portal.Repo.get_by!(Portal.Intune.PostureProvider, account_id: account.id)
+    assert provider_name(provider) == "Corporate Intune"
+    assert provider.tenant_id == "tenant-123"
+    assert provider.is_verified
+  end
+
+  describe "sync action" do
+    test "queues a sync for a provider in the caller's account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      render_click(lv, "sync", %{"id" => provider.id})
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses to queue a sync for another account's provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_account = device_posture_account_fixture()
+      other_provider = intune_posture_provider_fixture(account: other_account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      render_click(lv, "sync", %{"id" => other_provider.id})
+
+      refute_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{
+          "account_id" => other_provider.account_id,
+          "posture_provider_id" => other_provider.id
+        }
+      )
+
+      refute_enqueued(worker: Portal.Intune.Sync)
+    end
+
+    test "refuses to queue a sync when the feature is switched off mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      disable_device_posture(account)
+
+      render_click(lv, "sync", %{"id" => provider.id})
+
+      refute_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
+      )
+    end
+  end
+
+  describe "recovering from a sync error" do
+    setup %{account: account} do
+      provider =
+        intune_posture_provider_fixture(
+          account: account,
+          is_disabled: true,
+          is_verified: false,
+          disabled_reason: "Sync error",
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now(),
+          error_email_count: 2
+        )
+
+      %{provider: provider}
+    end
+
+    test "refuses to enable a provider that is not verified", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      provider: provider
+    } do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      assert render_click(lv, "toggle", %{"id" => provider.id}) =~
+               "must be verified before enabling"
+
+      assert reload(provider).is_disabled
+    end
+
+    test "clears the error state when a verified provider is enabled", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      provider: provider
+    } do
+      provider
+      |> Ecto.Changeset.change(is_verified: true)
+      |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      render_click(lv, "toggle", %{"id" => provider.id})
+
+      provider = reload(provider)
+      refute provider.is_disabled
+      refute provider.disabled_reason
+      refute provider.error_message
+      refute provider.errored_at
+      assert provider.error_email_count == 0
+    end
+  end
+
+  describe "stale socket state" do
+    test "refuses writes after the account is downgraded mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      # The socket keeps the account it mounted with, so the downgrade is only
+      # visible to a write path that re-reads it.
+      account
+      |> Ecto.Changeset.change(features: %Portal.Accounts.Features{device_posture: false})
+      |> Portal.Repo.update!()
+
+      render_click(lv, "toggle", %{"id" => provider.id})
+
+      refute reload(provider).is_disabled
+    end
+
+    test "survives a verification that lands after the panel closed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      render_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      # The callback consumes the pending verifier only if it outlived the panel.
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, nil}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:intune_posture_provider_complete, "tenant-123", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      assert render(lv) =~ "Device Posture"
+    end
+  end
+
+  describe "reverifying after a sync error" do
+    setup %{conn: conn, account: account, actor: actor} do
+      provider =
+        intune_posture_provider_fixture(
+          account: account,
+          is_disabled: true,
+          is_verified: false,
+          disabled_reason: "Sync error",
+          error_message: "403 - Forbidden",
+          errored_at: DateTime.utc_now(),
+          error_email_count: 2
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+      %{provider: provider, lv: lv}
+    end
+
+    test "enables the provider and clears the error state", %{
+      lv: lv,
+      provider: provider
+    } do
+      reverify(lv, "tenant-123")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: provider.name})
+      |> render_submit()
+
+      provider = reload(provider)
+      assert provider.is_verified
+      refute provider.is_disabled
+      refute provider.disabled_reason
+      refute provider.error_message
+      refute provider.errored_at
+      assert provider.error_email_count == 0
+    end
+
+    test "queues a sync so the stale inventory is refreshed", %{
+      lv: lv,
+      provider: provider
+    } do
+      reverify(lv, provider.tenant_id)
+
+      lv
+      |> form("#device-posture-form", provider: %{name: provider.name})
+      |> render_submit()
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{
+          "account_id" => provider.account_id,
+          "posture_provider_id" => provider.id
+        }
+      )
+    end
+  end
+
+  test "reverifying does not re-enable a provider an admin disabled", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider =
+      intune_posture_provider_fixture(
+        account: account,
+        is_disabled: true,
+        is_verified: false,
+        disabled_reason: "Disabled by admin"
+      )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+    reverify(lv, "tenant-123")
+
+    lv
+    |> form("#device-posture-form", provider: %{name: provider.name})
+    |> render_submit()
+
+    provider = reload(provider)
+    assert provider.is_verified
+    assert provider.is_disabled
+    assert provider.disabled_reason == "Disabled by admin"
+  end
+
+  describe "editing a provider" do
+    test "queues a sync when the verified tenant changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+      lv |> element("button[phx-click=reset_verification]") |> render_click()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+
+      send(lv.pid, {:intune_posture_provider_complete, "new-tenant", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#device-posture-form", provider: %{name: provider.name})
+      |> render_submit()
+
+      assert reload(provider).tenant_id == "new-tenant"
+
+      assert_enqueued(
+        worker: Portal.Intune.Sync,
+        args: %{
+          "account_id" => provider.account_id,
+          "posture_provider_id" => provider.id
+        }
+      )
+    end
+
+    test "does not queue a sync when the tenant is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Renamed"})
+      |> render_submit()
+
+      assert reload(provider).name == "Renamed"
+      refute_enqueued(worker: Portal.Intune.Sync)
+    end
+  end
+
+  test "surfaces a changeset error when the tenant is already connected", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+    reverify(lv, "tenant-123")
+
+    # Another admin connected the same tenant while this panel was open.
+    intune_posture_provider_fixture(account: account, tenant_id: "tenant-123")
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{name: "Corporate Intune"})
+      |> render_submit()
+
+    assert html =~ "This Intune tenant is already connected."
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 1
+  end
+
+  test "refuses a name another provider of the account already uses", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    iru_posture_provider_fixture(account: account, name: "Corporate")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+    reverify(lv, "tenant-123")
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{name: "Corporate"})
+      |> render_submit()
+
+    assert html =~ "A posture provider with this name already exists."
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 1
+  end
+
+  test "refuses to rename a provider onto a name already in use", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    iru_posture_provider_fixture(account: account, name: "Corporate")
+    provider = intune_posture_provider_fixture(account: account, name: "Contoso")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{name: "Corporate"})
+      |> render_submit()
+
+    assert html =~ "A posture provider with this name already exists."
+    assert provider_name(provider) == "Contoso"
+  end
+
+  test "connects a second provider of the same type", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    intune_posture_provider_fixture(account: account, tenant_id: "first-tenant")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+    reverify(lv, "second-tenant")
+
+    lv
+    |> form("#device-posture-form", provider: %{name: "Second Intune"})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
+    assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 2
+  end
+
+  describe "deleting a provider" do
+    defp policy_with_postures(account, wire) do
+      {:ok, postures} = Portal.Policies.Postures.cast(wire)
+
+      Portal.PolicyFixtures.policy_fixture(account: account)
+      |> Ecto.Changeset.change(postures: postures)
+      |> Portal.Repo.update!()
+    end
+
+    defp request_delete(conn, actor, account, provider) do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+    end
+
+    test "deletes a provider from the row actions after confirming", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      refute has_element?(lv, "button[phx-click=delete]")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      assert render(lv) =~ "Delete this provider and all devices synced from it?"
+
+      html =
+        lv
+        |> element("button[phx-click=delete][phx-value-id='#{provider.id}']")
+        |> render_click()
+
+      assert html =~ "Posture provider deleted."
+      refute Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "warns how many policies use the type when deleting its last enabled provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_posture_provider_fixture(account: account, is_disabled: true)
+
+      policy_with_postures(account, %{
+        "not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+      })
+
+      policy_with_postures(account, %{
+        "or" => [
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
+          %{"field" => "iru.agent_installed", "op" => "is", "value" => true}
+        ]
+      })
+
+      policy_with_postures(account, %{"field" => "iru.agent_installed", "op" => "is", "value" => true})
+      Portal.PolicyFixtures.policy_fixture(account: account)
+
+      lv = request_delete(conn, actor, account, provider)
+
+      assert has_element?(
+               lv,
+               "#provider-#{provider.id}-policy-warning",
+               "2 policies use Microsoft Intune posture rules and will need to be updated."
+             )
+    end
+
+    test "does not warn while another enabled provider of the type remains", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_posture_provider_fixture(account: account)
+
+      policy_with_postures(account, %{
+        "field" => "intune.compliance_state",
+        "op" => "is",
+        "value" => "compliant"
+      })
+
+      lv = request_delete(conn, actor, account, provider)
+
+      assert render(lv) =~ "Delete this provider and all devices synced from it?"
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
+    end
+
+    test "does not warn when no policy uses the type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+      policy_with_postures(account, %{"field" => "iru.agent_installed", "op" => "is", "value" => true})
+
+      lv = request_delete(conn, actor, account, provider)
+
+      refute has_element?(lv, "#provider-#{provider.id}-policy-warning")
+    end
+
+    test "cancelling the confirmation keeps the provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      lv
+      |> element("button[phx-click=toggle_provider_actions][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv
+      |> element("button[phx-click=request_confirm][phx-value-id='#{provider.id}']")
+      |> render_click()
+
+      lv |> element("button[phx-click=cancel_confirm]") |> render_click()
+
+      refute has_element?(lv, "button[phx-click=delete]")
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "refuses to delete another account's provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_account = device_posture_account_fixture()
+      other_provider = intune_posture_provider_fixture(account: other_account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      assert render_click(lv, "delete", %{"id" => other_provider.id}) =~
+               "Could not delete the provider."
+
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: other_provider.id)
+    end
+
+    test "refuses to delete when the feature is switched off mid-session", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+      disable_device_posture(account)
+
+      render_click(lv, "delete", %{"id" => provider.id})
+
+      assert Portal.Repo.get_by(Portal.PostureProvider, id: provider.id)
+    end
+
+    test "the edit panel has no delete button", %{conn: conn, account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/#{provider.id}/edit")
+
+      refute has_element?(lv, "#device-posture-panel button[phx-click=delete]")
+    end
+  end
+
+  describe "selecting a provider type" do
+    test "lists every provider type", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/new")
+
+      html = render(lv)
+      assert html =~ "Select Provider Type"
+      assert html =~ "Microsoft Intune"
+      assert html =~ "Iru"
+      assert html =~ "Microsoft Defender for Endpoint"
+      assert html =~ "Santa"
+      assert html =~ "SentinelOne"
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/intune/new"]|
+             )
+
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/iru/new"]|)
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/defender/new"]|
+             )
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/santa/new"]|)
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/sentinelone/new"]|
+             )
+
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/sophos/new"]|)
+      assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
+    end
+
+    test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
+      assert_raise PortalWeb.LiveErrors.NotFoundError, fn ->
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/jamf/new")
+      end
+    end
+  end
+
+  describe "SentinelOne providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sentinelone/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies endpoint access and creates the provider", %{lv: lv, account: account} do
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        Req.Test.json(conn, %{"data" => [], "pagination" => %{"nextCursor" => nil}})
+      end)
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      html = render(lv)
+      assert html =~ "GET /web/api/v2.1/agents"
+      assert html =~ "logo-sentinelone.svg"
+
+      attrs = %{
+        name: "Production S1",
+        management_url: "Tenant-US1.SentinelOne.net/dashboard/agents",
+        api_token: "token"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider =
+        Portal.Repo.get_by!(Portal.SentinelOne.PostureProvider, account_id: account.id)
+
+      assert provider_name(provider) == "Production S1"
+      assert provider.management_url == "https://tenant-us1.sentinelone.net"
+      assert provider.api_token == "token"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.SentinelOne.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected token and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(401)
+        |> Req.Test.json(%{"errors" => [%{"title" => "Unauthorized"}]})
+      end)
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{
+          name: "Production S1",
+          management_url: "https://tenant.sentinelone.net",
+          api_token: "wrong"
+        }
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "SentinelOne rejected the API token"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.SentinelOne.PostureProvider, :count) == 0
+    end
+  end
+
+  describe "Sophos providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sophos/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies the tenant and creates the provider", %{lv: lv, account: account} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "tenant",
+            "apiHosts" => %{"dataRegion" => "https://api-eu01.central.sophos.com"}
+          })
+
+        %{request_path: "/endpoint/v1/endpoints"} = conn ->
+          Req.Test.json(conn, %{"items" => [], "pages" => %{"size" => 1}})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      html = render(lv)
+      assert html =~ "GET /endpoint/v1/endpoints"
+      assert html =~ "logo-sophos.svg"
+
+      attrs = %{name: "Production Sophos", client_id: "client-1", client_secret: "secret-1"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "57ca9a6b-885f-4e36-95ec-290548c26059")
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Sophos.PostureProvider, account_id: account.id)
+
+      assert provider_name(provider) == "Production Sophos"
+      assert provider.client_id == "client-1"
+      assert provider.client_secret == "secret-1"
+      assert provider.tenant_id == "57ca9a6b-885f-4e36-95ec-290548c26059"
+      assert provider.data_region_url == "https://api-eu01.central.sophos.com"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Sophos.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses partner credentials and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn
+        %{request_path: "/api/v2/oauth2/token"} = conn ->
+          Req.Test.json(conn, %{"access_token" => "jwt"})
+
+        %{request_path: "/whoami/v1"} = conn ->
+          Req.Test.json(conn, %{
+            "id" => "57ca9a6b-885f-4e36-95ec-290548c26059",
+            "idType" => "partner",
+            "apiHosts" => %{"global" => "https://api.central.sophos.com"}
+          })
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Partner", client_id: "client-1", client_secret: "secret-1"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "These are partner or organization credentials"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Sophos.PostureProvider, :count) == 0
+    end
+
+    test "reports rejected credentials", %{lv: lv} do
+      Req.Test.stub(Portal.Sophos.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "invalidClient"})
+      end)
+
+      Req.Test.allow(Portal.Sophos.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Sophos", client_id: "client-1", client_secret: "wrong"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Sophos rejected the client ID or secret"
+    end
+  end
+
+  describe "Santa providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/santa/new")
+
+      %{lv: lv}
+    end
+
+    test "verifies ListHosts and creates the provider", %{lv: lv, account: account} do
+      parent = self()
+
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        send(parent, {:santa_request, conn.request_path, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "acme.workshop.cloud/api/explorer",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert_received {:santa_request, "/workshop.v1.WorkshopService/ListHosts", ["npsws_sk_secret"]}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_submit()
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Santa.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Acme Santa"
+      assert provider.api_url == "https://acme.workshop.cloud"
+      assert provider.api_key == "npsws_sk_secret"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Santa.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected API key and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"message" => "invalid key"})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{
+          name: "Acme Santa",
+          api_url: "https://acme.workshop.cloud",
+          api_key: "npsws_sk_wrong"
+        }
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Workshop rejected the API key"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Santa.PostureProvider, :count) == 0
+    end
+
+    test "drops verification when the Workshop tenant changes", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "https://acme.workshop.cloud",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{attrs | api_url: "https://other.workshop.cloud"}
+      )
+      |> render_change()
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+    end
+
+    test "rejects a changed Workshop tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{
+        name: "Acme Santa",
+        api_url: "https://acme.workshop.cloud",
+        api_key: "npsws_sk_secret"
+      }
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "api_url" => "https://other.workshop.cloud",
+          "api_key" => attrs.api_key
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Santa.PostureProvider, :count) == 0
+    end
+  end
+
+  describe "Iru providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture/iru/new")
+
+      %{lv: lv}
+    end
+
+    test "names every endpoint the token has to allow", %{lv: lv} do
+      html = render(lv)
+
+      assert html =~ "GET /api/v1/devices"
+
+      for category <- Portal.Iru.Sync.prism_categories() do
+        assert html =~ "GET /api/v1/prism/#{category}"
+      end
+
+      assert html =~ "An endpoint you leave off is skipped"
+    end
+
+    test "verifies the token against the tenant and creates the provider", %{
+      lv: lv,
+      account: account
+    } do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Iru.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Acme Iru"
+      assert provider.subdomain == "acme"
+      assert provider.region == :us
+      assert provider.api_token == "token"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Iru.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "reports a rejected token and saves nothing", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"detail" => "Invalid token."})
+      end)
+
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "wrong"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert render(lv) =~ "Iru rejected the API token"
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
+    end
+
+    test "keeps a pasted token when another field triggers validation", %{lv: lv} do
+      render_hook(lv, "validate", %{
+        "provider" => %{"api_token" => "pasted-token"}
+      })
+
+      html =
+        render_hook(lv, "validate", %{
+          "provider" => %{"name" => "Acme Iru"}
+        })
+
+      assert html =~ ~s(value="pasted-token")
+    end
+
+    test "drops the verification when the tenant changes", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{name: "Acme Iru", subdomain: "other", region: "us", api_token: "token"}
+      )
+      |> render_change()
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-verification-button", "Verify Now")
+    end
+
+    test "rejects a changed tenant submitted before its debounce fires", %{lv: lv} do
+      Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+      Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+      attrs = %{name: "Acme Iru", subdomain: "acme", region: "us", api_token: "token"}
+
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+
+      render_submit(lv, "submit", %{
+        "provider" => %{
+          "name" => attrs.name,
+          "subdomain" => "other",
+          "region" => attrs.region,
+          "api_token" => attrs.api_token
+        }
+      })
+
+      refute has_element?(lv, "#provider-verification-status", "Verified")
+      assert Portal.Repo.aggregate(Portal.Iru.PostureProvider, :count) == 0
+    end
+  end
+
+  test "renaming an Iru provider keeps the stored API token", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = iru_posture_provider_fixture(account: account, api_token: "secret-token")
+
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/iru/#{provider.id}/edit")
+
+    refute html =~ "secret-token"
+
+    lv
+    |> form("#device-posture-form", provider: %{name: "Renamed Iru", api_token: ""})
+    |> render_submit()
+
+    assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+    reloaded = reload(provider)
+
+    assert reloaded.name == "Renamed Iru"
+    assert reloaded.api_token == "secret-token"
+  end
+
+  # The sync no longer announces itself; writing its provider row does, through
+  # the posture provider change hooks.
+  test "refreshes when the device inventory changes", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = intune_posture_provider_fixture(account: account)
+
+    {:ok, lv, _html} =
+      conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+    assert render(lv) =~ ~r/tabular-nums">\s*0\s*<\/td>/
+
+    intune_device_fixture(provider: provider)
+
+    send(lv.pid, %Portal.Changes.Change{
+      lsn: 0,
+      op: :update,
+      old_struct: provider,
+      struct: %{provider | synced_at: DateTime.utc_now()}
+    })
+
+    assert render(lv) =~ ~r/tabular-nums">\s*1\s*<\/td>/
+  end
+
+  test "replaces the Iru token only when a new one is typed", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider = iru_posture_provider_fixture(account: account, api_token: "old-token")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(actor)
+      |> live(~p"/#{account}/settings/device_posture/iru/#{provider.id}/edit")
+
+    Req.Test.stub(Portal.Iru.APIClient, fn conn -> Req.Test.json(conn, []) end)
+    Req.Test.allow(Portal.Iru.APIClient, self(), lv.pid)
+
+    html =
+      lv
+      |> form("#device-posture-form", provider: %{api_token: "new-token"})
+      |> render_change()
+
+    # What the admin just typed is theirs to see; the stored one is not sent.
+    assert html =~ "new-token"
+
+    # A new token is a new claim on the tenant, so it has to be proven again.
+    refute has_element?(lv, "#provider-verification-status", "Verified")
+    lv |> element("#provider-verification-button") |> render_click()
+    assert has_element?(lv, "#provider-verification-status", "Verified")
+
+    lv
+    |> form("#device-posture-form", provider: %{api_token: "new-token"})
+    |> render_submit()
+
+    assert Portal.Repo.get_by!(Portal.Iru.PostureProvider,
+             account_id: provider.account_id,
+             id: provider.id
+           ).api_token == "new-token"
+  end
+
+  describe "Defender providers" do
+    test "uses the signed Microsoft consent flow and creates the verified provider", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      assert has_element?(lv, "#provider-tenant-id", "Awaiting verification...")
+      assert render(lv) =~ "Grant Microsoft admin consent"
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      assert {:ok, %{type: "defender-posture-provider", verification_ref: ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-tenant-id", "tenant-9")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Contoso EDR"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.Defender.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Contoso EDR"
+      assert provider.tenant_id == "tenant-9"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.Defender.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "refuses a second provider for the same tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      defender_posture_provider_fixture(account: account, tenant_id: "tenant-9")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/defender/new")
+
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state =
+        url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:defender_posture_provider_complete, "tenant-9", ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Duplicate EDR"})
+      |> render_submit()
+
+      assert render(lv) =~ "This Defender tenant is already connected."
+      assert Portal.Repo.aggregate(Portal.Defender.PostureProvider, :count) == 1
+    end
+  end
+
+  test "lists providers of every type", %{conn: conn, account: account, actor: actor} do
+    intune_posture_provider_fixture(account: account, name: "Contoso Intune")
+    iru_provider = iru_posture_provider_fixture(account: account, name: "Acme Iru")
+    iru_device_fixture(provider: iru_provider, filevault_enabled: false)
+    santa_provider = santa_posture_provider_fixture(account: account, name: "Acme Santa")
+    santa_device_fixture(provider: santa_provider, last_seen_client_mode: "LOCKDOWN")
+
+    defender_provider = defender_posture_provider_fixture(account: account, name: "Contoso EDR")
+    defender_device_fixture(provider: defender_provider, health_status: "Active")
+    defender_device_fixture(provider: defender_provider, health_status: "Inactive")
+
+    sentinelone_provider =
+      sentinelone_posture_provider_fixture(account: account, name: "Production S1")
+
+    sentinelone_device_fixture(
+      provider: sentinelone_provider,
+      sentinelone_id: nil,
+      is_active: true
+    )
+
+    sentinelone_device_fixture(provider: sentinelone_provider, is_active: true)
+    sentinelone_device_fixture(provider: sentinelone_provider, is_active: false)
+
+    {:ok, _lv, html} =
+      conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+    assert html =~ "Contoso Intune"
+    assert html =~ "Acme Iru"
+    assert html =~ "Iru (formerly Kandji)"
+    assert html =~ "Contoso EDR"
+    assert html =~ "Microsoft Defender for Endpoint"
+    assert html =~ "Acme Santa"
+    assert html =~ "Santa (Workshop)"
+    assert html =~ "Production S1"
+    assert html =~ "SentinelOne"
+  end
+
+  describe "verified fields" do
+    test "ignores a tenant and a verified flag posted by the browser", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      refute html =~ ~s(name="provider[tenant_id]")
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+          "is_verified" => "true"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      refute Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+    end
+
+    test "keeps the verified tenant when a later change posts another", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/intune/new")
+
+      verified = "11111111-1111-1111-1111-111111111111"
+      reverify(lv, verified)
+
+      lv
+      |> element("#device-posture-form")
+      |> render_change(%{
+        "provider" => %{
+          "name" => "Contoso",
+          "tenant_id" => "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        }
+      })
+
+      lv |> element("#device-posture-form") |> render_submit()
+
+      assert provider = Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
+      assert provider.tenant_id == verified
+    end
+  end
+end

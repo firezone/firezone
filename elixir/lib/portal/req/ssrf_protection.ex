@@ -60,12 +60,12 @@ defmodule Portal.Req.SSRFProtection do
         :error -> request
       end
 
-    if request.adapter == (&run/1) do
+    if request.adapter == __MODULE__ do
       request
     else
       request
       |> Req.Request.put_private(@original_adapter_key, request.adapter)
-      |> Map.put(:adapter, &run/1)
+      |> Map.put(:adapter, __MODULE__)
     end
   end
 
@@ -116,7 +116,9 @@ defmodule Portal.Req.SSRFProtection do
     end
   end
 
-  defp run(%Req.Request{} = request) do
+  @doc false
+  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
+  def run(%Req.Request{} = request) do
     if request.options[:allow_private_ips] do
       run_original_adapter(request)
     else
@@ -160,23 +162,26 @@ defmodule Portal.Req.SSRFProtection do
 
   defp run_original_adapter(%Req.Request{} = request) do
     original_adapter = Req.Request.get_private(request, @original_adapter_key)
-    original_adapter.(request)
+    call_adapter(original_adapter, request)
   end
 
   defp run_original_adapter(%Req.Request{} = pinned_request, %Req.Request{} = original_request) do
     original_adapter = Req.Request.get_private(original_request, @original_adapter_key)
 
     pinned_request =
-      if original_adapter == (&Req.Steps.run_finch/1) do
+      if original_adapter == Req.Finch do
         use_pinned_finch_pool(pinned_request, original_request.url.host)
       else
         pinned_request
       end
 
-    case original_adapter.(pinned_request) do
+    case call_adapter(original_adapter, pinned_request) do
       {%Req.Request{}, response_or_error} -> {original_request, response_or_error}
     end
   end
+
+  defp call_adapter(adapter, request) when is_atom(adapter), do: adapter.run(request)
+  defp call_adapter(adapter, request) when is_function(adapter, 1), do: adapter.(request)
 
   # Req creates a named Finch instance for each distinct set of connection
   # options. Since the TLS hostname is user-controlled here, doing that would
@@ -202,105 +207,12 @@ defmodule Portal.Req.SSRFProtection do
 
     :ok = Finch.start_pool(Req.Finch, pool, pool_options)
 
-    finch_request = fn req_request, finch_request, finch_name, finch_options ->
-      finch_request = %{finch_request | pool_tag: tag}
-      run_finch_request(req_request, finch_request, finch_name, finch_options)
-    end
-
     options =
       request.options
       |> Map.delete(:connect_options)
-      |> Map.put(:finch, Req.Finch)
-      |> Map.put(:finch_request, finch_request)
+      |> Map.put(:finch, name: Req.Finch, pool_tag: tag)
 
     %{request | options: options}
-  end
-
-  defp run_finch_request(
-         %Req.Request{into: nil} = request,
-         finch_request,
-         finch_name,
-         finch_options
-       ) do
-    result =
-      case Finch.request(finch_request, finch_name, finch_options) do
-        {:ok, response} -> Req.Response.new(response)
-        {:error, exception} -> normalize_finch_error(exception)
-      end
-
-    {request, result}
-  end
-
-  defp run_finch_request(
-         %Req.Request{into: into} = request,
-         finch_request,
-         finch_name,
-         finch_options
-       )
-       when is_function(into, 2) do
-    response = Req.Response.new()
-
-    stream = fn
-      {:status, status}, {request, response} ->
-        {:cont, {request, %{response | status: status}}}
-
-      {:headers, headers}, {request, response} ->
-        response =
-          Enum.reduce(headers, response, fn {name, value}, response ->
-            Req.Response.put_header(response, name, value)
-          end)
-
-        {:cont, {request, response}}
-
-      {:data, data}, acc ->
-        into.({:data, data}, acc)
-
-      {:trailers, trailers}, {request, response} ->
-        trailers = fields_to_map(trailers)
-        response = update_in(response.trailers, &Map.merge(&1, trailers))
-        {:cont, {request, response}}
-    end
-
-    case Finch.stream_while(
-           finch_request,
-           finch_name,
-           {request, response},
-           stream,
-           finch_options
-         ) do
-      {:ok, acc} -> acc
-      {:error, exception, _acc} -> {request, normalize_finch_error(exception)}
-    end
-  end
-
-  defp run_finch_request(%Req.Request{} = request, _finch_request, _finch_name, _options) do
-    error =
-      ArgumentError.exception(
-        "Portal.Req.SSRFProtection does not support Req's #{inspect(request.into)} streaming mode"
-      )
-
-    {request, error}
-  end
-
-  defp normalize_finch_error(%Finch.Error{reason: reason}) do
-    %Req.HTTPError{protocol: :http2, reason: reason}
-  end
-
-  defp normalize_finch_error(%Finch.TransportError{reason: reason}) do
-    %Req.TransportError{reason: reason}
-  end
-
-  defp normalize_finch_error(%Finch.HTTPError{module: module, reason: reason}) do
-    protocol = if module == Mint.HTTP2, do: :http2, else: :http1
-    %Req.HTTPError{protocol: protocol, reason: reason}
-  end
-
-  defp normalize_finch_error(error), do: error
-
-  defp fields_to_map(fields) do
-    Enum.reduce(fields, %{}, fn {name, value}, acc ->
-      Map.update(acc, name, [value], &(&1 ++ [value]))
-    end)
   end
 
   defp authority(%URI{scheme: scheme, host: host, port: port}) do

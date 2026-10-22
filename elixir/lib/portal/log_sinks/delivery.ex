@@ -28,8 +28,8 @@ defmodule Portal.LogSinks.Delivery do
   # Bounds one run; the next scheduler tick resumes from the cursor.
   @max_batches_per_stream 20
 
-  def get_sink(schema, id) do
-    Database.get_sink(schema, id)
+  def get_sink(schema, account_id, id) do
+    Database.get_sink(schema, account_id, id)
   end
 
   def sync(sink, adapter) do
@@ -469,10 +469,7 @@ defmodule Portal.LogSinks.Delivery do
        inner_src_port: log.inner_src_port,
        inner_dst_ip: log.inner_dst_ip,
        inner_dst_port: log.inner_dst_port,
-       outer_src_ip: log.outer_src_ip,
-       outer_src_port: log.outer_src_port,
-       outer_dst_ip: log.outer_dst_ip,
-       outer_dst_port: log.outer_dst_port,
+       outers: flow_event_outers(log),
        domain: log.domain,
        rx_packets: log.rx_packets,
        tx_packets: log.tx_packets,
@@ -484,6 +481,9 @@ defmodule Portal.LogSinks.Delivery do
   defp epoch(datetime) do
     DateTime.to_unix(datetime, :millisecond) / 1000
   end
+
+  defp flow_event_outers(%{flow_end: nil}), do: nil
+  defp flow_event_outers(log), do: Portal.FlowLog.outers_to_maps(log.outers)
 
   defmodule Database do
     import Ecto.Query
@@ -498,17 +498,18 @@ defmodule Portal.LogSinks.Delivery do
       flow: {Portal.FlowLog, :inserted_at}
     }
 
-    def get_sink(schema, id) do
+    def get_sink(schema, account_id, id) do
       from(s in schema,
         join: a in Portal.Account,
         on: a.id == s.account_id,
+        where: s.account_id == ^account_id,
         where: s.id == ^id,
         where: s.is_disabled == false,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         where: fragment("(?)->>'log_sinks' = 'true'", a.features)
       )
-      |> Safe.unscoped(:replica)
-      |> Safe.one(fallback_to_primary: true)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def seed_missing_cursors(sink) do
@@ -634,7 +635,9 @@ defmodule Portal.LogSinks.Delivery do
           :disabled_reason
         ])
 
-      {:ok, _sink} = changeset |> Safe.unscoped() |> Safe.update()
+      # An admin can delete a sink while its run is in flight, and recording a
+      # delivery outcome on a row that is gone is moot rather than an error.
+      {:ok, _sink} = Safe.update(Portal.Repo, changeset, allow_stale: true)
     end
 
     defp cursor_rows(sink, stream) do

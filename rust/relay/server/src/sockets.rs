@@ -1,11 +1,10 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use std::{
     borrow::Cow,
     collections::{BTreeSet, HashMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
     task::{Context, Poll, Waker},
-    time::Duration,
 };
 use stun_codec::rfc8656::attributes::AddressFamily;
 use tokio::sync::mpsc;
@@ -33,7 +32,9 @@ pub struct Sockets {
     /// If we are waiting to flush packets, this waker tracks the suspended task.
     flush_waker: Option<Waker>,
 
-    cmd_tx: mpsc::Sender<Command>,
+    /// Handle to (de)register sockets with the [`mio::Poll`] instance of our worker thread.
+    registry: mio::Registry,
+
     event_rx: mpsc::Receiver<Event>,
 
     pending_packets: VecDeque<PendingPacket>,
@@ -46,58 +47,52 @@ struct PendingPacket {
     payload: Vec<u8>,
 }
 
-impl Default for Sockets {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Sockets {
-    pub fn new() -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::channel(1_000_000); // Commands are really small and this channel should really never fill up unless we have serious problems in the "mio" worker thread.
+    pub fn new() -> io::Result<Self> {
+        let poll = mio::Poll::new()?;
+        let registry = poll.registry().try_clone()?;
         let (event_tx, event_rx) = mpsc::channel(1_024);
 
         std::thread::spawn(move || {
-            if let Err(e) = mio_worker_task(event_tx.clone(), cmd_rx) {
+            if let Err(e) = mio_worker_task(event_tx.clone(), poll) {
                 let _ = event_tx.blocking_send(Event::Crashed(e));
             }
         });
 
-        Self {
+        Ok(Self {
             inner: Default::default(),
-            cmd_tx,
+            registry,
             event_rx,
             current_ready_sockets: Default::default(),
             pending_packets: Default::default(),
             flush_waker: None,
-        }
+        })
     }
 
-    /// Attempts to bind a new socket on the given port and address.
-    ///
-    /// Fails if the channel is:
-    ///  - full (not expected to happen in production)
-    ///  - disconnected (we can't operate without the [`mio`] worker thread)
-    pub fn bind(&mut self, port: u16, bind_addr: IpAddr) -> Result<()> {
-        self.cmd_tx
-            .try_send(Command::NewSocket { port, bind_addr })?;
+    /// Binds a new socket on the given port and address.
+    pub fn bind(&mut self, port: u16, bind_addr: IpAddr) -> io::Result<()> {
+        let mut socket = mio::net::UdpSocket::from_std(make_socket(port, bind_addr)?);
+        let token = token_from_port_and_ip(port, bind_addr);
+
+        self.registry.register(
+            &mut socket,
+            token,
+            mio::Interest::READABLE | mio::Interest::WRITABLE,
+        )?;
+        self.inner.insert(token, socket);
 
         Ok(())
     }
 
-    /// Attempts to unbind a socket on the given port and address family.
-    ///
-    /// Fails if the channel is:
-    ///  - full (not expected to happen in production)
-    ///  - disconnected (we can't operate without the [`mio`] worker thread)
-    pub fn unbind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
+    /// Unbinds the socket on the given port and address family.
+    pub fn unbind(&mut self, port: u16, address_family: AddressFamily) -> io::Result<()> {
         let token = token_from_port_and_address_family(port, address_family);
 
-        let Some(socket) = self.inner.remove(&token) else {
+        let Some(mut socket) = self.inner.remove(&token) else {
             return Ok(());
         };
 
-        self.cmd_tx.try_send(Command::DisposeSocket(socket))?;
+        self.registry.deregister(&mut socket)?;
 
         Ok(())
     }
@@ -162,10 +157,6 @@ impl Sockets {
     ) -> Poll<Result<Received<'b>, Error>> {
         loop {
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Event::NewSocket(token, socket))) => {
-                    self.inner.insert(token, socket);
-                    continue;
-                }
                 Poll::Ready(Some(Event::SocketReady {
                     token,
                     readable,
@@ -234,13 +225,7 @@ pub enum Error {
     MioTaskCrashed(anyhow::Error),
 }
 
-enum Command {
-    NewSocket { port: u16, bind_addr: IpAddr },
-    DisposeSocket(mio::net::UdpSocket),
-}
-
 enum Event {
-    NewSocket(mio::Token, mio::net::UdpSocket),
     SocketReady {
         token: mio::Token,
         readable: bool,
@@ -258,17 +243,14 @@ fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
 
 /// The [`mio`] worker task which checks for read-readiness on any of our sockets.
 ///
-/// This task is connected with the main eventloop via two channels.
-fn mio_worker_task(
-    event_tx: mpsc::Sender<Event>,
-    mut cmd_rx: mpsc::Receiver<Command>,
-) -> Result<()> {
-    let mut poll = mio::Poll::new()?;
+/// Sockets are (de)registered by the main eventloop through a cloned [`mio::Registry`].
+fn mio_worker_task(event_tx: mpsc::Sender<Event>, mut poll: mio::Poll) -> Result<()> {
     let mut events = mio::Events::with_capacity(1024);
 
     loop {
-        // Suspend for up to 1 second to wait for IO events.
-        match poll.poll(&mut events, Some(Duration::from_secs(1))) {
+        // Suspend until one of our sockets is ready.
+        // Registering a socket from the eventloop wakes us up, even if nothing is registered yet.
+        match poll.poll(&mut events, None) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(e.into()),
@@ -281,31 +263,6 @@ fn mio_worker_task(
                 readable: event.is_readable(),
                 writeable: event.is_writable(),
             })?;
-        }
-
-        loop {
-            match cmd_rx.try_recv() {
-                Err(mpsc::error::TryRecvError::Empty) => break, // Drain all events from the channel until it is empty.
-
-                Ok(Command::NewSocket { port, bind_addr }) => {
-                    let mut socket = mio::net::UdpSocket::from_std(make_socket(port, bind_addr)?);
-                    let token = token_from_port_and_ip(port, bind_addr);
-
-                    poll.registry().register(
-                        &mut socket,
-                        token,
-                        mio::Interest::READABLE | mio::Interest::WRITABLE,
-                    )?;
-
-                    event_tx.blocking_send(Event::NewSocket(token, socket))?;
-                }
-                Ok(Command::DisposeSocket(mut socket)) => {
-                    poll.registry().deregister(&mut socket)?;
-                }
-                Err(mpsc::error::TryRecvError::Disconnected) => {
-                    bail!("Command channel disconnected")
-                }
-            }
         }
     }
 }
@@ -367,4 +324,25 @@ fn make_socket(port: u16, bind_addr: IpAddr) -> io::Result<std::net::UdpSocket> 
     socket.bind(&SockAddr::from(SocketAddr::new(bind_addr, port)))?;
 
     Ok(socket.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn port_can_be_bound_after_failed_bind() {
+        let mut sockets = Sockets::new().unwrap();
+
+        let occupied = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = occupied.local_addr().unwrap().port();
+
+        let error = sockets.bind(port, Ipv4Addr::LOCALHOST.into()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AddrInUse);
+
+        drop(occupied);
+
+        sockets.bind(port, Ipv4Addr::LOCALHOST.into()).unwrap();
+    }
 }

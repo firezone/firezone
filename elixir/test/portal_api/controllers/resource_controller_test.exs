@@ -4,7 +4,9 @@ defmodule PortalAPI.ResourceControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
+  import Portal.DeviceFixtures
+  import Portal.GroupFixtures
+  import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
@@ -97,6 +99,157 @@ defmodule PortalAPI.ResourceControllerTest do
       resource_ids = Enum.map(resources, & &1.id) |> MapSet.new()
 
       assert MapSet.subset?(data_ids, resource_ids)
+    end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, name: "postgres-prod")
+      _other = resource_fixture(account: account, name: "postgres-staging")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", name: "postgres-prod")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, type: :dns, address: "app.example.com")
+      _other = resource_fixture(account: account, type: :cidr)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "dns")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type cidr", %{conn: conn, account: account, actor: actor} do
+      resource = cidr_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "cidr")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type ip", %{conn: conn, account: account, actor: actor} do
+      resource = ip_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "ip")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by type device_pool", %{conn: conn, account: account, actor: actor} do
+      resource = device_pool_resource_fixture(account: account)
+      _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "device_pool")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by site_id", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, type: :ip, address: "10.0.0.5")
+      _other = resource_fixture(account: account, type: :ip, address: "10.0.0.6")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", site_id: site.id)
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by exact address match", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account, type: :ip, address: "10.0.0.10")
+      _other = resource_fixture(account: account, type: :ip, address: "10.0.0.11")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", address: "10.0.0.10")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "filters by ip_stack", %{conn: conn, account: account, actor: actor} do
+      resource =
+        resource_fixture(account: account, type: :dns, address: "app.example.com", ip_stack: :dual)
+
+      _other =
+        resource_fixture(
+          account: account,
+          type: :dns,
+          address: "other.example.com",
+          ip_stack: :ipv4_only
+        )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", ip_stack: "dual")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == resource.id
+    end
+
+    test "rejects an invalid type filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", type: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects an invalid ip_stack filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", ip_stack: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed site_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/resources", site_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
     end
   end
 
@@ -191,7 +344,6 @@ defmodule PortalAPI.ResourceControllerTest do
                "type" => "about:blank",
                "status" => 422,
                "validation_errors" => %{
-                 "site_id" => ["can't be blank"],
                  "name" => ["can't be blank"],
                  "type" => ["can't be blank"]
                }
@@ -225,17 +377,85 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["site_id"] == site.id
     end
 
-    test "creates a static device pool without site_id or address", %{
+    # Device pools are deliberately not creatable through the API for now -
+    # see PortalAPI.ResourceController.Database.reject_device_pool_type/1.
+    # If pool creation is re-enabled, this test should go back to asserting
+    # a 201 with a null address and no site_id.
+    test "returns 422 when an addressed type has no address", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      enable_feature(:client_to_client)
-      update_account(account, features: %{client_to_client: true})
+      site = site_fixture(account: account)
 
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources",
+          resource: %{"name" => "No address", "type" => "dns", "address" => nil, "site_id" => site.id}
+        )
+
+      assert %{"status" => 422, "validation_errors" => %{"address" => ["can't be blank"]}} =
+               json_response(conn, 422)
+    end
+
+    test "creates a device pool from each membership rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      device = client_fixture(account: account)
+
+      rules = [
+        %{"device" => %{"field" => "id", "op" => "in", "value" => [device.id]}},
+        %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
+        %{"device" => %{"field" => "account_id", "op" => "eq", "value" => %{"subject" => "account_id"}}},
+        %{"actor_group" => %{"field" => "id", "op" => "eq", "value" => group.id}}
+      ]
+
+      for {criteria, index} <- Enum.with_index(rules) do
+        attrs = %{
+          "name" => "Shared Devices #{index}",
+          "type" => "device_pool",
+          "device_membership_criteria" => criteria
+        }
+
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/resources", resource: attrs)
+
+        assert resp = json_response(conn, 201)
+        assert resp["data"]["type"] == "device_pool"
+        assert resp["data"]["device_membership_criteria"] == criteria
+        refute resp["data"]["site_id"]
+
+        pool = Repo.get_by!(Portal.Resource, account_id: account.id, id: resp["data"]["id"])
+        assert Portal.Resource.DeviceMembershipCriteria.to_map(pool.device_membership_criteria) == criteria
+      end
+    end
+
+    test "rejects a device pool without a membership rule", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: %{"name" => "Shared Devices", "type" => "device_pool"})
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["device_membership_criteria"] == ["can't be blank"]
+    end
+
+    test "rejects a membership rule outside the grammar", %{conn: conn, actor: actor} do
       attrs = %{
         "name" => "Shared Devices",
-        "type" => "static_device_pool"
+        "type" => "device_pool",
+        "device_membership_criteria" => %{
+          "device" => %{"field" => "name", "op" => "eq", "value" => "laptop"}
+        }
       }
 
       conn =
@@ -244,18 +464,42 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/resources", resource: attrs)
 
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["name"] == attrs["name"]
-      assert resp["data"]["type"] == attrs["type"]
-      assert resp["data"]["address"] == nil
-      refute Map.has_key?(resp["data"], "site_id")
+      assert resp = json_response(conn, 422)
+
+      assert resp["validation_errors"]["device_membership_criteria"] == ["is invalid"]
     end
 
-    test "creates a resource with filters when feature enabled", %{
+    test "rejects a field and operator pairing the grammar has no rule for", %{
       conn: conn,
       account: account,
       actor: actor
     } do
+      device = client_fixture(account: account)
+
+      attrs = %{
+        "name" => "Shared Devices",
+        "type" => "device_pool",
+        "device_membership_criteria" => %{
+          "device" => %{"field" => "id", "op" => "eq", "value" => device.id}
+        }
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["device_membership_criteria"] == ["is invalid"]
+    end
+
+    test "creates a resource with filters for Starter accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, metadata: %{stripe: %{product_name: "Starter"}})
       site = site_fixture(account: account)
 
       attrs = %{
@@ -276,20 +520,48 @@ defmodule PortalAPI.ResourceControllerTest do
       assert resp["data"]["filters"] == [%{"protocol" => "tcp", "ports" => ["5432"]}]
     end
 
-    test "returns 422 when creating with filters and feature disabled", %{
+    test "returns 422 when creating a resource in the Internet Site", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      update_account(account, features: %{traffic_filters: false})
+      site = internet_site_fixture(account: account)
+
+      attrs = %{
+        "address" => "google.com",
+        "name" => "Google",
+        "type" => "dns",
+        "site_id" => site.id
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["cannot be the Internet Site"]
+               }
+             } = json_response(conn, 422)
+
+      assert Portal.Repo.aggregate(Resource, :count) == 0
+    end
+
+    test "returns 422 when creating an internet resource in a regular Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       site = site_fixture(account: account)
 
       attrs = %{
-        "address" => "10.0.0.10",
-        "name" => "Prod DB",
-        "type" => "ip",
-        "site_id" => site.id,
-        "filters" => [%{"protocol" => "tcp", "ports" => ["5432"]}]
+        "name" => "Internet",
+        "type" => "internet",
+        "site_id" => site.id
       }
 
       conn =
@@ -302,33 +574,11 @@ defmodule PortalAPI.ResourceControllerTest do
                "type" => "about:blank",
                "status" => 422,
                "validation_errors" => %{
-                 "filters" => ["traffic filters are not enabled for this account"]
+                 "site_id" => ["must be the Internet Site for an Internet Resource"]
                }
              } = json_response(conn, 422)
-    end
 
-    test "returns 422 when creating static_device_pool with feature disabled", %{
-      conn: conn,
-      actor: actor
-    } do
-      attrs = %{
-        "name" => "Shared Devices",
-        "type" => "static_device_pool"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/resources", resource: attrs)
-
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "type" => ["device pools are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
+      assert Portal.Repo.aggregate(Resource, :count) == 0
     end
   end
 
@@ -429,35 +679,6 @@ defmodule PortalAPI.ResourceControllerTest do
       assert [%{protocol: :tcp}] = reloaded.filters
     end
 
-    test "returns 422 when providing filters with feature disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      update_account(account, features: %{traffic_filters: false})
-      site = site_fixture(account: account)
-      resource = dns_resource_fixture(account: account, site: site)
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/resources/#{resource.id}",
-          resource: %{"filters" => [%{"protocol" => "tcp", "ports" => ["8080"]}]}
-        )
-
-      assert %{
-               "type" => "about:blank",
-               "status" => 422,
-               "validation_errors" => %{
-                 "filters" => ["traffic filters are not enabled for this account"]
-               }
-             } = json_response(conn, 422)
-
-      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
-      assert reloaded.filters == []
-    end
-
     test "clears filters when an empty list is provided", %{
       conn: conn,
       account: account,
@@ -525,7 +746,34 @@ defmodule PortalAPI.ResourceControllerTest do
              } = json_response(conn, 403)
     end
 
-    test "returns 422 when updating resource to static_device_pool type with feature disabled", %{
+    test "returns 422 when moving a resource to the Internet Site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      internet_site = internet_site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"site_id" => internet_site.id})
+
+      assert %{
+               "type" => "about:blank",
+               "status" => 422,
+               "validation_errors" => %{
+                 "site_id" => ["cannot be the Internet Site"]
+               }
+             } = json_response(conn, 422)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.site_id == site.id
+    end
+
+    test "returns 422 when changing a resource to the internet type", %{
       conn: conn,
       account: account,
       actor: actor
@@ -537,15 +785,111 @@ defmodule PortalAPI.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/resources/#{resource.id}", resource: %{"type" => "static_device_pool"})
+        |> put("/resources/#{resource.id}", resource: %{"type" => "internet"})
 
       assert %{
                "type" => "about:blank",
                "status" => 422,
                "validation_errors" => %{
-                 "type" => ["device pools are not enabled for this account"]
+                 "site_id" => ["must be the Internet Site for an Internet Resource"]
                }
              } = json_response(conn, 422)
+
+      reloaded = Portal.Repo.get_by!(Resource, id: resource.id, account_id: account.id)
+      assert reloaded.type == :dns
+    end
+
+    # Converting an existing Resource to a pool is creation by another
+    # name, so the same guard covers update.
+    test "converts a resource to a device pool with a membership rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      criteria = %{
+        "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}",
+          resource: %{"type" => "device_pool", "device_membership_criteria" => criteria}
+        )
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["type"] == "device_pool"
+      assert resp["data"]["device_membership_criteria"] == criteria
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.type == :device_pool
+      assert is_nil(updated.site_id)
+      assert is_nil(updated.address)
+    end
+
+    test "rejects converting a resource to a device pool without a rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: %{"type" => "device_pool"})
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["device_membership_criteria"] == ["can't be blank"]
+
+      assert Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id).type == :dns
+    end
+
+    test "allows updating an existing device pool", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      pool = device_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{pool.id}", resource: %{"name" => "Renamed Pool"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == "Renamed Pool"
+      assert resp["data"]["type"] == "device_pool"
+    end
+
+    # The guard keys off the type *changing*, not off its value, so a PUT
+    # that restates a pool's own type is not a transition and is allowed.
+    # Clients that echo the full resource back on update depend on this.
+    test "allows an update that restates an existing pool's own type", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      pool = device_pool_resource_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{pool.id}",
+          resource: %{"name" => "Restated Pool", "type" => "device_pool"}
+        )
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["name"] == "Restated Pool"
+      assert resp["data"]["type"] == "device_pool"
     end
   end
 
@@ -590,6 +934,26 @@ defmodule PortalAPI.ResourceControllerTest do
              }
 
       refute Repo.get_by(Resource, id: resource.id, account_id: resource.account_id)
+    end
+
+    test "deletes the policies that use the resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = dns_resource_fixture(account: account)
+      policy = policy_fixture(account: account, resource: resource)
+      other_policy = policy_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/resources/#{resource.id}")
+
+      assert json_response(conn, 200)
+      refute Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
+      assert Repo.get_by(Portal.Policy, id: other_policy.id, account_id: account.id)
     end
 
     test "returns error when deleting internet resource", %{

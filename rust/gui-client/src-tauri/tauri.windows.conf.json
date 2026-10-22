@@ -1,7 +1,4 @@
 {
-  "build": {
-    "beforeBundleCommand": "bash ../../scripts/build/tauri-pre-bundle-windows.sh"
-  },
   "bundle": {
     "windows": {
       "signCommand": {

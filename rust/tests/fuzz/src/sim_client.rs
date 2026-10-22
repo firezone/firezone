@@ -1,16 +1,23 @@
 use super::{
-    QueryId,
+    DeviceListing, DeviceListingQuery, QueryId,
     echo::echo_reply,
+    probe::{
+        CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
+        ReceivedResponse, Remote, SubmittedRequest,
+    },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    transition::{DPort, DnsTransport, Identifier, SPort, Seq},
+    site_network::{IcmpError, icmp_error_reply},
+    sut::encrypt,
+    transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
+use anyhow::Result;
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, RelayId, ResourceId, ResourceStatus};
-use dns_types::{DomainName, Query, RecordData, RecordType};
+use connlib_model::{ClientId, RelayId, ResourceView};
+use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
 use ip_network::IpNetwork;
-use ip_packet::{IcmpEchoHeader, IcmpError, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -50,7 +57,8 @@ pub(crate) struct SimClient {
     /// The search-domain emitted by connlib.
     pub(crate) search_domain: Option<DomainName>,
 
-    pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
+    /// The latest resource list emitted by connlib.
+    pub(crate) observed_resource_list: Vec<ResourceView>,
 
     pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
     pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
@@ -58,35 +66,28 @@ pub(crate) struct SimClient {
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
-    pub(crate) sent_icmp_requests: BTreeMap<(Seq, Identifier), (Instant, IpPacket)>,
-    pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
+    /// The answers to the PTR queries in the device domain.
+    pub(crate) device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
-    /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
-
-    /// The received UDP packets, indexed by our custom UDP payload.
-    pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
-
-    pub(crate) sent_udp_requests: BTreeMap<(SPort, DPort), (Instant, IpPacket)>,
-    pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
+    pub(crate) probe_observations: Vec<ProbeObservation>,
+    sent_probes: Vec<(ProbeId, ProbeProtocol)>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tcp::Client,
-    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IcmpError>,
-
-    /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 impl SimClient {
     pub(crate) fn new(
         id: ClientId,
-        sut: ClientState,
+        mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
+        os: crate::os::SimulatedOs,
         now: Instant,
     ) -> Self {
+        sut.set_flow_logs_enabled(true);
+
         Self {
             id,
             sut,
@@ -97,20 +98,15 @@ impl SimClient {
             received_udp_dns_responses: Default::default(),
             sent_tcp_dns_queries: Default::default(),
             received_tcp_dns_responses: Default::default(),
-            sent_icmp_requests: Default::default(),
-            received_icmp_replies: Default::default(),
-            received_icmp_requests: Default::default(),
-            received_udp_requests: Default::default(),
-            sent_udp_requests: Default::default(),
-            received_udp_replies: Default::default(),
+            device_listings: Default::default(),
+            probe_observations: Default::default(),
+            sent_probes: Default::default(),
             routes: Default::default(),
             search_domain: Default::default(),
-            resource_status: Default::default(),
+            observed_resource_list: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(15), [0u8; 32]),
-            tcp_client: crate::tcp::Client::new(now),
-            failed_tcp_packets: Default::default(),
+            tcp_client: crate::tcp::Client::new(now, os),
             dns_resource_record_cache: Default::default(),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
@@ -138,6 +134,7 @@ impl SimClient {
                 .to_std()
                 .unwrap(),
         );
+        self.sut.set_flow_logs_enabled(true);
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
@@ -162,6 +159,42 @@ impl SimClient {
         &self.dns_by_sentinel
     }
 
+    pub(crate) fn send_dns_resource_ptr_query_for(
+        &mut self,
+        record_domain: DomainName,
+        family: IpFamily,
+        address_index: u32,
+        query_id: u16,
+        upstream: dns::Upstream,
+        dns_transport: DnsTransport,
+        now: Instant,
+    ) -> Option<Transmit> {
+        let ips = self
+            .dns_records
+            .get(&record_domain)
+            .expect("resolved domain should have DNS records")
+            .iter()
+            .filter(|ip| match family {
+                IpFamily::Ipv4 => ip.is_ipv4(),
+                IpFamily::Ipv6 => ip.is_ipv6(),
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        let ip = ips[address_index as usize % ips.len()];
+        let reverse_domain =
+            DomainName::reverse_from_addr(ip).expect("reverse DNS names always fit");
+
+        self.send_dns_query_for(
+            reverse_domain,
+            RecordType::PTR,
+            query_id,
+            upstream,
+            dns_transport,
+            false,
+            now,
+        )
+    }
+
     pub(crate) fn send_dns_query_for(
         &mut self,
         domain: DomainName,
@@ -169,6 +202,7 @@ impl SimClient {
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
+        edns: bool,
         now: Instant,
     ) -> Option<Transmit> {
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
@@ -184,6 +218,7 @@ impl SimClient {
             .expect("tunnel should be initialised");
 
         let query = Query::new(domain, r_type).with_id(query_id);
+        let query = if edns { query.with_edns() } else { query };
 
         match dns_transport {
             DnsTransport::Udp { local_port } => {
@@ -207,12 +242,23 @@ impl SimClient {
         }
     }
 
-    pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
-        let local = SocketAddr::new(src, sport.0);
-        let remote = SocketAddr::new(dst, dport.0);
+    /// Connects `local` to `remote`; the SYN submits probe `id`.
+    pub(crate) fn connect_tcp_probe(&mut self, id: ProbeId, local: SocketAddr, remote: SocketAddr) {
+        if let Err(e) = self.tcp_client.connect(local, remote, id) {
+            tracing::error!("TCP connect failed: {e:#}");
+        }
+    }
 
-        if let Err(e) = self.tcp_client.connect(local, remote) {
-            tracing::error!("TCP connect failed: {e:#}")
+    /// Writes `payload` to a TCP connection; the first segment that carries it submits probe `id`.
+    pub(crate) fn write_tcp_probe(
+        &mut self,
+        id: ProbeId,
+        local: SocketAddr,
+        remote: SocketAddr,
+        payload: &[u8],
+    ) {
+        if let Err(e) = self.tcp_client.send(local, remote, id, payload) {
+            tracing::error!("TCP send failed: {e:#}");
         }
     }
 
@@ -221,8 +267,6 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
-        self.update_sent_requests(&packet, now);
-
         match self.handle_tun_input(packet, now) {
             Ok(Some(transmit)) => Some(transmit),
             Ok(None) => {
@@ -238,30 +282,56 @@ impl SimClient {
         }
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
-    fn handle_tun_input(
+    pub(crate) fn encapsulate_probe(
         &mut self,
+        id: ProbeId,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+    ) -> Option<snownet::Transmit> {
+        let protocol = probe_protocol_from_request(&packet)
+            .expect("probe packets must be ICMP echo requests, UDP or TCP packets");
+        assert!(
+            self.sent_probes.iter().all(|(sent, _)| *sent != id),
+            "probe IDs must be unique"
+        );
+        self.sent_probes.push((id, protocol));
 
-        Ok(self.transmit_buffer.poll_transmit())
+        self.probe_observations
+            .push(ProbeObservation::RequestSubmitted(SubmittedRequest {
+                id,
+                at: now,
+                client: self.id,
+                packet: packet.clone(),
+            }));
+
+        self.encapsulate(packet, now)
     }
 
-    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
+    fn handle_tun_input(
+        &mut self,
+        mut packet: IpPacket,
+        now: Instant,
+    ) -> Result<Option<snownet::Transmit>> {
+        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
+            return Ok(None);
+        };
+
+        Ok(encrypt(encapsulation, &packet))
+    }
+
+    /// Returns the next packet the simulated applications send and the probe it submits, if any.
+    pub fn poll_outbound(&mut self) -> Option<(IpPacket, Option<ProbeId>)> {
         self.tcp_dns_client
             .poll_outbound()
+            .map(|packet| (packet, None))
             .or_else(|| self.tcp_client.poll_outbound())
     }
 
     pub fn drive_tcp(&mut self, now: Instant) {
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
+        self.record_tcp_responses(now);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -270,35 +340,23 @@ impl SimClient {
         }
     }
 
-    fn update_sent_requests(&mut self, packet: &IpPacket, now: Instant) {
-        if let Some(icmp) = packet.as_icmpv4()
-            && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
-        {
-            self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
-            return;
-        }
-
-        if let Some(icmp) = packet.as_icmpv6()
-            && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
-        {
-            self.sent_icmp_requests
-                .insert((Seq(echo.seq), Identifier(echo.id)), (now, packet.clone()));
-            return;
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            self.sent_udp_requests.insert(
-                (SPort(udp.source_port()), DPort(udp.destination_port())),
-                (now, packet.clone()),
-            );
-        }
-    }
-
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+        let (local, from) = (transmit.dst, transmit.src.unwrap());
         let Some(packet) = self
             .sut
-            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .handle_network_input(local, from, &transmit.payload, now)
+            .and_then(|decapsulation| {
+                let Some(decapsulation) = decapsulation else {
+                    return Ok(None);
+                };
+
+                self.sut.handle_peer_input(
+                    local,
+                    from,
+                    decapsulation.decrypt(&transmit.payload),
+                    now,
+                )
+            })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
             .flatten()
@@ -319,22 +377,38 @@ impl SimClient {
         now: Instant,
     ) -> Option<snownet::Transmit> {
         match packet.icmp_error() {
-            Ok(Some((failed_packet, icmp_error))) => {
+            Ok(Some((failed_packet, _))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
-                        self.received_udp_replies
-                            .insert((SPort(dst), DPort(src)), packet);
-                    }
-                    Layer4Protocol::Tcp { src, dst } => {
-                        self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), icmp_error);
+                        let protocol = ProbeProtocol::Udp {
+                            sport: SPort(src),
+                            dport: DPort(dst),
+                        };
 
-                        // Allow the client to process the ICMP error.
+                        if let Some(id) = self.latest_probe_for(protocol) {
+                            self.record_received_response(id, packet, now);
+                        } else if dst != 53 {
+                            tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
+                        }
+                    }
+                    Layer4Protocol::Tcp { .. } => {
                         self.tcp_client.handle_inbound(packet);
+                        self.record_tcp_responses(now);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
-                        self.received_icmp_replies
-                            .insert((Seq(seq), Identifier(id)), packet);
+                        let protocol = ProbeProtocol::Icmp {
+                            seq: Seq(seq),
+                            identifier: Identifier(id),
+                        };
+
+                        if let Some(id) = self.latest_probe_for(protocol) {
+                            self.record_received_response(id, packet, now);
+                        } else {
+                            tracing::error!(
+                                ?protocol,
+                                "Received ICMP error for unknown ICMP probe"
+                            );
+                        }
                     }
                 }
 
@@ -346,50 +420,51 @@ impl SimClient {
             }
         }
 
-        if let Some(udp) = packet.as_udp() {
-            if udp.source_port() == 53 {
-                let response = dns_types::Response::parse(udp.payload())
-                    .expect("ip packets on port 53 to be DNS packets");
+        // A port that nothing listens on is the only error a Client's TUN IP can originate.
+        //
+        // Only answers a fresh UDP request from a peer: a port that nothing listens on
+        // is meaningless for an ICMP echo, which has no port to be unreachable.
+        let icmp_error = self
+            .malicious_behaviour
+            .send_untracked_icmp_errors
+            .then(|| icmp_error_reply(&packet, IcmpError::Port).unwrap());
 
-                // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = packet.source();
-                let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(sentinel) else {
-                    tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
-                    return None;
-                };
+        if let Some(udp) = packet.as_udp() {
+            if udp.source_port() == 53
+                && let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(packet.source())
+            {
+                let response = dns_types::Response::parse(udp.payload())
+                    .expect("packets from DNS sentinels on port 53 to be DNS packets");
 
                 self.received_udp_dns_responses.insert(
-                    (upstream, response.id(), udp.destination_port()),
+                    (upstream.clone(), response.id(), udp.destination_port()),
                     packet.clone(),
                 );
 
                 if !response.truncated() {
-                    self.handle_dns_response(&response);
+                    let transport = DnsTransport::Udp {
+                        local_port: udp.destination_port(),
+                    };
+
+                    self.handle_dns_response(upstream, transport, &response);
                 }
 
                 return None;
             }
 
-            // Distinguish a UDP reply (to a request *we* sent) from a fresh
-            // request from a peer client. The reply's (sport, dport) is the
-            // reverse of an outbound 5-tuple we recorded in `sent_udp_requests`.
-            let outbound_key = (SPort(udp.destination_port()), DPort(udp.source_port()));
-            if self.sent_udp_requests.contains_key(&outbound_key) {
-                self.received_udp_replies.insert(
-                    (SPort(udp.source_port()), DPort(udp.destination_port())),
-                    packet.clone(),
-                );
+            let Some(id) = ProbeId::from_payload(udp.payload()) else {
+                tracing::error!("UDP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            if self.sent_probes.iter().any(|(sent, _)| *sent == id) {
+                self.record_received_response(id, packet, now);
                 return None;
             }
 
-            // Fresh request from a peer: record it and echo back, mirroring
-            // the simulated gateway.
-            let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received UDP request");
-            self.received_udp_requests
-                .insert(packet_id, (now, packet.clone()));
+            self.record_received_request(id, packet.clone(), now);
 
-            let reply = echo_reply(packet)?;
+            let reply = icmp_error.or_else(|| echo_reply(packet))?;
             return self.handle_tun_input(reply, now).ok().flatten();
         }
 
@@ -400,16 +475,19 @@ impl SimClient {
 
         if self.tcp_client.accepts(&packet) {
             self.tcp_client.handle_inbound(packet);
+            self.record_tcp_responses(now);
             return None;
         }
 
         if let Some(icmp) = packet.as_icmpv4()
             && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_received_request(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
@@ -418,42 +496,52 @@ impl SimClient {
         if let Some(icmp) = packet.as_icmpv6()
             && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
         {
-            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received ICMP request");
-            self.received_icmp_requests
-                .insert(packet_id, (now, packet.clone()));
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_received_request(id, packet.clone(), now);
             let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
 
             return Some(transmit);
         }
 
         if let Some(icmp) = packet.as_icmpv4()
-            && let Icmpv4Type::EchoReply(echo) = icmp.icmp_type()
+            && let Icmpv4Type::EchoReply(_) = icmp.icmp_type()
         {
-            self.received_icmp_replies
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_received_response(id, packet, now);
             return None;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
-            && let Icmpv6Type::EchoReply(echo) = icmp.icmp_type()
+            && let Icmpv6Type::EchoReply(_) = icmp.icmp_type()
         {
-            self.received_icmp_replies
-                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            let Some(id) = ProbeId::from_payload(icmp.payload()) else {
+                tracing::error!("ICMP probe payload does not contain a probe ID");
+                return None;
+            };
+
+            self.record_received_response(id, packet, now);
             return None;
         }
 
         // Silently ignore TCP packets on port 53 originating from connlib's DNS
-        // sentinel range. The TCP-DNS client only `accepts` packets matching a
-        // currently-open socket, so a teardown (e.g. RST) that arrives after the
-        // query's socket has already been closed — or after the sentinel mapping
-        // changed (`UpdateSystemDnsServers` / `UpdateUpstream*`) — would otherwise
-        // fall through to the `Unhandled packet` error below. This is connlib's
-        // DNS infrastructure closing a connection, not application traffic the
-        // reference models, so it must not fail the test. We match the fixed
-        // sentinel *range* rather than the current mapping precisely because the
-        // mapping may no longer contain the (old) sentinel by the time the RST
-        // arrives.
+        // sentinel range. The TCP-DNS client consumes packets for connections it
+        // still remembers, but a teardown (e.g. RST) can arrive after the remote
+        // was evicted from its bounded map of closed connections, e.g. following
+        // repeated sentinel mapping changes (`UpdateSystemDnsServers` /
+        // `UpdateUpstream*`), and would otherwise fall through to the
+        // `Unhandled packet` error below. This is connlib's DNS infrastructure
+        // closing a connection, not application traffic the reference models, so
+        // it must not fail the test. We match the fixed sentinel *range* rather
+        // than the current mapping precisely because the mapping may no longer
+        // contain the (old) sentinel by the time the RST arrives.
         if let Some(tcp) = packet.as_tcp()
             && tcp.source_port() == 53
             && match packet.source() {
@@ -483,7 +571,33 @@ impl SimClient {
         )
     }
 
-    pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
+    pub(crate) fn handle_dns_response(
+        &mut self,
+        upstream: dns::Upstream,
+        transport: DnsTransport,
+        response: &dns_types::Response,
+    ) {
+        let domain = response.domain();
+        if response.qtype() == RecordType::PTR && dns::is_in_device_domain(&domain) {
+            let records = response
+                .records()
+                .map(|record| {
+                    let ttl = record.ttl().as_secs();
+
+                    (record.into_data().flatten_into(), ttl)
+                })
+                .collect();
+
+            self.device_listings.insert(
+                (domain, upstream, response.id(), transport),
+                (
+                    response.response_code(),
+                    records,
+                    response.note().map(ToOwned::to_owned),
+                ),
+            );
+        }
+
         for record in response.records() {
             #[expect(clippy::wildcard_enum_match_arm)]
             let ip = match record.data() {
@@ -531,25 +645,101 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.handle_tun_input(reply, now).unwrap()?;
+        self.encapsulate(reply, now)
+    }
 
-        Some(transmit)
+    fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_observations
+            .push(ProbeObservation::RequestReceived(ReceivedRequest {
+                id: Some(id),
+                at,
+                remote: Remote::Client(self.id),
+                gateway_order: None,
+                dns_nat_generation: None,
+                packet,
+            }));
+    }
+
+    fn record_received_response(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
+        self.probe_observations
+            .push(ProbeObservation::ResponseReceived(ReceivedResponse {
+                id,
+                at,
+                client: self.id,
+                packet,
+            }));
+    }
+
+    fn record_tcp_responses(&mut self, at: Instant) {
+        while let Some(response) = self.tcp_client.poll_response() {
+            match response {
+                crate::tcp::Response::Packet { probe, packet } => {
+                    self.record_received_response(probe, packet, at)
+                }
+                crate::tcp::Response::Echoed { probe } => {
+                    self.probe_observations
+                        .push(ProbeObservation::StreamCompleted(CompletedStream {
+                            id: probe,
+                            client: self.id,
+                        }))
+                }
+            }
+        }
     }
 
     pub(crate) fn clear_packets(&mut self) {
-        self.sent_icmp_requests.clear();
-        self.received_icmp_replies.clear();
-        self.received_icmp_requests.clear();
-        self.sent_udp_requests.clear();
-        self.received_udp_replies.clear();
-        self.received_udp_requests.clear();
         self.sent_udp_dns_queries.clear();
         self.received_udp_dns_responses.clear();
         self.sent_tcp_dns_queries.clear();
         self.received_tcp_dns_responses.clear();
-        self.tcp_client.reset();
-        self.failed_tcp_packets.clear();
+        self.device_listings.clear();
     }
+
+    pub(crate) fn clear_probe_observations(&mut self) {
+        self.probe_observations.clear();
+        self.tcp_client.forget_probes();
+    }
+
+    fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
+        self.sent_probes
+            .iter()
+            .rev()
+            .find_map(|(id, candidate)| (*candidate == protocol).then_some(*id))
+    }
+}
+
+fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
+    if let Some(icmp) = packet.as_icmpv4()
+        && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
+    {
+        return Some(ProbeProtocol::Icmp {
+            seq: Seq(echo.seq),
+            identifier: Identifier(echo.id),
+        });
+    }
+
+    if let Some(icmp) = packet.as_icmpv6()
+        && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
+    {
+        return Some(ProbeProtocol::Icmp {
+            seq: Seq(echo.seq),
+            identifier: Identifier(echo.id),
+        });
+    }
+
+    if let Some(tcp) = packet.as_tcp() {
+        return Some(ProbeProtocol::Tcp {
+            sport: SPort(tcp.source_port()),
+            dport: DPort(tcp.destination_port()),
+        });
+    }
+
+    let udp = packet.as_udp()?;
+
+    Some(ProbeProtocol::Udp {
+        sport: SPort(udp.source_port()),
+        dport: DPort(udp.destination_port()),
+    })
 }
 
 impl ExecMutScope for SimClient {

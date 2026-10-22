@@ -1,5 +1,6 @@
 defmodule PortalWeb.Settings.DirectorySyncTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -9,11 +10,163 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
   alias Portal.Azure.ManagedIdentity
   alias Portal.Google.APIClient
+  alias PortalWeb.Mocks
 
   setup do
     account = account_fixture(features: %{idp_sync: true})
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
+  end
+
+  describe ":hook action" do
+    test "waits for Okta to verify the event hook and continues once it has", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+
+      assert html =~ "Waiting for Okta to verify"
+      assert html =~ "Continue without event hooks"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ "Authentication field"
+      assert html =~ directory.webhook_secret
+      assert html =~ "User assigned to app"
+      assert html =~ "Okta profile updated"
+      assert html =~ "application.user_membership.add"
+      assert html =~ "Choose a way to set up the event hook."
+      assert html =~ "Okta Admin Console"
+      assert html =~ "cURL"
+      assert html =~ "Terraform"
+      refute html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='curl']")
+        |> render_click()
+
+      assert html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
+      assert html =~ "SSWS"
+      refute html =~ "Authentication field"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='terraform']")
+        |> render_click()
+
+      assert has_element?(lv, "#okta-hook-terraform")
+      assert html =~ "okta_event_hook"
+      assert html =~ "okta_event_hook_verification"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      send(lv.pid, :directories_changed)
+
+      assert render(lv) =~ "Verified, click to continue"
+    end
+
+    test "queues the first sync and opens the panel after an okta directory is created", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      render_click(lv, "generate_keypair")
+
+      lv
+      |> form("#directory-form",
+        directory: %{name: "Okta", okta_domain: "acme.okta.com", client_id: "client-1"}
+      )
+      |> render_change()
+
+      Req.Test.stub(Portal.Okta.APIClient, fn conn ->
+        if String.ends_with?(conn.request_path, "/oauth2/v1/token") do
+          Req.Test.json(conn, %{"access_token" => "token", "token_type" => "DPoP"})
+        else
+          Req.Test.json(conn, [%{"id" => "one"}])
+        end
+      end)
+
+      Req.Test.allow(Portal.Okta.APIClient, self(), lv.pid)
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Okta.Directory, account_id: account.id, name: "Okta")
+      assert directory.is_verified
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for Okta to verify"
+
+      assert_enqueued(
+        worker: Portal.Okta.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "re-verifies the event hook from the row menu", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert open_directory_actions(lv, directory.id) =~ "Re-verify event hook"
+
+      render_click(lv, "reverify_webhook", %{"id" => directory.id})
+
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for Okta to verify"
+      assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at)
+    end
+
+    test "shows what each directory receives and when it last did", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      okta_directory_fixture(%{account: account, name: "Okta"})
+
+      okta_directory_fixture(%{account: account, name: "Okta live"})
+      |> Ecto.Changeset.change(
+        webhook_verified_at: DateTime.utc_now(),
+        webhook_received_at: DateTime.utc_now()
+      )
+      |> Portal.Repo.update!()
+
+      entra_directory_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Last Update"
+      assert html =~ "Not set up"
+      assert html =~ "ri-error-warning-line"
+      assert html =~ "Okta sends user and group changes as they happen."
+      assert html =~ "Microsoft Entra sends user and group changes as they happen."
+      assert html =~ "Nothing received yet."
+    end
   end
 
   defp open_directory_actions(lv, directory_id) do
@@ -38,10 +191,89 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> Map.fetch!(:query)
       |> URI.decode_query()
 
-    assert {:ok, %{verification_ref: verification_ref}} =
+    assert {:ok, %{verification_ref: verification_ref, lv_pid: serialized_pid}} =
              PortalWeb.OIDC.verify_verification_state(state)
 
+    assert PortalWeb.OIDC.deserialize_pid(serialized_pid) == lv.pid
+
+    send(lv.pid, {:get_pending_verification, self()})
+
+    assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+
     verification_ref
+  end
+
+  defp configure_google_directory_workload_identity do
+    Portal.Config.put_env_override(
+      :portal,
+      APIClient,
+      workload_identity_provider: "provider",
+      workload_identity_audience: "audience",
+      service_account_email: "sync@example.iam.gserviceaccount.com",
+      service_account_key: nil
+    )
+  end
+
+  defp configure_google_sync_authorization do
+    Mocks.OIDC.stub_discovery_document()
+
+    Portal.Config.put_env_override(:portal, Portal.Google.SyncAuthorization,
+      client_id: "google-sync-authz-client-id",
+      client_secret: "google-sync-authz-client-secret",
+      response_type: "code",
+      scope: "openid email",
+      discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+      req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+    )
+  end
+
+  defp expect_google_directory_service_access(customer_id, domain) do
+    test_pid = self()
+
+    Req.Test.expect(ManagedIdentity, fn req_conn ->
+      Req.Test.json(req_conn, %{
+        "access_token" => "azure-managed-identity-token",
+        "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+      })
+    end)
+
+    Req.Test.expect(APIClient, 7, fn req_conn ->
+      send(test_pid, {:google_api_request, req_conn.request_path})
+
+      case req_conn.request_path do
+        "/v1/token" ->
+          Req.Test.json(req_conn, %{
+            "access_token" => "federated-google-token",
+            "expires_in" => 3600,
+            "token_type" => "Bearer"
+          })
+
+        "/v1/projects/-/serviceAccounts/sync@example.iam.gserviceaccount.com:signJwt" ->
+          Req.Test.json(req_conn, %{"signedJwt" => "google-signed-jwt"})
+
+        "/token" ->
+          Req.Test.json(req_conn, %{
+            "access_token" => "delegated-google-token",
+            "expires_in" => 3600,
+            "token_type" => "Bearer"
+          })
+
+        "/admin/directory/v1/customers/my_customer" ->
+          Req.Test.json(req_conn, %{
+            "id" => customer_id,
+            "customerDomain" => domain
+          })
+
+        "/admin/directory/v1/users" ->
+          Req.Test.json(req_conn, %{"users" => []})
+
+        "/admin/directory/v1/groups" ->
+          Req.Test.json(req_conn, %{"groups" => []})
+
+        "/admin/directory/v1/customer/my_customer/orgunits" ->
+          Req.Test.json(req_conn, %{"organizationUnits" => []})
+      end
+    end)
   end
 
   describe "unauthorized" do
@@ -59,6 +291,18 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
   end
 
   describe "index (default action)" do
+    test "loads the directories only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/settings/directory_sync") |> html_response(200)
+      assert static =~ ~s(id="directories-skeleton")
+      refute static =~ "No directories yet"
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/settings/directory_sync")
+      assert html =~ "No directories yet"
+      refute html =~ ~s(id="directories-skeleton")
+    end
+
     test "renders empty state when no directories exist", %{
       conn: conn,
       account: account,
@@ -70,7 +314,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> live(~p"/#{account}/settings/directory_sync")
 
       assert html =~ "Directory Sync"
-      assert html =~ "No directories configured."
+      assert html =~ "No directories yet"
       assert html =~ "Add a directory"
     end
 
@@ -118,7 +362,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Automate User &amp; Group Management"
       assert html =~ "Upgrade to Unlock"
-      refute html =~ "No directories configured."
+      refute html =~ "No directories yet"
     end
 
     test "toggles, syncs, and deletes a directory", %{conn: conn, account: account, actor: actor} do
@@ -144,12 +388,35 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Directory enabled successfully."
       assert html =~ "Active"
 
-      html = render_click(lv, "sync_directory", %{"id" => directory.id, "type" => "google"})
+      html = render_click(lv, "sync_directory", %{"id" => directory.id})
       assert html =~ "Directory sync has been queued successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
 
       html = render_click(lv, "delete_directory", %{"id" => directory.id})
       assert html =~ "Directory deleted successfully."
       refute html =~ "Ops Google"
+    end
+
+    test "sync rejects directories from other accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_directory = google_directory_fixture(name: "Other Account Google")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "sync_directory", %{"id" => other_directory.id})
+
+      assert html =~ "Failed to queue directory sync."
+      refute_enqueued(worker: Portal.Google.Sync)
     end
 
     test "closes the actions menu when navigating to edit", %{
@@ -221,6 +488,436 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Name"
       assert html =~ "Impersonation Email"
       assert html =~ "Verify Now"
+    end
+
+
+    test "requires an interactive Workspace administrator before marking Google verified", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv
+      |> element("button[phx-click='start_verification']")
+      |> render_click()
+
+      # Wait for the queued :do_verification message before checking its event.
+      render(lv)
+
+      assert_push_event(lv, "open_url", %{url: url})
+      params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      paths = drain_google_api_request_paths()
+      customer_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/customers/my_customer"))
+      users_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/users"))
+      groups_index = Enum.find_index(paths, &(&1 == "/admin/directory/v1/groups"))
+
+      orgunits_index =
+        Enum.find_index(paths, &(&1 == "/admin/directory/v1/customer/my_customer/orgunits"))
+
+      assert is_integer(customer_index)
+      assert is_integer(users_index)
+      assert is_integer(groups_index)
+      assert is_integer(orgunits_index)
+      assert customer_index < users_index
+      assert users_index < groups_index
+      assert groups_index < orgunits_index
+
+      assert params["scope"] == "openid email"
+
+      assert params["prompt"] == "select_account"
+      assert params["code_challenge_method"] == "S256"
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(params["state"])
+
+      send(lv.pid, {:get_pending_verification, self()})
+
+      assert_receive {:pending_verification,
+                      %{
+                        type: "google_directory_sync",
+                        verifier: verifier,
+                        verification_ref: ^verification_ref,
+                        workspace_customer_id: "C0123",
+                        impersonation_email: "sync-admin@verified.example.com"
+                      }}
+
+      assert params["nonce"] == PortalWeb.OIDC.nonce(verifier)
+
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "verified.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      html = render(lv)
+      assert html =~ "Verified"
+      assert html =~ "verified.example.com"
+
+      lv |> element("form#directory-form") |> render_submit()
+
+      assert %Portal.Google.Directory{domain: "verified.example.com", is_verified: true} =
+               Portal.Repo.get_by(Portal.Google.Directory,
+                 account_id: account.id,
+                 name: "Google Directory"
+               )
+    end
+
+    test "queues the first sync after creating a verified google directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google First Sync",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "verified.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv |> element("form#directory-form") |> render_submit()
+
+      directory =
+        Portal.Repo.get_by!(Portal.Google.Directory,
+          account_id: account.id,
+          name: "Google First Sync"
+        )
+
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Google.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up the watch channel when a google directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Ops",
+          impersonation_email: "ops-admin@example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          account_id: account.id,
+          directory_id: directory.id,
+          impersonation_email: "ops-admin@example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
+    test "drops the watch channel when a google directory moves to another domain", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Move",
+          domain: "old.example.com",
+          impersonation_email: "sync-admin@old.example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "new.example.com")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "new.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Google.Directory, id: directory.id)
+      assert directory.domain == "new.example.com"
+      assert is_nil(directory.users_channel_id)
+      assert is_nil(directory.users_resource_id)
+      assert is_nil(directory.channel_expires_at)
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          directory_id: directory.id,
+          impersonation_email: "sync-admin@old.example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
+    end
+
+    test "does not consume a Google directory verifier for a stale callback reference", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, Ecto.UUID.generate(), self()})
+      assert_receive {:pending_verification, nil}
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
+    end
+
+    test "rejects a Google verification completed after the impersonation email changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "original-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google Directory",
+          impersonation_email: "changed-admin@attacker.example.com"
+        }
+      )
+      |> render_change()
+
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "verified.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      refute render(lv) =~ ">Verified<"
+      assert has_element?(lv, "button[form='directory-form'][disabled]", "Create")
+    end
+
+    test "does not accept client-supplied Google verification fields", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      attrs = %{
+        "name" => "Injected Google Directory",
+        "impersonation_email" => "admin@victim.example.com",
+        "domain" => "victim.example.com",
+        "is_verified" => "true"
+      }
+
+      html = render_hook(lv, "validate", %{"directory" => attrs})
+
+      refute html =~ ">Verified<"
+
+      render_hook(lv, "submit_directory", %{})
+
+      refute Portal.Repo.get_by(Portal.Google.Directory,
+               account_id: account.id,
+               name: "Injected Google Directory"
+             )
     end
 
     test "shows a friendly error for incomplete Google workload identity configuration", %{
@@ -325,6 +1022,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Google denied the federated token exchange."
       refute html =~ ":workload_identity_token_exchange"
+      assert_push_event(lv, "close_open_url", %{})
     end
 
     test "generates an okta keypair and closes the panel", %{
@@ -343,6 +1041,31 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_click(lv, "close_panel")
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
+    end
+
+    test "does not consume an Entra directory verifier for a stale callback reference", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      %{"state" => state} = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+
+      assert {:ok, %{verification_ref: verification_ref}} =
+               PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, Ecto.UUID.generate(), self()})
+      assert_receive {:pending_verification, nil}
+
+      send(lv.pid, {:peek_pending_verification, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
     test "accepts only the active entra directory verification completion", %{
@@ -389,6 +1112,138 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "current-tenant"
     end
 
+    test "queues the first sync after creating a verified entra directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-1", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#directory-form", directory: %{name: "Entra HQ"})
+      |> render_change()
+
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, account_id: account.id, name: "Entra HQ")
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Entra.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up webhook subscriptions when an entra directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Ops",
+          tenant_id: "tenant-ops",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups"
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          account_id: account.id,
+          directory_id: directory.id,
+          tenant_id: "tenant-ops",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
+    test "drops webhook subscriptions when an entra directory moves to another tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Move",
+          tenant_id: "tenant-old",
+          webhook_secret: "secret",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups",
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/#{directory.id}/edit")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-new", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, id: directory.id)
+      assert directory.tenant_id == "tenant-new"
+      assert is_nil(directory.users_subscription_id)
+      assert is_nil(directory.groups_subscription_id)
+      assert is_nil(directory.subscriptions_expire_at)
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          directory_id: directory.id,
+          tenant_id: "tenant-old",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+    end
+
     test "ignores entra directory completion after navigating to another form", %{
       conn: conn,
       account: account,
@@ -420,6 +1275,14 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     end
   end
 
+  defp drain_google_api_request_paths(paths \\ []) do
+    receive do
+      {:google_api_request, path} -> drain_google_api_request_paths([path | paths])
+    after
+      0 -> Enum.reverse(paths)
+    end
+  end
+
   describe ":edit action" do
     test "renders edit form and closes on escape", %{conn: conn, account: account, actor: actor} do
       directory = google_directory_fixture(account: account, name: "Editable Google")
@@ -434,6 +1297,37 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
+    end
+
+    test "shows the event hook endpoint and secret of an okta directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      assert html =~ "Event Hook"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ directory.webhook_secret
+      assert html =~ "application.user_membership.add"
+    end
+
+    test "shows no event hook before an okta directory exists", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      refute html =~ "Event Hook"
     end
 
     test "resets verification state for okta edit form", %{
@@ -457,6 +1351,59 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       html = render_click(lv, "reset_verification")
       assert html =~ "Verify Now"
       refute html =~ "Verification complete"
+    end
+
+    test "keeps the Google authorization hook mounted while edit verification starts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Unverified Google",
+          domain: "example.com",
+          impersonation_email: "sync-admin@example.com",
+          is_verified: false
+        })
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "example.com")
+
+      assert has_element?(lv, "#verify-button-open-url[phx-hook='OpenURL']")
+
+      assert has_element?(
+               lv,
+               "button[phx-click='start_verification'][data-open-url-reserve]"
+             )
+
+      lv
+      |> element("button[phx-click='start_verification']")
+      |> render_click()
+
+      assert_push_event(lv, "open_url", %{url: url})
+      assert URI.parse(url).host == "mock.oidc.test"
+      assert has_element?(lv, "#verify-button-open-url[phx-hook='OpenURL']")
+      assert has_element?(lv, "#verify-button-open-url button[disabled]", "Verifying...")
     end
 
     test "requires reverification after regenerating an okta keypair", %{

@@ -192,6 +192,24 @@ defmodule PortalAPI.IdentityControllerTest do
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
                json_response(conn, 401)
     end
+
+    test "returns not found when the identity belongs to a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = api_client_fixture(account: account)
+      identity = identity_fixture(account: account, actor: other_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/external_identities/#{identity.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
   end
 
   describe "delete/2" do
@@ -230,6 +248,26 @@ defmodule PortalAPI.IdentityControllerTest do
 
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
+    end
+
+    test "returns not found when the identity belongs to a different actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = api_client_fixture(account: account)
+      identity = synced_identity_fixture(account: account, actor: other_actor)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{actor.id}/external_identities/#{identity.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id)
     end
   end
 end

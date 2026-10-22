@@ -6,9 +6,10 @@
 //! construction; transition preconditions are encoded by the transition
 //! generator rather than checked after generation.
 
-use std::time::Instant;
+use dns_types::DomainName;
 
 use crate::reference::ReferenceState;
+use crate::stub_portal::StubPortal;
 use crate::transition::Transition;
 
 mod context;
@@ -21,11 +22,23 @@ mod values;
 pub use context::Generator;
 
 impl Generator<'_> {
-    pub fn initial_state(&mut self, start: Instant) -> ReferenceState {
-        topology::generate(self, start)
+    pub fn domain_tree(&mut self) -> Vec<DomainName> {
+        values::arb_domain_tree(self)
     }
 
-    pub fn transition(&mut self, state: &ReferenceState, now: Instant) -> Option<Transition> {
-        transitions::generate(self, state, now)
+    pub fn portal(&mut self, domain_tree: &[DomainName]) -> StubPortal {
+        topology::arb_stub_portal(self, domain_tree)
+    }
+
+    pub fn reference_state(
+        &mut self,
+        portal: &StubPortal,
+        domain_tree: Vec<DomainName>,
+    ) -> ReferenceState {
+        topology::generate(self, portal, domain_tree)
+    }
+
+    pub fn transition(&mut self, state: &ReferenceState, portal: &StubPortal) -> Transition {
+        transitions::generate(self, state, portal)
     }
 }

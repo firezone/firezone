@@ -29,8 +29,6 @@ addresses = [
 concurrent = "5..50"
 # How long to hold connections (seconds)
 duration_secs = "30..300"
-# Connection timeout (seconds)
-timeout_secs = "10..10"
 # Enable echo mode for round-trip verification
 echo_mode = false
 # Payload size for echo messages (bytes)

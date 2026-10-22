@@ -46,19 +46,23 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
 
-      - uses: ./.github/actions/setup-rust-stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-
       - uses: ./.github/actions/setup-rust-binary-cache
         id: binary-cache
         with:
           path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
           key: firezone-loadtest-${{ matrix.target }}-release
+
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
 
       - name: Install dependencies (Linux)
         if: matrix.os == 'linux' && steps.binary-cache.outputs.cache-hit != 'true'
@@ -101,7 +105,7 @@ jobs:
         run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
 
       - name: Upload artifact to GitHub
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: firezone-loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
           path: |
@@ -110,7 +114,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: github.ref == 'refs/heads/main'
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}

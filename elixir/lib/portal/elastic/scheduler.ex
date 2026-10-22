@@ -23,13 +23,13 @@ defmodule Portal.Elastic.Scheduler do
           join: a in Portal.Account,
           on: a.id == s.account_id,
           where: s.is_disabled == false,
-          where: is_nil(a.disabled_at),
+          where: a.is_disabled == false,
           where: fragment("(?)->>'log_sinks' = 'true'", a.features)
         )
         |> Safe.unscoped()
         |> Safe.stream()
         |> Stream.each(fn sink ->
-          args = %{log_sink_id: sink.id}
+          args = %{account_id: sink.account_id, log_sink_id: sink.id}
           {:ok, _job} = Portal.Elastic.Sync.new(args) |> Oban.insert()
         end)
         |> Stream.run()

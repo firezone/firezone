@@ -9,7 +9,7 @@ pub struct Transmit {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
-    Ciphertext(Vec<u8>),
+    Ciphertext(sanstun::Datagram),
     Plaintext(Box<ip_packet::IpPacket>),
 }
 

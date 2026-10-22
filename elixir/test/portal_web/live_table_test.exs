@@ -3,6 +3,24 @@ defmodule PortalWeb.LiveTableTest do
   import PortalWeb.LiveTable
   import Portal.SubjectFixtures
 
+  test "paginator displays capped counts and row ranges beyond the cap" do
+    metadata = %Portal.Repo.OffsetPaginator.Metadata{
+      count: 10_000,
+      count_limited: true,
+      offset: 10_000,
+      limit: 50,
+      previous_offset: 9950,
+      next_offset: 10_050
+    }
+
+    html = render_component(&paginator/1, id: "logs", metadata: metadata, rows_count: 50)
+
+    assert html
+           |> Floki.parse_fragment!()
+           |> Floki.text()
+           |> String.replace(~r/[\s]+/, " ") =~ "Showing 10001—10050 of 10,000+"
+  end
+
   describe "<.live_table /> component" do
     setup do
       assigns = %{
@@ -93,6 +111,203 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(input, "name") == ["table-id[search]"]
       assert Floki.attribute(input, "placeholder") == ["Search by Query"]
       assert Floki.attribute(input, "value") == ["foo"]
+    end
+
+    test "renders compact protocol and port filter", %{assigns: assigns} do
+      assigns = %{
+        assigns
+        | filters: [
+            %Portal.Repo.Filter{
+              name: :protocol_port,
+              title: "Protocol / port",
+              type: {:string, :protocol_port}
+            }
+          ],
+          filter: filter_to_form(%{protocol_port: "tcp/443"}, "table-id")
+      }
+
+      input =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+        |> Floki.find("form#table-id-filters input[type=text]")
+
+      assert Floki.attribute(input, "id") == ["table-id_protocol_port"]
+      assert Floki.attribute(input, "name") == ["table-id[protocol_port]"]
+      assert Floki.attribute(input, "placeholder") == ["Port or tcp/443"]
+      assert Floki.attribute(input, "value") == ["tcp/443"]
+    end
+
+    test "renders the time range dropdown and hides the pickers for a preset", %{
+      assigns: assigns
+    } do
+      assigns = time_range_assigns(assigns, filter_to_form(%{}, %{}, "table-id", timestamp: "24h"))
+
+      document = render_component(&live_table/1, assigns) |> Floki.parse_fragment!()
+      range = Floki.find(document, "form#table-id-filters #table-id-timestamp-range")
+
+      # `contents` removes the wrapper box, so each control is an item of the
+      # filter row and wraps on its own.
+      assert Floki.attribute(range, "class") == ["contents"]
+
+      options = Floki.find(range, "select[name='table-id[timestamp][preset]'] option")
+
+      assert Enum.map(options, &(&1 |> Floki.text() |> String.trim())) == [
+               "Last hour",
+               "Last 12 hours",
+               "Last 24 hours",
+               "Last 3 days",
+               "Last 7 days",
+               "Last 30 days",
+               "Custom"
+             ]
+
+      assert Enum.map(options, &(&1 |> Floki.attribute("value") |> hd())) ==
+               ["1h", "12h", "24h", "3d", "7d", "30d", "custom"]
+
+      assert [selected] = Floki.find(range, "option[selected]")
+      assert Floki.attribute(selected, "value") == ["24h"]
+
+      assert Floki.find(range, "input[type=radio]") != []
+      assert Floki.find(range, "input[type=datetime-local]") == []
+    end
+
+    test "shows the from and to pickers for the custom preset", %{assigns: assigns} do
+      range = %Portal.Repo.Filter.Range{
+        from: ~U[2026-07-29 10:00:00Z],
+        to: ~U[2026-07-30 10:00:00Z]
+      }
+
+      form = filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "custom")
+
+      document =
+        render_component(&live_table/1, time_range_assigns(assigns, form))
+        |> Floki.parse_fragment!()
+
+      assert [selected] = Floki.find(document, "#table-id-timestamp-range option[selected]")
+      assert Floki.attribute(selected, "value") == ["custom"]
+      assert length(Floki.find(document, "input[type=datetime-local]")) == 2
+
+      assert Floki.attribute(document, "input[data-canonical='from']", "value") ==
+               ["2026-07-29T10:00:00"]
+
+      assert Floki.attribute(document, "input[data-canonical='to']", "value") ==
+               ["2026-07-30T10:00:00"]
+    end
+
+    test "the default preset is not an active filter", %{assigns: assigns} do
+      range = %Portal.Repo.Filter.Range{from: ~U[2026-07-29 10:00:00Z]}
+
+      default =
+        render_component(
+          &live_table/1,
+          time_range_assigns(
+            assigns,
+            filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "24h")
+          )
+        )
+        |> Floki.parse_fragment!()
+
+      assert Floki.find(default, "button[title='Clear all filters']") == []
+
+      other =
+        render_component(
+          &live_table/1,
+          time_range_assigns(
+            assigns,
+            filter_to_form(%{timestamp: range}, %{}, "table-id", timestamp: "7d")
+          )
+        )
+        |> Floki.parse_fragment!()
+
+      assert [_] = Floki.find(other, "button[title='Clear all filters']")
+    end
+
+    test "uses the filtered empty hint when filters are active and nothing matches", %{
+      assigns: assigns
+    } do
+      assigns =
+        Map.merge(assigns, %{
+          rows: [],
+          filters: [
+            %Portal.Repo.Filter{name: :search, title: "Query", type: {:string, :websearch}}
+          ],
+          filter: filter_to_form(%{search: "foo"}, "table-id"),
+          filtered_empty_hint: "Try broadening the time window."
+        })
+
+      text =
+        render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
+        |> Floki.find("#table-id-empty")
+        |> Floki.text()
+
+      assert text =~ "No results found"
+      assert text =~ "Try broadening the time window."
+    end
+
+    test "shows a running query status while loading", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert [_] = Floki.find(document, "#table-id-loading[role='status']")
+      assert Floki.text(Floki.find(document, "#table-id-loading")) =~ "Running query"
+      assert Floki.find(document, "#table-id-empty") == []
+    end
+
+    test "shows skeleton rows while the first load is running", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{rows: [], loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert [_] = Floki.find(document, "#table-id-skeleton[aria-hidden='true']")
+      assert length(Floki.find(document, "#table-id-skeleton tr")) == 5
+      assert length(Floki.find(document, "#table-id-skeleton tr:first-child td")) == length(assigns.col)
+      assert Floki.find(document, "table.opacity-50") == []
+    end
+
+    test "dims loaded rows instead of showing skeleton rows on reload", %{assigns: assigns} do
+      html = render_component(&live_table/1, Map.merge(assigns, %{loading: true}))
+      document = Floki.parse_fragment!(html)
+
+      assert Floki.find(document, "#table-id-skeleton") == []
+      assert [_] = Floki.find(document, "table.opacity-50")
+      assert html =~ "foo"
+    end
+
+    test "shows no skeleton rows when the query timed out", %{assigns: assigns} do
+      html =
+        render_component(
+          &live_table/1,
+          Map.merge(assigns, %{loading: true, query_error: :query_timeout})
+        )
+
+      assert Floki.find(Floki.parse_fragment!(html), "#table-id-skeleton") == []
+    end
+
+    test "explains a timed out query and hides stale rows", %{assigns: assigns} do
+      html =
+        render_component(&live_table/1, Map.merge(assigns, %{query_error: :query_timeout}))
+
+      document = Floki.parse_fragment!(html)
+      text = document |> Floki.find("#table-id-query-timeout") |> Floki.text()
+
+      assert text =~ "Your query includes too many results"
+      assert text =~ "Try reducing the time window."
+      refute html =~ "foo"
+      assert Floki.find(document, "#table-id-loading") == []
+    end
+
+    test "adds per-row classes", %{assigns: assigns} do
+      html =
+        render_component(
+          &live_table/1,
+          Map.put(assigns, :row_class, fn "foo" -> "bg-brand-muted" end)
+        )
+
+      assert html
+             |> Floki.parse_fragment!()
+             |> Floki.find("#table-id-rows > tr")
+             |> Floki.attribute("class")
+             |> Enum.any?(&String.contains?(&1, "bg-brand-muted"))
     end
 
     test "renders email filter", %{assigns: assigns} do
@@ -258,7 +473,7 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(select, "name") == ["table-id[select]"]
 
       assert select |> List.first() |> elem(2) == [
-               {"option", [{"value", ""}], ["For any Select"]},
+               {"option", [{"value", ""}, {"selected", "selected"}], ["For any Select"]},
                {"option", [{"value", "1"}], ["One"]},
                {"option", [{"value", "2"}], ["Two"]},
                {"option", [{"value", "3"}], ["Three"]},
@@ -505,6 +720,55 @@ defmodule PortalWeb.LiveTableTest do
       assert %{
                redirected: {:live, :redirect, %{kind: :push, to: "/current_uri"}}
              } = reload_live_table!(socket, "table-id")
+    end
+  end
+
+  describe "mark_stale_unless_reflected/4" do
+    setup do
+      subject = subject_fixture()
+
+      socket =
+        %Phoenix.LiveView.Socket{assigns: %{subject: subject, __changed__: %{}}}
+        |> put_uri_assigns("/current_uri")
+        |> Phoenix.Component.assign(stale: false)
+        |> assign_live_table("table-id",
+          query_module: Actor.Query,
+          sortable_fields: [{:actors, :name}],
+          callback: fn socket, list_opts -> {:ok, %{socket | private: %{list_opts: list_opts}}} end
+        )
+
+      actor = %Portal.Actor{id: Ecto.UUID.generate(), name: "Inserted"}
+
+      %{socket: socket, actor: actor}
+    end
+
+    test "leaves the table alone when the rows reflect the change", %{socket: socket, actor: actor} do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [actor], change)
+
+      refute socket.assigns.stale
+    end
+
+    test "flags the table stale when the rows miss the change", %{socket: socket, actor: actor} do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [], change)
+
+      assert socket.assigns.stale
+    end
+
+    test "restarts a running load instead of flagging the table stale", %{
+      socket: socket,
+      actor: actor
+    } do
+      change = %Portal.Changes.Change{op: :insert, struct: actor}
+      socket = Phoenix.Component.assign(socket, loading_by_table_id: %{"table-id" => true})
+
+      socket = mark_stale_unless_reflected(socket, "table-id", [], change)
+
+      refute socket.assigns.stale
+      assert %{list_opts: []} = socket.private
     end
   end
 
@@ -820,9 +1084,80 @@ defmodule PortalWeb.LiveTableTest do
     end
   end
 
+  describe "live_table_path/3" do
+    setup do
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{__changed__: %{}, live_table_ids: ["actors", "groups"]}
+        }
+        |> put_uri_assigns(
+          "/acc/actors/1?actors_page=2" <>
+            "&actors_filter%5Bname%5D=buz" <>
+            "&actors_order_by=actors%3Aasc%3Aname" <>
+            "&groups_page_size=25" <>
+            "&tab=groups&page=3&return_to=%2Facc%2Fgroups"
+        )
+
+      %{socket: socket}
+    end
+
+    test "keeps table state and return_to but drops panel keys", %{socket: socket} do
+      assert {"/acc/actors/new", query} = split_path(live_table_path(socket, "/acc/actors/new"))
+
+      assert query == %{
+               "actors_page" => "2",
+               "actors_filter[name]" => "buz",
+               "actors_order_by" => "actors:asc:name",
+               "groups_page_size" => "25",
+               "return_to" => "/acc/groups"
+             }
+    end
+
+    test "merges extra params and drops nil values", %{socket: socket} do
+      {_path, query} =
+        split_path(live_table_path(socket, "/acc/actors/1", tab: "groups", page: nil))
+
+      assert query["tab"] == "groups"
+      refute Map.has_key?(query, "page")
+      assert query["actors_filter[name]"] == "buz"
+    end
+
+    test "returns the bare path when there is nothing to carry" do
+      socket =
+        %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, live_table_ids: ["actors"]}}
+        |> put_uri_assigns("/acc/actors?tab=groups")
+
+      assert live_table_path(socket, "/acc/actors/new") == "/acc/actors/new"
+    end
+
+    test "accepts template assigns", %{socket: socket} do
+      assert live_table_path(socket.assigns, "/acc/actors/new") ==
+               live_table_path(socket, "/acc/actors/new")
+    end
+  end
+
+  defp split_path(path) do
+    %URI{path: path, query: query} = URI.parse(path)
+    {path, URI.decode_query(query || "")}
+  end
+
   defp fetch_patched_query_params!(socket) do
     assert {:noreply, %{redirected: {:live, :patch, %{kind: :push, to: to}}}} = socket
     uri = URI.parse(to)
     URI.decode_query(uri.query)
+  end
+
+  defp time_range_assigns(assigns, form) do
+    %{
+      assigns
+      | filters: [
+          %Portal.Repo.Filter{
+            name: :timestamp,
+            title: "Timestamp",
+            type: {:range, :datetime}
+          }
+        ],
+        filter: form
+    }
   end
 end

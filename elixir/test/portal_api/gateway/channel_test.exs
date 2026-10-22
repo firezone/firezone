@@ -213,7 +213,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      presence = Portal.Presence.Gateways.Account.list(account.id)
+      presence = Portal.Presence.Devices.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -1034,7 +1034,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
 
       # Simulate a Presence shard crash by sending a :DOWN for one of the
@@ -1045,7 +1045,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, {:DOWN, make_ref(), :process, shard_pid, :killed})
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
 
@@ -1070,7 +1070,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       wait_for(fn ->
         :sys.get_state(socket.channel_pid)
 
-        assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+        assert Portal.Presence.Devices.Account.list(gateway.account_id)
                |> Map.has_key?(gateway.id)
       end)
     end
@@ -1087,7 +1087,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, :track_presence)
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
   end
@@ -2759,7 +2759,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "does not send resource_updated for static_device_pool filter changes", %{
+    test "does not send resource_updated for device_pool filter changes", %{
       gateway: gateway,
       site: site,
       token: token,
@@ -2768,13 +2768,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
         "name" => resource.name,
-        "type" => "static_device_pool",
+        "type" => "device_pool",
         "filters" => [],
         "ip_stack" => nil
       }
@@ -3446,6 +3446,88 @@ defmodule PortalAPI.Gateway.ChannelTest do
                   }
     end
 
+    test "no_relays does not select excluded relays", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+      relay3 = connect_relay(%{lat: 39.0, lon: -122.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id]})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay2.id, relay3.id] |> Enum.sort()
+    end
+
+    test "no_relays sends empty connected when all relays are excluded", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id, relay2.id]})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: []}
+    end
+
+    test "no_relays excludes nothing when excluded_relay_ids is missing, null or empty", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      for payload <- [%{}, %{"excluded_relay_ids" => nil}, %{"excluded_relay_ids" => []}] do
+        push(socket, "no_relays", payload)
+
+        assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+
+        relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+        assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+      end
+    end
+
+    test "no_relays ignores invalid excluded_relay_ids", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => relay1.id})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+
+      push(socket, "no_relays", %{
+        "excluded_relay_ids" => ["not-a-uuid", 42, nil, %{"id" => relay2.id}, relay1.id]
+      })
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+      assert relays |> Enum.map(& &1.id) |> Enum.uniq() == [relay2.id]
+    end
+
     test "flow_authorized forwards reply to the client channel", %{
       client: client,
       account: account,
@@ -3795,6 +3877,94 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ref: _,
         use_iceless: false
       }
+    end
+
+    test "create_authorization reports iceless inputs separately via telemetry", %{
+      client: client,
+      account: account,
+      actor: actor,
+      resource: resource,
+      gateway: gateway,
+      site: site,
+      token: token,
+      subject: subject,
+      group: group
+    } do
+      update_account(account, %{features: %{iceless: false}})
+
+      test_pid = self()
+      handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :authorization, :granted],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:authorization_granted, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      # Both peers are iceless-capable, only the account flag holds them back.
+      push(socket, "set_snownet_capabilities", %{"iceless" => true})
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          actor: actor,
+          client: client,
+          resource: resource,
+          group: group
+        )
+
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      preshared_key = "PSK"
+      public_key = Portal.DeviceFixtures.generate_public_key()
+
+      ice_credentials = %{
+        initiator: %{username: "A", password: "B"},
+        receiver: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {:create_authorization, {self(), make_ref()},
+         %{
+           client:
+             PortalAPI.Gateway.Views.Client.render(
+               client,
+               public_key,
+               preshared_key,
+               @test_user_agent
+             ),
+           subject: PortalAPI.Gateway.Views.Subject.render(subject),
+           resource: PortalAPI.Gateway.Views.Resource.render(to_cache(resource)),
+           resource_id: to_cache(resource).id,
+           policy_authorization_id: policy_authorization.id,
+           authorization_expires_at: expires_at,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key,
+           initiator_iceless_capable: true
+         }}
+      )
+
+      assert_push "authorize_flow", %{use_iceless: false}
+
+      # The handler runs in the emitting channel, so match on its pid to ignore
+      # events from other tests sharing the globally attached handler.
+      gateway_channel_pid = socket.channel_pid
+      assert_receive {:authorization_granted, ^gateway_channel_pid, metadata}
+
+      assert metadata == %{
+               receiver: :gateway,
+               iceless_feature_enabled: false,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
+             }
     end
 
     test "use_iceless picks up an account flag toggled on after join", %{

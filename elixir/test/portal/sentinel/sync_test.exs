@@ -6,6 +6,9 @@ defmodule Portal.Sentinel.SyncTest do
   import Portal.LogSinkFixtures
   import Portal.SessionLogFixtures
 
+  import Ecto.Query
+
+  alias Portal.Fixture
   alias Portal.LogSinkCursor
   alias Portal.Sentinel
 
@@ -40,13 +43,13 @@ defmodule Portal.Sentinel.SyncTest do
       account: account
     } do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       refute_receive {:token, _conn, _params}
 
       log = session_log_fixture(account: account)
 
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:token, token_conn, token_params}
       assert token_conn.request_path == "/#{sink.tenant_id}/oauth2/v2.0/token"
@@ -78,7 +81,7 @@ defmodule Portal.Sentinel.SyncTest do
 
     test "a token error for a missing service principal disables the sink", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       Req.Test.stub(Sentinel.APIClient, fn conn ->
@@ -92,7 +95,7 @@ defmodule Portal.Sentinel.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       assert sink.is_disabled
@@ -101,9 +104,33 @@ defmodule Portal.Sentinel.SyncTest do
       assert sink.error_message =~ "admin consent"
     end
 
+    test "a sink deleted while its run is in flight does not raise", %{account: account} do
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
+      session_log_fixture(account: account)
+
+      Req.Test.stub(Sentinel.APIClient, fn conn ->
+        # Delete the row the run is about to record its outcome on.
+        Portal.Repo.delete_all(
+          from(s in Portal.Sentinel.LogSink,
+            where: s.account_id == ^sink.account_id and s.id == ^sink.id
+          )
+        )
+
+        Plug.Conn.send_resp(conn, 500, "")
+      end)
+
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
+
+      refute Portal.Repo.get_by(Portal.Sentinel.LogSink,
+               account_id: sink.account_id,
+               id: sink.id
+             )
+    end
+
     test "a 403 is transient while the role propagates and names it", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       stub_ingest_status(403, %{
@@ -113,7 +140,7 @@ defmodule Portal.Sentinel.SyncTest do
         }
       })
 
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       sink = reload_sink(sink)
       refute sink.is_disabled
@@ -136,9 +163,9 @@ defmodule Portal.Sentinel.SyncTest do
       end)
 
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       assert_receive {:token, _conn, params}
       assert params["client_assertion"] == "mi-federation-assertion"
@@ -154,7 +181,7 @@ defmodule Portal.Sentinel.SyncTest do
 
     test "an invalid stream 400 is a customer-facing transient error", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       log = session_log_fixture(account: account)
 
       stub_ingest_status(400, %{
@@ -165,11 +192,11 @@ defmodule Portal.Sentinel.SyncTest do
       })
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+        capture_log_for_sink(sink, [level: :error], fn ->
+          assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
-      refute log_output =~ "cannot be delivered"
+      refute Fixture.logged_lines(log_output, sink.id) =~ "cannot be delivered"
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -187,7 +214,7 @@ defmodule Portal.Sentinel.SyncTest do
       account: account
     } do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       log = session_log_fixture(account: account)
 
       stub_ingest_status(400, %{
@@ -198,8 +225,8 @@ defmodule Portal.Sentinel.SyncTest do
       })
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
-          assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+        capture_log_for_sink(sink, [level: :error], fn ->
+          assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
       assert log_output =~ "Log sink event cannot be delivered, halting stream"
@@ -216,14 +243,14 @@ defmodule Portal.Sentinel.SyncTest do
 
     test "a 429 is transient", %{account: account} do
       sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
       session_log_fixture(account: account)
 
       stub_ingest_status(429, %{
         "error" => %{"code" => "TooManyRequests", "message" => "Rate limit exceeded"}
       })
 
-      assert :ok = perform_job(Sentinel.Sync, %{log_sink_id: sink.id})
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 0
@@ -232,6 +259,17 @@ defmodule Portal.Sentinel.SyncTest do
       refute sink.is_disabled
       assert sink.errored_at
       assert sink.error_message == "Azure Monitor returned HTTP 429: Rate limit exceeded"
+    end
+
+    test "skips sink belonging to another account", %{account: account} do
+      sink = sentinel_log_sink_fixture(account: account, enabled_streams: [:session])
+      session_log_fixture(account: account)
+      other_account = account_fixture(features: %{log_sinks: true})
+
+      assert :ok = perform_job(Sentinel.Sync, %{account_id: other_account.id, log_sink_id: sink.id})
+
+      refute_receive {:ingest, _conn, _events}
+      assert Repo.all(LogSinkCursor) == []
     end
   end
 
@@ -244,7 +282,7 @@ defmodule Portal.Sentinel.SyncTest do
 
       assert {:ok, :scheduled} = perform_job(Sentinel.Scheduler, %{})
 
-      assert_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: sink.id})
+      assert_enqueued(worker: Sentinel.Sync, args: %{account_id: sink.account_id, log_sink_id: sink.id})
       refute_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: disabled_sink.id})
       refute_enqueued(worker: Sentinel.Sync, args: %{log_sink_id: feature_off_sink.id})
     end

@@ -100,9 +100,7 @@ defmodule PortalWeb.SitesTest do
 
       html =
         lv
-        |> form("[phx-submit='new_site_submit']",
-          site: %{name: "Chicago POP", health_threshold: 3}
-        )
+        |> form("[phx-submit='new_site_submit']", site: %{name: "Chicago POP"})
         |> render_submit()
 
       site = Repo.get_by!(Site, account_id: account.id, name: "Chicago POP")
@@ -118,10 +116,7 @@ defmodule PortalWeb.SitesTest do
           features: %{
             internet_resource: false,
             policy_conditions: true,
-            traffic_filters: true,
-            idp_sync: true,
-            rest_api: true,
-            client_to_client: false
+            idp_sync: true
           }
         )
 
@@ -314,7 +309,7 @@ defmodule PortalWeb.SitesTest do
 
       # Currently defaults to Debian/Ubuntu instructions
       assert html =~ "Add the Firezone APT repository"
-      assert html =~ "sudo firezone gateway authenticate"
+      assert html =~ "sudo firezone-gateway authenticate"
       assert html =~ "Use this token when prompted"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "systemd-instructions"})
@@ -322,7 +317,7 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "docker-instructions"})
       assert html =~ "docker run"
-      # The portal ignores FIREZONE_NAME for single-owner gateways
+      # Gateway names are configured remotely.
       refute html =~ "FIREZONE_NAME"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
@@ -331,6 +326,8 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "custom-instructions"})
       assert html =~ "Download the latest binary"
       assert html =~ "FIREZONE_TOKEN="
+      # The Gateway generates and keeps its own ID
+      refute html =~ "FIREZONE_ID"
       assert html =~ "sudo sysctl -w net.ipv4.ip_forward=1"
       assert html =~ "sudo iptables -C FORWARD -i tun-firezone"
       assert html =~ "sudo ./firezone-gateway-"
@@ -403,6 +400,34 @@ defmodule PortalWeb.SitesTest do
       assert has_element?(lv, "span.whitespace-nowrap", "system")
       refute has_element?(lv, "button", "Delete site")
       refute has_element?(lv, "button", "Add resource")
+    end
+
+    test "refuses to add resources to system-managed sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Internet"})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "add_resource")
+      refute html =~ "Create Resource"
+
+      html =
+        render_submit(lv, "resource_submit", %{
+          "resource" => %{
+            "type" => "dns",
+            "address" => "grafana.internal",
+            "name" => "Grafana"
+          }
+        })
+
+      refute html =~ "created successfully"
+      assert Repo.aggregate(Resource, :count) == 0
     end
   end
 
@@ -508,6 +533,13 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "deploy_gateway")
       assert html =~ "Deploy a Gateway"
 
+      encoded_token =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("#deploy-code-debian-token-code")
+        |> Floki.text()
+        |> String.trim()
+
       gateway =
         Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
 
@@ -516,6 +548,34 @@ defmodule PortalWeb.SitesTest do
       token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
+      assert {:ok, verified_token} = Portal.Authentication.verify_gateway_token(encoded_token)
+      assert verified_token.id == token.id
+    end
+
+    test "deploy flips to connected when its gateway joins the account presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{gateway.id => %{metas: [%{token_id: token.id}]}}, leaves: %{}}
+      })
+
+      assert render(lv) =~ "Connected, click to continue"
     end
 
     test "deploy no longer creates multi-owner site tokens", %{
@@ -613,10 +673,10 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       :ok = Portal.PG.join(new_token.id)
-      :ok = Portal.Presence.Gateways.Account.track(account.id, gateway.id)
+      :ok = Portal.Presence.Devices.Account.track(gateway)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })
@@ -652,7 +712,7 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })
@@ -864,7 +924,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "bare-gw"
+          name: "bare-gw",
+          slug: "bare-gw"
         })
 
       {:ok, lv, _html} =
@@ -923,7 +984,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "bare-gw"
+          name: "bare-gw",
+          slug: "bare-gw"
         })
 
       {:ok, lv, _html} =
@@ -954,7 +1016,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "deployed-gw"
+          name: "deployed-gw",
+          slug: "deployed-gw"
         })
 
       token = gateway_token_fixture(gateway: gateway)
@@ -1032,6 +1095,32 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Gateway renamed."
       assert html =~ "edge-nyc-1"
       refute has_element?(lv, "#rename-gateway-#{gateway.id}")
+
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
+    end
+
+    test "renames a never-connected gateway (firezone_id: nil)", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      # Regression test for the same Device.changeset/1 firezone_id bug
+      # covered in PortalAPI.GatewayControllerTest - this LiveView path
+      # shares the underlying Portal.Devices.Database.rename_gateway/3-style
+      # logic and was affected identically.
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, firezone_id: nil)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      render_click(lv, "rename_gateway", %{"id" => gateway.id})
+
+      html = render_submit(lv, "save_gateway_name", %{"name" => "edge-nyc-1"})
+      assert html =~ "Gateway renamed."
 
       assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).name == "edge-nyc-1"
     end
@@ -1331,9 +1420,7 @@ defmodule PortalWeb.SitesTest do
 
       html =
         lv
-        |> form("[phx-submit='submit_site_edit_form']",
-          site: %{name: "Updated Site Name", health_threshold: 5}
-        )
+        |> form("[phx-submit='submit_site_edit_form']", site: %{name: "Updated Site Name"})
         |> render_submit()
 
       updated_site = Repo.get_by!(Site, account_id: account.id, id: site.id)
@@ -1341,11 +1428,30 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Site updated successfully."
       assert html =~ "Updated Site Name"
       assert updated_site.name == "Updated Site Name"
-      assert updated_site.health_threshold == 5
       assert_patch(lv, ~p"/#{account}/sites/#{site.id}")
     end
 
-    test "updates only the health threshold for system-managed sites", %{
+    test "redirects system-managed sites to the show panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Managed Site"})
+
+      conn = authorize_conn(conn, actor)
+
+      assert {:error, {:live_redirect, %{to: path}}} =
+               live(conn, ~p"/#{account}/sites/#{site.id}/edit")
+
+      assert path == ~p"/#{account}/sites/#{site.id}"
+
+      {:ok, lv, _html} = live(conn, path)
+
+      refute has_element?(lv, "#site-edit-form")
+      refute has_element?(lv, "button[phx-click='open_site_edit_form']")
+    end
+
+    test "redirects to the show panel when editing an already selected system site", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1355,21 +1461,233 @@ defmodule PortalWeb.SitesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/sites/#{site.id}/edit")
+        |> live(~p"/#{account}/sites/#{site.id}")
 
-      refute render(lv) =~ "Name <span"
+      render_patch(lv, ~p"/#{account}/sites/#{site.id}/edit")
 
-      html =
-        lv
-        |> form("[phx-submit='submit_site_edit_form']", site: %{health_threshold: 7})
-        |> render_submit()
-
-      updated_site = Repo.get_by!(Site, account_id: account.id, id: site.id)
-
-      assert html =~ "Site updated successfully."
-      assert updated_site.name == "Managed Site"
-      assert updated_site.health_threshold == 7
+      assert_patch(lv, ~p"/#{account}/sites/#{site.id}")
+      refute has_element?(lv, "#site-edit-form")
     end
+
+    test "ignores a crafted edit submission for system-managed sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Managed Site"})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_submit(lv, "submit_site_edit_form", %{"site" => %{"name" => "Renamed"}})
+
+      assert Repo.get_by!(Site, account_id: account.id, id: site.id).name == "Managed Site"
+    end
+  end
+
+  describe "site health" do
+    test "is offline when no gateways are online, even with provisioned gateways", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway_fixture(account: account, site: site, token: :single_owner)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      row = site_row(lv, site)
+      assert row =~ "Offline"
+      refute row =~ ~r/·\s*1 offline/
+    end
+
+    test "is healthy when every provisioned gateway is online", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(gateway)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      row = site_row(lv, site)
+      assert row =~ "Healthy"
+      refute row =~ "offline"
+    end
+
+    test "is degraded and counts provisioned gateways that are offline", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site, token: :single_owner)
+      gateway_fixture(account: account, site: site, token: :single_owner)
+      gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      row = site_row(lv, site)
+      assert row =~ "Degraded"
+      assert row =~ ~r/·\s*2 offline/
+    end
+
+    test "counts legacy gateways as online but never as expected", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site)
+      gateway_fixture(account: account, site: site)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      row = site_row(lv, site)
+      assert row =~ "Healthy"
+      refute row =~ "offline"
+    end
+
+    test "is degraded when a provisioned gateway is offline next to online legacy gateways", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      legacy = gateway_fixture(account: account, site: site)
+      gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(legacy)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      row = site_row(lv, site)
+      assert row =~ "Degraded"
+      assert row =~ ~r/·\s*1 offline/
+    end
+
+    test "counts a gateway in its token rotation grace period once", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site, token: :single_owner)
+      rotating = gateway_fixture(account: account, site: site, token: :single_owner)
+      gateway_token_fixture(gateway: rotating, rotated_at: DateTime.utc_now())
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites")
+
+      assert site_row(lv, site) =~ ~r/·\s*1 offline/
+    end
+
+    test "shows the status in the site panel header", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site, token: :single_owner)
+      gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert lv |> element("#site-panel") |> render() =~ "Degraded"
+    end
+
+    test "deploying a gateway marks a healthy site degraded until the gateway connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert site_row(lv, site) =~ "Healthy"
+
+      render_click(lv, "deploy_gateway")
+
+      row = site_row(lv, site)
+      assert row =~ "Degraded"
+      assert row =~ ~r/·\s*1 offline/
+
+      deployed =
+        Device
+        |> Repo.all()
+        |> Enum.find(&(&1.site_id == site.id and &1.id != online.id))
+
+      :ok = Portal.Presence.Devices.Account.track(deployed)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{}, leaves: %{}}
+      })
+
+      assert site_row(lv, site) =~ "Healthy"
+      assert lv |> element("#site-panel") |> render() =~ "Healthy"
+    end
+
+    test "deleting an offline provisioned gateway restores a healthy status", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      online = gateway_fixture(account: account, site: site, token: :single_owner)
+      offline = gateway_fixture(account: account, site: site, token: :single_owner)
+      :ok = Portal.Presence.Devices.Account.track(online)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert site_row(lv, site) =~ "Degraded"
+
+      render_click(lv, "confirm_delete_gateway", %{"id" => offline.id})
+
+      assert site_row(lv, site) =~ "Healthy"
+      assert lv |> element("#site-panel") |> render() =~ "Healthy"
+    end
+  end
+
+  defp site_row(lv, site) do
+    lv |> element("tr[phx-value-id='#{site.id}']") |> render()
   end
 
   defp badge_count(html) do
