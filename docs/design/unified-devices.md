@@ -390,11 +390,11 @@ pre-fix gateway is warned about at assignment time (2.12b), not prevented.
 - **1.4 Code: billing and limits exclude system actors.** Seats, service
   account count, `connected_devices_per_actor`. Unit tests on `Billing`.
   Depends 1.1.
-- **1.4b Migration and code: one more free service account on every plan.**
-  `limits.adhoc_service_accounts_count` plus one for existing accounts and
-  in the plan defaults, so a customer who moves routing devices onto one
-  service account of their own pays nothing extra. Customer service accounts
-  that own routing devices otherwise count as today. Depends 1.4.
+- **1.4b Code: one more free service account on every plan.** Applied where
+  the ad-hoc allowance is read (seat counting, the account API, the settings
+  page) rather than stored on the account, since subscription events rewrite
+  the stored limits from Stripe. Customer service accounts that own routing
+  devices otherwise count as today. Depends 1.4.
 - **1.5 Migration: `client_tokens` columns.** `device_id` (composite FK to
   devices, cascade), `rotated_at`, `site_id` (composite FK, cascade),
   `expires_at` nullable, check `num_nonnulls(device_id, site_id) <= 1`,
@@ -409,16 +409,25 @@ NULL`, partial index on `rotated_at`.
   (`LatestSession.upsert_all`, `Device.latest_session_fields`). Depends 1.7.
 - **1.9 Migration: copy `gateway_tokens` into `client_tokens`.** Same ids,
   `actor_id` = Infrastructure, `device_id`, `site_id`, `rotated_at` carried,
-  `expires_at` and `auth_provider_id` nil, `ON CONFLICT DO NOTHING`. Old table
-  untouched. Depends 1.3, 1.5.
-- **1.10 Code: gateway token verification reads `client_tokens`.**
-  `verify_gateway_token/1`, rotation confirmation and the grace reaper switch
-  tables. Existing gateway socket tests. Depends 1.9.
-- **1.11 Code: gateway token creation and rotation write `client_tokens`.**
-  Site and device variants, actor = Infrastructure. Multi-owner tokens keep
-  the auto-join behaviour via `site_id`. Delete hook moves to
-  `Hooks.ClientTokens`. UI and REST token controllers read the unified table.
-  Depends 1.10.
+  `expires_at` and `auth_provider_id` nil, `ON CONFLICT DO NOTHING`. With the
+  gateway ids present, `devices.token_id` gets its foreign key (NOT VALID,
+  dangling ids cleared, validated). The flush writes `token_id` only when the
+  token exists in `client_tokens`, so an unmirrored gateway token nulls the
+  column instead of failing the batch. Old table untouched. Depends 1.3,
+  1.5, 1.7.
+- **1.10 Migration: mirror `gateway_tokens` writes by trigger.** Database
+  triggers keep `client_tokens` in step with every insert, rotation stamp
+  and delete on `gateway_tokens`, so pods still writing the old table during
+  a rollout, and every code path that creates, rotates or revokes a gateway
+  token, are covered without a code change. The copy from 1.9 runs again
+  first. From here the read switch is safe at any later deploy. Depends 1.9.
+- **1.11 Code: gateway tokens read from and written to `client_tokens`.**
+  `verify_gateway_token/1`, rotation confirmation and the grace reaper read
+  the unified table; creation and rotation write it, actor = Infrastructure;
+  multi-owner tokens keep the auto-join behaviour via `site_id`; the gateway
+  token delete hook's work is done by `Hooks.ClientTokens`. UI and REST
+  token controllers read the unified table. Pods on the previous release
+  still write `gateway_tokens`, which the trigger mirrors. Depends 1.10.
 - **1.12 Code: gateway socket builds a Subject.** `authenticate/2` with
   context `:gateway` tries the `gateway` and `gateway_group` salts; socket
   assigns `subject`; session logs use `Subject.to_map`. Depends 1.11.
@@ -434,7 +443,7 @@ NULL`, partial index on `rotated_at`.
 - **1.16 UI: tokens tab** on service accounts shows device-bound tokens with
   their device; rotate available for any device-bound token. Depends 1.11.
 - **1.17 Replication: drop `gateway_tokens`** from both consumer lists and
-  delete `Hooks.GatewayTokens`. Depends 1.11.
+  delete `Hooks.GatewayTokens`; drop the mirror trigger. Depends 1.11.
 - **1.18 Migration (contract, next release): drop `gateway_tokens`,
   `devices.client_token_id`, `devices.gateway_token_id`,
   `Portal.GatewayToken`.** Depends 1.8, 1.17 deployed.
