@@ -79,51 +79,6 @@ jobs:
           describe udp "UDP thread CPU" "ns/packet"
           describe crypto "Crypto workers CPU" "ns/packet"
           describe tun "TUN threads CPU" "ns/packet"
-      - name: Create the plots
-        if: env.BENCHER == 'true'
-        # A plot needs its benchmarks to exist, which a new benchmark only does after its first results.
-        continue-on-error: true
-        env:
-          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
-        run: |
-          set -euo pipefail
-
-          # Plots refer to everything by UUID.
-          uuid() {
-            bencher "$1" view "$BENCHER_PROJECT" "$2" | jq -r .uuid
-          }
-          benchmark() {
-            bencher benchmark list --name "$1" "$BENCHER_PROJECT" | jq -r '.[0].uuid // empty'
-          }
-          # Creates the plot unless one with the title exists; plots have no key of their own.
-          plot() {
-            local title=$1
-            shift
-            if [ "$(bencher plot list --title "$title" "$BENCHER_PROJECT" | jq length)" = 0 ]; then
-              bencher plot create --title "$title" --x-axis version --window 7776000 \
-                --branches "$(uuid branch main)" --testbeds "$(uuid testbed "bare-metal-$BENCHER_SPEC")" \
-                "$@" "$BENCHER_PROJECT" >/dev/null
-            fi
-          }
-
-          cpu=()
-          for measure in event-loop udp crypto tun; do
-            cpu+=(--measures "$(uuid measure "$measure")")
-          done
-          configurations=(client_outbound/cidr client_outbound/dns gateway_inbound/cidr gateway_inbound/dns
-            gateway_outbound/cidr gateway_outbound/dns client_inbound/cidr client_inbound/dns)
-          throughput=()
-          for configuration in "${configurations[@]}"; do
-            # A benchmark exists once its first results are in.
-            id=$(benchmark "event_loop/$configuration")
-            [ -n "$id" ] || continue
-            plot "$configuration CPU per packet" --benchmarks "$id" "${cpu[@]}"
-            throughput+=(--benchmarks "$id")
-          done
-          # One line per configuration, so only once all of them exist.
-          if [ "${#throughput[@]}" = "$((2 * ${#configurations[@]}))" ]; then
-            plot "Throughput" "${throughput[@]}" --measures "$(uuid measure throughput)"
-          fi
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
