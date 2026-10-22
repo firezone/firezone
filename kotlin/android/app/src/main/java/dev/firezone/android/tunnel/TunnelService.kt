@@ -113,7 +113,6 @@ class TunnelService : VpnService() {
 
     private var logCleanupJob: Job? = null
     private var featureFlagPollJob: Job? = null
-    private var logFilterJob: Job? = null
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
@@ -478,7 +477,6 @@ class TunnelService : VpnService() {
                                 startNetworkMonitoring()
                                 startLogCleanup()
                                 startFeatureFlagPoll()
-                                startLogFilterMonitoring()
 
                                 val stopReason = eventLoop(session, events, commandChannel!!)
 
@@ -516,7 +514,6 @@ class TunnelService : VpnService() {
 
                         stopNetworkMonitoring()
                         stopFeatureFlagPoll()
-                        stopLogFilterMonitoring()
 
                         // Stop the foreground notification
                         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -612,22 +609,6 @@ class TunnelService : VpnService() {
         featureFlagPollJob?.cancel()
         featureFlagPollJob = null
         Log.setStreamingActive(false)
-    }
-
-    // Re-applies the log filter to the running session whenever the stored value changes, so
-    // settings edits take effect live without signing out and reconnecting.
-    private fun startLogFilterMonitoring() {
-        logFilterJob =
-            serviceScope.launch {
-                repo.observeLogFilter().collect { directives ->
-                    sendTunnelCommand(TunnelCommand.SetLogDirectives(directives))
-                }
-            }
-    }
-
-    private fun stopLogFilterMonitoring() {
-        logFilterJob?.cancel()
-        logFilterJob = null
     }
 
     // `Tasks.await` throws when called on the main thread, which is the thread `onStartCommand`
@@ -764,17 +745,11 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.SetLogDirectives -> {
-                                // A malformed filter must not tear down the tunnel, so swallow the
-                                // error here instead of letting it bubble up to the event loop.
-                                try {
-                                    configureLogger(
-                                        logDir(this@TunnelService),
-                                        command.directives,
-                                        flowLogsDir(this@TunnelService),
-                                    )
-                                } catch (e: ConnlibException) {
-                                    Log.w(TAG, "Failed to apply log directives '${command.directives}'", e)
-                                }
+                                configureLogger(
+                                    logDir(this@TunnelService),
+                                    command.directives,
+                                    flowLogsDir(this@TunnelService),
+                                )
                             }
 
                             is TunnelCommand.SetTun -> {

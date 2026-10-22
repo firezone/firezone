@@ -64,7 +64,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
-                    // The tunnel service applies the log filter live once it's persisted, so only warn
+                    // The app applies the log filter live once it's persisted, so only warn
                     // about a re-login when a setting that actually invalidates the session changed.
                     warnBeforeSaving = isUserSignedIn && viewModel.requiresReLogin(),
                     onAuthUrlChange = viewModel::onValidateAuthUrl,

@@ -86,7 +86,7 @@ class Repository
             }.flowOn(coroutineDispatcher)
 
         // Emits the effective log filter whenever it changes in storage, whether the user edited it
-        // or an MDM pushed a new managed value, so a running session can re-apply it live.
+        // or an MDM pushed a new managed value, so the logger can re-apply it live.
         fun observeLogFilter(): Flow<String> =
             callbackFlow {
                 val listener =

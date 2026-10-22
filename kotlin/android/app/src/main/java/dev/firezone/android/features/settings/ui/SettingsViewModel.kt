@@ -75,7 +75,7 @@ internal class SettingsViewModel
             }
         }
 
-        // The log filter is applied live by the tunnel service, so it never requires a re-login.
+        // The log filter is applied live, so it never requires a re-login.
         // Changing the account or the portal endpoints invalidates the current session and only
         // takes effect after signing out and back in.
         fun requiresReLogin(): Boolean =

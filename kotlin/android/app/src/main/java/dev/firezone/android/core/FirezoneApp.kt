@@ -11,7 +11,10 @@ import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.di.ApplicationScope
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.configureLogger
 import uniffi.connlib.drainFlowLogs
@@ -24,13 +27,17 @@ class FirezoneApp : Application() {
     @Inject
     internal lateinit var repo: Lazy<Repository>
 
+    @Inject
+    @ApplicationScope
+    internal lateinit var applicationScope: CoroutineScope
+
     override fun onCreate() {
         super.onCreate()
 
         // Initialize Telemetry as early as possible. Reading the config touches the Keystore,
         // which can fail; that must not keep Sentry from reporting it.
-        val apiUrl = runCatching { repo.get().getConfigSync().apiUrl }.getOrDefault(BuildConfig.API_URL)
-        Telemetry.start(this, apiUrl)
+        val config = runCatching { repo.get().getConfigSync() }.getOrNull()
+        Telemetry.start(this, config?.apiUrl ?: BuildConfig.API_URL)
 
         // Disable Crashlytics for debug builds
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
@@ -42,15 +49,12 @@ class FirezoneApp : Application() {
         val flowLogsDir = TunnelService.flowLogsDir(this)
 
         // The drain below runs without a session, so it never reaches `connect`.
-        // Configure the logger here so that work is not silent. Best-effort: a
-        // failure costs connlib's logs, not startup.
-        try {
-            configureLogger(TunnelService.logDir(this), BuildConfig.LOG_FILTER, flowLogsDir)
-        } catch (e: ConnlibException) {
-            Log.e(TAG, "Failed to configure connlib's logger", e)
-            e.close()
-        } catch (e: IOException) {
-            Log.e(TAG, "Failed to configure connlib's logger", e)
+        // Configure the logger here so that work is not silent.
+        applyLogFilter(config?.logFilter ?: BuildConfig.LOG_FILTER)
+
+        // Settings edits and MDM pushes take effect without reconnecting.
+        applicationScope.launch {
+            repo.get().observeLogFilter().collect { applyLogFilter(it) }
         }
 
         // Drain flow logs whenever the app comes to the foreground (including this
@@ -66,6 +70,18 @@ class FirezoneApp : Application() {
                 }
             },
         )
+    }
+
+    // Best-effort: a failure, such as a malformed filter, costs connlib's logs, not the app.
+    private fun applyLogFilter(logFilter: String) {
+        try {
+            configureLogger(TunnelService.logDir(this), logFilter, TunnelService.flowLogsDir(this))
+        } catch (e: ConnlibException) {
+            Log.e(TAG, "Failed to configure connlib's logger", e)
+            e.close()
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to configure connlib's logger", e)
+        }
     }
 
     companion object {
