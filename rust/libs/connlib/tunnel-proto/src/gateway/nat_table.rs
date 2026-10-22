@@ -4,6 +4,7 @@ use bimap::BiHashMap;
 use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -24,8 +25,15 @@ pub(crate) struct NatTable {
     expired: HashSet<Outside, FastRandomState>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 struct Inside(Protocol, IpAddr);
+
+impl Hash for Inside {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        hash_key(self.0, self.1, state);
+    }
+}
 
 impl Inside {
     fn into_inner(self) -> (Protocol, IpAddr) {
@@ -33,12 +41,37 @@ impl Inside {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 struct Outside(Protocol, IpAddr);
+
+impl Hash for Outside {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        hash_key(self.0, self.1, state);
+    }
+}
 
 impl Outside {
     fn into_inner(self) -> (Protocol, IpAddr) {
         (self.0, self.1)
+    }
+}
+
+/// Hashes a NAT key with one or two integer writes; the derived impl hashes every enum discriminant separately.
+#[inline]
+fn hash_key<H: Hasher>(protocol: Protocol, ip: IpAddr, state: &mut H) {
+    let protocol = match protocol {
+        Protocol::Tcp(port) => u64::from(port),
+        Protocol::Udp(port) => 1 << 16 | u64::from(port),
+        Protocol::IcmpEcho(id) => 2 << 16 | u64::from(id),
+    };
+
+    match ip {
+        IpAddr::V4(ip) => state.write_u64(protocol << 32 | u64::from(ip.to_bits())),
+        IpAddr::V6(ip) => {
+            state.write_u128(ip.to_bits());
+            state.write_u64(protocol);
+        }
     }
 }
 
