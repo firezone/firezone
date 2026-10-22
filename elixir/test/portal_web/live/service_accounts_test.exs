@@ -633,7 +633,7 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       html = render_click(lv, "rotate_token", %{"id" => token.id})
       assert html =~ "Token Created"
-      assert Repo.get!(Portal.ClientToken, token.id).rotated_at
+      assert Repo.get_by!(Portal.ClientToken, account_id: account.id, id: token.id).rotated_at
 
       # The new token is shown once; the list behind it marks the old one.
       html = render_click(lv, "dismiss_created_token")
