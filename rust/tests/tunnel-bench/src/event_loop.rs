@@ -592,7 +592,7 @@ impl Measures {
         let value = |value: f64| serde_json::json!({ "value": value });
         let mut bmf =
             serde_json::Map::from_iter([("throughput".to_owned(), value(self.bitrate()))]);
-        for (slug, prefix) in STAGES {
+        for (slug, prefix) in self.active_stages() {
             bmf.insert(slug.to_owned(), value(self.cpu_ns_per_packet(prefix)));
         }
 
@@ -629,6 +629,15 @@ impl Measures {
         cpu.as_nanos() as f64 / self.packets as f64
     }
 
+    /// The stages that had a thread during the benchmark; a benchmark without a TUN device has
+    /// no TUN threads.
+    fn active_stages(&self) -> impl Iterator<Item = (&'static str, &'static str)> {
+        STAGES
+            .iter()
+            .copied()
+            .filter(|(_, prefix)| self.stage_threads(prefix).next().is_some())
+    }
+
     fn stage_threads(&self, prefix: &str) -> impl Iterator<Item = (&String, &Duration)> {
         self.cpu
             .iter()
@@ -645,8 +654,8 @@ impl std::fmt::Display for Measures {
             self.bitrate() / 1e9,
             self.throughput()
         )?;
-        let stages = STAGES
-            .iter()
+        let stages = self
+            .active_stages()
             .map(|(slug, prefix)| {
                 let threads = self.stage_threads(prefix).count();
                 let per_packet = self.cpu_ns_per_packet(prefix);
