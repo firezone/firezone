@@ -143,9 +143,13 @@ or registration, and the legacy adapters enforce them:
 
 - A gateway below the classification fix (0.4, gateway 1.6.5) never holds an
   Internet authorization and a CIDR or DNS authorization at the same time.
-  Assignment refuses to put such a gateway in both the Internet Site and
-  another site, and `select_receiver` skips it for the second kind if the
-  versions change later.
+  The rule: such a gateway serves the Internet resource only if the Internet
+  Site is its only site. `select_receiver` enforces it on every
+  authorization from presence meta (authoritative); assignment in the UI and
+  REST refuses the combination with the reason; an email tells the account's
+  admins which gateways are held back and that upgrading lifts it (2.12b).
+  The gate lifts on its own when the gateway reconnects with a newer user
+  agent.
 - A legacy gateway never receives a device pool target. Its resource parser
   has no such variant.
 - A legacy gateway is never sent `disconnect` for being superseded. Deployed
@@ -472,6 +476,11 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   a gateway below 1.6.5 cannot be added to both the Internet Site and
   another site, with the reason shown); remove device. Same validation on
   the REST endpoint in 2.14. Depends 2.8.
+- **2.12b Code: email for gateways held back by the version gate.** A
+  pre-1.6.5 gateway assigned to the Internet Site and another site is not
+  serving the Internet resource; tell the account's admins which gateways
+  and why, with the upgrade as the fix. Second trigger on the existing
+  outdated-gateway mailer and its per-account send timestamp. Depends 2.12.
 - **2.13 Code and migration: site delete keeps devices.** `site_id` FK
   becomes SET NULL; UI and REST copy; blocked while resources remain.
   Depends 2.8.
@@ -688,9 +697,9 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
-Apple, Android and the Windows GUI need no release. PR count is about 87
+Apple, Android and the Windows GUI need no release. PR count is about 88
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
-phase 1 has 19, phase 2 has 21, phase 3 has 11, phase 4 has 13,
+phase 1 has 19, phase 2 has 22, phase 3 has 11, phase 4 has 13,
 phase 5 has 11, phase 6 has 8.
 
 ## 4. Decisions taken
@@ -725,7 +734,7 @@ phase 5 has 11, phase 6 has 8.
 | ----- | ----- | --------- |
 | 0     | 9     | small     |
 | 1     | 19    | medium    |
-| 2     | 22    | medium    |
+| 2     | 23    | medium    |
 | 2b    | 1     | docs only |
 | 3     | 12    | medium    |
 | 4     | 13    | large     |
