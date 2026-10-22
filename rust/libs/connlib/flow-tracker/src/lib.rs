@@ -178,8 +178,8 @@ where
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(
-                Entry::Tun,
-                Some(InnerFlow::from(packet)),
+                || Entry::Tun,
+                Some(packet),
                 now,
                 self.mru_ingest_token.take(),
             );
@@ -199,7 +199,7 @@ where
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(
-                Entry::Network { local, remote },
+                || Entry::Network { local, remote },
                 None,
                 now,
                 self.mru_ingest_token.take(),
@@ -840,9 +840,10 @@ impl FlowData {
     }
 }
 
+#[inline(always)]
 fn set_current_flow(
-    entry: Entry,
-    inner: Option<InnerFlow>,
+    entry: impl FnOnce() -> Entry,
+    inner: Option<&IpPacket>,
     now: Instant,
     mru_ingest_token: Option<IngestToken>,
 ) {
@@ -852,8 +853,11 @@ fn set_current_flow(
             "at most 1 flow should be active at any time"
         );
 
-        data.packet = Some(CurrentPacket { entry, now });
-        data.inner = inner;
+        data.packet = Some(CurrentPacket {
+            entry: entry(),
+            now,
+        });
+        data.inner = inner.map(InnerFlow::from);
         data.mru_ingest_token = mru_ingest_token;
     });
 }
@@ -879,6 +883,7 @@ pub fn record_peer(peer: impl Into<ClientOrGatewayId>, role: Role) {
 }
 
 /// Records the resource the current packet accesses.
+#[inline]
 pub fn record_resource(resource: ResourceId) {
     update_current_flow(|data| {
         data.resource = Some(resource);
