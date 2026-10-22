@@ -129,12 +129,24 @@ defmodule Portal.Authentication do
     end
   end
 
-  # Single-owner token: bound to one gateway. At most one active token can
-  # exist per gateway; callers should map the unique constraint error on
-  # :device_id to a conflict response and point users at rotation instead.
+  # Single-owner token: bound to one gateway, owned by the account's
+  # Infrastructure service account. At most one active token can exist per
+  # gateway; callers should map the unique constraint error on :device_id to
+  # a conflict response and point users at rotation instead.
   def create_gateway_token(%Portal.Device{type: :gateway} = gateway, %Subject{} = subject) do
-    with {:ok, actor} <- fetch_infrastructure_actor(gateway.account_id) do
-      gateway
+    create_device_token(gateway, nil, subject)
+  end
+
+  @doc """
+  Mints the token bound to `device`, owned by `actor`: a service account of
+  the device's account, or the account's Infrastructure service account when
+  nil. The device connects as that actor.
+  """
+  @spec create_device_token(Portal.Device.t(), Portal.Actor.t() | nil, Subject.t()) ::
+          {:ok, ClientToken.t()} | {:error, term()}
+  def create_device_token(%Portal.Device{} = device, actor, %Subject{} = subject) do
+    with {:ok, actor} <- device_token_owner(device, actor) do
+      device
       |> build_single_owner_token(actor)
       # Safe.insert applies ClientToken.changeset/1 to changesets (not bare
       # structs), which maps the unique violation to a changeset error
@@ -142,6 +154,16 @@ defmodule Portal.Authentication do
       |> Database.insert_gateway_token(subject)
     end
   end
+
+  defp device_token_owner(device, nil), do: fetch_infrastructure_actor(device.account_id)
+
+  defp device_token_owner(
+         %Portal.Device{account_id: account_id},
+         %Portal.Actor{account_id: account_id, type: :service_account} = actor
+       ),
+       do: {:ok, actor}
+
+  defp device_token_owner(_device, %Portal.Actor{}), do: {:error, :not_a_service_account}
 
   defp build_single_owner_token(%Portal.Device{} = gateway, %Portal.Actor{} = actor) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
@@ -174,8 +196,17 @@ defmodule Portal.Authentication do
   @spec rotate_gateway_token(Portal.Device.t(), Subject.t()) ::
           {:ok, ClientToken.t()} | {:error, Ecto.Changeset.t()} | {:error, term()}
   def rotate_gateway_token(%Portal.Device{type: :gateway} = gateway, %Subject{} = subject) do
-    with {:ok, actor} <- fetch_infrastructure_actor(gateway.account_id) do
+    with {:ok, actor} <- rotation_owner(gateway) do
       Database.rotate_gateway_token(gateway, build_single_owner_token(gateway, actor), subject)
+    end
+  end
+
+  # The replacement stays with whoever owns the token being rotated, so a
+  # gateway deployed under a customer's service account keeps connecting as it.
+  defp rotation_owner(gateway) do
+    case Database.fetch_bound_token_owner(gateway) do
+      %Portal.Actor{} = actor -> {:ok, actor}
+      nil -> fetch_infrastructure_actor(gateway.account_id)
     end
   end
 
@@ -625,6 +656,20 @@ defmodule Portal.Authentication do
         nil -> {:error, :not_found}
         relay_token -> {:ok, relay_token}
       end
+    end
+
+    def fetch_bound_token_owner(%Portal.Device{} = gateway) do
+      from(t in ClientToken,
+        where: t.account_id == ^gateway.account_id,
+        where: t.device_id == ^gateway.id,
+        join: a in Portal.Actor,
+        on: a.account_id == t.account_id and a.id == t.actor_id,
+        order_by: [asc_nulls_first: t.rotated_at],
+        limit: 1,
+        select: a
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
     def insert_gateway_token(gateway_token, subject) do

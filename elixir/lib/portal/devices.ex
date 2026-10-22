@@ -47,9 +47,26 @@ defmodule Portal.Devices do
   @spec provision_gateway(Site.t(), String.t() | nil, Authentication.Subject.t()) ::
           {:ok, Device.t(), ClientToken.t(), binary()} | {:error, term()}
   def provision_gateway(%Site{} = site, name, %Authentication.Subject{} = subject) do
+    provision_device(site, nil, name, subject)
+  end
+
+  @doc """
+  Inserts a device that serves `site` and mints the token it connects with,
+  owned by `actor`: a service account of the account, or its Infrastructure
+  service account when nil. See `provision_gateway/3` for why both writes
+  share one transaction.
+  """
+  @spec provision_device(
+          Site.t(),
+          Portal.Actor.t() | nil,
+          String.t() | nil,
+          Authentication.Subject.t()
+        ) ::
+          {:ok, Device.t(), ClientToken.t(), binary()} | {:error, term()}
+  def provision_device(%Site{} = site, actor, name, %Authentication.Subject{} = subject) do
     Database.transact(fn ->
       with {:ok, gateway} <- Database.insert_gateway(site, name, subject),
-           {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
+           {:ok, token} <- Authentication.create_device_token(gateway, actor, subject) do
         {:ok, {gateway, %{token | secret_fragment: nil}, Authentication.encode_fragment!(token)}}
       end
     end)
