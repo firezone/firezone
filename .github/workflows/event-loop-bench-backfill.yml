@@ -1,0 +1,80 @@
+name: Event-loop benchmark backfill
+run-name: Backfill triggered by ${{ github.actor }}
+"on":
+  workflow_dispatch:
+    inputs:
+      commits:
+        description: JSON array of full hashes of commits on main, oldest first
+        required: true
+        type: string
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: backfill-${{ matrix.commit }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    # One at a time so that Bencher receives the commits in their order on main.
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        commit: ${{ fromJSON(inputs.commits) }}
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+      BENCHER_SPEC: intel-v1
+      COMMIT: ${{ matrix.commit }}
+      BACKFILL: backfill/rust/tests/tunnel-bench/backfill
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.commit }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: backfill
+          sparse-checkout: rust/tests/tunnel-bench/backfill
+      # The commit's own actions, so its toolchain file is the one that gets installed.
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Build the commit's tunnel-bench
+        run: cargo build --release -p tunnel-bench
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - name: Push image to the Bencher registry
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          cp target/release/tunnel-bench "$GITHUB_WORKSPACE/$BACKFILL/"
+          image="registry.bencher.dev/$BENCHER_PROJECT:$COMMIT-backfill"
+          docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
+          docker build --platform linux/amd64 -t "$image" "$GITHUB_WORKSPACE/$BACKFILL"
+          docker push "$image"
+          echo "IMAGE=$image" >>"$GITHUB_ENV"
+      - name: Run on Bencher Bare Metal
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Only submits the job; its results show up on Bencher once it has run.
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --branch main \
+            --hash "$COMMIT" \
+            --testbed "bare-metal-$BENCHER_SPEC" \
+            --spec "$BENCHER_SPEC" \
+            --image "$IMAGE" \
+            --job-timeout 300 \
+            --adapter json \
+            --file /tmp/tunnel-bench.json \
+            --detach
