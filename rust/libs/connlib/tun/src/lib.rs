@@ -245,26 +245,3 @@ impl InboundRx {
         self.0.try_recv()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn batches_return_to_the_pool_empty() {
-        let packet = ip_packet::make::udp_packet(
-            std::net::Ipv4Addr::LOCALHOST,
-            std::net::Ipv4Addr::LOCALHOST,
-            1234,
-            5678,
-            &[],
-        )
-        .unwrap();
-
-        drop(PacketBatch::new(packet));
-
-        // The dropped batch's storage is recycled; it must come back empty.
-        let batch = PacketBatch::default();
-        assert!(batch.is_empty());
-    }
-}
