@@ -566,7 +566,7 @@ fn measure<T>(
     };
     if measures.starved() {
         eprintln!(
-            "Event loop thread parked {:.2} times per 1000 packets, so a stand-in fell behind and the throughput and CPU measures are discarded",
+            "Event loop thread parked {:.2} times per 1000 packets and may not have been the bottleneck",
             measures.parks_per_1k()
         );
     }
@@ -586,23 +586,15 @@ struct Measures {
 }
 
 impl Measures {
-    /// Returns the measures in Bencher Metric Format.
+    /// Returns the throughput in bits per second and each stage's CPU time per packet in Bencher
+    /// Metric Format.
     fn bmf(&self) -> serde_json::Value {
         let value = |value: f64| serde_json::json!({ "value": value });
-        let mut bmf = serde_json::Map::from_iter([
-            ("latency".to_owned(), value(self.latency_ns())),
-            ("parks".to_owned(), value(self.parks_per_1k())),
-        ]);
-        if self.starved() {
-            return bmf.into();
-        }
-
-        bmf.insert("throughput".to_owned(), value(self.throughput()));
-        bmf.insert("bitrate".to_owned(), value(self.bitrate()));
+        let mut bmf =
+            serde_json::Map::from_iter([("throughput".to_owned(), value(self.bitrate()))]);
         for (slug, prefix) in STAGES {
             bmf.insert(slug.to_owned(), value(self.cpu_ns_per_packet(prefix)));
         }
-        bmf.insert("stage-ceiling".to_owned(), value(self.stage_ceiling().1));
 
         bmf.into()
     }
@@ -615,10 +607,6 @@ impl Measures {
 
     fn parks_per_1k(&self) -> f64 {
         self.parks as f64 * 1000.0 / self.packets as f64
-    }
-
-    fn latency_ns(&self) -> f64 {
-        self.elapsed.as_nanos() as f64 / self.packets as f64
     }
 
     /// Returns the packets per second.
@@ -641,17 +629,6 @@ impl Measures {
         cpu.as_nanos() as f64 / self.packets as f64
     }
 
-    /// Returns the packets per second if every thread had its own core, and the thread that caps
-    /// them.
-    fn stage_ceiling(&self) -> (&str, f64) {
-        STAGES
-            .iter()
-            .flat_map(|(_, prefix)| self.stage_threads(prefix))
-            .max_by_key(|(_, cpu)| **cpu)
-            .map(|(name, cpu)| (name.as_str(), self.packets as f64 / cpu.as_secs_f64()))
-            .unwrap_or(("none", f64::INFINITY))
-    }
-
     fn stage_threads(&self, prefix: &str) -> impl Iterator<Item = (&String, &Duration)> {
         self.cpu
             .iter()
@@ -664,19 +641,9 @@ impl std::fmt::Display for Measures {
         let indent = " ".repeat(24);
         writeln!(
             f,
-            "{indent}parks:  {:.2} per 1000 packets{}",
-            self.parks_per_1k(),
-            if self.starved() { " (starved)" } else { "" }
-        )?;
-        if self.starved() {
-            return Ok(());
-        }
-
-        writeln!(
-            f,
-            "{indent}pkt/s:  {:.0} ({:.2} Gbit/s)",
-            self.throughput(),
-            self.bitrate() / 1e9
+            "{indent}thrpt:  {:.2} Gbit/s ({:.0} pkt/s)",
+            self.bitrate() / 1e9,
+            self.throughput()
         )?;
         let stages = STAGES
             .iter()
@@ -691,9 +658,7 @@ impl std::fmt::Display for Measures {
             })
             .collect::<Vec<_>>()
             .join(", ");
-        writeln!(f, "{indent}cpu:    {stages} ns/pkt")?;
-        let (thread, ceiling) = self.stage_ceiling();
-        write!(f, "{indent}ceiling: {ceiling:.0} pkt/s ({thread})")
+        write!(f, "{indent}cpu:    {stages} ns/pkt")
     }
 }
 
